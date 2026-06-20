@@ -1,0 +1,70 @@
+{
+  "task": "sys-llm-serving-throughput",
+  "title": "vLLM: from a naive LLM serving loop to a stacked high-throughput serving system (max tokens/sec at fixed latency on fixed GPUs)",
+  "domain": "Machine learning systems",
+  "metrics": [
+    "serving_throughput_tokens_per_sec",
+    "throughput_at_fixed_latency",
+    "kv_cache_memory_efficiency"
+  ],
+  "metric_columns": [
+    "serving_throughput_tokens_per_sec",
+    "throughput_at_fixed_latency",
+    "requests_per_sec",
+    "inference_latency"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "paged-attention",
+      "method": "PagedAttention (block-paged KV cache)",
+      "reasoning": "01-paged-attention-reasoning.md",
+      "answer": "01-paged-attention-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "continuous-batching",
+      "method": "Continuous batching (iteration-level scheduling)",
+      "reasoning": "02-continuous-batching-reasoning.md",
+      "answer": "02-continuous-batching-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "chunked-prefill",
+      "method": "Chunked prefill (token-budget prefill chunks co-batched with decodes)",
+      "reasoning": "03-chunked-prefill-reasoning.md",
+      "answer": "03-chunked-prefill-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "prefix-caching",
+      "method": "Prefix caching (hash-keyed shared-prefix block reuse)",
+      "reasoning": "04-prefix-caching-reasoning.md",
+      "answer": "04-prefix-caching-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "speculative-decoding",
+      "method": "Speculative decoding (draft-and-verify: ngram / EAGLE / Medusa)",
+      "reasoning": "05-speculative-decoding-reasoning.md",
+      "answer": "05-speculative-decoding-answer.md",
+      "feedback": "05-feedback.md"
+    },
+    {
+      "n": 6,
+      "slug": "fp8-kv-cache",
+      "method": "FP8 KV cache (1-byte KV storage, convert-on-read)",
+      "reasoning": "06-fp8-kv-cache-reasoning.md",
+      "answer": "06-fp8-kv-cache-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "This is a methods-on-one-fixed-task ladder (the vLLM serving stack), so the ordering is the documented stacking order weak->strong, each rung opening from the previous rung's remaining bottleneck on the one fixed task: maximize generated tokens/sec for a fixed LLM on fixed GPU(s) under a fixed per-request latency budget. Throughput at fixed latency tracks the live batch size (decode is memory-bandwidth-bound), and the batch is gated by KV-cache memory, so every rung attacks whatever then caps the GPU-busy batch. (1) PagedAttention removes the spatial memory waste (contiguous per-request reservation -> fragmentation + over-reservation) by paging the KV cache into fixed-size blocks addressed via per-request block tables; KV waste drops from 60-80% to near zero, raising the sustainable batch -- the foundation everything else builds on. (2) Continuous (iteration-level) batching converts that spatial headroom into sustained occupancy by re-forming the batch every forward pass, retiring finished requests and admitting waiting ones per step, with paging-enabled preemption on memory pressure. (3) Chunked prefill stops a long prompt's prefill from monopolizing a step (latency spike) by capping the per-step prefill advance at a chunk budget and co-batching prefill chunks with decodes so compute-bound prefill fills the tensor cores that bandwidth-bound decode leaves idle. (4) Prefix caching removes redundant cross-request prefill by a chained content hash keying shared prompt-prefix blocks to a content->block map, reusing ref-counted physical blocks (the sharing that paging already enabled). (5) Speculative decoding attacks the one-token-per-pass decode limit: a cheap proposer (ngram lookup / EAGLE / Medusa / draft model) guesses k tokens, the target verifies all k in one pass over the paged cache, the longest matching prefix is accepted (lossless) -- amortizing the bandwidth-bound decode cost over multiple accepted tokens. (6, finale) FP8 KV cache attacks the deepest cap, the bytes-per-element of the cache itself: store KV in 1 byte (default E4M3, with scale) instead of 2, convert-on-read at full compute precision, ~doubling the tokens that fit in the same memory and so the batch/context the fixed GPU can serve at the fixed latency budget -- the last lever because it changes the cost of the binding resource itself.",
+  "endpoint": "FP8 KV cache (1-byte KV storage)",
+  "notes": "Provenance: built from the vLLM repo (github.com/vllm-project/vllm). The fixed task and target (maximize generated tokens/sec for a fixed model on fixed GPU(s) at a fixed latency budget) and the reference baselines come from the PagedAttention paper and the vLLM project. RULE B / number-pinning discipline: only the first two rungs have hard published numbers, and each is pinned to its exact source -- rung 1: '2-4x with the same level of latency vs FasterTransformer and Orca' is from the SOSP 2023 paper ABSTRACT ('Efficient Memory Management for Large Language Model Serving with PagedAttention', SOSP'23 / arXiv:2309.06180); 'up to 24x vs HF (14x-24x single, 8.5x-15x three completions)' and 'up to 3.5x vs TGI (2.2x-2.5x single, 3.3x-3.5x three completions)' are from the 2023-06-20 vLLM LAUNCH BLOG (blog.vllm.ai/2023/06/20/vllm.html), measured on LLaMA-7B@A10G and LLaMA-13B@A100-40GB with ShareGPT-sampled request lengths. Rung 2 (continuous batching): the 2.2x-3.5x over TGI is the isolating comparison (TGI ALREADY does continuous batching, so this margin isolates the paging+scheduler contribution above continuous batching alone), same 2023-06-20 blog. Rungs 3-6 are CONFIG-SENSITIVE: their gains depend on model/hardware/workload (and on the chunk size / sharing fraction / acceptance rate / memory-boundedness), so per RULE B no multiplier is invented -- each feedback (3,4,5) states the gain is reproducible via the shipped benchmark with the enabling flag and gives the exact invocation: chunked prefill via 'vllm bench throughput --enable-chunked-prefill' (legacy benchmarks/benchmark_throughput.py now redirects to it); prefix caching via 'benchmarks/benchmark_prefix_caching.py --enable-prefix-caching'; speculative decoding via 'vllm bench throughput --speculative-config ...'; FP8 KV via '--kv-cache-dtype fp8'. The finale (FP8 KV cache) carries reasoning + answer and NO feedback file; its bar (the fixed task: max tokens/sec at fixed latency on fixed GPU(s)) is restated at the close of its reasoning. CODE FIDELITY: every code block is a faithful excerpt of the real current vLLM source at the cited path, copied from the repo at HEAD (paged_attention kernels now live under csrc/libtorch_stable/attention/ -- attention_kernels.cuh and paged_attention_v1.cu/v2.cu -- and the FP8 write path is in csrc/libtorch_stable/cache_kernels.cu (CopyWithScaleOp/reshape_and_cache); the v1 engine paths are vllm/v1/core/{kv_cache_manager,block_pool,kv_cache_utils}.py, vllm/v1/core/sched/scheduler.py, vllm/v1/attention/ops/chunked_prefill_paged_decode.py, vllm/v1/spec_decode/{ngram_proposer,eagle,medusa}.py; FP8 enum in csrc/attention/dtype_fp8.cuh). FIT NOTE: this is a methods-on-one-task serving stack rather than a dated record log, so the weak->strong ladder is the engineering stacking order (each rung opening from the prior rung's bottleneck) rather than chronological records; the later rungs report reproduction recipes (benchmark + flag) rather than a single stacked absolute throughput number, consistent with RULE B."
+}

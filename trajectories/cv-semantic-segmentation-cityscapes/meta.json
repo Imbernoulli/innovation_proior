@@ -1,0 +1,59 @@
+{
+  "task": "cv-semantic-segmentation-cityscapes",
+  "title": "Cityscapes semantic segmentation: from a 69.10-mIoU encoder-decoder to a globally-receptive transformer at 82.25",
+  "domain": "Computer vision",
+  "year": 2015,
+  "metrics": [
+    "miou"
+  ],
+  "metric_columns": [
+    "miou",
+    "miou_ms_flip"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "unet",
+      "method": "U-Net (encoder-decoder with per-level skip connections)",
+      "reasoning": "01-unet-reasoning.md",
+      "answer": "01-unet-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "fcn",
+      "method": "FCN (fully-convolutional head on a dilated ImageNet-pretrained backbone)",
+      "reasoning": "02-fcn-reasoning.md",
+      "answer": "02-fcn-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "pspnet",
+      "method": "PSPNet (pyramid pooling module for multi-scale global context)",
+      "reasoning": "03-pspnet-reasoning.md",
+      "answer": "03-pspnet-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "deeplabv3plus",
+      "method": "DeepLabV3+ (depthwise-separable atrous spatial pyramid pooling + decoder)",
+      "reasoning": "04-deeplabv3plus-reasoning.md",
+      "answer": "04-deeplabv3plus-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "segformer",
+      "method": "SegFormer (hierarchical transformer encoder + lightweight all-MLP decoder)",
+      "reasoning": "05-segformer-reasoning.md",
+      "answer": "05-segformer-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Primary metric is Cityscapes val mIoU (higher is better), each rung the real number from its config's README results table in open-mmlab/mmsegmentation (not re-run by us). The four convolutional rungs are directly comparable on a held-fixed setting (512x1024 crop, R-50-D8 ImageNet-pretrained backbone, 40k schedule) and form a strict weak-to-strong ascent: U-Net (encoder-decoder + skips) 69.10 -> FCN (dilated pretrained backbone) 72.25 -> PSPNet (pyramid pooling, multi-scale global context) 77.85 -> DeepLabV3+ (separable ASPP + OS-4 decoder) 79.61. Each rung opens from the previous rung's measured mIoU and its architectural limitation and derives the next architecture in-frame: U-Net's blurry-single-upsample baseline -> add an encoder-decoder; U-Net's from-scratch encoder -> mount on a pretrained dilated backbone (FCN); FCN's local receptive field -> pyramid pooling for global context (PSPNet); PSPNet's pooling-away of resolution and coarse boundaries -> dense atrous context + a decoder skip (DeepLabV3+). The finale, SegFormer, makes context native to a globally-receptive hierarchical transformer encoder with a trivial all-MLP decoder; its smallest configuration (MIT-B0) measures 76.54 mIoU at its own 1024x1024 crop and the largest (MIT-B5) measures 82.25 -- strictly stronger than the best convolutional rung -- so it is the strictly-stronger capstone of the ladder.",
+  "endpoint": "SegFormer (hierarchical transformer encoder + lightweight all-MLP decoder)",
+  "notes": "Provenance: every mIoU is taken verbatim from the corresponding config's README 'Results and models / Cityscapes' table in open-mmlab/mmsegmentation (cloned at build time); none was re-run by us. Numbers: U-Net configs/unet/README.md (UNet + FCN, UNet-S5-D16, 512x1024) 69.10 (71.05 ms+flip); FCN configs/fcn/README.md (R-50-D8, 512x1024, 40k) 72.25 (73.36); PSPNet configs/pspnet/README.md (R-50-D8, 512x1024, 40k) 77.85 (79.18); DeepLabV3+ configs/deeplabv3plus/README.md (R-50-D8, 512x1024, 40k) 79.61 (81.01); SegFormer configs/segformer/README.md (MIT-B0, 1024x1024, 160k) 76.54 (78.22) and (MIT-B5, 1024x1024, 160k) 82.25 (83.48). Setting: the four convolutional rungs share the fixed task setting (512x1024 crop, R-50-D8 = ResNet-50 dilated to output stride 8 with strides=(1,2,1,1)/dilations=(1,1,2,4), ImageNet-pretrained, 40k schedule) so their mIoUs are directly comparable; SegFormer uses its own Mix Transformer (MIT) backbone at a 1024x1024 crop with sliding-window inference -- a different setting, noted in its answer and reasoning -- so its number is reported under that configuration rather than the R-50-D8 / 512x1024 setting. Chronology note (honest): U-Net and FCN both date to 2015, PSPNet 2017, DeepLabV3+ 2018, SegFormer 2021; the ladder is ordered by the repo's measured Cityscapes mIoU, not by publication date, which is why U-Net (69.10) precedes FCN (72.25) even though they are contemporaneous. Code: every answer/reasoning code block is a faithful excerpt of the real head/backbone at the cited path -- mmseg/models/backbones/unet.py + mmseg/models/utils/up_conv_block.py (U-Net), mmseg/models/decode_heads/fcn_head.py (FCN), mmseg/models/decode_heads/psp_head.py PPM (PSPNet), mmseg/models/decode_heads/sep_aspp_head.py + aspp_head.py (DeepLabV3+), mmseg/models/backbones/mit.py (EfficientMultiheadAttention, MixFFN) + mmseg/models/decode_heads/segformer_head.py (SegFormer). The finale carries no feedback file; the bar it has to clear (beat DeepLabV3+ 79.61) lives at the close of its reasoning, and the realized capstone number (MIT-B5 82.25) is documented here and in the SegFormer config README."
+}

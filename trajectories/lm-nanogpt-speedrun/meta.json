@@ -1,0 +1,117 @@
+{
+  "task": "lm-nanogpt-speedrun",
+  "title": "NanoGPT speedrun: from the AdamW GPT-2 recipe to a Flash-Attention-3 sub-3-minute trainer",
+  "domain": "Language models",
+  "metrics": [
+    "val_loss",
+    "train_time_ms",
+    "steps"
+  ],
+  "metric_columns": [
+    "val_loss",
+    "train_time_ms",
+    "steps"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "muon",
+      "method": "Muon optimizer (momentum + Newton-Schulz orthogonalized matrix updates)",
+      "reasoning": "01-muon-reasoning.md",
+      "answer": "01-muon-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "modern-arch",
+      "method": "Modernized architecture (split-QKV + QK-norm + ReLU² + zero-init projections + head_dim 128, padded vocab)",
+      "reasoning": "02-modern-arch-reasoning.md",
+      "answer": "02-modern-arch-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "untie-head",
+      "method": "Untied embedding/head with zero-initialized head and post-embedding norm",
+      "reasoning": "03-untie-head-reasoning.md",
+      "answer": "03-untie-head-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "value-residual-shortcuts",
+      "method": "Value residual + learnable lambda, embedding shortcut, momentum warmup, tanh logit softcap",
+      "reasoning": "04-value-residual-shortcuts-reasoning.md",
+      "answer": "04-value-residual-shortcuts-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "unet-skip",
+      "method": "U-net encoder/decoder skip connections with learnable weights (and doubled LR)",
+      "reasoning": "05-unet-skip-reasoning.md",
+      "answer": "05-unet-skip-answer.md",
+      "feedback": "05-feedback.md"
+    },
+    {
+      "n": 6,
+      "slug": "flex-attention",
+      "method": "FlexAttention with document + sliding-window block mask (long-context training)",
+      "reasoning": "06-flex-attention-reasoning.md",
+      "answer": "06-flex-attention-answer.md",
+      "feedback": "06-feedback.md"
+    },
+    {
+      "n": 7,
+      "slug": "window-warmup",
+      "method": "Attention window-size warmup (grow the sliding window over training)",
+      "reasoning": "07-window-warmup-reasoning.md",
+      "answer": "07-window-warmup-answer.md",
+      "feedback": "07-feedback.md"
+    },
+    {
+      "n": 8,
+      "slug": "value-embeddings",
+      "method": "Token value embeddings mixed into attention values (per-layer vte)",
+      "reasoning": "08-value-embeddings-reasoning.md",
+      "answer": "08-value-embeddings-answer.md",
+      "feedback": "08-feedback.md"
+    },
+    {
+      "n": 9,
+      "slug": "lower-softcap",
+      "method": "Lower the tanh logit softcap from 30 to 15",
+      "reasoning": "09-lower-softcap-reasoning.md",
+      "answer": "09-lower-softcap-answer.md",
+      "feedback": "09-feedback.md"
+    },
+    {
+      "n": 10,
+      "slug": "fp8-head",
+      "method": "FP8 language-model head (e4m3 forward / e5m2 backward, asymmetric per-tensor scales)",
+      "reasoning": "10-fp8-head-reasoning.md",
+      "answer": "10-fp8-head-answer.md",
+      "feedback": "10-feedback.md"
+    },
+    {
+      "n": 11,
+      "slug": "sparse-attn-gate",
+      "method": "Sparse attention gate (context-based per-head no-op from 12 residual dims)",
+      "reasoning": "11-sparse-attn-gate-reasoning.md",
+      "answer": "11-sparse-attn-gate-answer.md",
+      "feedback": "11-feedback.md"
+    },
+    {
+      "n": 12,
+      "slug": "flash-attention-3",
+      "method": "FlashAttention-3 with varlen document packing and window-size schedule",
+      "reasoning": "12-flash-attention-3-reasoning.md",
+      "answer": "12-flash-attention-3-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Primary race metric is total train_time to reach ≤3.28 FineWeb val loss on 8×H100 (lower is better); val_loss must stay ≤3.28. The ladder is strictly monotone in wallclock across the records selected: Muon 1339067ms@val3.2785 (6200 steps) → ModernArch 910546ms@3.2741 (5100) → UntieEmbed 648063ms@3.2762 (4578) → ValueResidual/Shortcuts 493742ms@3.2791 (3200) → U-net+2×LR 433570ms@3.2753 (3000) → FlexAttention 301825ms@3.2783 (1875) → WindowWarmup 279948ms@3.2759 (1750) → ValueEmbeddings 264608ms@3.2751 (1530) → SoftCap30→15 204345ms@3.2785 (1390) → FP8 head 188512ms@3.2770 (1395) → SparseAttnGate 168938ms@3.2772 (1695) → FA3 163621ms@3.2755 (1670). The published validated means corroborate the bar (e.g. SoftCap mean 3.2791 over 80 runs p=0.0001; SparseAttnGate mean 3.2787 over 14 runs p=0.0059; FA3 mean 3.2766 / 163.84s over 7 runs p=0.0001). The single-run val_loss wiggles within a few thousandths of 3.28 because the records trade margin-above-the-bar for fewer steps; the load-bearing ordering is the train_time column, which falls by ~8× across the ladder (the original AdamW baseline was ~45 min; Muon's record log is 22.3 min; FA3 is ~2.73 min).",
+  "endpoint": "FlashAttention-3 with varlen document packing and window-size schedule",
+  "notes": "Provenance: the NanoGPT speedrun repository (KellerJordan/modded-nanogpt), records/track_1_short. Each rung is a record directory dated YYYY-MM-DD with one or more reproducible .txt run logs whose final line is the cited val_loss/train_time/step count, plus the repository README's 'World record history' table. Code is copied/excerpted verbatim from the real artifacts present in the clone: the full training scripts shipped in records/track_1_short/2024-10-10_Muon/train_gpt2.py (Muon class, Newton-Schulz, rotary, attention), 2024-10-14_ModernArch/train_gpt2.py (split-QKV, QK-norm, ReLU², zero-init, padded vocab — obtained by diffing against the Muon script), and 2024-12-04_ValueEmbed/train_gpt2.py (distributed Muon, FlexAttention document+window block mask, value residual lamb, embed-shortcut lambdas, U-net skip_weights, value-embedding vte, tanh softcap, untied zero-init head, attn_blocksize warmup schedule, momentum warmup). README-embedded code grounds the value-residual / learnable-lambda / embed-shortcut / momentum-warmup / tanh-softcap snippets (2024-11-06_ShortcutsTweaks/README.md) and the 30→15 softcap change (2025-01-04_SoftCap/README.md). The FP8-head excerpt (torch._scaled_mm, e4m3 forward / e5m2 backward, asymmetric per-tensor x_s/w_s/grad_s scales) and the sparse-attention-gate hunk (y *= sigmoid(linear(x[..., :12], attn_gate_w)) on 12 residual dims) and the FA3 call (flash_attn_varlen_func with window_size=(bm_size,0)) are quoted from the repository's current root train_gpt.py, which is the evolved descendant of those records; the mechanisms are the ones each record introduced, but those three excerpts are a later faithful form rather than the byte-exact record-date script (the record-date scripts for 2025-01-13_Fp8LmHead, 2025-08-23_SparseAttnGate and 2025-09-03_FA3 are not shipped in this clone, only their logs/READMEs). All numbers are the repository's own published record logs/means, not re-run by us. The AdamW+rotary GPT-2 recipe is the pre-rung baseline in 00-initial-context.md (record #2, ~31.4 min; the original llm.c baseline is ~45 min, log 2024-10-13_llmc). Finale = FlashAttention-3 (record #29, 09/03/25); it carries no feedback, and its bar (clear the SparseAttnGate 168938ms record while staying ≤3.28) lives at the close of its reasoning. This is a clean record-ladder, so fit is good; the ladder is truncated at FA3 per the 2024-anchored task framing, though the real repo continues well past it."
+}

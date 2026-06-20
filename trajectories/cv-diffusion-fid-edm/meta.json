@@ -1,0 +1,52 @@
+{
+  "task": "cv-diffusion-fid-edm",
+  "title": "Diffusion Training Design for CIFAR-10 FID: preconditioning, loss weighting, noise schedule, and augmentation under a fixed sampler",
+  "domain": "Computer vision",
+  "year": 2022,
+  "metrics": [
+    "fid_cifar10_cond",
+    "fid_cifar10_uncond"
+  ],
+  "metric_columns": [
+    "fid_cifar10_cond",
+    "fid_cifar10_uncond"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "EDM (Elucidating the Design Space of Diffusion-Based Generative Models)",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "ddpm",
+      "method": "DDPM (VP preconditioning + simple epsilon-MSE loss)",
+      "reasoning": "01-ddpm-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-ddpm-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "improved-ddpm",
+      "method": "Improved DDPM (cosine schedule + learned reverse variance, hybrid loss)",
+      "reasoning": "02-improved-ddpm-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-improved-ddpm-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "adm",
+      "method": "ADM (improved denoiser U-Net architecture)",
+      "reasoning": "03-adm-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-adm-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "edm",
+      "method": "EDM (sigma-parameterized preconditioning + loss weighting + log-normal noise distribution + non-leaky augmentation)",
+      "reasoning": "04-edm-reasoning.md",
+      "answer": "04-edm-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Weak->strong by CIFAR-10 FID (lower is better, 50k samples, NFE=35 deterministic sampler) on the training-design axis. Measured under the identical fixed sampler, the additive-ablation provenance gives: DDPM/VP baseline (config A) 2.48 cond / 3.01 uncond; the tuned-and-redesigned EDM recipe (config F) lands at 1.79 cond / 1.97 uncond. iDDPM and ADM are the intermediate published methods whose contributions (cosine schedule + learned variance; improved backbone) sit between the DDPM floor and EDM; iDDPM's best CIFAR-10 FID is 2.90 (paper's own ancestral-sampler measurement) and ADM is a backbone context rung scored at ImageNet-64 FID 2.07 (the substrate EDM reuses with no changes). The finale EDM is genuinely strongest: its config-E/F training redesign produces SOTA CIFAR-10 FID at NFE=35.",
+  "notes": "Published-method trajectory on the diffusion training-design FID lineage; code home NVlabs/edm (commit 008a4e5316c8). DISTINCT from cv-diffusion-efficiency, which redesigns the SAMPLER; this trajectory holds the sampler fixed (deterministic Heun, NFE=35) and improves FID by changing the TRAINING DESIGN only (preconditioning, loss weighting, training-noise distribution, non-leaky augmentation). Every code block is a faithful excerpt of the real class at its cited path in NVlabs/edm: rung 1 = VPPrecond/VPLoss (training/networks.py, training/loss.py); rung 2 = iDDPMPrecond (training/networks.py); rung 3 = DhariwalUNet (training/networks.py, ADM backbone); finale = EDMPrecond + EDMLoss (training/networks.py, training/loss.py) and the AugmentPipe wiring (train.py: p=0.12, augment_dim=9). The four EDM sub-ablation steps A-F are NOT separate rungs; the A->F additive walk is folded INTO the EDM rung's reasoning (each design change and the exact FID it bought). FID provenance, cited per feedback file: DDPM unconditional 3.17 from Ho et al. 2020 Table 1 (L_simple); the NFE=35 VP baseline 2.48 cond / 3.01 uncond is EDM Table 2 config A; iDDPM 2.90 (best, L_simple 4000 steps) / 3.19 (L_hybrid+cosine) / 11.47 (L_vlb) from Nichol & Dhariwal 2021; ADM ImageNet-64 2.07 from Dhariwal & Nichol 2021 Table 5 (ADM dropout, no classifier guidance); EDM additive ablation cond VP A 2.48 -> B 2.18 -> C 2.08 -> D 2.09 -> E 1.88 -> F 1.79, uncond VP A 3.01 -> F 1.97, and ImageNet-64 2.07 -> 1.36, all from Karras, Aittala, Aila & Laine 2022 (EDM) Table 2 and the paper's ImageNet-64 result. Finale has finale:true and no feedback file; the FID numbers live at the close of 04-edm-reasoning.md and in 04-edm-answer.md. trajectories.json / methods.json are NOT edited."
+}

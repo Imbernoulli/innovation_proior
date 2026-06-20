@@ -1,0 +1,47 @@
+{
+  "task": "sys-flash-attention-speedrun",
+  "title": "FlashAttention Speedrun: exact attention from IO-aware tiling to Hopper warp-specialized FP8",
+  "domain": "Machine learning systems",
+  "year": 2022,
+  "metrics": [
+    "tflops_per_sec",
+    "mfu",
+    "speedup_over_prev"
+  ],
+  "metric_columns": [
+    "tflops_per_sec",
+    "mfu",
+    "speedup_over_prev",
+    "gpu"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "fa1-io-aware-tiling",
+      "method": "FlashAttention v1 — IO-aware tiling + online (streaming) softmax + recompute-in-backward",
+      "reasoning": "01-fa1-io-aware-tiling-reasoning.md",
+      "answer": "01-fa1-io-aware-tiling-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "fa2-work-partitioning",
+      "method": "FlashAttention-2 — sequence-parallel grid, fewer non-matmul FLOPs (deferred softmax normalization), query-split work partitioning across warps",
+      "reasoning": "02-fa2-work-partitioning-reasoning.md",
+      "answer": "02-fa2-work-partitioning-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "fa3-warpspec-fp8",
+      "method": "FlashAttention-3 (Hopper) — warp-specialized producer/consumer pipeline with async TMA + WGMMA, softmax overlapped with matmul, plus FP8 with incoherent (Hadamard) processing",
+      "reasoning": "03-fa3-warpspec-fp8-reasoning.md",
+      "answer": "03-fa3-warpspec-fp8-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Primary metric is achieved tensor-core throughput on a fixed NVIDIA GPU at FIXED, bit-for-bit-exact attention output with linear-in-seqlen memory: TFLOPs/s and the corresponding hardware/model-FLOPs utilization (higher is better), plus the per-rung speedup over the previous rung. The output (softmax(QKᵀ/√d)·V) is held identical across all rungs — every step is a pure kernel/scheduling change, never a math/approximation change — so the rungs form a strict weak-to-strong throughput ladder on the same computation. FlashAttention v1 (rung 1) is the exactness+linear-memory baseline: 3x end-to-end on GPT-2 seqlen-1K and a 15% wall-clock win over the MLPerf-1.1 BERT-large training record. FlashAttention-2 (rung 2) re-partitions the same kernel for ~2x over v1, reaching up to 225 TFLOPs/s = 72% MFU per A100 (50-73% of A100 peak across the forward sweeps). FlashAttention-3 (rung 3, finale) restructures for Hopper: 1.5-2.0x over FA2 in FP16 at up to 740 TFLOPs/s = 75% of H100 peak, and ~1.2 PFLOPs/s in FP8 with 2.6x smaller error than baseline FP8 attention. The ladder is directly comparable in mechanism (same exact attention, rising utilization) though the headline numbers span GPU generations (A100 for rungs 1-2, H100 for rung 3), which is intrinsic to the lineage (each FA version targets the then-current datacenter GPU); each rung's GPU is labeled in its feedback/answer.",
+  "endpoint": "FlashAttention-3 (Hopper) — warp-specialized producer/consumer with async TMA + WGMMA, softmax/matmul overlap, and FP8 incoherent processing",
+  "notes": "PROVENANCE CAVEAT (per spec RULE B): the Dao-AILab/flash-attention repo ships NO machine-readable result files for any FlashAttention version — there is no benchmarks JSON or logged numbers for the headline figures. Every PERFORMANCE NUMBER in the feedback/answer files is therefore sourced explicitly to the papers or the FA3 blogpost, NOT re-run by us and NOT from an in-repo file: rung 1 (3x GPT-2 seqlen-1K, 15% over MLPerf-1.1 BERT-large record, 2.4x long-range-arena) is the FlashAttention paper arXiv:2205.14135 (abstract); rung 2 (~2x over v1; 50-73% of A100 peak; up to 225 TFLOPs/s = 72% MFU) is the README text + changelog (README.md line ~390 '### 2.0: Complete rewrite, 2x faster' and line ~514 '225 TFLOPs/sec per A100, equivalent to 72% model FLOPs utilization') and the FA2 paper arXiv:2307.08691; rung 3 (1.5-2.0x over FA2 in FP16, up to 740 TFLOPs/s = 75% H100 util, FP8 ~1.2 PFLOPs/s with 2.6x smaller error) is the FA3 blogpost tridao.me/blog/2024/flash3/ and paper arXiv:2407.08608. All numbers were verified this run against those sources (arXiv abstracts + the blogpost fetched; README grepped). The CODE, by contrast, is fully in-repo and every answer.md/reasoning.md code block is a faithful, verbatim excerpt of the real kernel at the cited path: rung 1 from flash_attn/flash_attn_triton.py (the readable online-softmax forward loop and the recompute-in-backward) and csrc/flash_attn/src/softmax.h (Softmax::softmax_rescale_o); rung 2 from csrc/flash_attn/src/flash_fwd_launch_template.h (the dim3(num_m_block, b, h) sequence-parallel grid) and csrc/flash_attn/src/flash_fwd_kernel.h (the gemm -> softmax_rescale_o -> gemm_rs loop with the deferred normalize_softmax_lse epilogue, and the per-warp query-split mask indexing); rung 3 from hopper/flash_fwd_kernel_sm90.h (the warp_group_idx==0 producer vs consumer dispatch with warpgroup_reg_dealloc/alloc), hopper/mainloop_fwd_sm90_tma_gmma_ws.hpp (the producer TMA load_K, and the fwd_step lambda that pipelines the two async WGMMAs with the online softmax; the FP8 v_descale finalize and permute_Cregs_fp8 path), and hopper/flash_attn_interface.py (FP8 e4m3 inputs -> BF16 output). Repo snapshot: commit bdda7481 (2026-06-19). Skipped per RULE A: FlashAttention-4 (README mentions it as CuTeDSL-based for Hopper/Blackwell) is listed as a non-rung datapoint because the repo's hopper/ tree is the FA3-generation kernel cited here and FA4 has no separate stable in-repo kernel + published headline-number pairing at this snapshot to ground a faithful rung; it is recorded here for lineage completeness, not given its own deliverables. Fit: this is a genuine 3-rung exact-attention speedrun (the scout-verified clean ladder), each rung a distinct nameable systems innovation on the SAME fixed math. The finale (rung 3, FA3) carries no feedback file; its bar (beat FA2's 72%-MFU/225-TFLOPs A100 record on the new Hopper hardware) is stated at the close of its reasoning, and the realized record (1.5-2x in FP16, 740 TFLOPs/s = 75% H100, ~1.2 PFLOPs/s FP8) is documented in 03-fa3-warpspec-fp8-answer.md and here."
+}

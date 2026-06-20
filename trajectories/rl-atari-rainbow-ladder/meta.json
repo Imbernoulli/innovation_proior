@@ -1,0 +1,74 @@
+{
+  "task": "rl-atari-rainbow-ladder",
+  "title": "Atari value-based DQN to Rainbow: one improvement at a time, to the median game",
+  "domain": "Reinforcement learning",
+  "year": 2018,
+  "metrics": [
+    "atari57_median_hns"
+  ],
+  "metric_columns": [
+    "median_hns"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "dqn",
+      "method": "DQN (replay + target network)",
+      "reasoning": "01-dqn-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-dqn-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "double-dqn",
+      "method": "Double DQN (decoupled selection/evaluation)",
+      "reasoning": "02-double-dqn-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-double-dqn-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "noisy-nets",
+      "method": "Noisy Nets (learned parametric exploration noise)",
+      "reasoning": "03-noisy-nets-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-noisy-nets-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "prioritized-replay",
+      "method": "Prioritized Experience Replay (sample by TD error)",
+      "reasoning": "04-prioritized-replay-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-prioritized-replay-answer.md"
+    },
+    {
+      "n": 5,
+      "slug": "dueling-dqn",
+      "method": "Dueling DDQN (value/advantage streams)",
+      "reasoning": "05-dueling-dqn-reasoning.md",
+      "feedback": "05-feedback.md",
+      "answer": "05-dueling-dqn-answer.md"
+    },
+    {
+      "n": 6,
+      "slug": "c51",
+      "method": "C51 (distributional RL, categorical return)",
+      "reasoning": "06-c51-reasoning.md",
+      "feedback": "06-feedback.md",
+      "answer": "06-c51-answer.md"
+    },
+    {
+      "n": 7,
+      "slug": "rainbow",
+      "method": "Rainbow (all six combined + multi-step)",
+      "reasoning": "07-rainbow-reasoning.md",
+      "finale": true,
+      "answer": "07-rainbow-answer.md"
+    }
+  ],
+  "endpoint": "Rainbow (all six combined + multi-step)",
+  "ranking_basis": "Ranked from the Rainbow paper (Hessel et al. 2018, arXiv:1710.02298) Table 2: median human-normalized score over the 57 Atari games at 200M frames, no-ops regime, single fixed agent/hyperparameters (higher is better). Rungs 1-6 are the paper's additive single-component ablation over the DQN floor, ordered weak->strong by their Table-2 median HNS: dqn 79% < double-dqn 117% < noisy-nets 118% < prioritized-replay 140% < dueling-dqn 151% < c51 (distributional) 164%. Rainbow is the finale (Hessel et al. 2018): all six components combined plus multi-step returns, reaching 223% median HNS, clearing the best single-component rung (C51, 164%) decisively. The per-component values are the paper's reported ablation numbers, not re-run by us.",
+  "notes": "Paper-ablation trajectory for the Atari value-based DQN->Rainbow ladder. All median-HNS numbers are from the Rainbow paper (Hessel et al. 2018, arXiv:1710.02298) Table 2, no-ops regime at 200M frames: DQN 79%, Double DQN 117%, Noisy Nets (Noisy DQN) 118%, Prioritized Replay (Prioritized DDQN) 140%, Dueling (Dueling DDQN) 151%, Distributional/C51 164%, Rainbow 223%. The per-component figures are the paper's additive single-component ablation over the DQN baseline, NOT re-run by us; they isolate what each one improvement buys on the median game. Code in each answer is excerpted from this repo's own single-method paper-to-reasoning traces under methods/{dqn,double-dqn,noisy-nets,prioritized-replay,dueling-dqn,c51,rainbow}/results/answer.md, with CleanRL (vwxyzjn/cleanrl: dqn_atari.py, c51_atari.py, etc.) as the runnable code home. Each rung's reasoning opens from the previous rung's measured median HNS and derives the next single improvement in the discovery voice; each feedback file carries only the real Table-2 median HNS. The finale (Rainbow) carries no feedback file; its bar (clear the best single-component 164%, reach ~223%) lives at the close of its reasoning. methods/<slug> single-round traces are the derivation references and are left untouched."
+}

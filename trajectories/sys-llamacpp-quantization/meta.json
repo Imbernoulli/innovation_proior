@@ -1,0 +1,87 @@
+{
+  "task": "sys-llamacpp-quantization",
+  "title": "LLM weight quantization: from absmax round-to-nearest to importance-matrix codebook i-quants",
+  "domain": "Machine learning systems",
+  "metrics": [
+    "perplexity",
+    "bits_per_weight",
+    "delta_ppl"
+  ],
+  "metric_columns": [
+    "perplexity",
+    "bits_per_weight",
+    "model_size_gib",
+    "delta_ppl",
+    "kld"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "q4_0",
+      "method": "Q4_0 (symmetric absmax round-to-nearest, one fp16 scale per 32-weight block)",
+      "reasoning": "01-q4_0-reasoning.md",
+      "answer": "01-q4_0-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "q4_1",
+      "method": "Q4_1 (affine code: per-block scale and min)",
+      "reasoning": "02-q4_1-reasoning.md",
+      "answer": "02-q4_1-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "q5_0",
+      "method": "Q5_0 (symmetric 5-bit code, fifth bit-plane in qh)",
+      "reasoning": "03-q5_0-reasoning.md",
+      "answer": "03-q5_0-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "q4_k",
+      "method": "Q4_K / k-quants (256-weight super-block, 6-bit sub-scales, weighted scale+min search)",
+      "reasoning": "04-q4_k-reasoning.md",
+      "answer": "04-q4_k-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "q6_k",
+      "method": "Q6_K (6-bit symmetric k-quant, near-lossless anchor)",
+      "reasoning": "05-q6_k-reasoning.md",
+      "answer": "05-q6_k-answer.md",
+      "feedback": "05-feedback.md"
+    },
+    {
+      "n": 6,
+      "slug": "kquant-mix",
+      "method": "Mixed k-quant allocation (Q4_K_M: per-tensor/per-layer bit mixing)",
+      "reasoning": "06-kquant-mix-reasoning.md",
+      "answer": "06-kquant-mix-answer.md",
+      "feedback": "06-feedback.md"
+    },
+    {
+      "n": 7,
+      "slug": "imatrix",
+      "method": "Importance-matrix (imatrix) quantization (activation-aware weighting)",
+      "reasoning": "07-imatrix-reasoning.md",
+      "answer": "07-imatrix-answer.md",
+      "feedback": "07-feedback.md"
+    },
+    {
+      "n": 8,
+      "slug": "iquant-iq2xxs",
+      "method": "IQ2_XXS i-quant (importance-weighted 256-point codebook / lattice, ~2 bpw)",
+      "reasoning": "08-iquant-iq2xxs-reasoning.md",
+      "answer": "08-iquant-iq2xxs-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Primary axis is perplexity at a given bits-per-weight; the ladder moves the quality-vs-bpw frontier down-and-left, not merely down. Anchored by two of the repo's own published scoreboards. On the Llama-2 70B table (fp16 PPL 3.4313): the legacy formats march UP the cost axis, each better but bigger -- Q4_0 3.5550 (+3.61%) @ 4.5 bpw, Q4_1 3.5125 (+2.37%) @ 5.0, Q5_0 3.4744 (+1.26%) @ 5.5. The k-quant super-block then moves the frontier down-and-left: Q4_K_S 3.4852 (+1.57%) @ ~4.5 bpw beats Q4_0 at the SAME bpw (less than half the gap) and nearly matches Q5_0 a full bit cheaper. Q6_K 3.4367 (+0.16%) @ 6.56 bpw is the near-lossless anchor. Mixed allocation Q4_K_M 3.4725 (+1.20%) @ ~4.8 bpw improves on Q4_K_S for ~2 GiB by sprinkling Q5_K/Q6_K onto attn_v/ffn_down/boundary layers. The imatrix is a same-format quality gain (Llama-3 8B table, fp16 PPL 6.233160): q4_K_S ΔPPL 0.268895 -> 0.178064 and q4_K_M 0.175482 -> 0.151303 at byte-identical model size, KLD dropping in lockstep -- and it is what makes sub-3-bit viable (iq2_M 8.600799 @ 2.9294 bpw, iq2_XXS 14.091782 @ 2.3824 bpw, all imatrix). The finale IQ2_XXS has a 2.0625 bpw raw block format and a 2.3824 bpw published 8B artifact, only because codebook (vector) quantization to a 256-point lattice survives 2 bits where scalar round-to-nearest cannot. Ordering by 'lowest perplexity per bit' and by the frontier-moving innovation at each rung: Q4_0 < Q4_1 < Q5_0 (legacy, cost climbing) << Q4_K < Q4_K_M < Q6_K (k-quant frontier) < imatrix (same-format gain) < IQ2_XXS (lowest bpw reachable).",
+  "endpoint": "IQ2_XXS i-quant (importance-weighted 256-point codebook / lattice, ~2 bpw)",
+  "notes": "Repo: github.com/ggml-org/llama.cpp (cloned shallow/blobless at commit f449e0553708b895adbd94a301431cef691f632d). PROVENANCE -- every published metric number is the repo's OWN published record, not re-run by us. The Llama-2 70B perplexities (Q4_0/Q4_1/Q5_0/Q2_K..Q6_K vs fp16 3.4313, with delta-to-fp16 %) are the 'Old Numbers / Llama 2 70B Scoreboard' table in tools/perplexity/README.md. The Llama-3 8B scoreboard (PPL, ΔPPL, KLD, model size, imatrix vs None) is the 'LLaMA 3 8b Scoreboard' table in the same README; the iq2_*/iq3_*/iq4_* and k-quant bits-per-weight figures are the per-format table in tools/quantize/README.md ('### meta-llama/Llama-3.1-8B'). Each rung's CODE is a literal excerpt from ggml/src/ggml-quants.c and ggml/src/ggml-common.h (block structs) / src/llama-quant.cpp (the mixed-allocation llama_tensor_get_type): Q4_0/Q4_1/Q5_0 reference quantizers; make_qkx2_quants + quantize_row_q4_K_ref (k-quant); make_qx_quants + quantize_row_q6_K_ref (Q6_K); use_more_bits + attn_v/ffn_down promotion (mix); make_qkx3_quants + quantize_row_q4_K_impl quant_weights path (imatrix); kgrid_2bit_256 + iq2_find_best_neighbour + quantize_row_iq2_xxs_impl + dequantize_row_iq2_xxs (IQ2_XXS finale). No code block contains an invented ellipsis or explanatory pseudo-code. The two anchor models differ (70B for the legacy/k-quant lineage where the cleanest delta-to-fp16 table exists; 8B for the imatrix/i-quant lineage where the only published imatrix-vs-None and bits/weight tables exist), so each feedback file reports both anchors where the repo has them and labels which model each row comes from; bits-per-weight amortizes slightly differently per model (e.g. Q4_0 4.5 bpw on 70B vs 4.34 model size on 8B) and this is noted in-file. FIT good: this is a genuine weak->strong distinct-method ladder -- seven pointable quantization innovations (legacy absmax -> affine -> 5-bit plane -> k-quant super-block -> Q6_K anchor -> mixed allocation -> imatrix -> codebook i-quant), each a real format change with the repo's own perplexity/bpw record, skipping the pure-variant rungs (Q5_1, Q3_K, Q5_K, iq2_xs, iq3_*, iq4_*) which are width/mixture points on families already represented. Finale carries no feedback (endpoint); its bar (a coherent near-2-bit model, perplexity finite and far below a 2-bit scalar code) lives at the close of its reasoning."
+}

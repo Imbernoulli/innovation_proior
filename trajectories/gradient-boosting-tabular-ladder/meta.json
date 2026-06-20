@@ -1,0 +1,63 @@
+{
+  "task": "gradient-boosting-tabular-ladder",
+  "title": "Gradient Boosting on Tabular Data: from AdaBoost reweighting to CatBoost ordered boosting, measured on Higgs / MS-LTR / Amazon",
+  "domain": "Classical ML",
+  "metrics": [
+    "higgs_test_auc",
+    "higgs_train_seconds_per_iter",
+    "msltr_ndcg_at_10",
+    "amazon_test_logloss"
+  ],
+  "metric_columns": [
+    "higgs_test_auc",
+    "higgs_train_seconds_per_iter",
+    "msltr_ndcg_at_10",
+    "amazon_test_logloss"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "adaboost",
+      "method": "AdaBoost — adaptive exponential-loss reweighting (Freund & Schapire 1997; SAMME multiclass)",
+      "reasoning": "01-adaboost-reasoning.md",
+      "answer": "01-adaboost-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "gbm",
+      "method": "Gradient Boosting Machine — gradient descent in function space, exact pre-sorted split finding (Friedman 2001)",
+      "reasoning": "02-gbm-reasoning.md",
+      "answer": "02-gbm-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "xgboost",
+      "method": "XGBoost — regularized second-order objective + weighted-quantile histogram + sparsity-aware split finding (Chen & Guestrin 2016)",
+      "reasoning": "03-xgboost-reasoning.md",
+      "answer": "03-xgboost-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "lightgbm",
+      "method": "LightGBM — histogram + Gradient-based One-Side Sampling (GOSS) + Exclusive Feature Bundling (EFB), leaf-wise growth (Ke et al. 2017)",
+      "reasoning": "04-lightgbm-reasoning.md",
+      "answer": "04-lightgbm-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "catboost",
+      "method": "CatBoost — ordered boosting + ordered target statistics, oblivious trees (Prokhorenkova et al. 2018)",
+      "reasoning": "05-catboost-reasoning.md",
+      "answer": "05-catboost-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "The ladder is the library/benchmark lineage of gradient boosting on fixed tabular datasets, ordered weak->strong and grounded in each algorithm's own published numbers (not re-run by us). The spine is the Higgs benchmark (10.5M rows, 28 features), where the time-per-iteration falls monotonically while test AUC rises: exact-greedy GBM (xgboost tree_method=exact) at 0.839593 AUC / 3794.34 s-per-iter -> XGBoost histogram (xgboost_hist) at 0.845314 AUC / 165.575 s-per-iter (~22.9x faster, higher AUC) -> LightGBM (histogram + GOSS + EFB) at 0.845724 AUC / 130.094 s-per-iter (~1.27x faster than the histogram, ~29x faster than exact, higher AUC again). All three Higgs figures are the committed numbers in microsoft/LightGBM docs/Experiments.rst (Comparison Experiment: 255 leaves / depth-8, 500 rounds, lr 0.1, 16 threads, Azure ND24s). The ranking axis is corroborated on MS LTR (137 features), NDCG@10: xgboost_hist 0.496553 -> LightGBM 0.524252 (same source). AdaBoost (rung 1) is the foundational bookend that predates this benchmark suite and so carries no number on it -- it is ranked first as the weakest, classification-only reweighting scheme whose limitation (a 0/1 indicator, exponential-loss only) the gradient machine dissolves. CatBoost (the finale, rung 5) is ranked last as the strongest on the axis the others ignore -- categorical features -- measured on the Amazon Employee Access dataset (high-cardinality categorical IDs), test log-loss (lower is better): CatBoost 0.1394 vs XGBoost 0.1633 vs LightGBM 0.1636, a ~17% relative log-loss improvement over both, from the CatBoost paper's own baseline-comparison table (arXiv:1706.09516, Table 8 / Appendix G). Each rung opens from the previous rung's measured limitation: AdaBoost's classification-only reweighting -> GBM's general gradient descent; GBM's exact-split slowness (3794.34 s/iter) -> XGBoost's histogram; XGBoost's histogram still scanning all data x all features -> LightGBM's GOSS + EFB; the all-data target-statistic leakage all of them share -> CatBoost's ordered statistics + ordered boosting.",
+  "endpoint": "CatBoost — ordered boosting + ordered target statistics (Prokhorenkova et al. 2018)",
+  "notes": "PROVENANCE. This is the BENCHMARK-LINEAGE complement to the existing 'ml-ensemble-boosting' trajectory: where that one is framed theoretically (sample-weighting / update-rule design), this one is the library/benchmark lineage measured on real fixed datasets with real wall-clock and metric numbers (Higgs AUC + s/iter, MS-LTR NDCG@10, Amazon log-loss). The two overlap on the first rungs (AdaBoost, GBM) by design; this ladder is the longer, benchmark-grounded superset extending through XGBoost, LightGBM, and CatBoost. NUMBER SOURCES: the XGBoost->LightGBM Higgs and MS-LTR figures (Higgs AUC 0.839593/0.845314/0.845724 and s/iter 3794.34/165.575/130.094; MS-LTR NDCG@10 0.496553/0.524252) are copied verbatim from microsoft/LightGBM's committed docs/Experiments.rst (Comparison Experiment, cloned at /tmp/sr_build/LightGBM), the repo's own published benchmark, not re-run by us; note that docs/Experiments.rst keeps xgboost_exact as a reference setting it does not re-run on every update ('xgboost_exact is not updated for it is too slow'). The AdaBoost and GBM bookends are from the canonical papers (Freund & Schapire 1997, J. Comput. Syst. Sci. 55(1):119-139; Friedman 2001, Ann. Statist. 29(5):1189-1232) and have no number on this benchmark suite (AdaBoost predates it; its feedback states 'no separately logged metric on this suite' per the no-fabrication rule). The CatBoost finale's Amazon log-loss is from the CatBoost paper arXiv:1706.09516 (NeurIPS 2018), baseline-comparison table. IMPORTANT NUMBER NOTE: the task brief cited CatBoost Amazon log-loss 0.1377 'from Table 3'; the actual committed arXiv PDF (v5) prints 0.1394 for CatBoost (with XGBoost 0.1633 and LightGBM 0.1636 confirmed exactly), in Table 8 / Appendix G (the v5 'Table 3' is the Plain-vs-Ordered ablation, not the baseline comparison). The paper itself notes its numbers 'may slightly differ from the corresponding numbers in our GitHub repository' -- the 0.1377 value is the GitHub-repo run, 0.1394 is the committed paper. Per the no-fabrication rule we use the verifiable arXiv figure 0.1394 throughout; the conclusion (CatBoost wins, ~17% relative log-loss improvement over both baselines) is identical for either value. CODE: every code block is a real, faithful excerpt cited to its source -- AdaBoost SAMME from scikit-learn sklearn/ensemble/_weight_boosting.py (AdaBoostClassifier._boost_discrete, tag 1.3.2); GBM from scikit-learn sklearn/ensemble/_gb.py (_fit_stage, tag 1.3.2); XGBoost gain/leaf-weight from dmlc/xgboost src/tree/param.h (CalcGain/CalcWeight/ThresholdL1) plus the paper's Algorithm-2 weighted-quantile pseudocode; LightGBM GOSS from the cloned src/boosting/goss.hpp (GOSSStrategy::Helper) and EFB from src/io/dataset.cpp (FindGroups); CatBoost from the paper's Algorithm 1 (Ordered boosting) pseudocode and Eq. 5 ordered target statistic (pseudocode/algorithm boxes are the canonical artifact for this method, as it is an algorithm not a single library function). FIT: good -- this is a genuine weak->strong record lineage of distinct, nameable, separately-published methods, each opening from the previous rung's measured limitation. Per RULE A no pure-tuning rungs were inserted; the Yahoo-LTR / Expo / Allstate rows of docs/Experiments.rst and the other Amazon-table datasets are additional corroborating datapoints from the same sources, not separate rungs."
+}

@@ -1,0 +1,102 @@
+{
+  "task": "dl-resnet-imagenet-speedup",
+  "title": "Mosaic ResNet: from a vanilla ResNet-50/ImageNet job to a stacked training-efficiency recipe (76.6% top-1 in a fraction of the time)",
+  "domain": "Deep learning",
+  "metrics": [
+    "top1_accuracy",
+    "throughput",
+    "wallclock_time"
+  ],
+  "metric_columns": [
+    "top1_accuracy",
+    "throughput",
+    "wallclock_time",
+    "inference_latency"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "decoupled-weight-decay",
+      "method": "Decoupled Weight Decay (DecoupledSGDW)",
+      "reasoning": "01-decoupled-weight-decay-reasoning.md",
+      "answer": "01-decoupled-weight-decay-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "channels-last",
+      "method": "Channels Last (NHWC memory format)",
+      "reasoning": "02-channels-last-reasoning.md",
+      "answer": "02-channels-last-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "blurpool",
+      "method": "BlurPool (anti-aliased downsampling)",
+      "reasoning": "03-blurpool-reasoning.md",
+      "answer": "03-blurpool-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "label-smoothing",
+      "method": "Label Smoothing",
+      "reasoning": "04-label-smoothing-reasoning.md",
+      "answer": "04-label-smoothing-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "progressive-resizing",
+      "method": "Progressive Image Resizing",
+      "reasoning": "05-progressive-resizing-reasoning.md",
+      "answer": "05-progressive-resizing-answer.md",
+      "feedback": "05-feedback.md"
+    },
+    {
+      "n": 6,
+      "slug": "squeeze-excite",
+      "method": "Squeeze-and-Excitation (channel attention)",
+      "reasoning": "06-squeeze-excite-reasoning.md",
+      "answer": "06-squeeze-excite-answer.md",
+      "feedback": "06-feedback.md"
+    },
+    {
+      "n": 7,
+      "slug": "ema",
+      "method": "EMA (Exponential Moving Average of weights)",
+      "reasoning": "07-ema-reasoning.md",
+      "answer": "07-ema-answer.md",
+      "feedback": "07-feedback.md"
+    },
+    {
+      "n": 8,
+      "slug": "colout",
+      "method": "ColOut (random row/column dropping)",
+      "reasoning": "08-colout-reasoning.md",
+      "answer": "08-colout-answer.md",
+      "feedback": "08-feedback.md"
+    },
+    {
+      "n": 9,
+      "slug": "stochastic-depth",
+      "method": "Block-wise Stochastic Depth",
+      "reasoning": "09-stochastic-depth-reasoning.md",
+      "answer": "09-stochastic-depth-answer.md",
+      "feedback": "09-feedback.md"
+    },
+    {
+      "n": 10,
+      "slug": "sam",
+      "method": "Sharpness-Aware Minimization (SAM)",
+      "reasoning": "10-sam-reasoning.md",
+      "answer": "10-sam-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "This is a methods-on-one-fixed-task ladder (the Mosaic ResNet recipe), so the ordering is the documented stacking order weak->strong: a clean foundation, then alternating speed levers and quality levers that together walk the time-accuracy-cost frontier toward 'standard-schedule accuracy (76.6% top-1) in a fraction of the baseline wall-clock'. Each rung's effect is the method card's own ResNet-50/ImageNet number. (1) DecoupledSGDW is the foundation: an optimizer correctness fix (decay no longer scaled by lr) with no separate logged delta, making the downstream lr/schedule/regularization sweeps honest. (2) Channels Last is a math-equivalent pure-throughput win (NHWC eliminates cuDNN transposes), zero accuracy cost. (3) BlurPool buys accuracy headroom: +0.5-1% on ImageNet (Zhang 2019, across networks), a pareto improvement on ResNet-50 for a small throughput cost (blur_first=True keeps conv MACs constant). (4) Label Smoothing (smoothing=0.1) is a target-side regularizer that improves accuracy on all the card's image-classification benchmarks at no throughput cost. (5) Progressive Resizing (initial_scale=0.5) is the big throughput lever: substantially reduced wall-clock via cheaper early steps, with limited accuracy effect, spending the banked headroom. (6) Squeeze-Excite (min_channels=512) refills accuracy: a consistent CNN accuracy improvement at ~20% inference-latency cost, and helps balance the data-loader bottleneck progressive resizing introduced. (7) EMA (half_life=1000ba) reduces validation-metric noise and sometimes improves generalization at small cost, tightening the schedule-shortening margin. (8) ColOut (p_row=p_col=0.15, batch=True) is a speed lever: ~+11% throughput on ResNet-50/ImageNet (batch-wise on GPU, CPU-bottlenecked) at ~-0.2% accuracy, a pareto improvement. (9) Block-wise Stochastic Depth (drop_rate=0.2 linear) cuts compute along the depth axis: -5% wall-clock at similar accuracy on ResNet-50. (10, finale) SAM (interval=10) is the strongest generalization lever (+0.7% over baseline on ResNet-50/90ep at ~7% throughput cost in the card's modified implementation), seeking flat minima to give the quality margin that lets every speed lever run at its aggressive setting and still clear 76.6%.",
+  "endpoint": "Sharpness-Aware Minimization (SAM)",
+  "notes": "Provenance: built from the MosaicML Composer repo (github.com/mosaicml/composer), the 'Mosaic ResNet' training-efficiency recipe for ResNet-50 on ImageNet. The fixed task and target (train ResNet-50 to the standard 76.6% top-1 at the lowest time/cost) come from docs/source/tutorials/train_resnet50_on_aws.md and the README's '7x speedup: ResNet-50 on ImageNet, 3h33m -> 25m on 8xA100' line; the 76.6% reference accuracy is stated in docs/source/method_cards/scale_schedule.md. Each rung is one distinct method documented by its own method card under docs/source/method_cards/ (and the matching composer/algorithms/<method>/ implementation): decoupled_weight_decay, channels_last, blurpool, label_smoothing, progressive_resizing, squeeze_excite, ema, colout, stochastic_depth, sam. Every feedback number is quoted from that method card's own text (e.g. BlurPool +0.5-1% ImageNet from Zhang 2019; ColOut ~+11% throughput / ~-0.2% accuracy; Stochastic Depth -5% wall-clock at drop_rate=0.2; SAM +0.7% over baseline on ResNet-50/90ep, ~7% throughput cost; Squeeze-Excite ~20% inference-latency cost) -- these are the repo's own published characterizations, NOT numbers we re-ran. Every code block in the answer files is the real implementation excerpt from composer/algorithms/<method>/ (or composer/optim/decoupled_weight_decay.py for rung 1), copied verbatim from the source (file paths in each feedback/answer). FIT NOTE: this repo is methods-on-one-task rather than a dated record log, so the weak->strong ladder is the documented stacking order rather than chronological records; several cards give relative effects (accuracy delta and/or throughput delta) rather than a single stacked absolute accuracy at each rung, and rungs 1-2 (DecoupledSGDW, Channels Last) have no standalone accuracy delta -- those feedbacks state the effect as the card states it (correctness fix / math-equivalent throughput) per RULE B rather than inventing absolutes. The finale (SAM) carries reasoning + answer and no feedback; its bar (clear the standard-schedule 76.6% top-1 in a fraction of the baseline 8xA100 wall-clock) lives at the close of its reasoning."
+}

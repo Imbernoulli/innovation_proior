@@ -1,0 +1,94 @@
+{
+  "task": "cv-cifar10-speedrun",
+  "title": "CIFAR-10 Speedrun: from an 18.3-second baseline to a 2.59-second Muon record at 94%",
+  "domain": "Computer vision",
+  "metrics": [
+    "a100_seconds_to_target",
+    "mean_accuracy",
+    "epochs_to_target"
+  ],
+  "metric_columns": [
+    "a100_seconds_to_target",
+    "mean_accuracy",
+    "epochs_to_target",
+    "pflops"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "patch-whitening",
+      "method": "Frozen patch-whitening initialization (whitening conv init)",
+      "reasoning": "01-patch-whitening-reasoning.md",
+      "answer": "01-patch-whitening-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "dirac-init",
+      "method": "Identity (Dirac) convolution initialization",
+      "reasoning": "02-dirac-init-reasoning.md",
+      "answer": "02-dirac-init-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "scalebias",
+      "method": "Scaled BatchNorm-bias learning rate (64x scalebias)",
+      "reasoning": "03-scalebias-reasoning.md",
+      "answer": "03-scalebias-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "lookahead",
+      "method": "Lookahead optimization (EMA slow-weights with periodic sync)",
+      "reasoning": "04-lookahead-reasoning.md",
+      "answer": "04-lookahead-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "multicrop-tta",
+      "method": "Multi-crop test-time augmentation (six weighted views)",
+      "reasoning": "05-multicrop-tta-reasoning.md",
+      "answer": "05-multicrop-tta-answer.md",
+      "feedback": "05-feedback.md"
+    },
+    {
+      "n": 6,
+      "slug": "alternating-flip",
+      "method": "Alternating (derandomized) horizontal flip — completes airbench94",
+      "reasoning": "06-alternating-flip-reasoning.md",
+      "answer": "06-alternating-flip-answer.md",
+      "feedback": "06-feedback.md"
+    },
+    {
+      "n": 7,
+      "slug": "residual-scaling",
+      "method": "Residual-scaling + Cutout architecture (airbench96, 96% target)",
+      "reasoning": "07-residual-scaling-reasoning.md",
+      "answer": "07-residual-scaling-answer.md",
+      "feedback": "07-feedback.md"
+    },
+    {
+      "n": 8,
+      "slug": "data-filtering",
+      "method": "Data filtering (proxy-mask hard-example selection, airbench96_faster)",
+      "reasoning": "08-data-filtering-reasoning.md",
+      "answer": "08-data-filtering-answer.md",
+      "feedback": "08-feedback.md"
+    },
+    {
+      "n": 9,
+      "slug": "muon",
+      "method": "Muon optimizer (Newton-Schulz-orthogonalized momentum, airbench94_muon)",
+      "reasoning": "09-muon-reasoning.md",
+      "answer": "09-muon-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Primary metric is A100-seconds to reach the accuracy target (lower is better), the repo's own published record numbers (not re-run by us). The 94%-target rungs are directly comparable and form a strict weak-to-strong descent: unwhitened baseline 18.3s (45 ep) -> frozen patch-whitening 8.0s (21 ep) -> Dirac identity init 6.8s (18 ep) -> scalebias 64x 5.1s (13.5 ep) -> lookahead 4.6s (12.0 ep) -> multi-crop TTA 4.2s (10.8 ep) -> alternating flip = airbench94 at 3.83s (9.9 ep), with torch.compile a non-algorithmic further 3.29s; the finale Muon optimizer (airbench94_muon, post-paper) is the fastest documented 94% record at 2.59s / 0.29 PFLOPs. Each per-feature epochs-to-94% effect is corroborated by the paper's feature-interaction study (Fig. 4), which shows the speedups accumulate additively for every feature except multi-crop TTA. Steps 7-8 climb the harder 96% bar (a capability extension the spec asks for) and are ranked on seconds-to-96%: residual-scaling airbench96 reaches 96.03% in 34.7s, and data-filtering airbench96_faster reaches 96.00% in 27.3s (1.3x faster, ~37% fewer PFLOPs). Accuracy is held at the target bar throughout (Table 1: alternating flip + random reshuffling 94.01% vs 93.40% with neither).",
+  "endpoint": "Muon optimizer (Newton-Schulz-orthogonalized momentum, airbench94_muon)",
+  "notes": "Provenance: built from KellerJordan/cifar10-airbench (which descends from tysam-code/hlb-CIFAR10, itself a reproduction of David Page / Myrtle 'how-to-train-your-resnet'). Every number is the repo's own published record, NOT re-run by us. The seconds/epochs progression for rungs 1-6 (baseline 18.3s -> airbench94 3.83s/3.29s) and the per-feature epochs-to-94% effects come from the accompanying paper arXiv:2404.00498 (Keller Jordan, 'A94% on CIFAR-10 in 3.29 Seconds on a Single GPU'): patch-whitening Sec 3.2 (21 ep / 8.0s), Dirac init Sec 3.3 (18 ep / 6.8s), scalebias Sec 3.4 (13.5 ep / 5.1s), lookahead Sec 3.4 (12.0 ep / 4.6s), multi-crop Sec 3.5 (10.8 ep / 4.2s), alternating flip Sec 3.6 (Table 1) yielding airbench94 (9.9 ep / 3.83s, compile -> 3.29s Sec 3.7). Rung 7 (airbench96, 96.03%/34.7s) is legacy/airbench96.py; the residual ConvGroup and batch_cutout code are verbatim from it. Rung 8 (airbench96_faster, 96.00%/27.3s) is airbench96_faster.py; the proxy-mask data-filtering loop is verbatim from its train_proxy/main. The finale Muon (airbench94_muon.py, 94.01%/2.59s/0.29 PFLOPs) and the airbench96_faster data-filtering are post-paper records noted in the README's headline table; the Muon class and zeropower_via_newtonschulz5 are verbatim from airbench94_muon.py. All answer.md code blocks are real excerpts from these files (whitening init, Dirac reset_parameters, the two-group bias-lr SGD, LookaheadState, the infer_mirror_translate TTA, the alternating_flip hash form and the loader's every-other-epoch realization, the residual block, batch_cutout, the proxy mask loop, and the Muon optimizer). Per RULE A, pure tuning records were skipped: airbench95 (legacy/airbench95.py) is width+epoch tuning of airbench94 with no distinct nameable method, so it is cited as a ranking datapoint (95.01%/10.4s) inside step 7's feedback rather than given its own rung; torch.compile (Sec 3.7) is non-algorithmic and folded into step 6's answer. Fit is good: this is a genuine public record ladder. One framing decision: the spine metric is seconds-to-target; rungs 1-6 and the finale share the 94% bar (directly comparable), while rungs 7-8 are the documented 96% variants the spec requested and are ranked on the 96% bar, clearly labeled in their feedback. The finale carries no feedback file; its bar (beat the airbench94 3.83s/3.29s record) lives at the close of its reasoning, and the realized record (2.59s) is documented here and in the README."
+}

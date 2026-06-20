@@ -63,6 +63,27 @@
     "year": 2019
   },
   {
+    "task": "ale-atcoder-ahc039",
+    "title": "AtCoder AHC039 'Purse Seine Fishing': from bounding box to ShinkaEvolve-refined grid annealing",
+    "domain": "Heuristic combinatorial optimization (ALE-Bench / AtCoder Heuristic Contest)",
+    "endpoint": "ShinkaEvolve-refined grid simulated annealing (cached validation + targeted edge move)",
+    "year": 2024
+  },
+  {
+    "task": "algo-online-bin-packing",
+    "title": "Online Bin Packing: from First-Fit to the FunSearch-discovered priority heuristic",
+    "domain": "Algorithms & heuristic optimization",
+    "endpoint": "FunSearch-discovered relational priority function",
+    "year": 2024
+  },
+  {
+    "task": "bio-scrna-denoise",
+    "title": "Single-cell RNA-seq UMI denoising: from raw counts to the TTT-Discover endpoint",
+    "domain": "Computational biology / single-cell genomics",
+    "endpoint": "TTT-Discover multi-VST ensemble denoiser",
+    "year": 2026
+  },
+  {
     "task": "causal-discovery-discrete",
     "title": "Causal Discovery on Discrete Bayesian Networks: from DAG hill-climbing to less-greedy equivalence search",
     "domain": "Causal inference",
@@ -98,10 +119,24 @@
     "year": 1952
   },
   {
+    "task": "combi-cap-set",
+    "title": "Cap Sets in F_3^n: from greedy lexicographic to the FunSearch-evolved priority function",
+    "domain": "Combinatorics & discrete optimization",
+    "endpoint": "FunSearch-evolved priority-greedy construction (512-cap at n=8)",
+    "year": 2024
+  },
+  {
     "task": "cv-3dgs-densification",
     "title": "3DGS Densification: climbing the density-control ladder",
     "domain": "Computer vision",
     "endpoint": "EDC (long-axis split + recovery-aware pruning)",
+    "year": 2024
+  },
+  {
+    "domain": "Computer vision",
+    "endpoint": "Muon optimizer (Newton-Schulz-orthogonalized momentum, airbench94_muon)",
+    "task": "cv-cifar10-speedrun",
+    "title": "CIFAR-10 Speedrun: from an 18.3-second baseline to a 2.59-second Muon record at 94%",
     "year": 2024
   },
   {
@@ -147,6 +182,13 @@
     "year": 2020
   },
   {
+    "domain": "Computer vision",
+    "endpoint": "EDM (Elucidating the Design Space of Diffusion-Based Generative Models)",
+    "task": "cv-diffusion-fid-edm",
+    "title": "Diffusion Training Design for CIFAR-10 FID: preconditioning, loss weighting, noise schedule, and augmentation under a fixed sampler",
+    "year": 2022
+  },
+  {
     "task": "cv-diffusion-prediction",
     "title": "Diffusion Prediction Parameterization: choosing the training target under a fixed pipeline",
     "domain": "Computer vision",
@@ -159,6 +201,13 @@
     "domain": "Computer vision",
     "endpoint": "Dynamic Weight Average (DWA)",
     "year": 2020
+  },
+  {
+    "domain": "Computer vision",
+    "endpoint": "SegFormer (hierarchical transformer encoder + lightweight all-MLP decoder)",
+    "task": "cv-semantic-segmentation-cityscapes",
+    "title": "Cityscapes semantic segmentation: from a 69.10-mIoU encoder-decoder to a globally-receptive transformer at 82.25",
+    "year": 2015
   },
   {
     "task": "cv-vae-loss",
@@ -203,6 +252,13 @@
     "year": 2020
   },
   {
+    "domain": "Deep learning",
+    "endpoint": "Sharpness-Aware Minimization (SAM)",
+    "task": "dl-resnet-imagenet-speedup",
+    "title": "Mosaic ResNet: from a vanilla ResNet-50/ImageNet job to a stacked training-efficiency recipe (76.6% top-1 in a fraction of the time)",
+    "year": 2022
+  },
+  {
     "task": "dl-weight-initialization",
     "title": "DL Weight Initialization: data-independent init for deep conv nets",
     "domain": "Deep learning",
@@ -215,6 +271,27 @@
     "domain": "Language models",
     "endpoint": "",
     "year": 2025
+  },
+  {
+    "task": "geom-circle-packing-26",
+    "title": "Circle Packing (n=26): from grid baseline to joint-SLSQP perturbation chains",
+    "domain": "Geometric optimization",
+    "endpoint": "Structured-init joint SLSQP + iterated perturbation chains",
+    "year": 2025
+  },
+  {
+    "task": "geom-heilbronn-triangle",
+    "title": "Heilbronn Triangle (n=11): from regular polygon to soft-min gradient polish",
+    "domain": "Geometric optimization",
+    "endpoint": "Heavy SA + β-annealed soft-min L-BFGS polish",
+    "year": 2025
+  },
+  {
+    "domain": "Classical ML",
+    "endpoint": "CatBoost — ordered boosting + ordered target statistics (Prokhorenkova et al. 2018)",
+    "task": "gradient-boosting-tabular-ladder",
+    "title": "Gradient Boosting on Tabular Data: from AdaBoost reweighting to CatBoost ordered boosting, measured on Higgs / MS-LTR / Amazon",
+    "year": 1997
   },
   {
     "task": "graph-generation",
@@ -420,11 +497,53 @@
     "year": 1998
   },
   {
+    "domain": "Language models",
+    "endpoint": "LatentAttentionBlock (fused attention + gated MLP) + expected-grad-norm power-law dynamic microbatch scheduler",
+    "task": "lm-hlb-gpt-speedrun",
+    "title": "hlb-gpt Speedrun: from a ~6-minute nanoGPT baseline to a sub-100-second latent-attention record at ~3.8 val loss on WikiText-103",
+    "year": 2023
+  },
+  {
+    "domain": "Language models",
+    "endpoint": "Tool-use RL on GSM8K (simplified GRPO / REINFORCE with group-mean baseline, on-policy, exact executed-answer reward)",
+    "task": "lm-nanochat-pipeline",
+    "title": "nanochat: the $100 ChatGPT speedrun, from BPE tokenizer to tool-use RL",
+    "year": 2025
+  },
+  {
+    "domain": "Language models",
+    "endpoint": "FlashAttention-3 with varlen document packing and window-size schedule",
+    "task": "lm-nanogpt-speedrun",
+    "title": "NanoGPT speedrun: from the AdamW GPT-2 recipe to a Flash-Attention-3 sub-3-minute trainer",
+    "year": 2024
+  },
+  {
     "task": "marl-centralized-critic",
     "title": "Cooperative MARL: Centralized Critic Architecture for MAPPO",
     "domain": "Reinforcement learning",
     "endpoint": "Agent-Specific (AS) central-V critic",
     "year": 2022
+  },
+  {
+    "task": "math-autocorrelation-c1",
+    "title": "First Autocorrelation Inequality C1: from flat indicator to minimax sequential-LP step function",
+    "domain": "Analysis & continuous optimization",
+    "endpoint": "Minimax sequential-LP refined step function",
+    "year": 2025
+  },
+  {
+    "task": "math-autocorrelation-inequality",
+    "title": "Second Autocorrelation (Autoconvolution Hölder-Ratio) Inequality C2: from flat indicator to thousand-piece gradient-refined step function",
+    "domain": "Analysis & continuous optimization",
+    "endpoint": "Hierarchical-lift β-annealed gradient-refined step function",
+    "year": 2025
+  },
+  {
+    "task": "math-erdos-min-overlap",
+    "title": "Erdős Minimum-Overlap Problem: from flat density to the step-function frontier",
+    "domain": "Analysis & continuous optimization",
+    "endpoint": "Large-N analytic-gradient + subgradient-polished step function",
+    "year": 2025
   },
   {
     "task": "meta-fewshot-classification",
@@ -539,6 +658,13 @@
     "year": 2024
   },
   {
+    "task": "mlsys-moe-loadbalance-loss",
+    "title": "MoE Load-Balancing Loss: from no balancing to ShinkaEvolve's discovered entropy-hinge",
+    "domain": "Systems & efficiency",
+    "endpoint": "ShinkaEvolve entropy-weighted under-utilization hinge loss",
+    "year": 2025
+  },
+  {
     "task": "mlsys-sparse-attention-inference",
     "title": "Long-Context Inference-Time Sparse Attention: from dense oracle to content-adaptive block-sparse",
     "domain": "Systems & efficiency",
@@ -649,6 +775,13 @@
     "task": "quant-stock-prediction",
     "title": "Quant Stock Prediction: cross-sectional return signal on Chinese equities",
     "year": 2017
+  },
+  {
+    "domain": "Reinforcement learning",
+    "endpoint": "Rainbow (all six combined + multi-step)",
+    "task": "rl-atari-rainbow-ladder",
+    "title": "Atari value-based DQN to Rainbow: one improvement at a time, to the median game",
+    "year": 2018
   },
   {
     "domain": "Reinforcement learning",
@@ -868,6 +1001,13 @@
     "year": 2017
   },
   {
+    "task": "synth-hadamard-maxdet",
+    "title": "Maximal-Determinant ±1 Matrix at n=29: from symmetric design to rank-one annealing",
+    "domain": "Combinatorics & discrete optimization",
+    "endpoint": "Rank-one (Sherman–Morrison) simulated annealing",
+    "year": 2002
+  },
+  {
     "domain": "Sequence modeling",
     "endpoint": "",
     "task": "synth-matrix-completion",
@@ -908,6 +1048,55 @@
     "task": "synth-staircase",
     "title": "Synth-Staircase: learning sparse functions on the hypercube",
     "year": 2018
+  },
+  {
+    "domain": "Machine learning systems",
+    "endpoint": "Unsafe mmap + SWAR + GraalVM ahead-of-time native binary (thomaswue, rank 1)",
+    "task": "sys-1brc-speedrun",
+    "title": "One Billion Row Challenge: from a 4:49 streams baseline to a 1.535-second GraalVM native record",
+    "year": 2024
+  },
+  {
+    "domain": "Machine learning systems",
+    "endpoint": "FlashAttention-3 (Hopper) — warp-specialized producer/consumer with async TMA + WGMMA, softmax/matmul overlap, and FP8 incoherent processing",
+    "task": "sys-flash-attention-speedrun",
+    "title": "FlashAttention Speedrun: exact attention from IO-aware tiling to Hopper warp-specialized FP8",
+    "year": 2022
+  },
+  {
+    "domain": "Machine learning systems",
+    "endpoint": "Tensor parallelism (within-layer sharding + all-reduce)",
+    "task": "sys-gptfast-inference-speedrun",
+    "title": "Llama-2-7B Inference Speedrun: from a 25.5 tok/s eager baseline to 328 tok/s with tensor parallelism",
+    "year": 2023
+  },
+  {
+    "domain": "Machine learning systems",
+    "endpoint": "IQ2_XXS i-quant (importance-weighted 256-point codebook / lattice, ~2 bpw)",
+    "task": "sys-llamacpp-quantization",
+    "title": "LLM weight quantization: from absmax round-to-nearest to importance-matrix codebook i-quants",
+    "year": 2023
+  },
+  {
+    "domain": "Machine learning systems",
+    "endpoint": "SpinQuant (learned Stiefel-manifold rotations via Cayley SGD, W4A4KV4)",
+    "task": "sys-llm-ptq-quantization",
+    "title": "LLM Post-Training Quantization: from a round-to-nearest floor to learned-rotation W4A4KV4 (SpinQuant)",
+    "year": 2022
+  },
+  {
+    "domain": "Machine learning systems",
+    "endpoint": "FP8 KV cache (1-byte KV storage)",
+    "task": "sys-llm-serving-throughput",
+    "title": "vLLM: from a naive LLM serving loop to a stacked high-throughput serving system (max tokens/sec at fixed latency on fixed GPUs)",
+    "year": 2023
+  },
+  {
+    "domain": "Machine learning systems",
+    "endpoint": "ZeRO-1 optimizer-state sharding (reduce-scatter + all-gather) atop the full fused-kernel, flash-attention, BF16, NCCL data-parallel C/CUDA stack",
+    "task": "sys-llmc-gpt2-speedrun",
+    "title": "C/CUDA GPT-2 (124M) speedrun: from a naive FP32 port to a flash-attention, fused-kernel, ZeRO-sharded multi-GPU trainer",
+    "year": 2024
   },
   {
     "domain": "Self-supervised",

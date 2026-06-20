@@ -1,0 +1,69 @@
+{
+  "task": "sys-llm-ptq-quantization",
+  "title": "LLM Post-Training Quantization: from a round-to-nearest floor to learned-rotation W4A4KV4 (SpinQuant)",
+  "domain": "Machine learning systems",
+  "metrics": [
+    "wikitext2_perplexity",
+    "zero_shot_accuracy"
+  ],
+  "metric_columns": [
+    "wikitext2_perplexity",
+    "zero_shot_accuracy",
+    "bit_width",
+    "grouping"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "rtn-baseline",
+      "method": "Round-to-nearest (RTN) magnitude-scale weight quantization",
+      "reasoning": "01-rtn-baseline-reasoning.md",
+      "answer": "01-rtn-baseline-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "gptq",
+      "method": "GPTQ (Frantar 2022): OBS second-order layerwise reconstruction + Cholesky + lazy batch",
+      "reasoning": "02-gptq-reasoning.md",
+      "answer": "02-gptq-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "awq",
+      "method": "AWQ (Lin 2023): activation-aware per-channel weight scaling + group quantization",
+      "reasoning": "03-awq-reasoning.md",
+      "answer": "03-awq-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "smoothquant",
+      "method": "SmoothQuant (Xiao 2022): offline migration of activation outliers into weights for W8A8 INT8",
+      "reasoning": "04-smoothquant-reasoning.md",
+      "answer": "04-smoothquant-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "quarot",
+      "method": "QuaRot (Ashkboos 2024): computational-invariance Hadamard rotations + GPTQ for true W4A4KV4",
+      "reasoning": "05-quarot-reasoning.md",
+      "answer": "05-quarot-answer.md",
+      "feedback": "05-feedback.md"
+    },
+    {
+      "n": 6,
+      "slug": "spinquant",
+      "method": "SpinQuant (Liu 2024): learned rotations on the Stiefel manifold via Cayley SGD, W4A4KV4",
+      "reasoning": "06-spinquant-reasoning.md",
+      "answer": "06-spinquant-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Primary metric is WikiText-2 perplexity (lower is better), with zero-shot reasoning accuracy (higher is better) as the secondary metric; every number is the named method's own published table or repo README, not re-run by us. The ladder spans two regimes and each rung's number is labeled with its exact bit-width and grouping (per-channel vs group-128 g128, weight-only WxA16 vs weight+activation WxAx) because those are NOT cross-comparable. Weight-only spine, all on LLaMA/Llama-2: RTN floor is 25.54 ppl at 3-bit per-channel LLaMA-7B (FP16 5.68) and 5.73 at Llama-2-7B W4-g128; GPTQ brings 3-bit per-channel LLaMA-7B from 25.54 to 8.07 (FP16 5.68); AWQ at the matched g128 grouping brings Llama-2-7B INT3-g128 from RTN-g128 6.66 to 6.24, and INT4-g128 to 5.60 (FP16 ~5.47). The activation-quantization branch then ranks on the breakthrough at each bit-width: SmoothQuant restores OPT-175B W8A8 zero-shot average from naive 35.5% to 66.8% (FP16 66.9%); QuaRot is the first to make true 4-bit activations work, taking Llama-2-7B W4A4 from SmoothQuant-W4A4's broken 83.12 down to 6.10 (FP16 5.47), with the gap shrinking at scale to 5.40@13B (FP16 4.88) and 3.79@70B (FP16 3.32); and the finale SpinQuant learns the rotation (vs QuaRot's random one) to reach Llama-2-7B W4A4KV4 at 5.9 ppl and 64.0% zero-shot average, the smallest reported W4A4KV4 gap to full precision. The W4A4 rungs (SmoothQuant-W4A4 anchor, QuaRot, SpinQuant) are read off the SAME W4A4 comparison (QuaRot Table 1 / SpinQuant README W4A4KV4 table) so they are directly comparable; the weight-only rungs are compared within matched bit-width and grouping only.",
+  "endpoint": "SpinQuant (learned Stiefel-manifold rotations via Cayley SGD, W4A4KV4)",
+  "notes": "Provenance: a standalone trajectory for the GPU post-training-quantization (PTQ) research lineage, framing the weight+activation / rotation branch. It is the GPU-PTQ complement to the GGUF block-format trajectory sys-llamacpp-quantization, and the longer superset of the existing 3-rung llm-ptq-algorithm (whose shorter RTN->GPTQ->AWQ framing it extends through SmoothQuant->QuaRot->SpinQuant). Numbers are copied from named paper tables / repo READMEs, NOT re-run by us, and every figure is labeled with its exact bit-width and grouping because per-channel and g128 columns are not interchangeable. Rung 1 (RTN): 25.54 at 3-bit per-channel LLaMA-7B and FP16 5.68 from AWQ Table 4 (arXiv:2306.00978) RTN row; Llama-2-7B W4-g128 5.73 / INT3-g128 6.66 from the same table; the W4A4 RTN ~2e3 catastrophe from the SpinQuant README W4A4KV4 RTN row; code is the RTN quantizer path (sym_quant / WeightQuantizer.find_params) from spcl/QuaRot fake_quant/quant_utils.py and corroborated by this repo's methods/gptq trace. Rung 2 (GPTQ): 3-bit per-channel LLaMA-7B 8.07 (FP16 5.68) from the GPTQ README/paper (arXiv:2210.17323); code (add_batch / compress with Cholesky + lazy-batch OBS) is verbatim from this repo's methods/gptq/results/answer.md, which mirrors the GPTQ repo. Rung 3 (AWQ): Llama-2-7B INT3-g128 6.24 (RTN-g128 6.66), INT4-g128 5.60 from AWQ Table 4 (arXiv:2306.00978); code (get_act_scale, alpha-search search_module_scale, pseudo_quantize_tensor, scale_ln_fcs) is from this repo's methods/awq/results/answer.md, mirroring mit-han-lab/llm-awq auto_scale.py. Rung 4 (SmoothQuant): OPT-175B W8A8 zero-shot avg 66.8% (naive 35.5%, FP16 66.9%) from SmoothQuant Table 3 (arXiv:2211.10438); code (smooth_ln_fcs, the s_j=max|X|^a/max|W|^(1-a) split) is verbatim from this repo's methods/smoothquant/results/answer.md, mirroring mit-han-lab/smoothquant smooth.py. Rung 5 (QuaRot): Llama-2-7B/13B/70B W4A4 6.10/5.40/3.79 (FP16 5.47/4.88/3.32) and SmoothQuant-W4A4 83.12 from QuaRot Table 1 (arXiv:2404.00456), the multi-method 4-bit anchor; independently corroborated by the SpinQuant README W4A4KV4 table (QuaRot Llama-2-7B 6.4 KV4 / 6.1 KV16). Code (random_hadamard_matrix, get_orthogonal_matrix, rotate_attention_inputs/output, rotate_ov_proj, rotate_model) is verbatim from the cloned spcl/QuaRot fake_quant/rotation_utils.py and hadamard_utils.py. Rung 6 finale (SpinQuant): Llama-2-7B W4A4KV4 5.9 ppl and 64.0% zero-shot from the SpinQuant README Quantized Models W4A4KV4 table (arXiv:2405.16406), which also confirms RTN/SmoothQuant/GPTQ/QuaRot rows in the same table; code (SGDG Cayley/Stiefel optimizer step, Cayley_loop, RotateModule, the optimize_rotation.py training setup with frozen weights and trainable R1/R2) is verbatim from the cloned facebookresearch/SpinQuant train_utils/optimizer.py and optimize_rotation.py. The finale carries no feedback file; its bar (beat QuaRot's W4A4KV4 ~6.4) and realized record (5.9 ppl / 64.0%) live at the close of its reasoning. Fit is good: this is a genuine weak->strong, distinct-method record ladder. One framing decision the spec required and I followed: the ladder deliberately crosses from a weight-only spine (rungs 1-3, comparable within matched bit-width/grouping) into the weight+activation / rotation branch (rungs 4-6), so the ranking is per-regime and per-bit-width rather than one global perplexity column; the W4A4 rungs are pinned to the QuaRot Table 1 / SpinQuant W4A4KV4 table so SmoothQuant-W4A4, QuaRot, and SpinQuant are read off the same setting. RULE A skips: no pure-tuning rungs were included; each rung is a distinct nameable method with its own paper."
+}

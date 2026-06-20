@@ -1,0 +1,103 @@
+{
+  "task": "sys-llmc-gpt2-speedrun",
+  "title": "C/CUDA GPT-2 (124M) speedrun: from a naive FP32 port to a flash-attention, fused-kernel, ZeRO-sharded multi-GPU trainer",
+  "domain": "Machine learning systems",
+  "metrics": [
+    "tokens_per_sec",
+    "mfu",
+    "wallclock_min"
+  ],
+  "metric_columns": [
+    "tokens_per_sec",
+    "mfu",
+    "wallclock_min",
+    "cost_usd",
+    "val_loss"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "cublas-matmul",
+      "method": "cuBLAS / cuBLASLt tensor-core GEMMs for all projections",
+      "reasoning": "01-cublas-matmul-reasoning.md",
+      "answer": "01-cublas-matmul-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "mixed-precision-bf16",
+      "method": "Mixed precision (BF16) with FP32 master weights + stochastic rounding",
+      "reasoning": "02-mixed-precision-bf16-reasoning.md",
+      "answer": "02-mixed-precision-bf16-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "packed128-vectorized-io",
+      "method": "Packed128 128-bit vectorized memory I/O",
+      "reasoning": "03-packed128-vectorized-io-reasoning.md",
+      "answer": "03-packed128-vectorized-io-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "fused-residual-layernorm",
+      "method": "Fused residual + LayerNorm kernel (no HBM round-trip)",
+      "reasoning": "04-fused-residual-layernorm-reasoning.md",
+      "answer": "04-fused-residual-layernorm-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "online-softmax-attention",
+      "method": "cuBLAS batched-GEMM attention + fused online-softmax (causal, scale-fused)",
+      "reasoning": "05-online-softmax-attention-reasoning.md",
+      "answer": "05-online-softmax-attention-answer.md",
+      "feedback": "05-feedback.md"
+    },
+    {
+      "n": 6,
+      "slug": "cudnn-flash-attention",
+      "method": "cuDNN Flash Attention (no O(T^2) score-matrix materialization)",
+      "reasoning": "06-cudnn-flash-attention-reasoning.md",
+      "answer": "06-cudnn-flash-attention-answer.md",
+      "feedback": "06-feedback.md"
+    },
+    {
+      "n": 7,
+      "slug": "cublaslt-gelu-fusion",
+      "method": "cuBLASLt fused GELU/bias matmul epilogue (forward GELU_AUX, backward DGELU)",
+      "reasoning": "07-cublaslt-gelu-fusion-reasoning.md",
+      "answer": "07-cublaslt-gelu-fusion-answer.md",
+      "feedback": "07-feedback.md"
+    },
+    {
+      "n": 8,
+      "slug": "fused-classifier",
+      "method": "Fused classifier (softmax + cross-entropy + logit gradient, in-place, no (B,T,V) probs)",
+      "reasoning": "08-fused-classifier-reasoning.md",
+      "answer": "08-fused-classifier-answer.md",
+      "feedback": "08-feedback.md"
+    },
+    {
+      "n": 9,
+      "slug": "nccl-data-parallel",
+      "method": "NCCL data-parallel multi-GPU with all-reduce overlapped with backprop",
+      "reasoning": "09-nccl-data-parallel-reasoning.md",
+      "answer": "09-nccl-data-parallel-answer.md",
+      "feedback": "09-feedback.md"
+    },
+    {
+      "n": 10,
+      "slug": "zero1-optimizer-sharding",
+      "method": "ZeRO-1 optimizer-state sharding (reduce-scatter + all-gather)",
+      "reasoning": "10-zero1-optimizer-sharding-reasoning.md",
+      "answer": "10-zero1-optimizer-sharding-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "The fixed correctness bar is identical at every rung: GPT-2 (124M) reproduced to validation loss ~3.29 over ~10B tokens (~18,865 steps), held bit-faithfully because every rung changes only HOW the same arithmetic is mapped onto the GPU, never the math (checked against the CPU/PyTorch reference). The ladder is therefore ranked by throughput/efficiency (tokens/sec and MFU; higher is better) and by the HBM traffic / FLOP-lane each rung unlocks, ordered weak->strong by the progression the repo's own kernel-development tree (dev/cuda/*.cu) and README/discussion document. Rung 1 (cuBLAS/cuBLASLt) moves the dominant FLOPs off the naive one-thread-per-output FP32 kernel onto the tensor cores: the repo's matmul ladder orders naive(1)->cuBLAS(2,'very fast')->cuBLASLt(3,'even faster'), and the parallel attention ladder records the cuBLAS path as ~20x faster than the naive port. Rung 2 (BF16 + FP32 master weights + stochastic rounding) takes the matmuls from the TF32 lane to the half-precision tensor-core lane (Ampere peak 312 TFLOPS in mfu.h) and halves the bytes of every memory-bound layer. Rungs 3-4 (Packed128 128-bit I/O; fused residual+LayerNorm) push the now-visible memory-bound kernels toward the HBM roofline and delete the residual-sum round-trip at every LayerNorm seam (the repo marks the naive fusion 'terrible' and the warp-per-row shared-memory fusion the fast one). Rungs 5-6 attack attention: cuBLAS batched GEMMs + a one-pass causal online softmax (~20x over naive), then cuDNN Flash Attention which removes the O(T^2) score-matrix materialization entirely (the repo's hand-rolled minimal flash attempt was ~3x SLOWER than naive, which is exactly why the vendor kernel is used). Rung 7 folds GELU/bias into the cuBLASLt epilogue (forward GELU_AUX_BIAS, backward DGELU), deleting the round-trip of the block's largest activation. Rung 8 fuses the classifier so the largest tensor in the pass (the (B,T,V) logits, ~50 GB BF16) collapses from several HBM passes to one in-place pass. Rungs 9-10 scale across devices: NCCL data-parallel all-reduce overlapped with backprop (~1/N wall-clock), then ZeRO-1 sharding which cuts optimizer state and compute to 1/N, drops the gradient collective from all-reduce to reduce-scatter, and frees the HBM that funds a bigger batch and higher MFU. The endpoint (the full stack) is the repo's published record: ~3.29 val loss in ~90 minutes on 8x A100 80GB SXM at ~60% MFU for ~$20, scaling onto 8x H100 for higher throughput. Per-rung end-to-end tokens/sec deltas are sparse in the repo (the mainline ships the full stack, not per-rung ablations), so several rungs are anchored on the repo's own kernel-level development figures (the dev/cuda kernel ladders and timing harnesses) rather than isolated end-to-end numbers.",
+  "endpoint": "ZeRO-1 optimizer-state sharding (reduce-scatter + all-gather) atop the full fused-kernel, flash-attention, BF16, NCCL data-parallel C/CUDA stack",
+  "notes": "PROVENANCE: built entirely from the karpathy/llm.c repository (cloned at HEAD f1e2ace, May 2025). The task is the repo's headline goal -- reproduce GPT-2 (124M) to ~3.29 val loss in pure C/CUDA, maximizing tokens/sec and MFU -- which is a SYSTEMS/kernel ladder, not an ML-method ladder. The rungs are mined from what is IN the repo: the kernel-development tree dev/cuda/*.cu (each file is a documented progression of kernel versions with timing harnesses -- matmul_forward.cu naive->cuBLAS->cuBLASLt; attention_forward.cu naive->minimal-flash->cuBLAS+softmax(~20x)->online-softmax; gelu_forward.cu scalar->Packed128; fused_residual_forward.cu naive->packed->warp-per-row; classifier_fused.cu's four fused versions); the production layer kernels llmc/*.cuh and llmc/*.cpp (matmul.cuh cuBLASLt+GELU epilogue, adamw.cuh master-weights+stochastic-rounding, cuda_utils.cuh Packed128, fused_residual_forward kernel5, cudnn_att.cpp cuDNN sdpa flash attention, fused_classifier.cuh, zero.cuh NCCL all-reduce/reduce-scatter + ZeRO sharding); mfu.h's GPU peak-FLOPS table; and the README. Every code block in each answer.md is copied verbatim (faithfully excerpted) from these files. NUMBERS: the real artifacts the repo publishes are (a) kernel-level figures -- the dev/cuda kernel-ladder orderings and qualitative ratios quoted literally ('~20X faster than (1)', minimal flash '~3X slower than the naive version', cuBLAS 'very fast'/cuBLASLt 'even faster', the naive fusion 'terrible'), the per-kernel timing/bandwidth harnesses (block_size|time ms|GB/s), and mfu.h's 312-TFLOPS Ampere peak; and (b) the end-to-end record for the finale -- val loss ~3.29, ~90 minutes on 8x A100 80GB SXM, ~$20, ~60% MFU, ~10B tokens / ~18,865 steps, ~178K tok/s single-A100, from the GPT-2 124M reproduction (llm.c Discussion #481), plus the README's '~7% faster than PyTorch Nightly'. These are the repo's OWN published numbers, NOT re-run by us. FIT NOTE: the repo does not publish isolated per-rung end-to-end tokens/sec ablations (the mainline trainer ships the whole fused stack at once), so several intermediate rungs are honestly anchored on the repo's kernel-level development figures rather than on per-rung end-to-end throughput deltas; the fixed correctness bar (3.29) is identical at every rung by construction since each rung changes only the implementation, never the math. Finale (rung 10, ZeRO-1) carries no feedback file; its bar -- the same 3.29 reached at maximum tokens/sec / MFU, i.e. the ~90-min/$20/60%-MFU 8x-A100 record -- lives at the close of its reasoning."
+}

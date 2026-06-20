@@ -1,0 +1,57 @@
+{
+  "task": "sys-1brc-speedrun",
+  "title": "One Billion Row Challenge: from a 4:49 streams baseline to a 1.535-second GraalVM native record",
+  "domain": "Machine learning systems",
+  "metrics": [
+    "wall_clock_seconds"
+  ],
+  "metric_columns": [
+    "wall_clock_seconds"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "naive-streams-baseline",
+      "method": "Naive streams baseline (Files.lines + split + groupingBy/TreeMap, single thread)",
+      "reasoning": "01-naive-streams-baseline-reasoning.md",
+      "answer": "01-naive-streams-baseline-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "parallel-mmap",
+      "method": "Parallel memory-mapped segments + custom byte-keyed open-addressing map (spullara)",
+      "reasoning": "02-parallel-mmap-reasoning.md",
+      "answer": "02-parallel-mmap-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "vector-api-simd",
+      "method": "Explicit SIMD via the JDK Vector API (ByteVector.SPECIES_256) + SWAR number parse (merykitty)",
+      "reasoning": "03-vector-api-simd-reasoning.md",
+      "answer": "03-vector-api-simd-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "swar-branchless-parser",
+      "method": "SWAR branchless 16-byte parser over raw Unsafe addresses + flyweight-byte[] map (royvanrijn)",
+      "reasoning": "04-swar-branchless-parser-reasoning.md",
+      "answer": "04-swar-branchless-parser-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "unsafe-graal-native",
+      "method": "Unsafe mmap + SWAR + GraalVM ahead-of-time native binary, work-stealing 2 MB segments (thomaswue)",
+      "reasoning": "05-unsafe-graal-native-reasoning.md",
+      "answer": "05-unsafe-graal-native-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Primary metric is end-to-end wall-clock time (m:ss.mmm) from process launch to last output byte, lower is better, on the fixed evaluation machine (eight cores of a 32-core AMD EPYC 7502P / Zen2, 128 GB RAM, SMT off, Turbo off, ext4), aggregating min/mean/max per station over 1,000,000,000 station;temperature rows. Every number is the repo README's own published results-table figure, NOT re-run by us, and the rungs form a strict monotonic weak-to-strong descent: naive Streams baseline 04:49.679 -> parallel mmap (spullara) 00:05.979 -> Vector-API SIMD (merykitty) 00:03.210 -> SWAR-only branchless parser over Unsafe (royvanrijn) 00:02.157 -> GraalVM AOT native binary (thomaswue, rank 1) 00:01.535. Rungs 3 and 4 are two genuinely different vectorization philosophies for the same data-parallelism (explicit wide-vector Vector API vs hand-rolled register-width SWAR over Unsafe); they are ordered here strictly by their measured wall-clock (03.210 then 02.157), and the reasoning presents the SWAR rung as a deliberate different bet rather than a strict superset of the Vector-API one. The output is byte-for-byte identical across all rungs; only the implementation changes.",
+  "endpoint": "Unsafe mmap + SWAR + GraalVM ahead-of-time native binary (thomaswue, rank 1)",
+  "notes": "Provenance: built from gunnarmorling/1brc (the One Billion Row Challenge). This is a Java/JVM systems-craft ladder, not an ML-algorithm one: the fixed task (per-station min/mean/max over a billion rows, sorted and rounded to one decimal) is held constant and the only free variable is wall-clock on the fixed 8-core EPYC 7502P eval machine. Each rung is a real, named leaderboard entry whose source lives on disk at src/main/java/dev/morling/onebrc/CalculateAverage_<author>.java, and each feedback time is the exact figure from the repo README's results table (the 8-core run reported at https://www.morling.dev/blog/1brc-results-are-in/): baseline 04:49.679 (README line 222), spullara 00:05.979, merykitty 00:03.210, royvanrijn 00:02.157, thomaswue 00:01.535 (rank 1). Every answer.md code block is a faithful excerpt of that author's real .java file (the hot loop / parser / hashmap), lightly trimmed for the page but otherwise verbatim. Method prose is grounded in the in-source material the repo ships: the royvanrijn file carries its own line-by-line optimization changelog (62000 ms initial submission -> 6500 ms mmap -> 4200 ms custom map -> 3900 ms SWAR token checks -> 1900 ms Unsafe -> ~1200 ms dev-machine floor), and the thomaswue file's class javadoc documents the architecture and credits the composed contributor ideas (Quan Anh Mai's branchless number parse, Alfonso Peterssen's Unsafe-mmap + subprocess idea, Artsiom Korzun's 2 MB work-stealing segments, Jaromir Hamala's branch-free <8/8-16 unification, Van Phu DO's mask-table lookups); the merykitty SWAR parse comment ('Awesome idea of merykitty') is echoed in the royvanrijn and thomaswue files. The finale (thomaswue) carries no feedback file: its bar (beat the royvanrijn 02.157 record) and what one would validate (work-stealing granularity, three-cursor count, native-image runtime-only correctness) live at the close of its own reasoning; the realized rank-1 record 00:01.535 is documented here and in the README. Rungs 3 and 4 are honestly presented as two distinct vectorization philosophies ordered by wall-clock, not as one strictly dominating the other. NOTE: trajectories.json and methods.json were NOT edited per the build instruction; the proposed trajectories.json index entry is in the handoff."
+}

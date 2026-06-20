@@ -1,0 +1,67 @@
+{
+  "task": "sys-gptfast-inference-speedrun",
+  "title": "Llama-2-7B Inference Speedrun: from a 25.5 tok/s eager baseline to 328 tok/s with tensor parallelism",
+  "domain": "Machine learning systems",
+  "metrics": [
+    "tokens_per_sec",
+    "bandwidth_achieved_gbps"
+  ],
+  "metric_columns": [
+    "tokens_per_sec",
+    "bandwidth_achieved_gbps"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "eager-baseline",
+      "method": "Eager PyTorch decoding baseline",
+      "reasoning": "01-eager-baseline-reasoning.md",
+      "answer": "01-eager-baseline-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "compile-kvcache",
+      "method": "torch.compile (CUDA-graph) + static KV-cache",
+      "reasoning": "02-compile-kvcache-reasoning.md",
+      "answer": "02-compile-kvcache-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "int8-weight-only",
+      "method": "int8 weight-only per-channel quantization",
+      "reasoning": "03-int8-weight-only-reasoning.md",
+      "answer": "03-int8-weight-only-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "int4-gptq",
+      "method": "int4 weight-only groupwise (G=32) + GPTQ",
+      "reasoning": "04-int4-gptq-reasoning.md",
+      "answer": "04-int4-gptq-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "speculative-decoding",
+      "method": "Speculative decoding (draft + verifier, exact rejection sampling)",
+      "reasoning": "05-speculative-decoding-reasoning.md",
+      "answer": "05-speculative-decoding-answer.md",
+      "feedback": "05-feedback.md"
+    },
+    {
+      "n": 6,
+      "slug": "tensor-parallel",
+      "method": "Tensor parallelism (within-layer sharding + all-reduce)",
+      "reasoning": "06-tensor-parallel-reasoning.md",
+      "answer": "06-tensor-parallel-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Primary metric is decoding throughput in tokens/second at batch size 1 on a fixed A100-80GB (power-limited 330 W), Llama-2-7B (higher is better); the multi-GPU finale extends to 8xA100 on one node. The single-GPU rungs form a strict weak-to-strong ascent and are all directly comparable on the same hardware/model: eager baseline 25.5 tok/s (PyTorch blog 'Accelerating Generative AI with PyTorch II: GPT, Fast'; the repo never shipped a pure-eager mode, so this is the blog's starting-point measurement, not a README row) -> torch.compile + static KV-cache 104.9 tok/s (README 'Base' row, which already bundles compile+KVcache; the blog quotes 107.0 for the same step) -> int8 weight-only per-channel 155.58 tok/s (README '8-bit'; blog 157.4) -> int4 weight-only G=32 + GPTQ 196.80 tok/s (README '4-bit (G=32)'; blog 202.1). Speculative decoding is ranked as the rung that breaks the one-pass-per-token assumption: its headline is the speedup factor per verifier pass, largest when the verifier is expensive; the README's documented pairing is Verifier-70B-int4 / Draft-7B-int4 at 48.4 tok/s, and the blog reports the full int4+speculation stack on a 7B verifier at ~244.7 tok/s combined. The finale, tensor parallelism, is ranked above all single-GPU rungs because it multiplies aggregate HBM bandwidth across NVLinked cards: 7B at 104.9 -> 168.84 (2 GPU) -> 254.02 (4 GPU) -> 328.43 (8 GPU), and it is the only configuration under which the 70B (which OOMs on one 80 GB card) is servable, reaching 62.50 tok/s at 8 GPUs. Quality is held throughout: compile and tensor parallelism are numerically exact (scheduling / identity re-expression), int8 is 'no observable quality loss' and int4 G=32+GPTQ is 'minimal' loss on the EleutherAI harness (hellaswag/winogrande via eval.py), and speculative decoding is provably distribution-preserving by its rejection-sampling acceptance rule.",
+  "endpoint": "Tensor parallelism (within-layer sharding + all-reduce)",
+  "notes": "Provenance: built from pytorch-labs/gpt-fast (now meta-pytorch/gpt-fast), the minimal PyTorch-native Llama inference repo accompanying the 2023 PyTorch blog 'Accelerating Generative AI with PyTorch II: GPT, Fast' (pytorch.org/blog/accelerating-generative-ai-2/). Every tok/s number is the repo's own published benchmark, NOT re-run by us. Single-GPU 7B figures (104.9 / 155.58 / 196.80) are the README benchmark table rows Base / 8-bit / 4-bit (G=32); the eager 25.5 starting point is from the blog (the README 'Base' already includes compile+KVcache, so the eager number lives only in the blog). Tensor-parallel 7B figures (104.9 / 168.84 / 254.02 / 328.43 across 1/2/4/8 GPUs) and 70B@8 (62.50) are the README 'Tensor Parallelism' table. Speculative 48.4 tok/s is the README 'Speculative Sampling' line (scripts/speculate_70B_int4.sh); the ~244.7 combined-7B figure is from the blog. The blog's per-step quotes (eager 25.5, compile+KV 107.0, int8 157.4, int4+GPTQ 202.1, combined 244.7) corroborate the README rows. Every answer.md code block is a real excerpt from the cited repo file: generate.py (sample / decode_one_token / decode_n_tokens / speculative_decode and the compile calls), model.py (KVCache / setup_caches), quantize.py (dynamically_quantize_per_channel / WeightOnlyInt8QuantHandler / WeightOnlyInt8Linear / get_group_qparams / WeightOnlyInt4QuantHandler / WeightOnlyInt4Linear / linear_forward_int4), GPTQ.py (GenericGPTQRunner.faster_quant), and tp.py (apply_tp / _apply_tp_linear / _apply_tp_ffn / _apply_tp_attn / _apply_tp_Transformer). One framing note on the substrate: the current repo HEAD's model.py uses torch.nn.attention.flex_attention (a post-2023 refactor); the initial-context scaffold shows the attention seam in the simpler scaled_dot_product_attention vocabulary that produced the cited benchmark numbers, while every quantization / speculation / tensor-parallel code block (the load-bearing rungs) is verbatim current-repo code. The finale (tensor parallelism) carries no feedback file; its bar (beat the 104.9 single-GPU 7B record, and make the 70B servable at all) lives at the close of its own reasoning, with the realized 168.84 / 254.02 / 328.43 and 70B@8 62.50 stated there as what one would validate, not as an in-trajectory feedback row."
+}

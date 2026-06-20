@@ -1,0 +1,62 @@
+{
+  "task": "lm-hlb-gpt-speedrun",
+  "title": "hlb-gpt Speedrun: from a ~6-minute nanoGPT baseline to a sub-100-second latent-attention record at ~3.8 val loss on WikiText-103",
+  "domain": "Language models",
+  "year": 2023,
+  "metrics": [
+    "a100_seconds_to_target",
+    "val_loss",
+    "val_perplexity"
+  ],
+  "metric_columns": [
+    "a100_seconds_to_target",
+    "val_loss",
+    "val_perplexity"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "nanogpt-baseline",
+      "method": "nanoGPT-style decoder GPT (GELU MLP, learned absolute positions, one-cycle LR, fused SDPA attention, bf16 + compile)",
+      "reasoning": "01-nanogpt-baseline-reasoning.md",
+      "answer": "01-nanogpt-baseline-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "throughput-speedups",
+      "method": "Grad-norm-driven dynamic effective-batch scheduler (+ loss-tied weight decay, linear LR anneal)",
+      "reasoning": "02-throughput-speedups-reasoning.md",
+      "answer": "02-throughput-speedups-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "seqlen-schedule",
+      "method": "Sequence-length scheduling + learnable linear positional bias",
+      "reasoning": "03-seqlen-schedule-reasoning.md",
+      "answer": "03-seqlen-schedule-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "siglu-bf16",
+      "method": "SiGLU (SiLU-gated linear unit) MLP + pure bfloat16 network",
+      "reasoning": "04-siglu-bf16-reasoning.md",
+      "answer": "04-siglu-bf16-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "latent-attention",
+      "method": "LatentAttentionBlock (fused attention + gated MLP) + expected-grad-norm power-law dynamic microbatch scheduler",
+      "reasoning": "05-latent-attention-reasoning.md",
+      "answer": "05-latent-attention-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Primary metric is single-A100 wall-clock seconds to reach the held ~3.8 val-loss bar (~44.7 perplexity) on WikiText-103, lower is better. The ladder is the repo's own published record progression across git tags / GitHub releases of tysam-code/hlb-gpt, weak-to-strong: (1) nanoGPT-style baseline (tag 0.0.0) reaches ~3.8 val loss in 'just over 6 minutes' (0.0.0 README); (2) throughput speedups -- a grad-norm-driven dynamic effective-batch scheduler plus loss-tied weight decay and a linear LR anneal -- cut the time 'nearly in half' to ~3.5 min (release 0.1.0 body); (3) sequence-length scheduling + a learnable linear positional bias carry the run further (release 0.2.0); (4) the SiGLU-gated MLP + a pure-bfloat16 net bring it to ~136-140 s, 'another 18-22 seconds' off (release 0.3.0 title/body); (5, finale) the fused LatentAttentionBlock + an expected-grad-norm power-law dynamic microbatch scheduler reach <100 s (release 0.4.1 title 'v0.4.1 beta (<100s)'). Each rung's code block is verbatim/faithful to the corresponding git tag's main.py (AttentionBlock/nn.GELU/OneCycleLR in 0.0.0; get_grad_norm + dithered accumulate-steps controller in 0.1.0; sequence_length schedule dict + linear_encoding_base/scaler in 0.2.0; class SiGLU + net.to(device, torch.bfloat16) in 0.3.0; class LatentAttentionBlock + the power-law microbatch scheduler in 0.4.1), and each feedback number is cited to its specific tag README or release title/body -- no number was re-run by us.",
+  "endpoint": "LatentAttentionBlock (fused attention + gated MLP) + expected-grad-norm power-law dynamic microbatch scheduler",
+  "notes": "Provenance: built from tysam-code/hlb-gpt (the hyperlightspeedbench-gpt single-file A100 LLM speedrun), cloned WITH full history for the git tags 0.0.0, 0.1.0, 0.2.0, 0.3.0, 0.4.1; each rung's code was recovered via `git show <tag>:main.py`. The fixed task and target -- train a small GPT to ~3.8 val loss (~44.7 perplexity) on WikiText-103 as fast as possible on a single 40 GB A100 -- come from the 0.0.0 README ('achieves under ~3.8 val loss (44.7 perplexity) on WikiText-103 in just over 6 minutes', and the 'Why 3.8 Val Loss?' section). TIMING-PROVENANCE NOTE (important): unlike a single results table, the per-rung times for this repo live in the GitHub release titles/bodies and the baseline tag's README, NOT in one consolidated table -- so each feedback cites its own artifact: 0.0.0 README ('just over 6 minutes'); release 0.1.0 'beta v0.1.0' body ('cuts the training time nearly in half', ~3.5 min); release 0.2.0 'v0.2.0 beta' body (sequence-length scheduling + supporting changes; no headline single number, characterized as a further speedup between the 0.1.0 and 0.3.0 records); release 0.3.0 title 'v0.3.0 beta (~136-140s)' and body ('another 18-22 seconds or so'); release 0.4.1 title 'v0.4.1 beta (<100s)'. CHRONOLOGY NOTE: tags 0.0.0-0.3.0 are March 2023 (year=2023 for the trajectory), but the finale's sub-100-second record (v0.4.1) lands in EARLY 2024 -- the 0.4.0/0.4.1 tags are dated 2024-03-21/2024-03-23 and the 0.4.1 release was published 2024-03-22 -- so the <100s milestone is an early-2024 artifact even though the speedrun began in 2023. FIT/FRAMING NOTES: (a) The in-frame reasoning is grounded in what each tag's code actually changed, which differs slightly from a surface reading of the spec. torch.compile, bf16 autocast, and TF32 were ALREADY present in the 0.0.0 baseline, so rung 2's real algorithmic content (per the 0.0.0->0.1.0 diff) is the grad-norm-driven dynamic effective-batch/accumulation scheduler plus loss-tied dynamic weight decay and a linear LR anneal/retuning -- not new compile/precision kernels; the feedback still cites the 0.1.0 'nearly in half' release number. (b) A dynamic-microbatch controller first appears in 0.1.0 (targeting a fixed per-step grad-norm delta); the finale's distinct contribution in 0.4.1 is the *expected-grad-norm power-law* formulation (grad_norm_target = (log(params)*params * step)^pow with model-size-dependent pow = -.677*log(params)^-.2), a principled size/run-aware target rather than the earlier local one -- that is what the trace presents as the 0.4.1 scheduler. (c) Rung 3's learnable linear positional bias replaces the 0.0.0/0.1.0 learned absolute-position nn.Embedding entirely (the PositionEmbedding module is gone by 0.2.0); it is similar in spirit to additive-distance biasing but with a per-layer learnable slope. (d) The finale (latent-attention) carries reasoning + answer and NO feedback file; its bar (beat the standing ~136-140 s record and break 100 s at the held ~3.8 val loss) lives at the close of its reasoning, and the realized <100s record is documented here and cited to the 0.4.1 release title. All answer.md code blocks are real excerpts from the corresponding git tags; numbers are the repo's own published figures, not re-run by us. Per the trajectory-build instruction, trajectories.json and methods.json were NOT edited."
+}
