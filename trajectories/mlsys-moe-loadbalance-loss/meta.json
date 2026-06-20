@@ -1,0 +1,51 @@
+{
+  "task": "mlsys-moe-loadbalance-loss",
+  "title": "MoE Load-Balancing Loss: from no balancing to ShinkaEvolve's discovered entropy-hinge",
+  "domain": "Systems & efficiency",
+  "metrics": [
+    "tiny-moe"
+  ],
+  "metric_columns": [
+    "L_CE",
+    "perplexity",
+    "L_imb",
+    "fitness_r"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "no-balance",
+      "method": "No balancing loss (control) — router collapses",
+      "reasoning": "01-no-balance-reasoning.md",
+      "answer": "01-no-balance-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "switch-aux",
+      "method": "Switch/GShard auxiliary loss alpha*N*sum f_i P_i (micro-batch f)",
+      "reasoning": "02-switch-aux-reasoning.md",
+      "answer": "02-switch-aux-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "global-lbl",
+      "method": "Global-batch LBL (Demons in the Detail / Qwen3) + optional DeepSeek loss-free bias",
+      "reasoning": "03-global-lbl-reasoning.md",
+      "answer": "03-global-lbl-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "shinka-entropy-hinge",
+      "method": "ShinkaEvolve discovered loss: global-batch LBL + entropy-weighted under-utilization hinge",
+      "reasoning": "04-shinka-entropy-hinge-reasoning.md",
+      "answer": "04-shinka-entropy-hinge-answer.md",
+      "feedback": "04-feedback.md"
+    }
+  ],
+  "ranking_basis": "Real trained tiny MoE (N=8 experts, top-K=2, 2 MoE layers, d=64) on a synthetic latent-topic next-token task, 1200 AdamW steps, seed 1234; L_CE / perplexity / L_imb = mean over 20 fresh held-out batches; fitness r = -(L_CE + L_imb) per ShinkaEvolve (arXiv:2509.19349). is_final,true rows: no-balance L_CE=3.7280 L_imb=0.1286 r=-3.8566 (control floor: router visibly skewed, CE barely affected); switch-aux L_CE=3.7281 L_imb=0.0587 r=-3.7868 (micro-batch f*P cuts imbalance 2.2x at flat CE); global-lbl L_CE=3.7279 L_imb=0.0561 r=-3.7840 (global-batch f*P, slightly better balance than switch at marginally lower CE; +loss-free bias drives L_imb to 0.0160 r=-3.7434 via a non-gradient count controller, the lowest imbalance but a complementary mechanism); shinka-entropy-hinge L_CE=3.7276 L_imb=0.0188 r=-3.7464 (discovered entropy-gated hinge: best pure-loss balance/CE point, 3.0x lower imbalance than plain global at unchanged CE). Endpoint = shinka-entropy-hinge (best load-balancing LOSS); the loss-free bias is an orthogonal count-level controller that stacks with it.",
+  "notes": "Benchmark-grounded trajectory for the training-time MoE load-balancing LOSS (distinct from trajectories/mlsys-moe-load-balance, which is inference-time expert PLACEMENT). The single designed object is the differentiable penalty added to the LM cross-entropy. Classical -> SOTA: (1) no balancing, (2) Switch/GShard aux loss (Lepikhin 2020 arXiv:2006.16668; Fedus 2021 arXiv:2101.03961), (3) global-batch LBL (Qiu et al. 2025 'Demons in the Detail' arXiv:2501.11873; Qwen blog) optionally + DeepSeek auxiliary-loss-free bias (Wang et al. 2024 arXiv:2408.15664, u=1e-3), (4) ENDPOINT = ShinkaEvolve's discovered loss (Lange et al. 2025 arXiv:2509.19349, Sec 4.4 Eq 1): L = N*(1/L) sum_l sum_i f_{l,i} P_{l,i} + (0.1/L) sum_l s(P_l) sum_i max(0, tau - f_{l,i}), s(P_l)=0.5+(1-H(P_l)/log N), tau=0.064/N. Formula confirmed verbatim against the arXiv paper; the released repo github.com/SakanaAI/ShinkaEvolve does NOT ship the MoE example code, so the paper's Eq 1 is the authoritative artifact. Reasoning files are code-free first-person derivations that hit each rung's wall (CE blind to balance -> micro-batch over-constrains slices -> global term ignores the under-used tail -> entropy-gated hinge rescues it); the literal loss lives in each answer.md; feedback is GENUINE measured numbers from a really-trained model (NOT fabricated). ShinkaEvolve's own eval scale: 556M/82M-active MoE, N=64 top-8, ~2.10B FineWeb tokens, lambda=0.01, beating DeepSeek/Qwen global-batch LBL on 7 downstream benchmarks; THIS trajectory is a deliberately small reproduction of the mechanism and ordering, not the scale. Single-round derivation references: methods/{moe-no-balance, moe-switch-aux, moe-global-lbl, moe-shinka-entropy-hinge}."
+}

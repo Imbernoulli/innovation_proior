@@ -1,0 +1,57 @@
+{
+  "task": "geom-heilbronn-triangle",
+  "title": "Heilbronn Triangle Problem at n=11: from structured baseline to SA + soft-min gradient polish",
+  "domain": "Discrete & computational geometry, global optimization",
+  "metrics": [
+    "n11"
+  ],
+  "metric_columns": [
+    "min_triangle_area",
+    "fraction_of_record"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "grid",
+      "method": "Structured baseline (inscribed regular 11-gon; grid/boundary score 0 by collinearity)",
+      "reasoning": "01-grid-reasoning.md",
+      "answer": "01-grid-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "random",
+      "method": "Random multi-start (4M uniform configs, vectorized batch min-area, keep best)",
+      "reasoning": "02-random-reasoning.md",
+      "answer": "02-random-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "sa",
+      "method": "Simulated annealing on point positions (one-point moves, incremental 45-of-165 scoring, multi-restart)",
+      "reasoning": "03-sa-reasoning.md",
+      "answer": "03-sa-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "polish",
+      "method": "Heavy SA seeding + beta-annealed soft-min L-BFGS-B gradient polish + basin-hopping",
+      "reasoning": "04-polish-reasoning.md",
+      "answer": "04-polish-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "goldberg-optimal",
+      "method": "Goldberg's exact rational configuration (closed-form coordinates; exact-arithmetic verification of min-area = 1/27)",
+      "reasoning": "05-goldberg-optimal-reasoning.md",
+      "answer": "05-goldberg-optimal-answer.md",
+      "feedback": "05-feedback.md"
+    }
+  ],
+  "ranking_basis": "Real evaluator: score = exact min triangle area over all C(11,3)=165 triples for 11 points in [0,1]^2, all points verified inside the unit square, single deterministic instance (constructors seeded for reproducibility). is_final,true rows: grid min-area=0.021456 fraction=0.579 (inscribed regular 11-gon; the lattice/boundary baselines score 0 because grid rows and shared square-edges are collinear triples); random min-area=0.010872 fraction=0.294 (best of 4,000,000 uniform draws; below the structured baseline -- 22-dim curse, no mechanism to improve a draw); sa min-area=0.035639 fraction=0.962 (Metropolis one-point moves escape the knife-edge traps of the min-of-165 objective, +0.0248 over random, best of 30 restarts, incremental 45-of-165 scoring; plateaus short because a single Gaussian move cannot grow several near-tight triangles together); polish min-area=0.037032 fraction=0.99986 (beta-annealed soft-min L-BFGS-B with analytic gradient inflates all near-tight triangles at once; seeded from the SA best it snaps onto the Goldberg optimum 1/27, gap 5e-6); goldberg-optimal min-area=1/27=0.0370370370 fraction=1.000000 (Goldberg's exact rational configuration written down in closed form and verified in exact rational arithmetic to equal 1/27 on the nose -- the previous 5e-6 residual was pure optimizer tolerance, not geometry; 28 of 165 triangles bind at exactly the minimum, double-precision agreement to 1.4e-17). Endpoint = goldberg-optimal.",
+  "notes": "Benchmark-grounded trajectory for the unit-square Heilbronn triangle problem at n=11. Record: Goldberg (1972) Delta(11)=1/27=0.037037, conjectured optimal (Erich Friedman packing tables; Comellas-Yebra/Karpov for neighboring n). The editable surface is one function construct() -> (11,2) array in [0,1]^2; each rung is a different body. Reasoning files are code-free first-person derivations; the literal constructor lives in each answer.md; feedback is the exact measured min triangle area from the real all-165-triples evaluator (no fabrication; gradient checked against finite differences to 1e-9). Honest ceiling: the search-plus-polish frontier (rung 4) reaches 1/27 to 5e-6 (fraction 0.99986), and the final rung REACHES the record EXACTLY -- min-area = 1/27 verified in exact rational arithmetic (28 of 165 triangles bind at the minimum) by writing down Goldberg's closed-form configuration, which the soft-min polish was groping toward (mirror symmetry about x=1/2; coordinates on multiples of 1/3, 2/9, 4/9, 7/9). It reaches but does not BEAT the record, because 1/27 is believed optimal at n=11 in the square, so the exact value is the ceiling and the still-open part is the unproven optimality (only a proof can certify it; no construction or search supplies that). The record's exact rational coordinates are tabulated in arXiv:2603.11107 Table 11 (attributing n=11 to Goldberg) and the value 1/27 'horizontally symmetric' is listed on Erich Friedman's Heilbronn-for-squares page. AlphaEvolve (arXiv:2506.13131, github.com/google-deepmind/alphaevolve_results) addressed SIBLING Heilbronn containers -- unit-area triangle (n=11: 0.036 -> >0.0365) and unit-area convex region (n=13,14) -- not the unit square; it confirms search-plus-refine (evolutionary global search + local polish) as the right method, which rung 4 mirrors at small scale. Single-round derivation references: methods/{heilbronn-grid-baseline, heilbronn-random-multistart, heilbronn-sa-positions, heilbronn-softmin-polish, heilbronn-goldberg-optimal}."
+}

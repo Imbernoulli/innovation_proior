@@ -1,0 +1,52 @@
+{
+  "task": "combi-cap-set",
+  "title": "Cap Sets in F_3^n: from greedy lexicographic to the FunSearch-evolved priority function",
+  "domain": "Combinatorics & discrete optimization",
+  "metrics": [
+    "n4",
+    "n5",
+    "n6",
+    "n7",
+    "n8"
+  ],
+  "metric_columns": [
+    "cap_size"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "greedy-lex",
+      "method": "Greedy lexicographic (add points in fixed counting order if cap-valid)",
+      "reasoning": "01-greedy-lex-reasoning.md",
+      "answer": "01-greedy-lex-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "random-multistart",
+      "method": "Randomized greedy multi-start (best cap over many random orders)",
+      "reasoning": "02-random-multistart-reasoning.md",
+      "answer": "02-random-multistart-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "structured-priority",
+      "method": "Structured symmetric priority-function greedy (reflection + weight-mod-3 layer)",
+      "reasoning": "03-structured-priority-reasoning.md",
+      "answer": "03-structured-priority-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "funsearch-evolved",
+      "method": "Endpoint: FunSearch-evolved priority function (reproduces the record 512-cap at n=8)",
+      "reasoning": "04-funsearch-evolved-reasoning.md",
+      "answer": "04-funsearch-evolved-answer.md",
+      "feedback": "04-feedback.md"
+    }
+  ],
+  "ranking_basis": "Real evaluator: |cap| of the returned set, scored only if it is a VALID cap (no three distinct points a,b,c with a+b+c=0 mod 3), verified by the O(c^2 n) incremental block check and, for n<=6, an independent O(c^3) triple scan. All values are genuinely computed by running the constructions (python3 + numpy), not fabricated. The four rungs are all special cases of one greedy-priority skeleton (the FunSearch cap-set skeleton). is_final,true rows by ascending |cap| at the headline dimensions: greedy-lex gives exactly 2^n (n=4:16, n=5:32, n=6:64, n=7:128; optimal only at n=1,2; geometry-blind fixed order); random-multistart best-of-thousands random orders (n=4:20 = proven optimum, n=5:39, n=6:77, n=7:147; clears the floor everywhere, optimum only at n=4, right tail of the size distribution thins fast); structured-priority hand-designed reflection+weight-mod-3 score (n=4:18, n=5:36, n=6:64, n=7:138; beats lex but lands BELOW random multi-start -- having a structured priority is not enough, it must be the right one); funsearch-evolved the discovered priority verbatim from the FunSearch repo (dimension-specialized: n=4:16, n=5:32, n=6:64, n=7:128 back at the floor, but n=8:512 = the record, improving the previous best construction 496). Endpoint = funsearch-evolved.",
+  "notes": "Benchmark-grounded trajectory for the cap-set problem (largest subset of F_3^n with no line / no 3-term AP). The editable surface is one priority(el, n) function (or an explicit order) fed to the FunSearch greedy skeleton: enumerate all 3^n vectors, add the highest-priority valid one, block the closing third point of every line it forms, repeat. Reasoning files are code-free first-person derivations; the literal constructor lives in each answer.md; feedback is the measured cap size from running the real construction with the O(c^2 n) verifier (and O(c^3) triple scan for n<=6) on every reported cap -- every number RUN, not fabricated. Known maximal cap sizes: n=1:2, 2:4, 3:9, 4:20, 5:45, 6:112, 7:236, 8:>=512. Endpoint reproduces FunSearch's record: the discovered priority builds a cap of exactly 512 in F_3^8 (improving the previous best construction of 496), VERIFIED valid AND verified to equal -- as a set -- the explicit 512-cap stored in the FunSearch repository (cap_set/n8_size512.txt, all 512 points coincide). The companion discovered n=9 function reaches the known-best 1082 in F_3^9 by the same skeleton (separately confirmed, valid). Honest ceiling: 512 at n=8 is REPRODUCED, not beaten -- it is the current frontier this construction set; there is no finale above it because exceeding it requires running the evolutionary program search itself (millions of LLM samples under evaluation), not a single constructor -- the analogue of the maximal-determinant record standing above the entry-flip annealing frontier. Source informing the endpoint: FunSearch (Romera-Paredes et al., 'Mathematical discoveries from program search with large language models', Nature 2024; code https://github.com/google-deepmind/funsearch, cap_set/cap_set.ipynb -- the cap-set skeleton, the discovered 512-cap priority function, the is_cap_set verifier, and the explicit n8_size512.txt cap were all inspected and used); related: AlphaEvolve (arXiv:2506.13131); cap-set upper bound Croot-Lev-Pach / Ellenberg-Gijswijt (~2.756^n). Single-round derivation references: methods/{capset-greedy-lex, capset-random-multistart, capset-structured-priority, capset-funsearch-evolved}."
+}

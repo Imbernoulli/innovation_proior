@@ -1,0 +1,50 @@
+{
+  "task": "algo-online-bin-packing",
+  "title": "Online 1-D Bin Packing: from First-Fit to the FunSearch-discovered priority function",
+  "domain": "Heuristic combinatorial optimization (online algorithms / LLM program search)",
+  "metrics": [
+    "weibull_excess",
+    "or_excess"
+  ],
+  "metric_columns": [
+    "mean_bins",
+    "excess_over_LB"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "first-fit",
+      "method": "First-Fit (place item in the earliest open bin that fits)",
+      "reasoning": "01-first-fit-reasoning.md",
+      "answer": "01-first-fit-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "best-fit",
+      "method": "Best-Fit (place item in the valid bin left with the least slack)",
+      "reasoning": "02-best-fit-reasoning.md",
+      "answer": "02-best-fit-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "gap-diff",
+      "method": "Hand-designed relational score: squared distance below the emptiest bin, item-weighted, neighbour-differenced",
+      "reasoning": "03-gap-diff-reasoning.md",
+      "answer": "03-gap-diff-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "funsearch",
+      "method": "FunSearch-discovered priority function (Weibull heuristic, verbatim from google-deepmind/funsearch) -- endpoint",
+      "reasoning": "04-funsearch-reasoning.md",
+      "answer": "04-funsearch-answer.md",
+      "feedback": "04-feedback.md"
+    }
+  ],
+  "ranking_basis": "Real online bin-packing simulator (the FunSearch skeleton verbatim: get_valid_bin_indices / online_binpack / evaluate; item placed immediately and irrevocably into the argmax-priority valid bin or a new bin; #bins = non-empty bins). Two seeded synthetic stream families, five seeds each (0-4), 5000 items per stream: Weibull(scale=45, shape=3) at capacity 100, and OR-Library-style uniform[20,100] at capacity 150. Metric = mean #bins and percent excess over the L1 lower bound ceil(sum/C). Mean per rung -- Weibull / OR-style excess: first-fit 4.545% / 4.651% (greedy reuse, earliest valid bin; the floor); best-fit 4.146% / 4.411% (tightest fit; beats first-fit on every seed; verified that any monotone reshaping of a single bin's slack gives the IDENTICAL bin count, so single-bin rules collapse to best-fit); gap-diff 0.718% / 3.271% (hand-designed relational score (bins-max_bin)^2/item, feasibility-signed, neighbour-differenced -- the differencing is the engine: an ablation dropping it explodes to ~80% excess; beats best-fit on every seed of both families); funsearch 0.668% / 3.431% (the discovered priority function, verbatim from google-deepmind/funsearch -- best on the Weibull home distribution, reproduces the paper's 0.68%; on the off-distribution OR-style family it is marginally behind the simpler rung-3 core 3.271% but still beats best-fit, the honest fingerprint of a distribution-tuned searched heuristic). Endpoint = funsearch. Calibration: on the repo's own datasets the simulator reproduces the published Table 1 to the digit -- OR3 first/best/FunSearch-OR = 5.74%/5.37%/3.11%, Weibull 5k = 4.23%/3.98%/0.68%.",
+  "notes": "Benchmark-grounded trajectory: online 1-D bin packing as evaluated in FunSearch (Romera-Paredes et al., 'Mathematical discoveries from program search with large language models', Nature 2024; PMC10794145; code https://github.com/google-deepmind/funsearch, bin_packing/bin_packing.ipynb). The editable surface is one function priority(item, bins) -> array scoring each currently-fitting bin; the item goes to the argmax bin. Each rung is a different body. Reasoning files are code-free first-person derivations; the literal runnable priority function lives in each answer.md; feedback is measured mean #bins and percent-excess-over-L1-lower-bound from the real simulator on seeded streams. The endpoint reproduces VERBATIM the FunSearch-discovered Weibull priority function from the repo, which beats First-Fit and Best-Fit on the OR-Library and Weibull datasets (published Table 1: OR3 5.74%/5.37%/3.11%, Weibull 5k 4.23%/3.98%/0.68%, Weibull 100k 4.00%/3.79%/0.03%). Our simulator reproduces those repo numbers to the digit as a calibration check before reading our own seeded streams. Key honest findings from the real runs: (1) any monotone reshaping of a single bin's slack gives the identical bin count -- single-bin rules ALL collapse to Best-Fit, so beating it requires a cross-bin (relational) score; (2) the neighbour-differencing operation score[1:]-=score[:-1] is the entire engine -- ablating it sends the relational heuristic to ~80% excess; (3) the discovered heuristic is distribution-tuned (Weibull), best on its home family (0.668%) and only marginally behind the simpler hand-built rung-3 core on an off-distribution OR-style family (3.431% vs 3.271%), both still beating Best-Fit -- reported honestly. Single-round derivation references: methods/{obp-first-fit, obp-best-fit, obp-gap-diff, obp-funsearch}."
+}

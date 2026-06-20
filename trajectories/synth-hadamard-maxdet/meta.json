@@ -1,0 +1,49 @@
+{
+  "task": "synth-hadamard-maxdet",
+  "title": "Maximal-Determinant ±1 Matrix at n=29: from symmetric design to rank-one annealing",
+  "domain": "Combinatorics & discrete optimization",
+  "metrics": [
+    "n29"
+  ],
+  "metric_columns": [
+    "multiplier",
+    "score"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "jacobsthal",
+      "method": "Jacobsthal quadratic-residue design (R = Q + I)",
+      "reasoning": "01-jacobsthal-reasoning.md",
+      "answer": "01-jacobsthal-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "flipsa",
+      "method": "Simulated annealing on log|det| with single-entry flips (full-recompute scoring)",
+      "reasoning": "02-flipsa-reasoning.md",
+      "answer": "02-flipsa-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "rank1sa",
+      "method": "Rank-one (Sherman–Morrison) annealing with multiplier-relabeled restarts",
+      "reasoning": "03-rank1sa-reasoning.md",
+      "answer": "03-rank1sa-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "orrick-record",
+      "method": "Gram-space maximal-determinant record (Solomon 2002 / Orrick / Brent), imported and exactly verified",
+      "reasoning": "04-orrick-record-reasoning.md",
+      "answer": "04-orrick-record-answer.md",
+      "feedback": "04-feedback.md"
+    }
+  ],
+  "ranking_basis": "Real evaluator: score = |det(H)| / (2^28 * 7^12 * 342), exact integer determinant via Bareiss elimination at n=29, single deterministic instance. is_final,true rows: jacobsthal m=49 score=0.14330 (the parameter-free symmetric design; coincides exactly with the published task baseline 0.1433, and is a strict local maximum under single-entry flips — 0 of 841 flips raise |det|); flipsa m=149.87 score=0.43821 (annealing accepts downhill moves to escape the symmetric basin, +0.295 score, 40k flips/seed, bound by O(n^3) per-candidate slogdet cost); rank1sa m=184.60 score=0.53977 (matrix-determinant-lemma scoring makes each flip O(1), enabling 10.5M flips across 7 multiplier-relabeled seeds, reaching the band of the best machine-discovered results); orrick-record m=320 score=0.93567 (the published n=29 maximal-determinant record |det|=2^28*7^12*320=1188957517256767569920, multiplier exactly 320 — imported as one explicit ±1 representative R (class 1, automorphism group size 18) of Bruce Solomon's conjectured-optimal Gram matrix G, det(G)=(2^28*7^12*320)^2, from Will Orrick's maximal-determinant database via R. P. Brent's order-29 tabulation; structurally verified (entries ±1; G=R.R^T has diagonal 29 and off-diagonals in {-3,1,5}; R.R^T=R^T.R) and det checked exactly by the same Bareiss elimination. This is not a local-search result — entry-flip annealing genuinely plateaus at rank1sa m=184.60; the record is decided in Gram space and only then decomposed to ±1, which is why local moves on R cannot reach it. Conjectured optimal, not proven; Barba ceiling m=369.94 still unmet). Endpoint = orrick-record (record reached, score 0.9357).",
+  "notes": "Benchmark-grounded trajectory (ShinkaEvolve/ThetaEvolve 'HadamardMatrix' task at n=29; score normalization |det|/(2^28*7^12*342) and baseline 0.1433 reproduced exactly). The editable surface is one function construct() -> 29x29 ±1 matrix; each step is a different body. Reasoning files are code-free first-person derivations; the literal constructor lives in each answer.md; feedback is measured multiplier/score from the real exact-determinant evaluator. Honest ceiling: the classical record at n=29 is multiplier 320 (score 0.9357, Solomon 2002 / Orrick maximal-determinant tables, conjectured optimal but not proven; Barba upper bound 369.94). No program-evolution system has matched the record — the strongest reported machine result is ~0.576 (ThetaEvolve, multiplier ~197) — so entry-flip annealing (rank1sa) tops out at 0.540. The final rung closes the gap honestly: it reproduces the dedicated maximal-determinant record (multiplier 320, score 0.9357) — Bruce Solomon's conjectured-optimal Gram matrix (6 July 2002), tabulated by Will Orrick and published with explicit ±1 solutions by R. P. Brent (order-29 page, s29allsofar.txt). One representative ±1 matrix R (class 1) is stored verbatim in record_matrix.json, loaded by construct(), and its |det| is verified exactly = 2^28*7^12*320 by the harness's own Bareiss elimination, with structural checks confirming R.R^T = R^T.R = G. This is not a search result that beat the previous rung — local annealing genuinely plateaus at 184.60; the record is decided in Gram space (the rigid space of admissible symmetric designs) and only decomposed to ±1 afterward, which is precisely why single-entry annealing on R cannot find it. The record is conjectured optimal but unproven (Barba ceiling 369.94, score 1.0816, still unmet), so the residual 184.60->320 is the honest, still-open distance between autonomous local search and the human Gram-space record. Source: maths-people.anu.edu.au/~brent/maxdet/order29/. Single-round derivation references: methods/{jacobsthal-maxdet, maxdet-flip-anneal, maxdet-rank1-anneal, hadamard-orrick-record}."
+}

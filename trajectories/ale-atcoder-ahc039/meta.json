@@ -1,0 +1,48 @@
+{
+  "task": "ale-atcoder-ahc039",
+  "title": "AtCoder AHC039 'Purse Seine Fishing': from bounding box to ShinkaEvolve-refined grid annealing",
+  "domain": "Heuristic combinatorial optimization (ALE-Bench / AtCoder Heuristic Contest)",
+  "metrics": [
+    "mean_objective"
+  ],
+  "metric_columns": [
+    "objective"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "bbox",
+      "method": "Best axis-aligned rectangle via 2D prefix-sum maximum-weight box (4-vertex baseline)",
+      "reasoning": "01-bbox-reasoning.md",
+      "answer": "01-bbox-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "gridgreedy",
+      "method": "Grid-cell greedy region growing (hole-free, perimeter-bounded) + rectangle fallback, multi-resolution",
+      "reasoning": "02-gridgreedy-reasoning.md",
+      "answer": "02-gridgreedy-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "gridsa",
+      "method": "Warm-started simulated annealing on a grid-cell region with O(1) incremental scoring and local topology checks",
+      "reasoning": "03-gridsa-reasoning.md",
+      "answer": "03-gridsa-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "shinka",
+      "method": "ShinkaEvolve refinements: cached boundary validation + targeted edge move on top of the grid SA (endpoint)",
+      "reasoning": "04-shinka-reasoning.md",
+      "answer": "04-shinka-answer.md",
+      "feedback": "04-feedback.md"
+    }
+  ],
+  "ranking_basis": "Real local evaluator faithful to AHC039: exact integer point-in-rectilinear-polygon (boundary => inside), full validity checks (4<=m<=1000, axis-parallel edges, simple polygon, perimeter<=4e5), objective = max(0, a-b+1). Five seeded instances (seeds 1-5), 5000 mackerel + 5000 sardine each from clustered 2D-Gaussian shoals. Mean raw objective per rung (5 s/instance budget for the SA rungs): bbox 2704 (best single rectangle, prefix-sum max-weight box); gridgreedy 2872 (+168, grid-cell greedy region growing with rectangle fallback so it dominates rung 1); gridsa 3039 (+167, warm-started SA, O(1) incremental scoring, ~4-7e7 flips/run, reversible add/remove flips beat the one-shot greedy especially on overlapping-shoal seeds); shinka 3059 (+20, ShinkaEvolve's cached validation + targeted edge move, reproducible across runs: shinka 3051-3059 vs gridsa 3033-3039 every run). Endpoint = shinka.",
+  "notes": "Benchmark-grounded trajectory: AtCoder AHC039 'Purse Seine Fishing' (https://atcoder.jp/contests/ahc039/tasks/ahc039_a), an ALE-Bench task (arXiv:2506.09050, https://github.com/SakanaAI/ALE-Bench). The endpoint rung reproduces the two specific levers ShinkaEvolve (arXiv:2509.19349, https://github.com/SakanaAI/ShinkaEvolve) evolved on top of ALE-Agent's AHC039 simulated-annealing+kd-tree solution to lift it from AtCoder performance 2880 (5th place) to 3140 (2nd place): (1) caching the validation process (augmenting the spatial index to cache subtree statistics -- bounding boxes and fish counts -- so candidate validation/scoring is incremental; reproduced here as a per-cell boundary-flag cache refreshed only on the 3x3 neighbourhood of each accepted flip, on top of per-cell fish-count caches), and (2) a novel 'targeted edge move' that heuristically identifies a misclassified fish (e.g. a mackerel outside the net) and greedily moves the nearest edge to correct its state. The editable surface is one stdin->stdout solver; each rung is a different solver. Reasoning files are code-free first-person derivations; the literal runnable solver lives in each answer.md (Python for rungs 1-2, C++ for rungs 3-4); feedback is measured a/b/perimeter/m and the exact objective from the frozen evaluator (a C++ and an independent Python evaluator cross-checked to agree exactly). IMPORTANT scale note: the reported mean objective is the RAW a-b+1 value from the local exact evaluator, on an absolute scale -- it is NOT on AtCoder's relative performance scale, so it is not directly comparable to the 2880/3140 performance numbers, which are cited only as the frontier context the endpoint's ideas reproduce. Single-round derivation references: methods/{ahc039-bbox-rect, ahc039-grid-greedy, ahc039-grid-sa, ahc039-shinka-targeted-sa}."
+}

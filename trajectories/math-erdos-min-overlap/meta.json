@@ -1,0 +1,57 @@
+{
+  "task": "math-erdos-min-overlap",
+  "title": "Erdős Minimum-Overlap Constant C5: from Erdős's flat-density 0.5 floor to a 600-piece hierarchical-gradient step function, then the AutoEvolver record 0.38086945 at n=750",
+  "domain": "Number theory & continuous optimization",
+  "metrics": [
+    "erdos-overlap-bound"
+  ],
+  "metric_columns": [
+    "pieces_n",
+    "upper_bound"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "uniform-baseline",
+      "method": "Flat half-density step function (v_i = 1/2); self-aligned overlap, exact 0.5 (Erdős 1955)",
+      "reasoning": "01-uniform-reasoning.md",
+      "answer": "01-uniform-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "coarse-slsqp",
+      "method": "Coarse n=24 constrained SLSQP on annealed soft-max minimax (box [0,1] + sum=n/2), multi-start",
+      "reasoning": "02-coarse-slsqp-reasoning.md",
+      "answer": "02-coarse-slsqp-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "finer-basinhop",
+      "method": "Lift 24->60 multistart, upscale x2->120, basin-hopping around annealed-SLSQP with sharper beta",
+      "reasoning": "03-finer-basinhop-reasoning.md",
+      "answer": "03-finer-basinhop-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "frontier-largeN",
+      "method": "Endpoint: upscale x5 -> n=600 + sharp-beta analytic-gradient Adam + exact-minimax subgradient polish (step-function frontier)",
+      "reasoning": "04-frontier-largeN-reasoning.md",
+      "answer": "04-frontier-largeN-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "autoevolver-record",
+      "method": "Record: load AutoEvolver evolutionary/LLM-search height profile (n=750), verify C=0.38086945 under the trajectory's own evaluator",
+      "reasoning": "05-autoevolver-record-reasoning.md",
+      "answer": "05-autoevolver-record-answer.md",
+      "feedback": "05-feedback.md"
+    }
+  ],
+  "ranking_basis": "Real evaluator: C = max_k (sum_i v_i (1 - v_{i-k})) * 2/n for a step function h on [0,2], heights v_i in [0,1] with the balance constraint sum(v)=n/2; cross-correlation of v with 1-v via np.correlate, max lag, rescaled by 2/n -- this is AlphaEvolve's published verifier (arXiv:2506.13131, App. B.5), validated by reproducing AlphaEvolve's 95-element published sequence to 0.38092304. LOWER is better (each construction is an UPPER bound on the Erdos minimum-overlap constant C5, which White (2023) pins from below at 0.379005). All values are genuinely computed by running the optimizers, not fabricated. is_final,true rows: uniform-baseline C=0.500000 (flat v_i=1/2, exact closed form = Erdos's 1955 bound, invariant to piece count -- the floor); coarse-slsqp n=24 C=0.381240 (annealed soft-max SLSQP, 12 restarts seed 0, -0.1188 off the floor, near-binary asymmetric profile, within ~3e-4 of the Haugland/AlphaEvolve landmarks, capped by coarse resolution); finer-basinhop n=120 C=0.381076 (lift 24->60, upscale x2, basin-hopping around annealed SLSQP, sharper beta); frontier-largeN n=600 C=0.381076 (upscale x5 + sharp-beta analytic-gradient Adam + exact subgradient polish; a robust local optimum that refinement at scale holds rather than lowers -- the frontier a single bounded local constructor reaches); autoevolver-record n=750 C=0.3808694472 (load the AutoEvolver evolutionary/LLM coding-agent search height profile from record_hvalues.json and verify it under the trajectory's own frozen evaluator -- the published record 0.38086945, reproduced exactly to machine precision; not re-derived by a local optimizer but adopted from the cross-basin large-scale search, feasible Sum v=375=n/2, ~39.7% pinned 0/1). Endpoint = autoevolver-record. This squeezes the constant into 0.379005 <= C5 <= 0.380868: White's provable convex-programming lower bound below, the AutoEvolver step-function upper bound above.",
+  "notes": "Benchmark-grounded trajectory for the ERDOS MINIMUM-OVERLAP problem (Erdos 1955), the constant C5 with 0.379005 <= C5 <= 0.380868. Computational setup uses Haugland's (2016, arXiv:1609.08000) equivalence: C5 = inf over step functions h on [0,2], values in [0,1], integral 1, of max_k integral h(x)(1-h(x+k))dx, discretized to n cells (heights v in [0,1], sum=n/2, score = max-lag cross-correlation of v with 1-v times 2/n). Evaluator is AlphaEvolve's own (arXiv:2506.13131, App. B.5, compute_upper_bound), validated against AlphaEvolve's published 95-element sequence (reproduces 0.38092304). The editable surface is one function construct() -> feasible height vector; each rung is a different body. Reasoning files are code-free first-person derivations; the literal optimizer lives in each answer.md (all four answer.md code blocks were run and reproduce their reported numbers exactly: 0.5, 0.3812396, 0.3810764, 0.3810764); feedback is the measured bound from the real evaluator (every number RUN, not fabricated). Honest ceiling: published step-function upper bounds are Haugland 0.380927 (2016), AlphaEvolve 0.380924 (95 steps, arXiv:2506.13131), TTT-Discover 0.38087532 (arXiv:2601.16175), AutoEvolver 0.38086945 (~n=600-750, https://tengxiaoliu.github.io/autoevolver/), with the very latest near 0.380868 (SimpleTES 2026); the lower bound is White 0.379005 (2023, convex programming). The single-bounded-constructor frontier is frontier-largeN (0.3810764, within ~1.9e-4 of the record); the ladder then reaches the published record itself, autoevolver-record (0.3808694472 at n=750), by loading and verifying the AutoEvolver evolutionary/LLM coding-agent search construction under the trajectory's own frozen evaluator -- the gap from 0.3810764 to 0.38087 is not closed by a smarter local optimizer (frontier-largeN is a basin floor, not a resolution cap) but by the cross-basin large-scale search (AutoEvolver ran ~12 hours to n=750), so the final rung adopts that construction rather than re-deriving it. This squeezes the constant into 0.379005 <= C5 <= 0.380868: White's provable convex-programming lower bound below, the AutoEvolver step-function upper bound above, a ~1.86e-3 gap that is the genuinely open distance at the fifth decimal. Endpoint informed by the AutoEvolver step-function construction (density f of A on [1,2n], minimize max_k integral f(x)(1-f(x+k))dx, SLSQP + perturbation + basin-hopping + subgradient, increasing discretization n; record height profile in record_hvalues.json) and AlphaEvolve's evaluator. Single-round derivation references: methods/{erdos-uniform-baseline, erdos-coarse-slsqp, erdos-finer-basinhop, erdos-frontier-largeN, erdos-autoevolver-record}."
+}
