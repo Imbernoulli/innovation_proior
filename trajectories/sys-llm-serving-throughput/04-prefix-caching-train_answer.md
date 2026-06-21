@@ -1,0 +1,29 @@
+Chunked prefill made a long prompt cheap *per step* and stopped it from stalling decodes, but it did not make prefill *less work in total* — a 2000-token prompt is still 2000 tokens of prefill matmul and 2000 tokens of KV written into the cache, just spread over more steps. So the next question is whether I am doing prefill work I do not need to do at all, and across a real request stream a great deal of it is redundant — not within one request, but *across* requests. A served application almost always prepends the same thing to every request: a system prompt, a few-shot preamble, a fixed instruction header, a long shared document many questions are asked against. The users' questions differ, but the first few hundred tokens are byte-for-byte identical across thousands of requests; and the sampling case (one prompt forked into several completions, or beam search) shares the *entire* prompt. As things stand, every one of those requests prefills the shared prefix from scratch — recomputing the same keys and values and writing its own private copy into the paged cache. Both the compute and the memory are duplicated.
+
+I propose **prefix caching**: hash-keyed reuse of shared prompt prefixes at block granularity. The memory duplication I could almost already kill, because paging gave the mechanism — a request addresses its cache through a block table of physical block numbers, and two block tables can list the *same* number, so two requests sharing a prefix can point at the same ref-counted physical blocks and store the shared KV exactly once. What was missing was the *bookkeeping* to recognize that two prefixes are identical so I can hand the second request the first's blocks instead of allocating new ones. A fast lookup keyed on content is a hash map, so I hash the contents of each full block of tokens and keep a map from block-content-hash to the physical block holding that block's KV. During a prefill, before computing a block I hash its token ids and probe the map; on a hit I skip the compute entirely and point the request's block table at the cached physical block, bumping its ref count; on a miss I compute it and insert. The block size from paging is exactly the right granularity, since blocks are already the unit of allocation, so "cache a block of KV" and "key a block of KV" line up.
+
+What makes this *correct* is being careful about what I hash. Two tokens being identical is not enough for their KV to be identical, because in a transformer a token's key and value at position $t$ depend on *all the tokens before it* — token id 1045 as the fifth token of one prompt has different KV from id 1045 as the fifth token of a different prefix, since positions one through four differ. So the hash of a block must capture not just the block's own token ids but the entire prefix leading up to it. Re-hashing the whole prefix per block would be wasteful, so I **chain** the hashes: the hash of block $i$ is computed over the hash of block $i-1$ together with block $i$'s own token ids, so each block's hash transitively encodes every token before it, all the way back to the first block (which chains off a fixed sentinel, `NONE_HASH`). Two blocks then collide only when their tokens *and* their parent hash — hence their entire preceding context — match, which is exactly the equivalence I need: same content and same context ⟺ same KV ⟺ safe to share. I also fold in `extra_keys` for state that changes the KV but is not in the token ids — a LoRA adapter id, a multimodal input hash — so a block computed under adapter A is never reused for a request under adapter B. The per-block key is therefore $\text{hash}(\text{parent\_block\_hash},\ \text{block\_token\_ids},\ \text{extra\_keys})$, computed left to right along the prompt.
+
+The two safety details the paging foundation already mostly handles. Reference counting: a shared block must not be freed while any request still points at it, and the block pool already reference-counts, so a cached block returns to the free list only when its count hits zero. Eviction: cached-but-unused blocks (ref count zero, still holding a hashed prefix) are kept in case the prefix recurs, but they sit on the free list and can be evicted LRU when memory is needed — and on eviction I drop their entry from the hash map, so the map only ever points at live, correctly-hashed blocks and I never hand out a stale one. The throughput win is direct: a shared $K$-token prefix across $N$ requests is prefilled and stored *once* instead of $N$ times, and that prefill compute and KV memory go back to serving more concurrent requests. The size of the win is entirely a function of how much the workload actually shares — no common prefixes means every block hash misses and nothing is gained; a long shared preamble or heavy multi-sample decoding wins a lot — so this is a workload-dependent gain, reproducible via the prefix-sharing benchmark with caching enabled rather than a fixed multiplier.
+
+```python
+# vllm/v1/core/kv_cache_utils.py
+def hash_block_tokens(hash_function, parent_block_hash, curr_block_token_ids,
+                      extra_keys=None) -> BlockHash:
+    if not parent_block_hash:
+        parent_block_hash = NONE_HASH                 # first-block sentinel
+    curr_block_token_ids_tuple = tuple(curr_block_token_ids)
+    return BlockHash(hash_function(
+        (parent_block_hash, curr_block_token_ids_tuple, extra_keys)))  # chained
+
+# vllm/v1/core/block_pool.py
+def get_cached_block(self, block_hash, kv_cache_group_ids):
+    cached_blocks = []
+    for group_id in kv_cache_group_ids:
+        block = self.cached_block_hash_to_block.get_one_block(
+            make_block_hash_with_group_id(block_hash, group_id))
+        if not block:
+            return None                                # miss -> compute + insert
+        cached_blocks.append(block)
+    return cached_blocks                               # hit -> reuse, skip prefill
+```

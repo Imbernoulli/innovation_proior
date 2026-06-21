@@ -1,0 +1,38 @@
+The reference serving loop leaves the GPU badly underutilized, and the reason is not the kernels — FasterTransformer already has fast fused kernels and is still slow under a real request stream. Throughput at fixed latency is set by the batch size, and the batch size is set by KV-cache memory: decode is memory-bandwidth-bound, so a forward pass over thirty requests costs almost the same wall-clock as over one, and tokens/sec scales nearly linearly with how many requests' caches I can hold resident — right up until memory runs out. So everything comes down to fitting more requests' caches into the same GPU, and when I stare at where the KV memory actually goes, most of it is not holding live tokens at all. The standard scheme gives each request a *contiguous* chunk of cache. Because the cache grows token by token and the final length is unknown, that chunk is reserved sized to the model's maximum sequence length, so a request that stops after thirty tokens still holds a two-thousand-token slab for its whole life — internal over-reservation, dead tail memory. Worse, requests finish at different times and free their slabs, leaving holes; a new request needing a contiguous max-length chunk may not fit in any single hole even when total free memory is plenty — external fragmentation. Between the two, on these systems 60–80% of the KV region is reserved emptiness, and that is exactly what caps the batch. The obvious patches fail: shrinking the reservation forces an expensive cache copy (or an out-of-memory) the moment a request grows past it, since the memory after it belongs to someone else; raising the configured batch under max reservation overflows the moment several long requests coincide. The contiguity requirement itself is the enemy, and the only thing it ever bought me was a kernel that could stride straight through a request's keys and values.
+
+I propose **PagedAttention**, which applies operating-system virtual-memory paging to the KV cache. The OS faces precisely my problem — address spaces that must grow, a fixed physical-memory pool, processes coming and going leaving holes, and no tolerance for requiring each process's memory to be one contiguous slab — and its answer is paging: chop physical memory into fixed-size *pages*, give each process a *page table* mapping its contiguous logical address space to scattered physical pages, and translate logical→physical on every access. That maps onto the cache almost one-to-one and tells me exactly what to build. I carve the entire KV region into fixed-size **blocks**, each holding the keys and values for a fixed number of tokens — say 16 — managed by a single global free list. A request no longer owns a contiguous chunk; it owns a **block table**, a list of physical block numbers, one entry per 16-token span of its sequence, each pointing at whatever physical block happened to be free. Logical position $t$ lives at logical block $\lfloor t/16 \rfloor$, offset $t \bmod 16$; physically that logical block is `block_table[t/16]`, some arbitrary block number in the pool. Growth is then trivial: when a request generates past its last block, pop one free block off the global free list and append its number to the block table — $O(1)$, no copy, no contiguity needed — and on finish, push all its blocks back. Over-reservation collapses: a request holds only $\lceil \text{len}/16 \rceil$ blocks, and the only waste is the unfilled tail of its *last* block, at most $\text{block\_size}-1$ tokens, bounded by the block size rather than the max sequence length. External fragmentation vanishes outright, because every free block is interchangeable — any free block satisfies any request.
+
+What makes this real work rather than an allocator swap is that the attention kernel can no longer assume a request's KV is contiguous; it must now do exactly what paging hardware does, translating logical→physical on the fly. So I push the page table into the kernel. The kernel is launched per (head, sequence); for a given sequence it must attend its query over all past key blocks. It first grabs this sequence's block table — a row in the big `[num_seqs, max_num_blocks_per_seq]` tensor, `block_table = block_tables + seq_idx * max_num_blocks_per_seq` — then iterates over the logical key blocks (warps split them for parallelism). For each logical `block_idx` it reads the physical block number, `physical_block_number = block_table[block_idx]`, then addresses the cache at that physical block: `k_cache + physical_block_number * kv_block_stride + kv_head_idx * kv_head_stride + physical_block_offset * x`, where the offset is the token's position within its 16-token block. That is the whole translation — logical block → physical block number → physical address — and the QK dot products, softmax, and value-weighting that follow are untouched; only *where* keys and values are fetched from now flows through the block table. One subtlety is load-bearing: block numbers are stored as `int32` to keep the table small, but indexing the cache multiplies a block number by `kv_block_stride`, and for a large cache that product overflows `int32`, so the block number must be widened to `int64` *before* the multiply — `static_cast<int64_t>(block_table[block_idx])` — or large caches silently corrupt. The cost of all this is one indirection per 16-token block, negligible against the actual key/value reads, and in exchange it buys the ability to scatter the cache and pack the batch. KV waste drops from most of the cache to near zero, the sustainable batch rises to whatever the *live* tokens need, and since throughput tracks batch size, that headroom is the throughput.
+
+On the management side, replacing contiguous reservation with a block pool plus free list makes allocation a pop off the free queue with no contiguity constraint, and — a bonus I will exploit fully in a later rung — because a request addresses its cache through a block table of block *numbers*, two requests can list the *same* physical block number for a shared span, storing identical keys and values exactly once. That is why each block carries a reference count, incremented on allocation and used so a block returns to the free list only when its last sharer drops it.
+
+```python
+# vllm/v1/core/block_pool.py — the KV region is a pool of fixed-size blocks.
+def get_new_blocks(self, num_blocks: int) -> list[KVCacheBlock]:
+    """Get new blocks from the free block pool. No contiguity required:
+    any free blocks satisfy any request."""
+    if num_blocks > self.get_num_free_blocks():
+        raise ValueError(f"Cannot get {num_blocks} free blocks from the pool")
+    ret: list[KVCacheBlock] = self.free_block_queue.popleft_n(num_blocks)
+    for block in ret:
+        self._maybe_evict_cached_block(block)
+        assert block.ref_cnt == 0
+        block.ref_cnt += 1            # reference-counted: enables block sharing
+    return ret
+```
+
+```cpp
+// csrc/.../attention_kernels.cuh — the paged read (logical -> physical).
+const int* block_table = block_tables + seq_idx * max_num_blocks_per_seq;
+for (int block_idx = start_block_idx + warp_idx; block_idx < end_block_idx;
+     block_idx += NUM_WARPS) {
+  const int64_t physical_block_number =          // page-table lookup,
+      static_cast<int64_t>(block_table[block_idx]);  // int64 before stride mul
+  // key address goes through the physical block number; cache is scattered:
+  const cache_t* k_ptr = k_cache
+      + physical_block_number * kv_block_stride
+      + kv_head_idx * kv_head_stride
+      + physical_block_offset * x;
+  // ... dot k_ptr with the query; QK^T / softmax / value-weighting unchanged ...
+}
+```

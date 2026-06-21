@@ -1,0 +1,39 @@
+The uncertainty run confirmed the diagnosis and then drew the next line for me: 66.81 on ResNet-20, 70.94 on ResNet-56, 72.67 on VGG-16-BN. The headline test passed exactly where I bet — ResNet-20 jumped from PCGrad's 64.31 to 66.81, a clear recovery on the capacity-scarce backbone, the strongest evidence that its collapse was a *weighting* problem, not a direction one. ResNet-56 nudged up modestly (70.20 → 70.94). But VGG went the *other* way — 74.17 down to 72.67 — and that drop is the tell. Uncertainty weighting learns a single *static* scale per task, fixed point tied to the loss *level* ($\sigma_i^2 = L_i$), and it drifts only slowly. If the fine and coarse tasks are learning at genuinely different *rates* over the 200-epoch cosine schedule, a slow-moving learned scale lags the balance the network needs at each phase — and on VGG, where the coarse task is mastered quickly and then contributes a stale, mis-sized gradient, that lag costs accuracy. The limitation is now legible: uncertainty weights by a *level*, with almost no notion of the *speed* at which each task is currently improving. The next lever is rate, not level.
+
+I propose **Dynamic Weight Average (DWA)**: weight each task by how *slowly* its loss is currently descending. What actually keeps two tasks balanced is not how big a loss is in absolute terms — that is the units-and-scale problem uncertainty already tried to neutralize — but how fast each is still dropping. A task whose loss is plummeting epoch over epoch is learning fine and does not need more weight; a task whose descent has stalled relative to the other is the one being neglected by the shared trunk, the one to *up-weight* so it catches up. The cleanest scale-free measure of "how fast is task $k$ descending" is the ratio of its loss now to its loss one step ago,
+$$r_k = \frac{L_k(\text{now})}{L_k(\text{prev})}.$$
+A ratio is unit-free, so it already dissolves the incommensurability that plagued the bare sum: a 100-way fine cross-entropy and a 20-way coarse cross-entropy live at different magnitudes, but their *ratios* are directly comparable. Read $r_k$: $\approx 1$ means the loss is barely moving — it has stalled, the slow learner; $< 1$ means it is still dropping fast — the fast learner; $> 1$ means it is rising. So a *larger* $r_k$ marks a slower (or worsening) learner, and a larger $r_k$ is exactly the task I want to give *more* weight. That monotonicity — bigger ratio gets bigger weight — is the core of the rule, and it is the opposite push from uncertainty weighting, where a bigger *loss* got a bigger $\sigma$ and therefore *less* weight. The two rules act on different quantities and in opposite directions, which is the point.
+
+To turn the two ratios into two weights that sum to a fixed budget — so the overall loss scale does not drift and the fixed SGD learning rate and cosine schedule still see a sensibly-sized loss — I map them through a softmax and rescale:
+$$w_k = K\cdot \text{softmax}(r_k / T),\qquad K = 2,$$
+so the weights sum to $K$ and the mean weight stays 1. The temperature $T$ controls the contrast: as $T \to \infty$ the softmax flattens toward uniform and DWA reduces to equal weighting (each weight $\to 1$) — a soft version that barely reweights; as $T \to 0$ it becomes a hard argmax that dumps almost all the budget on the single slowest task, too aggressive and unstable on a deep net. $T = 2.0$ is the conservative middle — enough contrast to favor the lagging task, not so much that it starves the other. On the very first update there is no previous loss to form a ratio against, so I fall back to the most neutral choice, equal weights $w_\text{fine} = w_\text{coarse} = 1$; thereafter each step reads the current losses, forms the ratios against the stored previous losses, computes the softmax weights, and overwrites the stored losses for next time. The whole state is one buffer of previous losses plus the fixed $T$.
+
+One subtlety must be exactly right, and it is where this departs from a textbook description. In the original formulation the ratio is between two *epoch-averaged* losses, $L_k(t-1)/L_k(t-2)$, smoothed over a whole epoch before it drives a weight held fixed across that epoch. But this interface is invoked *per batch* — `forward` runs every minibatch — and the only per-call state I can cheaply keep is the loss from the *previous call*. So here the ratio is $L_k(\text{this batch}) / L_k(\text{previous batch})$: a *per-batch* rate, recomputed and the buffer overwritten every step. I am honest that this is a noisier signal than the epoch-averaged version — batch-to-batch ratios fluctuate with minibatch composition — but the $T = 2.0$ softmax damps that noise heavily (it is a soft, near-uniform reweighting), and the constant overwriting means the rate always reflects the *most recent* descent, the freshest read on which task is currently lagging. An `epoch == 0` guard pins the weights to uniform for the entire first epoch, so the rate signal only switches on once the losses have a meaningful recent history.
+
+The last detail keeps the gradient honest. The weights are computed from the *detached* losses — `ratios = losses.detach() / (prev + 1e-8)`, so the softmax is a function of constants — and the buffer stores detached losses, so no gradient ever flows *through* the weighting: $w_k$ is a constant multiplier at each step, and the gradient flows only through the live $w_k\cdot L_k$ product into the network and heads. That is correct, because DWA is a *scheduling* rule on the loss weights, not a learnable parameter like uncertainty's log-variances — it registers nothing in the optimizer; it is pure state (a previous-loss buffer) plus a softmax, lighter even than uncertainty's two scalars.
+
+So across the three rungs the progression is clean in *what signal drives the weighting*: PCGrad used the instantaneous gradient geometry and ignored magnitude; uncertainty used the instantaneous loss level and learned a slow static scale; DWA uses the recent loss *rate of change* and pushes weight toward whichever task is descending more slowly, recomputed every step. It directly targets the limitation the uncertainty run exposed. My sharpest claim is on VGG: if its regression was caused by a stale, slow-drifting static weight on a quickly-mastered coarse task, then a rate-driven weight that backs off the coarse task as soon as its loss stops dropping should *recover* VGG, back above 72.67 and plausibly at or above PCGrad's 74.17 — and if DWA does not lift VGG, my "rate vs level" story is wrong. On ResNet-20 I expect a further small gain over 66.81, the rate signal helping the starved trunk allocate weight to whichever task is currently lagging on top of the level-based recovery; on ResNet-56 another modest step over 70.94. If the pattern comes out "VGG recovered, ResNet-20 past 67, ResNet-56 modestly up," it confirms that the *rate* of learning is the signal this hierarchical fine/coarse task most rewards.
+
+```python
+# EDITABLE region of pytorch-vision/custom_mtl.py (lines 195-216) — step 3: Dynamic Weight Average
+class MultiTaskLoss(nn.Module):
+    """Dynamic Weight Average (Liu et al., 2019).
+
+    Weights tasks by relative loss change rate with temperature.
+    """
+
+    def __init__(self, num_tasks=2):
+        super().__init__()
+        self.prev_losses = None
+        self.T = 2.0  # temperature
+
+    def forward(self, fine_loss, coarse_loss, epoch, total_epochs):
+        losses = torch.stack([fine_loss, coarse_loss])
+        if self.prev_losses is None or epoch == 0:
+            weights = torch.ones(2, device=losses.device)
+        else:
+            ratios = losses.detach() / (self.prev_losses + 1e-8)
+            weights = 2 * F.softmax(ratios / self.T, dim=0)
+        self.prev_losses = losses.detach().clone()
+        return (weights * losses).sum()
+```

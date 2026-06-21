@@ -1,0 +1,30 @@
+The mixer is the whole of this problem. The substrate around it is frozen — tied embeddings at $d_{\text{model}}=64$, a fixed short causal convolution as the first layer, fixed norms and MLPs, and a loss that scores only the query positions — so any recall a model achieves on MQAR has to come from the one editable module, the second-layer `CustomMixer`. Its job is narrow and sharp: at a query position $t$ whose token is some key, look back over the prefix $\le t$, find the position where that key was written, and surface the value that sat right after it. The first-layer short conv hands each position a 3-wide window of its neighbors, but a kernel of size 3 reaches three steps back and the matching key can be hundreds of steps away, so the long-range lookup is exactly what the editable mixer must supply. Before I reach for anything attention-flavored I want the honest floor — the oldest default mechanism that can carry information across a sequence at all — because the *way* it fails is what will point at the next rung.
+
+I propose the classical gated recurrent memory cell as that floor: a single-layer LSTM run over the sequence axis, hidden size equal to $d_{\text{model}}$ so it drops straight into the residual stream, with a bias-free linear read-out projecting the hidden sequence back to $d_{\text{model}}$. A recurrent net carries a fixed-dimension hidden state and folds each input into it one step at a time, doing constant work per step regardless of how far along the sequence it is — the opposite of attention's growing cache. The reason I take the *gated* cell rather than a vanilla RNN is a training fact, not a modeling preference. In a plain recurrence the gradient that has to travel from a loss at position $t$ back to an input at position $t-q$ is a product of $q$ per-step Jacobian factors, and a product of $q$ numbers each a little under one decays geometrically in $q$ while each a little over one explodes — the lag sits in the exponent, so a plain RNN cannot reliably learn a dependency spanning hundreds of steps, which is precisely what MQAR is built out of. The LSTM fixes this by keeping a *linear* memory state with a self-loop and wrapping it in three multiplicative, context-sensitive gates. With $x_t$ the input, $h_{t-1}$ the previous output, sigmoid gates and tanh squashing, an input gate decides when to write, a forget gate when to reset, and an output gate when to read:
+
+$$i_t = \sigma(W_{ix}x_t + W_{ih}h_{t-1} + b_i),\quad f_t = \sigma(\cdots),\quad o_t = \sigma(\cdots),\quad g_t = \tanh(\cdots),$$
+$$c_t = f_t \odot c_{t-1} + i_t \odot g_t,\qquad h_t = o_t \odot \tanh(c_t).$$
+
+What makes this train across long lags where the plain recurrence cannot is the state recursion. The error on the state inherits the next step's state error scaled by the forget gate, $\varepsilon_s^t = o_t \odot \tanh'(c_t)\odot \varepsilon_h^t + f_{t+1}\odot \varepsilon_s^{t+1}$, so when the forget gate is open the gradient rides the linear memory at unit gain instead of decaying as a product of sub-unit factors. That single property is the entire reason the gated cell, and not a vanilla RNN, is the recurrent baseline worth running. Causality comes for free: a recurrence at step $t$ has consumed only inputs $\le t$, so the contract is satisfied by construction with no masking. I keep the fill deliberately minimal — one layer, hidden size $d_{\text{model}}$, no extra width, no tricks — because the point of this rung is the floor, and the cell *is* the classical recurrent floor.
+
+The reason to run it is to measure exactly what it cannot do. The cell carries a single fixed-size state $c_t$ of dimension 64, and every key-value pair it wants to remember has to be written into that one vector, superimposed on everything already there. Associative recall is at bottom the index problem: you are handed a list of bindings and later asked for an arbitrary one, and answering an *arbitrary* later query means the state must in effect have retained *all* the bindings, because at write time the model does not know which key will be queried. A fixed 64-dimensional state cannot hold many distinct key$\to$value bindings without them colliding into a blurred superposition that argmaxes to the wrong token. The gates let the cell *choose* what to keep but cannot manufacture capacity — the bucket is 64 numbers wide no matter how cleverly the forget gate prunes. There is a second, subtler limit specific to this task: a recurrent state has no native "compare my current token against a stored set" operation, only "fold my current token into the running summary," so to do recall it must have *already* arranged at write time for each key's value to be recoverable, an indirect learned approximation of associative lookup rather than the direct comparison attention performs. So I expect `mqar-128` (8 pairs) to be poor-to-partial, `mqar-512` (32 pairs) to collapse, and `mqar-2048` (128 pairs over a $16\times$ longer sequence) to sit essentially at chance — and I expect the failure to look like *capacity*, not optimization, so that adding epochs would not rescue it. If that is what I see, the lesson is sharp: the fix is not a bigger or better-gated recurrence, which only widens the bucket linearly, but giving the mixer an explicit *score between the current query and each earlier key* so the lookup is content-addressed rather than compressed — the move to an attention-like mechanism, and the next rung.
+
+```python
+# EDITABLE region of custom_strategy.py — step 1: LSTM (recurrent floor)
+class CustomMixer(nn.Module):
+    """Single-layer LSTM as the sequence mixer (causal by construction)."""
+
+    def __init__(self, d_model: int, seq_len: int):
+        super().__init__()
+        self.lstm = nn.LSTM(
+            input_size=d_model,
+            hidden_size=d_model,
+            num_layers=1,
+            batch_first=True,
+        )
+        self.out_proj = nn.Linear(d_model, d_model, bias=False)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        h, _ = self.lstm(x)
+        return self.out_proj(h)
+```

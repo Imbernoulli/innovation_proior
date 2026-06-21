@@ -1,0 +1,38 @@
+The Transformer told me, in numbers, exactly which problem I have to solve. In-distribution the attention stack fits well — $0.96$ token accuracy on `dyck-k2-m3`, $0.92$ on `dyck-length-ood` — so the model *can* represent the matching when positions are familiar. But on the length-OOD splits it sags exactly where I predicted: `ood_token_acc` falls to $0.90$ on the easy `dyck-k2-m3` and collapses to $0.73$ on `dyck-length-ood`, where training tops out at $64$ and the test runs $128$–$256$. The per-string numbers make the diagnosis brutal: `ood_string_acc` is $0.001$, $0.0$, $0.0$ — essentially *no* OOD string is fully correct. That is the fitting-fine, extrapolating-poorly signature of absolute positions: the mechanism that lets attention locate the matching bracket is anchored to absolute coordinates, and at OOD lengths those coordinates are untrained noise. The next rung must remove the dependence on absolute position.
+
+I propose a **2-layer LSTM** language model. The cleanest way to kill the absolute-position failure is to stop processing the sequence as a set of indexed positions and process it as a *stream*: a recurrent net updates its state by the *same* transition at every step, regardless of absolute index. There is no position table to run off the end of, so a string of length $200$ is processed by the very rule that was trained on every step it ever saw — order comes for free from the sequential processing. But "recurrent" alone is not enough, because the plain Elman recurrence has its own wall, and I have to understand it precisely or I will just trade one failure for another.
+
+Follow a single error signal backward through a recurrence. The error that lands on a unit at time $t$ and must reach a unit $q$ steps in the past arrives as a *product of $q$ factors*, each of the form $f'(\text{net})\cdot w$ — the chain rule telescoped over the path. If every factor has magnitude below $1$ (the ordinary case: the logistic derivative peaks at $0.25$ and reasonable weights keep $|f'\cdot w|<1$), the product shrinks like $(\,\cdot<1\,)^q$ and the error *vanishes* exponentially in the lag; if every factor exceeds $1$ it *explodes*. Either way the lag $q$ sits in the exponent. For Dyck this is fatal exactly where it matters: matching a closer to its opener requires carrying gradient across the whole span of the nested sub-string, and on OOD lengths that span is longer than anything trained.
+
+If the product of factors is the disease, the cure must make the product *exactly $1$* for any $q$. In the simplest setting — a single unit with self-connection weight $w$ — the one-step backward multiplier is $f'(\text{net})\cdot w$, and setting it to $1$ forces $f'(\text{net})=1/w$, a constant, so $f$ must be *linear*; the clean choice is the identity with $w=1$. Then the state simply persists step after step and the backpropagated error riding through it is multiplied by exactly $1$ at every step — a constant error carousel along which gradient survives an arbitrarily long lag. This is the seed: a protected linear memory, precisely the object Dyck wants, because the depth-$m$ stack is information that must be *held* across the nested span and *read* when the matching closer arrives.
+
+A bare linear self-loop cannot be wired to the rest of the net without conflict, though. One incoming weight would have to do two opposite jobs — *write* the memory when relevant information arrives and *protect* what is stored at all other moments — and one weight cannot be context-sensitive. Another *unit* can be, and the control must be *multiplicative*, not additive, because protecting the memory means the irrelevant input contributes exactly zero, which only a multiply by a value in $[0,1]$ achieves. So I wrap the carousel in learned sigmoid gates: an **input gate** that decides when to write, an **output gate** that decides when to read, and — because within a string the working memory must reset as sub-structures complete — a **forget gate** that multiplies the carried-over state, recovering the exact carousel when it is $1$ and wiping the memory when it is $0$, so the model discovers its own reset points, which for Dyck are exactly the bracket closures. The forward pass is the standard gated cell,
+$$c_t = f_t \odot c_{t-1} + i_t \odot g_t, \qquad h_t = o_t \odot \tanh(c_t),$$
+with the gates and $\tanh$ candidate $g_t$ computed from $[x_t, h_{t-1}]$. The backward state error obeys $\varepsilon_s^t = \dots + f_{t+1}\cdot\varepsilon_s^{t+1}$ — unit gain across the lag when the forget gate is open, a deliberate drop when the cell has chosen to forget. This is exactly what `nn.LSTM` implements, so I use the fused, optimized version rather than re-deriving the equations in code. Critically, none of it references absolute position: the cell's update at step $200$ is the same learned function as at step $60$.
+
+The fill is `nn.Embedding(vocab, hidden)` $\to$ `nn.LSTM(hidden, hidden, num_layers=2, batch_first=True)` $\to$ `nn.Linear(hidden, vocab)`, no position table. I use **two** layers so the second can compute over the first's summary of the stack — for `dyck-k8-m5`, where $8$ bracket types must be disambiguated, one layer of width $64$ may not cleanly separate the closer identities, and a second gives the network room to compose "what is on top" with "which of $8$ types it is." Width is $64$, which the bounded-memory result makes generous: an exact recognizer needs only $O(m\log k)$ units — for the hardest config $m=5, k=8$ that is on the order of $5\cdot 3=15$ — so $64$ is well above the floor and the question is purely whether gradient descent *finds* the stack-tracking state, not whether $64$ units can hold it. The model comes to roughly $67{,}000$ parameters, a quarter of the Transformer's and far inside the $500{,}000$ budget.
+
+I want to be clear-eyed that the recurrence removes the *absolute-position* failure but not every length-generalization risk: the LSTM's memory is still a *fixed-width* vector. The bet is that this matches Dyck-(k,m) exactly — the OOD strings are longer but the *depth* never exceeds $m\le 5$, so the cell only ever holds a bounded stack and slides it as brackets open and close, which a forget-gated linear state can do at any length. The falsifiable expectations against the Transformer's numbers: `ood_token_acc` should *rise* across the board and most on `dyck-length-ood` (where the Transformer collapsed to $0.73$); per-string accuracy should climb off the $0$ floor as the model tracks rather than approximates by position; and the one place I am not confident is `dyck-k8-m5` — if the LSTM also sags there with weak per-string accuracy, that is the tell that a *fixed-width* memory struggles to maintain a *crisp* discrete stack, and the next rung should give the model an explicit stack data structure rather than asking a dense vector to emulate one.
+
+```python
+def build_model(config: TaskConfig) -> DyckModel:
+    """Two-layer LSTM language model (Hewitt et al. EMNLP 2020 baseline)."""
+
+    class LSTMModel(DyckModel):
+        def __init__(self, vocab: int, hidden: int, num_layers: int):
+            super().__init__()
+            self.embed = nn.Embedding(vocab, hidden)
+            self.rnn = nn.LSTM(hidden, hidden, num_layers=num_layers, batch_first=True)
+            self.head = nn.Linear(hidden, vocab)
+
+        def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+            h = self.embed(input_ids)
+            h, _ = self.rnn(h)
+            return self.head(h)
+
+    return LSTMModel(
+        vocab=vocab_size(config.k),
+        hidden=config.hidden_dim,
+        num_layers=2,
+    )
+```
