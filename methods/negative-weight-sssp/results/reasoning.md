@@ -1,0 +1,217 @@
+Let me start from the thing that actually hurts. I have a directed graph with integer weights, some negative, and I want shortest paths from a source. If all weights were non-negative I'd run Dijkstra and be done in $O(m+n\log n)$ — essentially linear. The moment one edge goes negative, Dijkstra is dead: its whole correctness rests on "extract the minimum tentative distance, it's final," and a negative edge downstream can later undercut a vertex I already finalized. So I'm thrown back on Bellman–Ford, which survives negatives but costs $O(mn)$ — quadratic on a sparse graph. Thirty years of scaling work pushed the combinatorial bound to $O(m\sqrt n\log W)$ and then it just sat there. The only people who've gotten near-linear lately did it by reformulating everything as a min-cost flow and throwing interior-point methods plus a tower of dynamic data structures at it. That feels wrong for a problem this elementary. I want to know: can I get near-linear with nothing but Dijkstra, Bellman–Ford, and graph surgery?
+
+So what is the real object here. Johnson taught me the move: pick a price function $\phi:V\to\mathbb{Z}$ and reweight every edge as $w_\phi(u,v)=w(u,v)+\phi(u)-\phi(v)$. Along any path the intermediate $\phi$'s telescope, so $w_\phi$ of a path differs from $w$ only by the endpoints' prices, and around any *cycle* the prices cancel completely: $w_\phi(C)=w(C)$. That means $\phi$ doesn't change which paths are shortest and doesn't change which cycles are negative — $G$ and $G_\phi$ are equivalent. And if I can find a $\phi$ making *every* reduced weight $\ge 0$, then $G_\phi$ is a non-negative graph and Dijkstra finishes it. So the entire problem collapses to one thing: **find an integral $\phi$ that makes the graph non-negative** (assuming no negative cycle).
+
+The trouble is the obvious $\phi$. Johnson's own choice is $\phi(v)=\operatorname{dist}(s,v)$; then $w_\phi(u,v)=w(u,v)+\operatorname{dist}(s,u)-\operatorname{dist}(s,v)\ge 0$ is just the triangle inequality. Beautiful, but computing those distances *is* the negative-weight SSSP problem. I've gone in a circle. I need a way to manufacture a non-negativizing $\phi$ without already knowing the distances.
+
+Let me look harder at *why* Bellman–Ford is slow, because maybe the cost has structure I can exploit. Bellman–Ford does $n-1$ rounds of relaxing every edge. But the reason it needs many rounds isn't $n$ per se — it's that a shortest path can thread through many negative edges, and each round only pushes the frontier of correct distances forward past one "bad" segment. If a shortest path uses only a handful of negative edges, the correct distance to its endpoint settles in a handful of rounds. Let me make that precise. For each vertex $v$, define
+$$\eta_G(v) := \text{the minimum, over shortest } s\to v \text{ paths } P, \text{ of } |E^{neg}(G)\cap P|,$$
+the fewest negative edges any shortest path to $v$ must use, and $\eta(G)=\max_v\eta_G(v)$. My claim — and I'll prove it shortly — is that there's a Dijkstra/Bellman–Ford hybrid whose cost is governed by $\sum_v\eta_G(v)$, not by $mn$. If that's right, the whole game becomes: *drive $\eta$ down to something like polylog, and the hybrid is near-linear.*
+
+Let me build that hybrid carefully, because its exact behavior dictates everything downstream. I'll call it $\textsf{ElimNeg}$. Keep a distance estimate $d(v)$, $d(s)=0$, rest $\infty$. Alternate two phases. The **Dijkstra phase**: run Dijkstra but relax *only the non-negative edges*, with a priority queue. The **Bellman–Ford phase**: sweep once over the negative edges (it's cleanest to sweep all edges out of "marked" vertices — vertices whose label changed) and relax them, pushing any improved vertex back into the queue. Then repeat. I need to know: how many alternations until $d(v)=\operatorname{dist}(s,v)$?
+
+Here's the induction. After iteration $0$ of the Dijkstra phase — which is just ordinary Dijkstra on the non-negative subgraph — I have correct distances for every $v$ with $\eta(v)=0$ (paths that use no negative edges at all), by the standard Dijkstra proof. Now suppose after iteration $i-1$ I have correct $d$ for all $v$ with $\eta(v)\le i-1$. Take a $v$ with $\eta(v)=i$ and a shortest path $P=(u_0=s,\dots,u_k=v)$ realizing it with exactly $i$ negative edges. Walk along $P$ to the *last* negative edge $(u_{j-1},u_j)$ — so the suffix $u_j\to\cdots\to v$ is all non-negative. The prefix $s\to u_{j-1}$ uses $i-1$ negative edges, so $\eta(u_{j-1})\le i-1$ and by induction $d(u_{j-1})=\operatorname{dist}(s,u_{j-1})$ is already correct. After the Bellman–Ford phase of iteration $i-1$ relaxes the negative edge $(u_{j-1},u_j)$, I get $d(u_j)\le d(u_{j-1})+w(u_{j-1},u_j)=\operatorname{dist}(s,u_j)$. Then the Dijkstra phase of iteration $i$ relaxes the all-non-negative suffix in order — Dijkstra gets that right — so $d(v)\le d(u_j)+w(\text{suffix})=\operatorname{dist}(s,v)$. And $d$ never undershoots the true distance. So $d(v)=\operatorname{dist}(s,v)$ after iteration $i$. By induction, $v$ is settled within $\eta(v)+1$ iterations.
+
+Now the running time, and I have to be careful about queue churn because that's the real cost. The key fact: a vertex can only enter the queue in iterations $0,1,\dots,\eta(v)$ — after that its label is final and it never gets reactivated. And within a single iteration each vertex is added to the queue at most once in the Dijkstra phase (I'll need a small invariant for this) and at most once in the Bellman–Ford phase. So $v$ is added at most $2\eta(v)+2$ times overall, and the total number of queue insertions is $N\le 2\sum_v\eta_G(v)+2n$. Each insertion/extraction is $O(\log n)$, and — here's where it bites — the Bellman–Ford phase work charged to extracting $v$ is $O(\text{out-degree}(v))$. If out-degrees are unbounded, that's bad. So I'll *require constant out-degree*. That's not a real restriction: I can split every high-degree vertex into a little 0-weight cycle of copies and attach one original edge per copy, which blows the graph up by only $O(m)$ vertices and edges and changes nothing about distances. With constant out-degree the BF work per extraction is $O(1)$, and the total is
+$$O\big(\log n\cdot(n+\textstyle\sum_v\eta_G(v))\big).$$
+Good — that's exactly the bound I wanted, and it tells me constant out-degree isn't a cosmetic assumption, it's what makes the per-extraction charge $O(1)$. (It also lets me write $m=\Theta(n)$ from here on.)
+
+I owe myself the small invariant I waved at: that within one Dijkstra phase no vertex is queued twice, and more basically that I never lose an active edge. Call an edge $(v,x)$ *active* if $d(v)+w(v,x)<d(x)$. Invariant: if $(v,x)$ is active then $v$ is in the queue or marked; and if additionally $(v,x)$ is non-negative then $v$ is in the queue. This holds initially and is preserved by the three things that can disturb it — extracting a vertex (it was marked first, and all its outgoing non-negative edges were just made inactive), unmarking a vertex (only after its edges were relaxed inactive), and decreasing some $d(x)$ (we add $x$ to the queue before decreasing). From that invariant: when the algorithm halts (queue empty, all unmarked) there are no active edges, i.e. $d(v)+w(v,x)\ge d(x)$ everywhere — exactly the statement that $d$ is a valid non-negativizing price function. And one more sub-invariant for the "queued once" claim: during a Dijkstra phase, every marked vertex has $d$-value $\le$ every queued vertex's $d$-value (because we mark in increasing $d$ order and non-negative relaxations only push children above the current minimum). So a vertex, once marked, is never re-added in that phase — if it were, the new key would have to be below a marked value, contradiction. Notice this same termination argument shows that if $G$ *does* have a negative cycle, some edge stays active forever and $\textsf{ElimNeg}$ simply never halts (equivalently $\sum_v\eta_G(v)=\infty$). I'll lean on that: "doesn't terminate" is an acceptable behavior on negative-cycle inputs, and I'll convert it to a clean error later.
+
+One bookkeeping choice pays off repeatedly: instead of the real source, attach a **dummy source** $s$ with a weight-$0$ edge to *every* vertex (and no edges in). Then $\operatorname{dist}(s,v)=\min_u\operatorname{dist}(u,v)\le 0$ for all $v$, every vertex is reachable, and $\eta$ is defined uniformly for everybody. $G_s$ has a negative cycle iff $G$ does. From now on $s$ means this dummy source unless I say otherwise.
+
+So the architecture is clear in outline: if I can keep $\eta$ small, $\textsf{ElimNeg}$ gives me the price function in near-linear time. The whole problem has turned into **a fight to make $\eta$ small.** How?
+
+First idea: scaling. I don't have to attack the full-precision weights at once. Goldberg's bit-scaling says: it suffices to solve the special case where weights are $\ge -1$, because then a $1$-feasible *integral* price function automatically has $w_\phi(e)\ge 0$ (integers $\ge -1$ that are $\ge -1$ after rounding are $\ge 0$), and you walk a general graph down to that case in $O(\log W)$ doublings. Let me set up the recursion concretely. I'll define a subroutine $\textsf{ScaleDown}(G,\Delta,B)$ with the contract: input weights $\ge -2B$; output an integral $\phi$ with $w_\phi(e)\ge -B$ for all $e$. If I can do that, an outer loop $\textsf{SPmain}$ that repeatedly halves $B$ (starting from $B$ around $2n$ and the weights pre-scaled up by $2n$ so everything stays integral) marches the weights from $\ge -2n$ to $\ge -1$ in $\log_2 B=O(\log n)$ rounds; then I add $+1$ to every reduced weight to clear the last $-1$'s, and since the scaling kept all distances multiples of $2n$, that $+1$ per edge can't reorder any shortest path (any two distinct path weights differ by more than $n\ge |P|$), so a final Dijkstra returns a true shortest-path tree. Each $\textsf{ScaleDown}$ call halving $B$ is the workhorse; all the difficulty lives there.
+
+I need negativity and the $\eta$ count to talk to each other. Inside $\textsf{ScaleDown}$ I'll work mostly with the graph $G^B$: **add $B$ to every negative edge, leave non-negative edges alone.** So $w^B(e)\ge -B$ when the input had $w(e)\ge -2B$ — already that's progress on the weights. But the real reason for shifting *only the negatives* is this identity: a path $P$ that uses $k$ negative edges has
+$$w^B(P)=w(P)+k\cdot B.$$
+Each negative edge gained exactly $B$; non-negative edges unchanged. So $w^B$ knows how many negative edges a path used, scaled by $B$. That coupling is the lever for the whole analysis: it lets me convert a statement about *how negative a path is* into a statement about *how many negative edges it has*, and vice versa. Hold onto it.
+
+I still need to crush $\eta$. Let me think about *where* the negativity lives. Suppose I had a piece of the graph that is strongly connected and has *small diameter* — say every pair $u,v$ in it satisfies $\operatorname{dist}(u,v)\le D$ and $\operatorname{dist}(v,u)\le D$ for a smallish $D$. Could a shortest path inside such a piece be forced through many negative edges? Picture the $B$-shifted graph $G^B[V_i]$ restricted to that piece, with the dummy source. Take a shortest $s\to v$ path $P$ inside it (drop the dummy edge), starting at some $u$. If $P$ uses $k=\eta_{H^B}(v)$ negative edges, then by the identity $w^B(P)=w(P)+kB$, so $w(P)=w^B(P)-kB$. Since the dummy edges are weight $0$, $w^B$ of the path from the dummy is $\le 0$, hence $w^B(P)\le 0$, hence $w(P)\le -kB$. But $u$ and $v$ live in the same small-diameter piece, so $\operatorname{dist}(v,u)\le D$. Concatenate: I've found a closed walk of weight $w(P)+\operatorname{dist}(v,u)\le -kB+D$. If $kB>D$, that's a *negative cycle*. So **if there's no negative cycle, then $kB\le D$, i.e. $\eta_{H^B}(v)\le D/B$ inside any piece of weak diameter $D$.** This is gorgeous: small diameter, measured against the right $B$, *forces* shortest paths to use few negative edges. The intuition the math is shouting is that you can't pile up a lot of negativity in a region where everything is tightly reachable in the positive sense — the negativity would close a loop. That's the whole idea.
+
+This tells me exactly what diameter to aim for. I want the recursion to *halve* $\eta$: go from a problem with $\eta\le\Delta$ to subproblems with $\eta\le\Delta/2$. Set $d=\Delta/2$ and demand pieces of weak diameter $D=dB=B\Delta/2$. Then inside each piece $\eta_{H^B}(v)\le D/B=d=\Delta/2$. Recurse $\textsf{ScaleDown}$ on the union $H$ of those pieces with parameter $\Delta/2$. Recursion depth $O(\log\Delta)$, because $\Delta$ halves each level until the base case $\Delta\le 2$ where $\textsf{ElimNeg}$ alone is cheap ($\eta\le 2$).
+
+But how do I *get* small-diameter pieces, and what does it cost? This is where I reach for low-diameter decomposition. The catch: every LDD I know of works only on **non-negative** weights, and it was built for parallel/distributed/dynamic settings, never for a sequential negative-weight shortest-path computation. Can I still use it? Yes — feed it $G^B_{\ge 0}$, the $B$-shifted graph with all *still-negative* weights rounded up to $0$. Rounding up only increases distances, so a weak-diameter bound in $G^B_{\ge 0}$ implies the same bound (or better) in $G$. The decomposition will hand me a set $E^{rem}$ of removed edges such that every strongly connected component of $G^B\setminus E^{rem}$ has weak diameter $\le D$ in $G$. That's the structure I needed.
+
+Hold on — I haven't yet asked what I *pay* for cutting $E^{rem}$, and that's the crux of the time bound. After I make the inside-SCC edges and the between-SCC edges non-negative (I'll get to how in a second), the only possibly-negative edges left are the cut edges $E^{rem}$, and $\textsf{ElimNeg}$'s cost in the final phase is governed by how many cut edges a shortest path crosses. So I need: **for every $v$, the shortest path $P_{G^B}(v)$ crosses $O(\log^2 n)$ edges of $E^{rem}$ in expectation.** What does that demand of the decomposition? I need the cut probability of an edge to scale with its weight: $\Pr[e\in E^{rem}]=O\big(w(e)\cdot\log^2 n/D + n^{-10}\big)$. Then I can bound the expected number of cut edges on $P_{G^B}(v)$ by summing edge weights along the path. Let me check the sum works out. The total $w^B_{\ge 0}$-weight of $P_{G^B}(v)$ is at most $\eta_{G^B}(v)\cdot B$: indeed $w^B_{\ge 0}(P)\le w^B_s(P)+|P\cap E^{neg}|\cdot B$ because rounding a negative $w^B$ edge (which is $\ge -B$) up to $0$ adds at most $B$, and $w^B_s(P)\le 0$ since the dummy edge is $0$; and $|P\cap E^{neg}(G^B)|=\eta_{G^B}(v)$. So $w^B_{\ge 0}(P_{G^B}(v))\le \eta_{G^B}(v)\cdot B\le \Delta B$. Now with $D=B\Delta/2$,
+$$\mathbb{E}\big[|P_{G^B}(v)\cap E^{rem}|\big]=O\Big(\frac{w^B_{\ge 0}(P_{G^B}(v))\cdot\log^2 n}{B\Delta/2}+|P|\cdot n^{-10}\Big)=O\Big(\frac{2\,\eta_{G^B}(v)\,\log^2 n}{\Delta}+n^{-9}\Big),$$
+which is $O(\log^2 n)$ exactly because $\eta_{G^B}(v)\le\eta(G^B)\le\Delta$. The choice $D=B\Delta/2$ is doing double duty: it makes the recursion halve $\eta$ *and* it makes the expected cut count polylog. That's not a coincidence I imposed; both fall out of the same $D$.
+
+So the phase structure of $\textsf{ScaleDown}$ writes itself.
+
+**Phase 0** — decompose. Compute $E^{rem}\gets\textsf{LDD}(G^B_{\ge 0},\,D=dB)$ and let $V_1,V_2,\dots$ be the SCCs of $G^B\setminus E^{rem}$. Guarantees: each $V_i$ has weak diameter $\le dB$ (I'll verify: $\operatorname{dist}_G(u,v)\le\operatorname{dist}_{G^B_{\ge 0}}(u,v)\le dB$ for $u,v\in V_i$), and $\mathbb{E}[|P_{G^B}(v)\cap E^{rem}|]=O(\log^2 n)$ as just derived.
+
+**Phase 1** — make the inside-SCC edges non-negative. Let $H=\bigcup_i G[V_i]$, the graph keeping only edges inside SCCs. By the small-diameter-forces-few-negatives argument above, $\eta(H^B)\le d=\Delta/2$ (no negative cycle). So $H$ meets $\textsf{ScaleDown}$'s input contract with parameter $\Delta/2$, and I recurse: $\phi_1\gets\textsf{ScaleDown}(H,\Delta/2,B)$. The stated output contract gives $w_{\phi_1}(e)\ge -B$ inside $H$... wait, I want the $B$-shifted weights non-negative, $w^B_{\phi_1}(e)\ge 0$ inside the SCCs, not just $w_{\phi_1}(e)\ge -B$. Let me re-read my own contract. The recursive call advertises $\phi_1$ with $w_{\phi_1}(e)\ge -B$ on $H$'s edges — hmm, that's not obviously non-negative once I shift by $B$. 
+
+Let me stare at this; something's off in how I'm threading $B$. The recursion is on $H$ whose weights are the *original* $w$ restricted to inside-SCC edges, and the contract of $\textsf{ScaleDown}(H,\Delta/2,B)$ is: input $w\ge -2B$, output $\phi$ with $w_\phi(e)\ge -B$. But I want $w^B_{\phi_1}\ge 0$ on inside edges, i.e. I'm measuring against $w^B=w+B$ on the negatives. And indeed $w^B_{\phi_1}(e)=w_{\phi_1}(e)+B\ge -B+B=0$ for the negative edges, and for non-negative edges $w^B=w$ and $w_{\phi_1}(e)\ge -B$... that's still not obviously $\ge 0$. 
+
+The externally-stated output $w_{\phi_1}(e)\ge -B$ is only the *weak* form; it can't be what I lean on, because on a non-negative edge ($w^B=w$) it gives $w^B_{\phi_1}(e)=w_{\phi_1}(e)\ge -B$, not $\ge 0$. So $w_{\phi_1}(e)\ge -B$ and $w^B_{\phi_1}(e)\ge 0$ are genuinely *not* the same statement — the latter is strictly stronger. But I don't need to derive the strong form from the weak one; I should read it off how $\textsf{ScaleDown}$ actually terminates. The last thing $\textsf{ScaleDown}(H,\Delta/2,B)$ does is run the hybrid on $H^B$ until it has no active edge, which leaves $H^B_{\phi_1}$ with *every* edge $\ge 0$, i.e. $w^B_{\phi_1}(e)\ge 0$ for all $e\in H$. The reported "$w_{\phi_1}(e)\ge -B$" is just the weaker $w_{\phi_1}=w^B_{\phi_1}-B\cdot[\text{$e$ negative}]\ge -B$ consequence I expose to callers; internally the recursion has already driven $H^B_{\phi_1}$ all the way to non-negative. So the right thing to carry out of Phase 1 is the strong internal guarantee, and indeed $G^B_{\phi_1}[V_i]$ is non-negative for every $i$. Crisis averted — I was about to lean on the weak external contract when the recursion actually hands me the strong one.
+
+Let me also pin down the $\eta(H^B)\le d$ claim with full care, since it carries the recursion. Take $v$, let $P=P_{H^B}(v)\setminus s$ be the dummy-trimmed shortest path in $H^B_s$, first real vertex $u$. Three facts: (a) $w_{H^B}(e)=w_H(e)+B$ on negative edges; (b) the count of negative edges on $P$ equals $\eta_{H^B}(v)$; (c) $w_{H^B}(P)=w_{H^B_s}(P_{H^B}(v))\le 0$ since the dummy edge to $u$ has weight $0$ and the path is shortest from the dummy. Then
+$$\operatorname{dist}_G(u,v)\le w_H(P)\overset{(a)}{\le}w_{H^B}(P)-\eta_{H^B}(v)\cdot B\overset{(c)}{\le}-\eta_{H^B}(v)\cdot B.$$
+And $u,v$ in the same $V_i$ gives $\operatorname{dist}_G(v,u)\le dB$. No negative cycle $\Rightarrow\operatorname{dist}_G(u,v)+\operatorname{dist}_G(v,u)\ge 0\Rightarrow\eta_{H^B}(v)\le dB/B=d$. Clean.
+
+**Phase 2** — make the between-SCC edges non-negative. After Phase 1 the inside-SCC edges are non-negative. Remove $E^{rem}$ and contract each $V_i$ to a node: what's left of $G^B\setminus E^{rem}$ between SCCs is a **DAG** (the $V_i$ are exactly the maximal SCCs, so no cycle survives contraction). A DAG with non-negative inside-blocks is trivially fixable: process the SCCs in topological order and give each one a single shared price so its incoming edges become non-negative; a shared price doesn't disturb the already-fixed inside edges. Concretely, for SCC $V_j$ let $\mu_j=\min\{w(u,v):(u,v)\in E^{neg},\,u\notin V_j,\,v\in V_j\}$ (the most negative edge entering $V_j$, or $0$), set $M_1=0$ and $M_j=M_{j-1}+\mu_j=\sum_{k\le j}\mu_k$, and let $\phi(v)=M_j$ for $v\in V_j$. Then for an edge $u\in V_i\to v\in V_j$ (topological order $\Rightarrow i<j$), $w_\phi(u,v)=w(u,v)+M_i-M_j=w(u,v)-\sum_{k=i+1}^{j}\mu_k\ge w(u,v)-\mu_j\ge 0$ since $\mu_j\le w(u,v)$ and the remaining $\mu_k\le 0$. Call this $\textsf{FixDAGEdges}$; it's $O(m+n)$. Set $\phi_2=\phi_1+\psi$. Now every edge of $G^B_{\phi_2}\setminus E^{rem}$ is non-negative, so the only negatives left are inside $E^{rem}$.
+
+**Phase 3** — clean up the cut edges with $\textsf{ElimNeg}$. The negatives of $G^B_{\phi_2}$ are all in $E^{rem}$. Run $\textsf{ElimNeg}((G^B_s)_{\phi_2},s)$ to get $\psi'$, and set $\phi_3=\phi_2+\psi'$. (A subtlety I have to respect in the order of operations: I add the dummy source to $G^B$ *first*, then apply $\phi_2$, defining $\phi_2(s)=0$, so that $(G^B_s)_{\phi_2}$ stays equivalent to $G^B_s$ and $s$ still reaches everyone. Applying the price before adding $s$ would silently change which graph I'm solving — that's a real trap, easy to get backwards.) The cost is $O((m+\sum_v\eta_{(G^B_s)_{\phi_2}}(v))\log n)$. Bound the $\eta$: a shortest $s\to v$ path $P_{G^B}(v)$ is still shortest in the equivalent $(G^B_s)_{\phi_2}$, and the negative edges it can hit there are only the cut edges, so $\eta_{(G^B_s)_{\phi_2}}(v)\le|P_{G^B}(v)\cap E^{rem}|+1$ (the $+1$ for the possibly-negative dummy edge after pricing). Taking expectations and using the Phase 0 bound, $\mathbb{E}[\eta_{(G^B_s)_{\phi_2}}(v)]\le\mathbb{E}[|P_{G^B}(v)\cap E^{rem}|]+1=O(\log^2 n)$. So Phase 3 costs $O(m\log^3 n)$ in expectation. And the output is correct: $\textsf{ElimNeg}$ makes $(G^B_s)_{\phi_3}$ non-negative, hence $w^B_{\phi_3}(e)\ge 0$, hence $w_{\phi_3}(e)\ge w^B_{\phi_3}(e)-B\ge -B$ — exactly the $\textsf{ScaleDown}$ output contract. Notice the correctness of the output never needed the no-negative-cycle assumption; if there's a cycle, $\textsf{ElimNeg}$ just loops forever, which is allowed.
+
+Tally the recursion: Phase 0 is $O(m\log^3 n)$ (the decomposition cost — I'll verify), Phases 1–2 outside the recursive call are $O(m+n)$, Phase 3 is $O(m\log^3 n)$ expected. One recursive call per level, $O(\log\Delta)$ levels, so $\textsf{ScaleDown}=O(m\log^3 n\log\Delta)$. With $\Delta=n$, that's $O(m\log^4 n)$ per $\textsf{SPmain}$ iteration, $\times\,O(\log n)$ iterations $=O(m\log^5 n)$ expected for $\textsf{SPmain}$. 
+
+Now I owe the decomposition itself, because everything rests on it delivering (i) weak diameter $\le D$ and (ii) $\Pr[e\in E^{rem}]=O(w(e)\log^2 n/D+n^{-10})$ in time $O(m\log^2 n+n\log^3 n)$. The existing directed decompositions were built for dynamic maintenance and are too slow / too heavy; I want a clean static one. Let me design it.
+
+The right primitive is **ball-carving with a randomly chosen radius.** For a vertex $v$ and radius $R$, $\operatorname{Ball}^{out}(v,R)=\{u:\operatorname{dist}(v,u)\le R\}$, and its boundary $\partial$ is the edges leaving it; similarly $\operatorname{Ball}^{in}$. Why random radius? Because I want the probability an edge $(u,v)$ ends up *cut* to be proportional to its weight. If I grow a ball outward and the radius is drawn so each additional unit of radius is "one more coin flip," then $(u,v)$ is cut only if the radius lands in the window between reaching $u$ and reaching $v$, a window of width $w(u,v)$. A **geometric** radius $R\sim\textsf{Geo}(p)$ makes this exact via memorylessness: condition on $u$ already being in the ball ($R\ge\operatorname{dist}(v,u)$); then $(u,v)$ is cut iff the ball stops before reaching $v$, i.e. $R<\operatorname{dist}(v,u)+w(u,v)$, and memorylessness collapses this to $\Pr[R\le w(u,v)]\le p\cdot w(u,v)$ (the chance one of the next $w(u,v)$ coins is a head, union bound). Set $p=\min\{1,80\log n/D\}$ and the per-edge cut probability in one ball-grow is $O(w(e)\log n/D)$ — exactly the shape I need, with one $\log n$; the second $\log n$ will come from the recursion. A fixed radius can't do this: it would cut a deterministic annulus and lose all proportionality to edge weight. So geometric radius is forced by the proportionality requirement, not chosen for convenience.
+
+Here's the decomposition. **Phase 1, mark light/heavy.** Sample $k=\Theta(\log n)$ random vertices $S$, compute their in- and out-balls of radius $D/4$, and for every $v$ read off $|\operatorname{Ball}^{in}(v,D/4)\cap S|$ and $|\operatorname{Ball}^{out}(v,D/4)\cap S|$. Mark $v$ *in-light* if its in-ball sample count is $\le 0.6k$, else *out-light* if its out-ball count is $\le 0.6k$, else *heavy*. By Chernoff, w.h.p. an in-light vertex really has $|\operatorname{Ball}^{in}(v,D/4)|\le 0.7|V|$, an out-light one $|\operatorname{Ball}^{out}(v,D/4)|\le 0.7|V|$, and a heavy one has *both* in- and out-balls $>0.5|V|$. The point of sampling is to decide cheaply, with $O(\log n)$ Dijkstras, which vertices have a small enough ball to carve.
+
+**Phase 2, carve.** While some light vertex $v$ remains: draw $R_v\sim\textsf{Geo}(p)$, grow the appropriate ball ($\operatorname{Ball}^{in}$ if in-light, $\operatorname{Ball}^{out}$ if out-light), put its boundary edges into $E^{rem}$, **recurse** on the induced subgraph of the ball, then **delete the ball** from the working graph and continue. If ever $R_v>D/4$ or the carved ball exceeds $0.7|V|$, bail out by returning $E^{rem}=E(G)$ (singletons — trivially small diameter); I'll show this bail-out is astronomically rare. Why recurse inside the ball? Because carving guarantees the ball's *boundary* separates it from the rest (any $x$ inside, $y$ outside end up in different SCCs of $G\setminus E^{rem}$, since no edge leaves the ball after we cut $\partial$), but it says nothing about the diameter *within* the ball — the ball itself might be big and stringy. Recursing decomposes it further. And why is a light vertex's ball $\le 0.7|V|$? That's exactly what the marking guaranteed, so each recursion shrinks the vertex count to $\le 0.7|V|$, giving recursion depth $O(\log_{10/7}n)=O(\log n)$ per vertex, hence $O(n\log n)$ total recursive calls and each vertex/edge in $O(\log n)$ of them.
+
+**Clean-up.** When no light vertices remain, only heavy ones are left, and any two heavy $x,y$ have in/out balls of radius $D/4$ each covering $>0.5|V|$, so they intersect in some $w$, giving $\operatorname{dist}(x,y)\le\operatorname{dist}(x,w)+\operatorname{dist}(w,y)\le D/4+D/4=D/2$. So I check (one Dijkstra from an arbitrary remaining vertex) that the leftover vertices have weak diameter $\le D$; if not — again astronomically rare — bail to singletons.
+
+The diameter guarantee then follows by induction on $|V(G)|$: for any $x,y$ in the same SCC of $G\setminus E^{rem}$, either one entered a recursive ball and the other didn't (then they're separated, can't share an SCC), or both entered the same ball (induction, since the ball is $\le 0.7|V|$), or neither did (then they're among the leftover heavy vertices, covered by the clean-up check). Weak diameter $\le D$ throughout.
+
+Runtime of the decomposition: Phase 1 is $O(\log n)$ Dijkstras $=O(|V|\log^2 n+|E|\log n)$. Phase 2's non-recursive work is $O(|V|\log n+|E|)$ (sampling each $R_v$ in $O(\log n)$, each ball by a Dijkstra charged $O(\log n)$ per explored vertex and $O(1)$ per edge, and each vertex carved at most once per level). The clean-up is one Dijkstra. Multiply by the $O(\log n)$ recursion participation per vertex/edge: total $O(|V|\log^3 n+|E|\log^2 n)$. With $m=\Theta(n)$ that's $O(m\log^3 n)$, matching what Phase 0 needed.
+
+Now the two cut-probability pieces. The clean-up/bail-out probability: $\Pr[R_v>D/4]=(1-p)^{D/4}\le(1-80\log n/D)^{D/4}<n^{-20}$, and the Chernoff mis-marking probabilities are each $\le n^{-20}$ (deviation $0.1$ from a mean across $k=c\log n$ samples gives $e^{-2k(0.1)^2}\le n^{-20}$ for $c$ large). Union over $\le n$ vertices and $O(n\log n)$ recursive calls leaves a bail-out probability $O(n^{-18}\log n)\subseteq O(n^{-10})$ — that's the $n^{-10}$ term in the guarantee.
+
+The boundary-cut probability is the heart, and I want it airtight, so let me do the full conditioning rather than wave at memorylessness. Fix an edge $(u,v)$ in one call (ignore the recursion for now). Order the light vertices $s_1,s_2,\dots$ in whatever order the while-loop processes them (the analysis must work for *any* order, even adversarial, because I don't control which light vertex comes next). The radii $R_1,R_2,\dots$ are the only randomness; truncate each at $R_{\max}=nW_{\max}$ (beyond which the ball can't grow anyway) so the probability space is finite and I can use the law of total probability freely. Let $B_i$ be the ball grown from $s_i$ in the graph $G_i$ remaining when $s_i$ is processed. Define event $I_i$ = "neither $u$ nor $v$ was in any earlier ball, *and* the relevant endpoint enters $B_i$" (for an out-ball that's $u\in B_i$; for an in-ball, $v\in B_i$), and $X_i$ = "the other endpoint is *excluded* from $B_i$" (out-ball: $v\notin B_i$; in-ball: $u\notin B_i$). The edge is cut at step $i$ exactly when $I_i\wedge X_i$, and the $I_i$ are disjoint (once $u$ is swallowed it's gone), so $\sum_i\Pr[I_i]\le 1$ and
+$$\Pr[(u,v)\in E^{rem}]=\sum_i\Pr[I_i\wedge X_i]=\sum_i\Pr[I_i]\,\Pr[X_i\mid I_i].$$
+So I just need $\Pr[X_i\mid I_i]\le p\,w(u,v)$ for each $i$. Fix the earlier radii $R_1=r_1,\dots,R_{i-1}=r_{i-1}$ so that $G_i$ contains both $u$ and $v$ (otherwise $I_i$ is false and the conditional is $0$ by convention). Now only $R_i$ is random and the graph $G_i$ is fixed. Take the out-ball case:
+$$\Pr[X_i\mid I_i]=\Pr[v\notin\operatorname{Ball}^{out}(s_i,R_i)\mid u\in\operatorname{Ball}^{out}(s_i,R_i)]=\Pr[R_i<\operatorname{dist}(s_i,v)\mid R_i\ge\operatorname{dist}(s_i,u)].$$
+Since $\operatorname{dist}(s_i,v)\le\operatorname{dist}(s_i,u)+w(u,v)$, this is $\le\Pr[R_i<\operatorname{dist}(s_i,u)+w(u,v)\mid R_i\ge\operatorname{dist}(s_i,u)]$, and **memorylessness** of the geometric distribution collapses the conditioning: $\Pr[R_i\le a+b\mid R_i\ge a]\le\Pr[R_i\le b]$. So it's $\le\Pr[R_i\le w(u,v)]\le p\,w(u,v)$ by the union bound over $w(u,v)$ coins. (The truncation at $R_{\max}$ is fine because $\operatorname{dist}(s_i,u)+w(u,v)\le(n-1)W_{\max}+W_{\max}=R_{\max}$, so memorylessness still applies in the truncated space.) Summing, $\Pr[(u,v)\in E^{rem}\text{ in one call}]\le p\,w(u,v)=O(w(e)\log n/D)$. Now reinstate recursion: each edge sits in $O(\log n)$ recursive calls (the participation bound), union-bound to get $O(w(e)\log^2 n/D)$, and add the $n^{-10}$ bail-out term. That's exactly the guarantee Phase 0 consumes — the second $\log n$ is the recursion depth, not magic.
+
+Let me make sure I haven't quietly used the no-negative-cycle assumption where I shouldn't. The output correctness of $\textsf{ScaleDown}$ — that $\phi_3$ makes $w_{\phi_3}(e)\ge -B$ — holds whenever the algorithm *terminates*, with or without a cycle, because it's just the $\textsf{ElimNeg}$ guarantee plus $w^B\le w+B$. The runtime bound, and the $\eta(H^B)\le d$ and $\mathbb{E}[\eta]=O(\log^2 n)$ claims, all assumed no negative cycle. That's the right split: on a cyclic input the algorithm may run forever, and that's permitted; I'll catch it outside.
+
+Now I have a Monte-Carlo, no-cycle-assuming engine. Two gaps remain to reach the real theorem: convert expected time to high-probability time without losing correctness, and handle the negative-cycle case by actually returning a witness cycle.
+
+The expected-to-w.h.p. conversion is a clean bootstrap. $\textsf{SPmain}$ has expected time $\mathcal T$. Run $C\log n$ independent copies, each capped at $2\mathcal T$ steps; return the first that finishes (its output is correct by $\textsf{SPmain}$'s guarantee), else error. By Markov, each copy finishes within $2\mathcal T$ with probability $\ge 1/2$, so the chance all $C\log n$ fail is $\le 2^{-C\log n}=n^{-C}$. If the input has a negative cycle, every copy runs out of time and we correctly error. Call this $\textsf{SPMonteCarlo}$: on no-cycle inputs it returns a correct tree w.h.p.; on cyclic inputs it always errors. Time $O(m\log^6 n\log W)$ after folding in the general-weight reduction.
+
+For the negative cycle witness, I binary-search the threshold at which the graph *just barely* stops having a negative cycle. Define $G^{+B}$ = add $B$ to *every* edge (this time including positives — a different operator from $G^B$, and I need that, because here I want to uniformly lift the whole graph until cycles turn non-negative). $\textsf{FindThresh}$ binary-searches the smallest $B\ge 0$ with no negative cycle in $G^{+B}$, using $\textsf{SPMonteCarlo}$ as the cycle detector at each probe; $O(\log W)$ probes. If the answer is $B=0$, the graph had no negative cycle and I just return the tree. If $B>0$, then $G^{+(B-1)}$ has a negative cycle but $G^{+B}$ doesn't, so a shortest-path price function $\phi$ for $G^{+B}$ (from $\textsf{SPMonteCarlo}$) makes $G^{+B}$ non-negative, and the negative cycle of $G^{+(B-1)}$ — differing by $\le 1$ per edge — survives as a *small-weight* cycle in the reweighted non-negative graph. So I pre-scale all weights by $n^3$ (forcing any genuine negative cycle to have weight $\le -n^3$, hence threshold $B\ge n^2$), keep only edges of reduced weight $\le n$, and any cycle in that low-weight subgraph is provably negative in the original: its reweighted weight is $\le n^2$ while $B|C|\ge 2B\ge 2n^2$, so $w(C)=w_{+B}(C)-B|C|\le n^2-2n^2<0$. Every branch ends by *checking* its own output (the tree is a real shortest-path tree, or the cycle is genuinely negative), restarting on the rare failure — so the whole thing is **Las Vegas**: always correct, and w.h.p. no restart, running in $O(m\log^8 n)$ after the threshold search (which dominates at $O(m\log^6 n\log^2 W)$ on the $n^3$-scaled graph), times the $\log W$ from reducing general integer weights to the $w\ge -1$ base case via Goldberg's bit-scaling and the constant-out-degree reduction.
+
+So the causal chain, end to end: shortest paths reduce to finding a non-negativizing integral price function; the cost of finding it via a Dijkstra–Bellman-Ford hybrid is governed by $\eta$, the number of negative edges shortest paths must use; the $B$-shift identity ties negativity to negative-edge count; a low-diameter decomposition (run on the rounded non-negative graph, with geometrically random ball radii so cut probability scales with edge weight) carves the graph so that inside each small-diameter piece $\eta$ is halved — letting a scaling recursion drive $\eta$ down — while only a polylog expected number of cut edges per path survive for the hybrid to clean up; scaling halves the precision $B$ across $O(\log W)$ rounds down to the $w\ge -1$ base case where Dijkstra finishes; and a Markov bootstrap plus a threshold binary search turn the expected-time, no-cycle engine into a Las Vegas algorithm that also returns a negative cycle. Total: $O(m\log^8 n\log W)$, purely combinatorial — Dijkstra, Bellman–Ford, SCCs, topological order, and a ball-carving decomposition.
+
+Here is the algorithm, assembled.
+
+```python
+import math, random
+
+# ===== ElimNeg: price function via Dijkstra+Bellman-Ford hybrid ============
+# Cost O(log n * (n + sum_v eta_G(v))). On a graph with a negative cycle it
+# never terminates. Requires constant out-degree for the O(1) BF charge.
+def elim_neg(G, s):
+    INF = math.inf
+    d = {v: INF for v in G.vertices()}; d[s] = 0
+    import heapq
+    while True:
+        # --- Dijkstra phase: relax only the non-negative edges ---
+        pq = [(d[v], v) for v in G.vertices() if d[v] < INF]
+        heapq.heapify(pq); marked = set()
+        while pq:
+            dv, v = heapq.heappop(pq)
+            if dv > d[v]: continue
+            marked.add(v)
+            for (x, w) in G.out_edges(v):
+                if w >= 0 and d[v] + w < d[x]:
+                    d[x] = d[v] + w; heapq.heappush(pq, (d[x], x))
+        # --- Bellman-Ford phase: one sweep of negative edges from marked ---
+        changed = False
+        for v in list(marked):
+            for (x, w) in G.out_edges(v):
+                if w < 0 and d[v] + w < d[x]:
+                    d[x] = d[v] + w; changed = True
+        if not changed:                     # no active edge left: d is a valid price fn
+            return {v: d[v] for v in G.vertices()}
+
+# ===== FixDAGEdges: price the SCC-DAG so inter-SCC edges go non-negative ====
+def fix_dag_edges(G, sccs, scc_of):                 # O(m + n)
+    order = topological_order(sccs, scc_of, G)      # SCCs in topological order
+    mu = {j: 0 for j in range(len(sccs))}
+    for u in G.vertices():
+        for (v, w) in G.out_edges(u):
+            if scc_of[u] != scc_of[v] and w < mu[scc_of[v]]:
+                mu[scc_of[v]] = w                   # most negative edge entering SCC of v
+    phi = {}; M = 0
+    for j in order:                                 # M_j = sum_{k<=j} mu_k
+        M += mu[j]
+        for v in sccs[j]: phi[v] = M
+    return phi
+
+# ===== Low-Diameter Decomposition on a NON-NEGATIVE graph ===================
+# Returns E_rem s.t. each SCC of G\E_rem has weak diameter <= D, and
+# Pr[e in E_rem] = O(w(e) log^2 n / D + n^-10).
+def ldd(G, D, n):
+    k = max(1, int(C_CONST * math.log(n)))
+    S = [random.choice(list(G.vertices())) for _ in range(k)]
+    in_cnt, out_cnt = sample_ball_counts(G, S, D / 4)          # via k Dijkstras
+    mark = {}
+    for v in G.vertices():
+        if in_cnt[v]  <= 0.6 * k: mark[v] = "in"               # whp |Ball_in| <= .7|V|
+        elif out_cnt[v] <= 0.6 * k: mark[v] = "out"            # whp |Ball_out| <= .7|V|
+        else: mark[v] = "heavy"                                # whp both balls > .5|V|
+    p = min(1.0, 80 * math.log(n) / D)
+    E_rem, alive = set(), set(G.vertices())
+    while any(mark[v] != "heavy" for v in alive):
+        v = next(v for v in alive if mark[v] != "heavy")
+        R = geometric(p)                                       # random radius
+        ball = grow_ball(G, v, R, direction=mark[v], alive=alive)
+        E_rem |= boundary_edges(G, ball, direction=mark[v])    # cut the ball off
+        if R > D / 4 or len(ball) > 0.7 * len(alive):
+            return set(G.all_edges())                          # bail (prob <= n^-20)
+        E_rem |= ldd(G.induced(ball), D, n)                    # recurse inside ball
+        alive -= ball                                          # remove ball, repeat
+    # clean-up: leftover heavy vertices must have weak diameter <= D
+    if not heavy_block_small_diameter(G, alive, D):
+        return set(G.all_edges())                              # bail (prob <= n^-20)
+    return E_rem
+
+# ===== ScaleDown: halve the precision B, using the decomposition ===========
+# INPUT  : w(e) >= -2B ; if no neg cycle, eta(G^B) <= Delta ; const out-degree
+# OUTPUT : integral phi with w_phi(e) >= -B
+def scale_down(G, Delta, B, n):
+    if Delta <= 2:                                            # base case
+        phi2 = {v: 0 for v in G.vertices()}
+    else:
+        d = Delta / 2.0
+        GB_nneg = shift_negatives_then_clamp(G, B)            # G^B with negatives -> max(0,.)
+        # Phase 0: decompose into small-weak-diameter SCCs
+        E_rem = ldd(GB_nneg, int(d * B), n)                  # D = dB = B*Delta/2
+        sccs, scc_of = strongly_connected_components(shift_negatives(G, B), E_rem)
+        # Phase 1: make inside-SCC edges non-negative (recurse with Delta/2)
+        H = union_of_induced_sccs(G, sccs)                   # eta(H^B) <= d (no neg cycle)
+        phi1 = scale_down(H, Delta / 2, B, n)
+        # Phase 2: make between-SCC (DAG) edges non-negative
+        GB_minus = reweight(shift_negatives(G, B), phi1, drop=E_rem)
+        psi = fix_dag_edges(GB_minus, sccs, scc_of)
+        phi2 = add_phi(phi1, psi)
+    # Phase 3: clean up the remaining cut edges with the hybrid
+    GBs_phi2 = reweight(add_dummy_source(shift_negatives(G, B)), phi2)  # price AFTER adding s
+    psi_prime = elim_neg(GBs_phi2, dummy_source(GBs_phi2))
+    return add_phi(phi2, psi_prime)
+
+# ===== SPmain: scaling outer loop ; returns a shortest-path tree ===========
+def sp_main(G_in, s_in):
+    n = G_in.num_vertices()
+    G = scale_weights(G_in, 2 * n)                           # keep everything integral
+    B = round_up_pow2(2 * n)
+    phi = {v: 0 for v in G.vertices()}
+    for i in range(1, int(math.log2(B)) + 1):
+        psi = scale_down(reweight(G, phi), Delta=n, B=B // (2 ** i), n=n)
+        phi = add_phi(phi, psi)                              # w_phi(e) >= -B/2^i
+    Gstar = add_const_to_each_edge(reweight(G, phi), 1)      # clear the last -1's
+    return dijkstra(Gstar, s_in)                             # true shortest-path tree
+
+# ===== Las Vegas wrapper: w.h.p. fast, always correct, returns cycle =======
+def sssp_las_vegas(G_in, s_in):
+    Gp = scale_weights(G_in, n3 := G_in.num_vertices() ** 3)
+    B = find_thresh(Gp, s_in)                                # smallest B: G'^{+B} cycle-free
+    if B == 0:
+        T = sp_monte_carlo(G_in, s_in)                       # whp a correct tree
+        return ("tree", T) if T is not None else restart()
+    phi = dist_tree_prices(sp_monte_carlo(plus_const(Gp, B), s_in))
+    G_nonneg = reweight(plus_const(Gp, B), phi)              # non-negative
+    G_small  = keep_edges_with_weight_at_most(G_nonneg, n3 ** (1/3))   # weight <= n
+    C = any_cycle(G_small)
+    return ("neg_cycle", C) if (C and is_negative_in(C, G_in)) else restart()
+```
+
+The named helpers (`grow_ball`, `boundary_edges`, `shift_negatives`, `reweight`, `add_dummy_source`, `find_thresh`, `sp_monte_carlo`) are the elementary graph operations the reasoning built: Dijkstra-based ball growth, edge reweighting by a price function, the $B$-shift on negatives, the bootstrap of $\textsf{SPmain}$, and the threshold binary search. Nothing beyond Dijkstra, Bellman–Ford, SCCs, topological order, and geometric coin flips ever appears.
