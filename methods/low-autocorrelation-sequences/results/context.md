@@ -18,9 +18,7 @@ so that a *large* `F` means small off-peak correlation energy. Digital communica
 (synchronization, pulse compression, spread-spectrum radar) want such sequences because a
 large merit factor corresponds to a near-uniform amplitude spectrum. The central open
 problem is asymptotic: determine `lim sup_{n→∞} F_n`, where `F_n = max_A F(A)` over all
-`2^n` sequences of length `n`. What would a solution have to achieve? An *explicit
-infinite family* of sequences, plus a *proof* that its merit factor tends to a definite
-constant — not merely a numerical record at one length.
+`2^n` sequences of length `n`.
 
 ## Background
 
@@ -38,8 +36,7 @@ flat spectrum ⇔ large merit factor.
 
 **What a random sequence gives.** Over all `2^n` sequences, the mean value of `1/F` is
 `(n-1)/n → 1`. So a typical sequence has `F ≈ 1`; anything with `F` bounded above `1`
-asymptotically is already "structured," and the prize is a family whose `F` tends to a
-value much larger than `1`.
+asymptotically is already "structured."
 
 **Periodic vs. aperiodic correlation.** Alongside the aperiodic `C_A(u)` sits the periodic
 autocorrelation
@@ -80,40 +77,33 @@ restricting to skew-symmetric sequences does not change the best asymptotic meri
 **The diagnostic numerical picture.** Exhaustive computation fixes `F_n` only for small
 `n` (records around `n ≤ 60`); for larger `n` one has lower bounds from stochastic search.
 The two largest known finite values, `F_13 ≈ 14.1` and `F_11 ≈ 12.1`, come from Barker
-sequences (which exist only for `n ≤ 13`). Beyond that, no `F_n ≥ 10` is known. Crucially,
-decades of simulated annealing / evolutionary search on this "low-autocorrelation binary
-sequence" problem (studied in statistical physics as a spin-glass ground-state problem)
-*fail to reliably exceed `F ≈ 6` for large `n`*: the landscape has an enormous number of
-local optima, and search alone has not been able to decide whether `lim sup F_n` is `6`,
-finite-but-larger, or infinite.
+sequences (which exist only for `n ≤ 13`). Beyond that, no `F_n ≥ 10` is known. Decades
+of simulated annealing / evolutionary search on this "low-autocorrelation binary sequence"
+problem (studied in statistical physics as a spin-glass ground-state problem) find good
+finite sequences but leave the asymptotic question open, as the landscape has an enormous
+number of local optima.
 
 ## Baselines
 
 **Barker sequences.** The ideal: `|C(u)| ≤ 1` for all `0 < u < n`. They give `F = n` (huge)
 but provably exist only for `n ∈ {2,3,4,5,7,11,13}`; it is conjectured none exist beyond
-`13`. So the ideal is unreachable asymptotically — the merit-factor question is precisely
-"how close can a *family* stay as `n → ∞`."
+`13`.
 
 **Rudin–Shapiro (Golay–Shapiro) sequences.** Defined by the recursion on appended pairs
 `X^{(m)} = X^{(m-1)}; Y^{(m-1)}`, `Y^{(m)} = X^{(m-1)}; -Y^{(m-1)}`, with `X^{(0)} = Y^{(0)} = [1]`.
 Their aperiodic autocorrelations satisfy a clean recurrence, from which one computes
 exactly `F = 3 / (1 - (-1/2)^m) → 3`. This is the earliest explicit infinite family with a
-known nonzero asymptotic merit factor — but it tops out at `3`, and generalizations of the
+known nonzero asymptotic merit factor — it tops out at `3`, and generalizations of the
 recursion (Høholdt–Jensen–Justesen 1985; Borwein–Mossinghoff 2000) provably never beat `3`.
-Limitation: a purely recursive/aperiodic construction seems stuck at `3`.
 
 **Maximal-length shift-register (m-) sequences.** Length `n = 2^m - 1`,
 `x_i = (-1)^{Tr(β α^i)}` over `F_{2^m}`; equivalently a Singer difference set. The mean of
 `1/F` over the `n` cyclic shifts is `(n-1)(n+4)/(3n^2) → 1/3`, suggesting some rotation
-might beat `3` — but Jensen–Høholdt (1989) proved *every* rotation has asymptotic `F = 3`.
-Limitation: difference-set structure here also caps at `3`.
+might beat `3` — but Jensen–Høholdt (1989) proved every rotation has asymptotic `F = 3`.
 
 **Stochastic / evolutionary search.** Single- and double-flip local search, simulated
 annealing, evolutionary algorithms, often restricted to skew-symmetric sequences to extend
-reach. These find good *finite* sequences but, as a route to the asymptotic question,
-plateau below `6` for large `n` and shed no light on the `lim sup`. The combinatorial
-landscape is brutal; this establishes the *need* for an algebraic construction with an
-analytic proof rather than a search record.
+reach. These find good *finite* sequences but the asymptotic question remains open.
 
 ## Evaluation settings
 
@@ -124,7 +114,7 @@ analytic proof rather than a search record.
 - **Metric.** The merit factor `F(A)` from `C_A(u)` above; secondarily the periodic
   autocorrelation `R_A(u)` (to certify difference-set structure) and `max_u |C_A(u)|`.
 - **Yardstick families.** Rudin–Shapiro (`F → 3`) and m-sequences (`F → 3`) are the
-  pre-existing asymptotic benchmarks to beat; the random baseline `F ≈ 1`.
+  pre-existing asymptotic benchmarks; the random baseline `F ≈ 1`.
 - **Protocol.** For a candidate family, compute `F` at a ladder of increasing lengths and
   read off the limit; for any family carrying a free parameter, sweep it and locate the
   optimum.

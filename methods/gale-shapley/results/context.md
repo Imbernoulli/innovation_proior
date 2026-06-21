@@ -6,19 +6,19 @@ In the one-to-one specialization, each participant can be matched to at most one
 
 ## Background
 
-The usual admissions process has two kinds of uncertainty. An institution does not know which applicants will accept offers, how applicants rank other institutions, or what other institutions will do. An applicant may face a waiting list at a preferred institution while holding a current offer elsewhere. The resulting process can ask both sides to act before the final market state is clear.
+The usual admissions process has two kinds of uncertainty. An institution does not know which applicants will accept offers, how applicants rank other institutions, or what other institutions will do. An applicant may face a waiting list at a preferred institution while holding a current offer elsewhere. The process can ask both sides to act before the final market state is clear.
 
-Classical matching background does not by itself solve this. A marriage theorem can certify when representatives or bipartite matches exist, but the participants here have ordered preferences. A cost-assignment algorithm can optimize a matrix objective, but the blocking-pair condition is not a sum of independent costs. These tools leave open whether pairwise stability can be guaranteed without searching all assignments.
+Classical matching results address related but distinct settings. A marriage theorem certifies when representatives or bipartite matches exist, for participants without ordered preferences. A cost-assignment algorithm optimizes a matrix objective, treating the outcome as a sum of independent costs. Here the participants have ordered preferences and the criterion is the blocking-pair condition.
 
 ## Baselines
 
-**Exhaustive matching search.** Generate all one-to-one assignments and test them for blocking pairs. This is conceptually direct, but the number of candidates is factorial and gives no reason that a stable assignment should be easy to find.
+**Exhaustive matching search.** Generate all one-to-one assignments and test each for blocking pairs. The number of candidates is factorial in the number of participants.
 
-**Cost or rank minimization.** Convert rankings into scores and solve an assignment problem. This produces an optimum for the chosen score, but a minimum-cost assignment can still contain a pair that both prefer to their assigned partners.
+**Cost or rank minimization.** Convert rankings into scores and solve an assignment problem. This produces an optimum for the chosen numerical score.
 
-**Greedy high-rank pairing.** Commit mutual first choices or other highly ranked pairs first. Such commitments can be lucky, but a later participant may still form a blocking pair with someone already committed.
+**Greedy high-rank pairing.** Commit mutual first choices or other highly ranked pairs first, then proceed to the remaining participants.
 
-**Serial choice.** Let one side choose in a fixed order from the remaining options. This terminates, but it gives the other side no active veto, so a later outside pair can still have mutual reasons to leave the assignment.
+**Serial choice.** Let one side choose in a fixed order from the remaining options. The procedure terminates after each chooser has selected once.
 
 ## Evaluation Setting
 

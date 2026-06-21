@@ -21,12 +21,10 @@ max_{||delta||_inf <= eps}  L(theta, x + delta, y),   subject to x + delta in [0
 
 Why it matters: how confidently we can *find* a worst-case input inside the box determines
 both how dangerous an attacker is and how meaningfully we can *measure* a model's robustness.
-A weak attack that leaves loss on the table reports a model as more robust than it really is.
 At small budgets chosen to avoid trivial saturation, the *quality* of the attack becomes the
 thing under test: a stronger maximizer flips examples that a weaker one leaves standing. The
-pain point is that this inner maximization is over a high-dimensional non-concave loss
-surface, so there is no closed-form maximizer and no guarantee a given procedure finds the
-most adversarial point in the box.
+inner maximization is over a high-dimensional non-concave loss surface, so there is no
+closed-form maximizer.
 
 ## Background
 
@@ -74,10 +72,7 @@ attacker's job is exactly the inner `max` for fixed `theta`.
 **Box-constrained L-BFGS (Szegedy et al. 2014).** The original construction: solve `min
 ||delta||` subject to the model misclassifying `x + delta` and `x + delta in [0,1]^d`, via a
 box-constrained quasi-Newton solver. It reliably finds small perturbations. Core idea — treat
-adversarial example generation as a constrained optimization and solve it accurately. **Gap:**
-the constrained quasi-Newton solve is expensive — an inner optimization loop per example —
-which is impractical when an attack (or a defense that uses the attack at every training step)
-must run on large datasets at scale.
+adversarial example generation as a constrained optimization and solve it accurately.
 
 **FGSM — Fast Gradient Sign Method (Goodfellow et al. 2015).** Linearize the loss around the
 clean input and take the single L_inf-steepest-ascent step:
@@ -88,11 +83,7 @@ x_adv = x + eps * sign( ∇_x L(theta, x, y) ).
 
 One gradient, one step, lands at a corner of the eps-box. Cheap enough to run inside a
 training loop. Core idea — the steepest-ascent direction under L_inf is `sign(grad)`, and one
-full-budget step of the *linearized* loss is a fast adversary. **Gap:** the linearization is
-exact only infinitesimally; the true loss is curved, so a single full-budget sign-step jumps
-to a box corner that need not be anywhere near the actual maximizer inside the box. It leaves
-loss on the table, and slightly more careful adversaries find substantially higher-loss points
-in the same box.
+full-budget step of the *linearized* loss is a fast adversary.
 
 **BIM / iterative FGSM (Kurakin et al. 2017).** Apply FGSM repeatedly with a small step `alpha`
 and clip back into the eps-box after every step:
@@ -107,10 +98,7 @@ iterate rather than only at `x`, it follows the curved surface instead of trusti
 linearization, and in practice it produces more harmful examples as the iteration budget
 increases. Typical settings take a unit step (`alpha = 1` in pixel units) for
 `min(eps+4, 1.25*eps)` iterations.
-Core idea — many small gradient-sign steps with re-projection beat one big step. **Gap:** the
-iteration starts deterministically at `x` and follows a single trajectory; if that launch
-gradient is distorted by the local curvature around the clean point, the whole trajectory can
-inherit the mistake.
+Core idea — many small gradient-sign steps with re-projection beat one big step.
 
 **R+FGSM (Tramer et al. 2017).** A single FGSM step *preceded by a small random step* to
 escape the non-smooth neighborhood of the data point before linearizing:
@@ -121,9 +109,7 @@ x' = x + alpha * sign( N(0, I) ),    x_adv = x' + (eps - alpha) * sign( ∇_x L(
 
 Core idea — the gradient at the exact data point can be distorted by sharp local curvature
 artifacts that mask the true ascent direction; a small random pre-step jumps off that
-non-smooth point so the subsequent linearization sees a more honest gradient. **Gap:** after
-the random jump it is still a *single* linearized step, so it inherits FGSM's one-shot
-weakness and does not follow the curved surface.
+non-smooth point so the subsequent linearization sees a more honest gradient.
 
 **Carlini-Wagner (Carlini & Wagner 2017).** A strong optimization-based attack that replaces
 cross-entropy with a margin objective — directly driving the logit of the true class below the
@@ -131,9 +117,7 @@ largest other logit (a difference-of-logits loss, optionally with a confidence m
 solves the resulting box-constrained problem with a gradient optimizer. Core idea — the
 attack's *loss function* matters: a margin loss targets the decision boundary more directly
 than a probability-space objective and can demand a confidence margin after the boundary has
-already been crossed. **Gap:** as originally posed it is a per-example optimization with its
-own constant-search loop; it establishes that the inner loss can matter, but it is not by
-itself a single fixed-budget L_inf procedure.
+already been crossed.
 
 ## Evaluation settings
 

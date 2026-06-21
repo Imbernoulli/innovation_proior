@@ -7,27 +7,9 @@ probabilities, and `f_t(x)` is the probability it assigns to the true class `t`.
 well established that one can add a small perturbation `e(x)` to a correctly classified `x` and
 flip the prediction. The standard way to do this constrains the *magnitude* of `e(x)` — keep
 `||e(x)||_p` small under an `L2` or `L-inf` budget — and lets the perturbation touch as many
-pixels as it likes; in practice it touches essentially all of them. That leaves two
-unsatisfying gaps.
-
-First, **perceptibility is never actually guaranteed.** A small-norm perturbation spread over
-the whole image is *usually* hard to see, but no method can promise it is imperceptible, and
-some sparse-but-large attacks leave visible speckle. If an attacker wants a modification that a
-human would not flag, "small total norm" is the wrong currency.
-
-Second, **the dominant attacks need gradients and white-box access.** They are derived by
-back-propagating through a differentiable `f`. That rules out non-differentiable models and any
-setting where the attacker only sees the model's outputs.
-
-The precise goal is an attack in an *extremely limited* threat model that closes both gaps at
-once: bound the perturbation by the **number of modified spatial pixels** rather than by its
-norm, push that number to the smallest interesting regime, while allowing each modified pixel
-to change by an arbitrary amount; and do it knowing only the model's output probabilities, so it
-applies even to non-differentiable classifiers. Formally, instead of `||e(x)|| <= L`, the
-constraint becomes a spatial `L0` budget, `||e(x)||_0 <= d`, with `d` small. This is also of
-independent interest as a *geometric probe*: a `d`-pixel perturbation moves the image along a
-small axis-aligned slice of the input space, a very different cut than the all-pixel,
-small-sphere perturbations studied before.
+pixels as it likes. The question is what happens when the budget is instead expressed as a
+*count* of modified spatial pixels (`L0`), and in particular how the attack behaves in the
+extreme low-pixel regime.
 
 ## Background
 
@@ -44,10 +26,10 @@ about the input geometry of deep classifiers are established and load-bearing he
   perturbation can fool a network on most images, evidence that boundary shapes near different
   points are similar and the boundary "diversity" is low.
 - **The relevant budget is contested.** `Lp` norms are a convenient but imperfect proxy for
-  perceptibility; counting modified pixels (`L0`) is a more direct measure of how localized,
-  hence how plausibly hidden, a change is. An `L0` budget makes the support of the perturbation
-  — *which* pixels — part of the optimization, which is a discrete, combinatorial choice on top
-  of the continuous choice of how much to change them.
+  perceptibility; counting modified pixels (`L0`) is a more direct measure of how localized a
+  change is. An `L0` budget makes the support of the perturbation — *which* pixels — part of
+  the optimization, which is a discrete, combinatorial choice on top of the continuous choice
+  of how much to change them.
 - **Population-based optimization for hard objectives.** Differential evolution (Storn & Price,
   J. Global Optimization 1997) is a metaheuristic for nonlinear, non-differentiable, multimodal
   objectives over continuous spaces. It maintains a population of candidate vectors and, each
@@ -55,8 +37,7 @@ about the input geometry of deep classifiers are established and load-bearing he
   better of parent and child. The differential step self-scales to the current spread of the
   population, and the one-to-one parent/child selection preserves diversity; together these make
   it comparatively robust to local minima while needing nothing but the ability to *evaluate*
-  the objective. This matters whenever the objective is a black-box, possibly
-  non-differentiable function with a discrete support choice baked in.
+  the objective.
 
 ## Baselines
 
@@ -64,46 +45,36 @@ The prior attacks a sparse, black-box attack would be measured against and react
 
 **Box-constrained L-BFGS (Szegedy et al., ICLR 2014).** Minimize `||r||_2` subject to
 `f(x + r) = target` and `x + r` in `[0,1]^n`, solved with box-constrained L-BFGS. It produced
-the first adversarial examples. **Gap:** white-box and expensive (an inner optimization per
-image), and it is a dense `L2` attack — the perturbation is spread over the whole image, so it
-says nothing about how *few* pixels suffice and gives no imperceptibility guarantee.
+the first adversarial examples and requires white-box access to compute gradients. The
+perturbation is spread over all pixels under an `L2` norm.
 
 **Fast Gradient Sign Method (Goodfellow, Shlens & Szegedy, ICLR 2015).** A single step along
 the sign of the loss gradient, `x + eps * sign(grad_x J)`, motivated by the hypothesis that the
-linearity of high-dimensional models is what makes them fragile. **Gap:** white-box (it *is* a
-gradient), `L-inf` bounded, and dense — it nudges *every* pixel by `eps`. It is fast and
-illuminating but the opposite of sparse.
+linearity of high-dimensional models is what makes them fragile. It is white-box, `L-inf`
+bounded, and nudges every pixel by `eps`.
 
 **DeepFool (Moosavi-Dezfooli, Fawzi & Frossard, CVPR 2016).** Iteratively linearize the
 decision boundary and take the minimal step to the nearest linearized boundary, yielding a small
-`L2` perturbation and an estimate of the distance to the boundary. **Gap:** white-box and
-again dense `L2`; it answers "how far to the boundary" but not "how few pixels."
+`L2` perturbation and an estimate of the distance to the boundary. It is white-box and dense
+(`L2`).
 
 **Jacobian Saliency Map Attack (Papernot et al., IEEE EuroS&P 2016).** Build an adversarial
 saliency map from the forward derivatives (the Jacobian of the network outputs), then greedily
 perturb the few highest-saliency pixels to drive the target-class score up, a pixel or two at a
-time. This is the closest prior art in spirit — it *is* a sparse, `L0`-flavored attack. **Gap:**
-it needs the Jacobian, so it is white-box; it is greedy, so it commits to locally salient
-pixels and can stall in local optima; and in practice it modifies on the order of a few percent
-of the pixels (e.g. ~4% of a 32x32 image, ~40 pixels), enough to leave visible noise.
+time. It is a sparse, `L0`-flavored attack that uses the Jacobian. In practice it modifies on
+the order of a few percent of the pixels (e.g. ~4% of a 32x32 image, ~40 pixels).
 
 **Universal adversarial perturbations (Moosavi-Dezfooli et al., CVPR 2017).** A single
-image-agnostic vector that, added to almost any natural image, fools the network. **Gap:** the
-extreme *opposite* of sparse — it modifies every pixel — and is white-box to construct. It is
-useful here as the contrasting geometric picture: a small step in all `n` dimensions, versus a
-large step along a handful of axes.
+image-agnostic vector that, added to almost any natural image, fools the network. It is
+white-box to construct and modifies every pixel, providing a contrasting geometric picture to
+sparse attacks.
 
 **Simple black-box local search (Narodytska & Kasiviswanathan, CVPR Workshops 2017).** A
-score-based local search that, to the best knowledge available, is the only prior work to even
-*mention* changing a single pixel — but it uses one-pixel changes merely as a starting point for
-a greedy local search that ultimately perturbs many pixels (around 30 of 1024). **Gap:** no
-systematic study of the one-pixel regime, no quantitative evaluation of it, and the one-pixel
-step itself is close to a random probe rather than a directed search.
+score-based local search that uses one-pixel changes as a starting point for a greedy local
+search that ultimately perturbs many pixels (around 30 of 1024).
 
 **Random sparse search.** The obvious non-learning control: repeatedly pick a random pixel and
 random value, keep whatever changes the label, report the best over a fixed number of tries.
-**Gap:** it wastes its query budget with no mechanism to reuse partial successes or to
-concentrate search where the boundary is close.
 
 ## Evaluation settings
 

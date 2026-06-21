@@ -4,11 +4,11 @@ A tabular data matrix arrives with holes in it: entries are `NaN`, scattered acr
 
 ## Prior art / Background / Baselines
 
-- **Listwise deletion.** Drop every row with a hole and run on what remains. Gap: with many columns even modest missing rates leave almost no complete rows, and a new row that contains a hole cannot be scored.
-- **Unconditional mean / median imputation.** Fill every hole in a column with a fixed central value for that column. Gap: it ignores all other features in the row, deflates variance, and pulls correlations toward zero.
-- **Hot-deck / neighbour donation.** Copy a value from a similar observed record into each hole. Gap: similarity is undefined when coordinates are missing, and relying on a single donor is unstable.
-- **Regression imputation.** Predict each incomplete column from the others using regression. Gap: the predictors are themselves incomplete, and handling missingness across many columns one regression at a time is circular.
-- **EM under a parametric joint.** Specify a joint distribution and impute from its conditionals. Gap: the results are hostage to the chosen joint family, and a single convenient family rarely fits mixed-scale tabular data.
+- **Listwise deletion.** Drop every row with a hole and run on what remains.
+- **Unconditional mean / median imputation.** Fill every hole in a column with a fixed central value for that column.
+- **Hot-deck / neighbour donation.** Copy a value from a similar observed record into each hole.
+- **Regression imputation.** Predict each incomplete column from the others using regression.
+- **EM under a parametric joint.** Specify a joint distribution and impute from its conditionals.
 
 ## Fixed substrate / Code framework
 

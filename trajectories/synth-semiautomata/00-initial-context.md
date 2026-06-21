@@ -6,27 +6,21 @@ state sequence `q_t = δ(q_{t-1}, σ_t)` from a fixed start state. The design pr
 `q_{1:T}` under per-token cross-entropy against the true states. Everything else — the environments,
 the online data stream, the loss, the optimizer, early stopping, and evaluation — is fixed.
 
-The three environments sit on opposite sides of a complexity wall. Liu et al. 2022 prove that every
-semiautomaton admits an `O(log T)`-depth Transformer simulator; that solvable semiautomata admit
-constant-depth simulators via Krohn–Rhodes decomposition; and that non-solvable semiautomata — the
-smallest generates `A_5`, the alternating group on five letters — provably do **not** admit a
-constant-depth shortcut unless `TC^0 = NC^1`. The question is sharper than "which architecture is
-best": which architecture succeeds both in the regime where a shallow shortcut exists and in the
-regime where one provably cannot.
+Liu et al. 2022 prove that every semiautomaton admits an `O(log T)`-depth Transformer simulator;
+that solvable semiautomata admit constant-depth simulators via Krohn–Rhodes decomposition; and that
+non-solvable semiautomata — the smallest generates `A_5`, the alternating group on five letters —
+provably do **not** admit a constant-depth shortcut unless `TC^0 = NC^1`. The three environments sit
+on opposite sides of this complexity wall.
 
 ## Prior art / Background / Baselines
 
-- **Recurrent encoder–decoder (Bahdanau et al. 2014).** Core idea: maintain a hidden state that is
-  updated serially at each input step, turning the model into a learned state register. Gap: `O(T)`
-  serial depth is slow on parallel hardware, and gradients through long chains of transition factors
-  vanish or explode.
-- **Convolutional sequence models (ByteNet, Kalchbrenner et al. 2017).** Core idea: replace recurrence
-  with stacked convolutions that process all positions in parallel. Gap: relating positions `D` apart
-  still requires `O(D/k)` or `O(log_k D)` layers, so path length grows with distance.
-- **Self-attention (Vaswani et al. 2017).** Core idea: route every position to every other in a single
-  `softmax(QKᵀ/√d_k)V` operation, giving `O(1)` path length and parallel computation. Gap: the model
-  has a fixed number of layers, and a fixed-depth attention stack is provably insufficient for
-  non-solvable semiautomata.
+- **Recurrent encoder–decoder (Bahdanau et al. 2014).** Maintain a hidden state that is updated
+  serially at each input step, turning the model into a learned state register.
+- **Convolutional sequence models (ByteNet, Kalchbrenner et al. 2017).** Replace recurrence with
+  stacked convolutions that process all positions in parallel; relating positions `D` apart requires
+  `O(D/k)` or `O(log_k D)` layers.
+- **Self-attention (Vaswani et al. 2017).** Route every position to every other in a single
+  `softmax(QKᵀ/√d_k)V` operation, giving `O(1)` path length and parallel computation.
 
 ## Fixed substrate / Code framework
 

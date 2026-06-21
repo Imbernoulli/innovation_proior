@@ -4,12 +4,12 @@ Black-box hyperparameter optimization under a tiny budget. Given a model and dat
 
 ## Prior art / Background / Baselines
 
-The methods in current use span stateless sampling to model-guided and multi-fidelity search. Each leaves a concrete gap.
+The methods in current use span stateless sampling to model-guided and multi-fidelity search.
 
-- **Grid search.** Enumerate a Cartesian product of per-axis values. Gap: trial count explodes with dimension, and most trials vary knobs that do not matter, so the budget is wasted on irrelevant axes.
-- **Random search (Bergstra and Bengio 2012).** Draw configurations uniformly from the space; because the loss has low effective dimensionality, this covers the important axes better than a grid. Gap: it is **stateless** — every draw ignores all loss values already paid for, which is costly under a few-dozen-trial budget.
-- **Sequential model-based optimization / Bayesian optimization.** Fit a cheap probabilistic surrogate of the expensive loss and pick each next point by maximizing an acquisition function that trades predicted quality against uncertainty. Gap: the usual Gaussian-process surrogate scales cubically in the number of trials, handles categorical and conditional spaces awkwardly, and can overcommit to an uncertainty estimate formed from sparse early samples.
-- **Successive halving (Jamieson and Talwalkar 2016).** Evaluate many configurations at low fidelity, keep the top fraction, and promote the survivors to higher fidelity. Gap: it fixes one configurations-versus-fidelity schedule up front, so an aggressive setting can discard a slow-starting but ultimately good configuration.
+- **Grid search.** Enumerate a Cartesian product of per-axis values.
+- **Random search (Bergstra and Bengio 2012).** Draw configurations uniformly from the space; because the loss has low effective dimensionality, this covers the important axes better than a grid.
+- **Sequential model-based optimization / Bayesian optimization.** Fit a cheap probabilistic surrogate of the expensive loss and pick each next point by maximizing an acquisition function that trades predicted quality against uncertainty.
+- **Successive halving (Jamieson and Talwalkar 2016).** Evaluate many configurations at low fidelity, keep the top fraction, and promote the survivors to higher fidelity.
 
 ## Fixed substrate / Code framework
 
@@ -55,7 +55,7 @@ class CustomHPOStrategy:
         history: List[Trial],
         budget_left: int,
     ) -> Tuple[Dict[str, Any], float]:
-        """Default: uniform random search (poor — replace with a better strategy).
+        """Default: uniform random search.
 
         Returns (config, fidelity) with fidelity in (0, 1]; 1.0 = full evaluation.
         """

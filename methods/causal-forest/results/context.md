@@ -15,25 +15,18 @@ tau(x) = E[ Y_i(1) - Y_i(0) | X_i = x ],
 how the causal effect of the treatment varies across individuals. Estimating `tau(x)` well is
 what powers personalized medicine, targeted policy, and customized recommendations.
 
-Three things make this hard at once. First, **confounding**: in observational data treatment is
-not randomized; the propensity `e(x) = P(W_i = 1 | X_i = x)` depends on `x`, so a naive
-treated-minus-control comparison conflates the treatment effect with differences in who gets
-treated. Identification rests on **unconfoundedness**, `{Y_i(0), Y_i(1)} _|_ W_i | X_i`
-(Rosenbaum & Rubin 1983): conditional on enough covariates, assignment is as good as random.
-Second, **heterogeneity**: `tau(x)` can vary across the covariate space in complex, nonlinear
-ways, and *which* covariates drive the variation differs from one scientific question to the
-next, so a method must adaptively discover the relevant structure rather than have it specified
-in advance. Third, **inference without ground truth**: because only one potential outcome per
-unit is ever seen, there is no held-out test set on which to measure `tau`-error — so a usable
-estimator must come with a *tractable sampling distribution* (consistency and asymptotic
-normality) that lets a practitioner form confidence intervals and test hypotheses directly. A
-solution must deliver nonparametric flexibility in high dimension, adapt its notion of
-similarity to heterogeneity in `tau`, stay robust to confounding, and admit valid asymptotic
-inference.
+The setting has three features. In observational data, treatment is not randomized; the
+propensity `e(x) = P(W_i = 1 | X_i = x)` depends on `x`. Identification rests on
+**unconfoundedness**, `{Y_i(0), Y_i(1)} _|_ W_i | X_i` (Rosenbaum & Rubin 1983): conditional on
+enough covariates, assignment is as good as random. The function `tau(x)` can vary across the
+covariate space in nonlinear ways, and *which* covariates drive the variation differs from one
+scientific question to the next. And because only one potential outcome per unit is ever seen,
+there is no held-out test set on which to measure `tau`-error directly. The question is how to
+estimate the function `tau(x)` from observational `(X_i, W_i, Y_i)` under unconfoundedness.
 
 ## Background
 
-The field state rests on several lines of work and several pain points.
+The field state rests on several lines of work.
 
 **Random forests as adaptive nearest neighbors.** Random forests (Breiman 2001) are an ensemble
 of CART trees grown by greedy recursive axis-aligned partitioning on bootstrap/subsample draws
@@ -49,9 +42,8 @@ alpha_i(x) = (1/B) sum_b  1{X_i in L_b(x)} / |L_b(x)|,    sum_i alpha_i(x) = 1.
 For the conditional mean these two views coincide: `sum_i alpha_i(x)(Y_i - mu_hat(x)) = 0` if
 and only if `mu_hat(x)` is the average of tree leaf means. This adaptive-neighbor view was
 advanced for survival analysis (Hothorn et al. 2004) and quantile estimation (Meinshausen 2006),
-and underlies several theoretical analyses (Lin & Jeon 2006). The forest's advantage over a
-fixed kernel is that it *learns* which directions in covariate space matter, sidestepping the
-curse of dimensionality that cripples kernel methods past two or three covariates.
+and underlies several theoretical analyses (Lin & Jeon 2006). The forest *learns* which
+directions in covariate space matter, rather than weighting by a fixed kernel.
 
 **Local estimating equations / local maximum likelihood.** A broad classical tradition (Stone
 1977; Tibshirani & Hastie 1987; Staniswalis 1989; Newey 1994; Fan, Farmen & Gijbels 1998)
@@ -65,9 +57,8 @@ E[ psi_{theta(x), nu(x)}(O_i) | X_i = x ] = 0,
 
 where `psi` is a score function, `O_i` is the observable, and `nu(x)` is an optional nuisance
 parameter. Given similarity weights `alpha_i(x)` (classically a kernel `K_h(X_i - x)`), one
-solves the plug-in equation `sum_i alpha_i(x) psi_{theta, nu}(O_i) = 0`. Elegant, general, and
-asymptotically well understood — but kernel weights suffer badly from the curse of
-dimensionality, so the approach is essentially unusable beyond a handful of covariates.
+solves the plug-in equation `sum_i alpha_i(x) psi_{theta, nu}(O_i) = 0`. The approach is
+general and asymptotically well understood.
 
 **Orthogonalization / partialling-out.** Robinson (1988) studied the partially linear model
 `Y_i = W_i beta + g(X_i) + eps_i`. Writing the conditional means `m(x) = E[Y_i | X_i = x]` and
@@ -85,25 +76,16 @@ estimate the nuisances `m, e` with *any* flexible ML method, **cross-fit** them 
 predict on another) to break the dependence between nuisance-estimation error and the residuals,
 then estimate the low-dimensional target from the residualized moment. Provided the nuisances
 are learned at `o(n^{-1/4})` rates, their errors do not contaminate the target's first-order
-asymptotics. This whole line, however, has been developed to estimate *constant* low-dimensional
-parameters (an average effect, a single coefficient), not a heterogeneous function `tau(x)`.
+asymptotics. This line has been developed to estimate constant low-dimensional parameters (an
+average effect, a single coefficient).
 
-**Honest sample-splitting.** A recurring diagnostic about adaptive partitioning is that using the
-*same* data both to choose splits and to estimate within-leaf values introduces an upward,
-selection-driven bias — a leaf chosen because it looked extreme estimates an extreme value. The
-observed cure (Biau 2012; Denil, Matheson & de Freitas 2014; and in the treatment-effect setting
-Athey & Imbens 2016) is to *split the sample*: use one part of the data to place the splits and a
-disjoint part to estimate the quantity in the resulting leaves. This decouples split selection
-from estimation and is what makes centered, valid confidence intervals possible.
-
-**Observed limitations of existing heterogeneous-effect methods.** Several diagnostic facts about
-prior tree-based causal methods are already established. Methods that build
-separate outcome models for treated and control arms and difference them (e.g. via BART, Hill
-2011) entangle two distinct jobs — modeling baseline outcome variation and modeling the effect —
-in a single fit. Methods that adapt CART's loss to treatment effects are tied to the binary-effect
-case and depend on having an unbiased model-free estimate of the leaf MSE. And it is documented
-that a forest whose splits chase outcome/propensity structure "spends" splits on variation that
-is irrelevant to — or actively confounds — the treatment-effect signal.
+**Honest sample-splitting.** Using the *same* data both to choose splits and to estimate
+within-leaf values introduces an upward, selection-driven bias in adaptive partitioning — a leaf
+chosen because it looked extreme estimates an extreme value. One approach (Biau 2012; Denil,
+Matheson & de Freitas 2014; and in the treatment-effect setting Athey & Imbens 2016) is to
+*split the sample*: use one part of the data to place the splits and a disjoint part to estimate
+the quantity in the resulting leaves. This decouples split selection from estimation and supports
+centered confidence intervals.
 
 ## Baselines
 
@@ -113,41 +95,26 @@ The prior methods a new estimator would be measured against and reacts to.
 `mu_hat(x, w) = E[Y | X = x, W = w]` and reports `tau_hat(x) = mu_hat(x,1) - mu_hat(x,0)`;
 T-learner fits two separate models, one per arm, and differences them. Inverse-propensity
 weighting reweights observations by `1/e(x)` (treated) and `1/(1-e(x))` (control) to emulate a
-randomized comparison. **Gap:** S/T-learners model the full response surfaces — high-variance,
-nonlinear objects — when only their *difference* is wanted, and a flexible learner will pour
-capacity into baseline variation that cancels in `tau`; IPW is unbiased under unconfoundedness
-but its variance explodes when `e(x)` approaches 0 or 1, and it carries no model of how the
-effect varies with `x`.
+randomized comparison.
 
 **Kernel local estimating equations** (Stone 1977; Newey 1994; Fan et al. 1998). Solve
-`sum_i K_h(X_i - x) psi_{theta, nu}(O_i) = 0` with a fixed kernel and bandwidth `h`. **Gap:**
-the fixed, isotropic kernel weights neighbors by raw covariate distance, so in more than a few
-dimensions almost no training points are "near" `x` and the estimator's effective sample size
-collapses — the curse of dimensionality.
+`sum_i K_h(X_i - x) psi_{theta, nu}(O_i) = 0` with a fixed kernel and bandwidth `h`, weighting
+neighbors by raw covariate distance.
 
 **Causal trees with honest splitting** (Athey & Imbens 2016). A single CART-style tree whose
 splitting criterion targets *treatment-effect heterogeneity* rather than outcome fit, estimated
 with an honest train/estimate split and a `Cp`-style overfit penalty (Mallows 1973) that corrects
-for the extra sampling variance of small leaves. **Gap:** a single tree is high-variance and
-discontinuous; the construction is specific to the binary-treatment MSE, for which an unbiased
-model-free leaf-error estimate happens to exist — when the target parameter is identified only
-through a moment condition, no such unbiased, model-free estimate of the leaf criterion is
-available to minimize directly.
+for the extra sampling variance of small leaves. The construction is built on the
+binary-treatment MSE, for which an unbiased model-free leaf-error estimate exists.
 
 **Forest-based treatment-effect estimators** (Wager & Athey 2018). A forest of honest causal
 trees with two distinct splitting strategies. *Procedure 1* grows each tree to split on
 treatment-effect heterogeneity (an extension of the CART rule to the effect), then estimates the
-effect in each leaf; it is established that this is sensitive to changes in the treatment-effect
-function but does poorly under strong confounding. *Procedure 2* obtains the neighborhood from a
-classification forest trained on the treatment assignments `W_i` (a propensity tree); it is
-established to be robust to confounding but insensitive to treatment-effect heterogeneity. The
-forest is shown to be pointwise consistent and asymptotically Gaussian, with variance estimable
-by the infinitesimal jackknife, enabling confidence intervals. **Gap (noted in that work's own
-discussion):** the two procedures have complementary strengths but the hard-coded
-nature of each makes it difficult to reconcile them — the practitioner is forced to pick one and
-thereby sacrifice either heterogeneity sensitivity or confounding robustness; and each tree
-computes its own leaf effect rather than contributing to a shared adaptive neighborhood, and the
-exact heterogeneity-loss split is computationally heavy.
+effect in each leaf; it is sensitive to changes in the treatment-effect function. *Procedure 2*
+obtains the neighborhood from a classification forest trained on the treatment assignments `W_i`
+(a propensity tree); it is robust to confounding. The forest is shown to be pointwise consistent
+and asymptotically Gaussian, with variance estimable by the infinitesimal jackknife, enabling
+confidence intervals.
 
 ## Evaluation settings
 

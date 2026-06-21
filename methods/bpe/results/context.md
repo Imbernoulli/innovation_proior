@@ -2,21 +2,19 @@
 
 Neural machine translation models operate over a fixed, closed vocabulary —
 typically the 30,000–50,000 most frequent word types — and represent every other
-word with a single `UNK` symbol. But translation is an open-vocabulary problem:
-test text constantly contains names, numbers, compounds, loanwords, and inflected
-forms that never appeared (or appeared too rarely) in training. The pain is sharpest
-for morphologically productive languages (German compounding and Russian inflection),
-where a single lemma spawns dozens of surface forms and new words are
+word with a single `UNK` symbol. Translation is an open-vocabulary problem:
+test text contains names, numbers, compounds, loanwords, and inflected
+forms that never appeared (or appeared too rarely) in training. This is especially
+visible for morphologically productive languages (German compounding and Russian
+inflection), where a single lemma spawns dozens of surface forms and new words are
 formed compositionally at will. Can a neural translation system translate and even
-*generate* words it has never seen — without bolting on a separate back-off
-dictionary — by working below the word level, while keeping the network vocabulary
-small enough that the output softmax and embedding tables stay affordable?
+*generate* words it has never seen by working below the word level, while keeping the
+network vocabulary small enough that the output softmax and embedding tables stay
+affordable?
 
-The constraint that makes this hard: the softmax over the target vocabulary is the
-dominant cost in training and decoding, and sequence length drives the cost of the
-recurrent encoder/decoder, so any sub-word scheme must trade vocabulary size against
-text length sensibly. A good solution needs (i) a fixed, compact symbol set that (ii)
-can represent unseen words, while (iii) keeping sequences from blowing up in length.
+The softmax over the target vocabulary is the dominant cost in training and decoding,
+and sequence length drives the cost of the recurrent encoder/decoder, so any sub-word
+scheme trades vocabulary size against text length.
 
 ## Background
 
@@ -39,54 +37,36 @@ encoder-decoder with attention. A bidirectional GRU encoder reads the source
 and a context vector `c_i = Σ_j α_{ij} h_j`, where the alignment weights `α_{ij}`
 come from a small feedforward alignment model trained jointly. The vocabulary enters
 in two places: the input embedding lookup and the output softmax. A variable-length
-sub-word representation is appealing precisely because attention can then place its
-weight on different sub-word units at each decoding step, instead of being forced to
-attend to a single fixed-length word vector.
-
-**A compression primitive in the literature.** Gage (1994) describes a simple data
-compression scheme that operates on a byte sequence and records a table of
-replacements, which can be replayed to decompress. It is one of several classical
-compression codes (alongside e.g. Huffman coding) available off the shelf.
+sub-word representation lets attention place its weight on different sub-word units at
+each decoding step, instead of attending to a single fixed-length word vector.
 
 ## Baselines
 
 **Word-level NMT with `UNK` (WUnk).** Limit the vocabulary to the top ~30k–50k types;
-every other word becomes `UNK`. Core idea: keep the softmax tractable. Gap: the model
-can neither translate nor produce any out-of-vocabulary word, and rare in-vocabulary
-words are badly modeled because their embeddings are undertrained.
+every other word becomes `UNK`. Core idea: keep the softmax tractable.
 
 **Word-level NMT with a back-off dictionary (WDict; Jean et al. 2015; Luong et al.
 2015).** Same closed vocabulary, but at test time `UNK` outputs are replaced via a
 separately trained bilingual dictionary / alignment back-off (e.g. fast-align), often
-copying the aligned source word. Core idea: handle OOVs outside the network. Gaps: it
-assumes a 1-to-1 source↔target word correspondence that fails for compounds and
-differing degrees of morphological synthesis; copying works for names within a shared
-alphabet but cannot transliterate across alphabets (English→Russian) or generate
-genuinely new compound forms; and it adds a separate, non-end-to-end component.
+copying the aligned source word. Core idea: handle OOVs outside the network with a
+1-to-1 source↔target word correspondence.
 
 **Large-vocabulary tricks (Jean et al. 2015).** Push the vocabulary up (e.g. to
 500k) with importance-sampling approximations to the softmax. Core idea: cover more
-words directly. Gap: the vocabulary is still finite and the long tail (rank
->500k, frequency ≤ 2) is precisely where the model degrades; words remain sparse and
-their embeddings undertrained.
+words directly.
 
 **Character n-gram segmentation.** Represent words as contiguous character n-gram
 chunks (unigrams, bigrams, trigrams) that do not cross word boundaries, optionally
 leaving a shortlist of the k most frequent words unsegmented. Core idea: trade
-sequence length against vocabulary size by choosing n. Only the unigram (pure
-character) representation is truly open-vocabulary; it has the smallest vocabulary
-(~3k) but the longest sequences
-(~550m tokens vs ~100m words). Bigrams/trigrams shorten sequences but reintroduce a
-small number of unknown symbols. Gap: characters give very long sequences (slow, long
-dependencies), and fixed-n n-grams are a blunt instrument — they split frequent and
-rare strings with the same granularity.
+sequence length against vocabulary size by choosing n. The unigram (pure character)
+representation is open-vocabulary; it has the smallest vocabulary (~3k) and the longest
+sequences (~550m tokens vs ~100m words). Bigrams/trigrams shorten sequences and use a
+small number of additional symbols.
 
 **SMT morphological segmenters (compound splitting — Koehn & Knight 2003; Morfessor —
 Creutz & Lagus 2002; rule-based hyphenation — Liang 1983).** Linguistically motivated
 segmenters from phrase-based SMT. Core idea: split words at morpheme/compound
-boundaries. Gaps: they are conservative splitters that only moderately shrink the
-vocabulary, and crucially they still leave unknown words — they do not solve the
-open-vocabulary problem, so a back-off model is still needed.
+boundaries.
 
 ## Evaluation settings
 

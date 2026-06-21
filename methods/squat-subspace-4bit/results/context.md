@@ -21,11 +21,10 @@ offline calibration pass over a fixed matrix. And there is a feedback loop: a qu
 error baked into an early token's cache perturbs the attention of *every* later token, so
 errors can accumulate over a long generation and drag the output off course.
 
-The precise problem: design an on-the-fly, training-free, calibration-free quantizer for the
+The goal: design an on-the-fly, training-free, calibration-free quantizer for the
 streaming K/V cache that drives the *model's generated output* as close as possible to the
 full-precision output at a target bit-width, while staying cheap enough to run inside the
-decode loop. The catch that makes this non-trivial is identifying *what* a few bits should be
-spent preserving, given that the cache is consumed by attention rather than read back directly.
+decode loop.
 
 ## Background
 
@@ -82,27 +81,19 @@ a residual buffer: the most recent `R` tokens are kept in FP16; once the buffer 
 keys they are quantized together in groups of `G`, so per-channel grouping (which spans tokens)
 becomes implementable in a stream. Its objective for both keys and values is to minimize the
 reconstruction error of the cached tensor itself, `‖k − deq(k^qtz)‖₂` (and likewise for `v`),
-group by group. **Limitation:** it measures fidelity by how close the dequantized tensor is to
-the original *in Euclidean norm*, with every coordinate weighted equally — it does not account
-for how the residual will be read by attention. Two keys with the same `‖k − deq‖₂` can perturb
-the next token's attention score by very different amounts depending on the direction of the
-residual, and the criterion is blind to that direction.
+group by group.
 
 **GEAR (Kang et al. 2024).** Tuning-free; reduces quantization error by
 storing, alongside the low-bit tensor, a low-rank matrix plus a sparse matrix that capture the
-residual. **Limitation:** the auxiliary matrices add storage and compute, and the target it
-optimizes is still the tensor reconstruction error, not the attention output.
+residual.
 
 **KVQuant (Hooper et al. 2024).** Pushes reconstruction fidelity with
 pre-RoPE quantization (quantize before rotary position embedding, applying RoPE on-the-fly
 after dequant), per-channel-key/per-token-value grouping, outlier isolation, and non-uniform
-levels. **Limitation:** every device of this method serves a smaller `‖k − deq‖`; the objective
-remains reconstruction of the tensor, so a residual that happens to fall in a direction the
-queries actually use is treated the same as one that does not.
+levels.
 
 **ZipCache (He et al. 2024).** Identifies salient tokens and applies higher precision to them,
-mixed-precision across tokens. **Limitation:** it allocates bits per token by a saliency
-heuristic but, within a token, still quantizes to minimize tensor reconstruction error.
+mixed-precision across tokens.
 
 **Optimal-Brain weight quantizers (OBC, Frantar & Alistarh 2022; GPTQ, Frantar et al. 2022).**
 Not KV methods, but the relevant prior art on *error-compensating*
@@ -110,14 +101,7 @@ quantization: quantize coordinates one block at a time and update the rest to ca
 output error, using the data Hessian `H = 2XXᵀ` as the metric, with an `O(d³)` in-place inverse
 downdate; GPTQ adds the observation that quantizing in a *fixed* (rather than greedy) order is
 nearly as good on large matrices, which lets the inverse-Hessian information be shared across
-all rows. **Limitation as applied here:** this is an *offline* procedure over a static weight
-matrix with a *data* Hessian estimated from a calibration set — it presupposes a fixed metric
-`XXᵀ` and a calibration pass, neither of which exists for a streaming KV cache that must be
-quantized on-the-fly with no calibration data.
-
-The shared gap across the KV baselines: they all minimize the reconstruction error of the
-cached tensor, and so spend their bit budget on numerical faithfulness of `k` and `v` per se,
-with no notion of which residual directions actually disturb the model's output.
+all rows.
 
 ## Evaluation settings
 

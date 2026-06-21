@@ -6,26 +6,23 @@ Given a complete undirected graph on `n` cities with a symmetric cost matrix `(c
 symmetric traveling-salesman problem asks for a minimum-weight tour — a cycle visiting every
 vertex exactly once. Exact solution proceeds by branch-and-bound: recursively split the set of
 tours (by forcing some edges in and others out) and discard any branch whose cheapest possible
-tour already exceeds the best tour found so far. The whole method lives or dies on the **lower
-bound** computed at each node of the search tree. A weak bound prunes almost nothing and the
-tree explodes; a bound that is both **tight** (close to the true optimum cost of the subproblem)
-and **cheap** (computable in roughly the time of a spanning-tree calculation, since it is
-recomputed at thousands of nodes) is what would make exact solution of 40-, 50-, 60-city
-instances feasible. The precise problem is therefore: find a function `LB ≤ C*` (the optimum
-tour cost) that is as large as possible while remaining far cheaper to evaluate than the tour
-problem itself, and that adapts — can be driven upward — as the search wants a sharper estimate.
+tour already exceeds the best tour found so far. Each node of the search tree needs a **lower
+bound** on the optimum cost of its subproblem. The question is how to compute, at each node, a
+function `LB ≤ C*` (the optimum tour cost) that is as large as possible while remaining far
+cheaper to evaluate than the tour problem itself — cheap enough to be recomputed at the
+thousands of nodes that arise in instances of 40, 50, or 60 cities.
 
 ## Background
 
 The cost of an optimum tour `C*` is what branch-and-bound must under-estimate. Several relaxations
-of "tour" were known to give lower bounds, each leaving a gap:
+of "tour" were known to give lower bounds:
 
 A tour is a connected spanning subgraph in which every vertex has degree exactly 2. Relaxing the
 degree-2 requirement to *connectivity* alone gives a spanning structure; relaxing connectivity
 to a *perfect 2-matching* gives the assignment relaxation. Each removes a constraint and so each
 optimal relaxed object costs no more than the optimal tour.
 
-Three pieces of mathematics sit underneath everything that follows.
+Three pieces of mathematics are relevant.
 
 **Minimum spanning trees are easy.** Kruskal (1956) and Prim/Dijkstra (1957–1959) compute a
 minimum spanning tree of a weighted graph in low-order polynomial time by a greedy edge or
@@ -55,34 +52,27 @@ distance to every solution point, and Agmon proves a linear convergence rate. Th
 parameter ranges over `λ ∈ (0, 2)`, and the lemma controls distance to the solution set rather
 than the residual at the chosen inequality.
 
-**Empirical state of TSP solving.** The diagnostic fact motivating the work is that the bounds
-in use produced search trees too large to exhaust for instances past roughly 20–30 cities; the
-assignment relaxation and the bare minimum-spanning-structure bound left visible gaps to `C*`,
-and that gap, multiplied across the branch-and-bound tree, was the bottleneck. These relaxed
-spanning objects are cheap precisely because they drop the tour's degree-2 condition, so the
-optimal relaxed object need not resemble a Hamiltonian cycle.
+**Empirical state of TSP solving.** Exact branch-and-bound with the bounds in use exhausted
+search trees for instances up to roughly 20–30 cities. The assignment relaxation and the bare
+minimum-spanning-structure bound are cheap precisely because they drop the tour's degree-2
+condition, so the optimal relaxed object need not resemble a Hamiltonian cycle.
 
 ## Baselines
 
 **Bare spanning relaxation.** Drop both degree-2 and exact-connectivity-into-a-cycle; keep a
 spanning connected structure. Its minimum weight is computed by a greedy MST routine and lower-
-bounds `C*` because a tour contains a spanning tree. Gap: the structure is free to pile many
-edges onto a few hub vertices, so the bound is loose, and there is no knob to tighten it.
+bounds `C*` because a tour contains a spanning tree.
 
 **Assignment relaxation.** Relax a tour to a minimum-cost perfect 2-matching / assignment.
 Solvable by the Hungarian / assignment algorithm; its dual gives values `u_i, v_j` with
-`u_i + v_j ≤ c_ij`. It bounds `C*` from below but typically returns subtours (2-cycles and short
-cycles) and so leaves a gap. Its dual variables also show that pricing constraints can be useful
-when the primal relaxed object is easy but structurally wrong.
+`u_i + v_j ≤ c_ij`. It bounds `C*` from below and typically returns subtours (2-cycles and short
+cycles).
 
 **Column-generation linear program / steepest ascent over node prices.** Treat the best
 achievable per-vertex-price bound as an optimization: maximize, over price vectors, the
 spanning-relaxation cost computed under price-perturbed edge weights. One can attack this as a
 large linear program with one constraint per candidate structure, generating columns as needed,
-or by a steepest-ascent procedure that increases the objective at each step. Gap: with the
-number of candidate structures astronomically large, the LP/simplex route and the
-function-increasing ascent route were both found to be slow, and the ascent's iteration count
-grew rapidly with `n`.
+or by a steepest-ascent procedure that increases the objective at each step.
 
 ## Evaluation settings
 
@@ -95,8 +85,9 @@ squares, cost 0 between knight-move-adjacent squares and ∞ otherwise) used to 
 existence of a Hamiltonian circuit. Instance sizes of interest range from 20 up to 64 cities.
 The metrics are: the value of the lower bound relative to the optimum tour cost `C*` (how tight),
 the number of branch-and-bound nodes generated (how much pruning), and wall-clock time on the
-machines of the day (an IBM 360/91). Each run is parameterized by a step-size control, a control
-on when to stop ascending and branch, and an upper bound on `C*` used to discard subproblems.
+machines of the day (an IBM 360/91). Each run is parameterized by controls on the bound
+computation at each node, on how much effort to spend before branching, and by an upper bound on
+`C*` used to discard subproblems.
 
 ## Code framework
 

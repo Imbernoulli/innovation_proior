@@ -4,13 +4,11 @@
 
 How can a single, general-purpose sequence layer model dependencies that span tens of thousands of time steps, while remaining cheap enough to train and run at scale?
 
-Real-world signals — raw audio at 16 kHz, long documents, pixel-by-pixel images, biomedical time series — routinely contain dependencies that stretch over 10,000 or more steps. The dominant sequence architectures each break down on this regime in a different way, and there is no single layer that simultaneously (i) has a principled mechanism for unbounded memory, (ii) trains in parallel over the sequence, (iii) runs as a constant-time-per-step recurrence at inference, and (iv) scales roughly linearly in both the sequence length L and any internal state size N. A solution would have to deliver all four at once: the memory of an RNN without its vanishing gradients, the parallel training of a convolution or attention without their cost or finite context, and the fast autoregressive stepping of a recurrence.
-
-The benchmark that crystallizes the difficulty: on a suite of synthetic and real long-range tasks, no existing model does meaningfully better than chance on the hardest one (a length-16,384 image-path classification task), and the whole field clusters far below what the tasks should allow.
+Real-world signals — raw audio at 16 kHz, long documents, pixel-by-pixel images, biomedical time series — routinely contain dependencies that stretch over 10,000 or more steps. The dominant sequence architectures each make different tradeoffs between memory, training parallelism, inference efficiency, and computational cost. The benchmark that crystallizes the challenge: a suite of synthetic and real long-range tasks with sequence lengths from ~1k to 16k, where existing models cluster well below what the tasks should allow.
 
 ## Background
 
-**Why long-range dependencies are hard.** A recurrent model with state update x_k = f(x_{k-1}, u_k) propagates information across time by repeated application of the same map. Backpropagating through L steps multiplies L Jacobians; if their product shrinks or grows geometrically, gradients vanish or explode (Pascanu, Mikolov, Bengio 2013), so signal from step 0 cannot reliably influence the loss at step L when L is large. Gating (LSTM, GRU) and orthogonal/unitary or Lipschitz-constrained recurrences (Arjovsky et al. 2016; Erichson et al. 2021) mitigate but do not eliminate this; effective memory remains bounded and training stays sequential.
+**Why long-range dependencies are hard.** A recurrent model with state update x_k = f(x_{k-1}, u_k) propagates information across time by repeated application of the same map. Backpropagating through L steps multiplies L Jacobians; if their product shrinks or grows geometrically, gradients vanish or explode (Pascanu, Mikolov, Bengio 2013), so signal from step 0 cannot reliably influence the loss at step L when L is large. Gating (LSTM, GRU) and orthogonal/unitary or Lipschitz-constrained recurrences (Arjovsky et al. 2016; Erichson et al. 2021) mitigate this; training remains sequential.
 
 **Continuous-time linear state space models.** A foundational model from control theory and signal processing maps a 1-D input signal u(t) to a 1-D output y(t) through an N-dimensional latent state x(t):
 
@@ -25,7 +23,7 @@ A is the state (transition) matrix, B the input map, C the output map, D a feedt
               n+1                         if n = k
               0                           if n < k ].
 
-Empirically this is decisive: swapping a random A for this matrix in a state space layer lifted sequential-MNIST accuracy from about 60% to 98%. The intuition for *why* a plain SSM fails without it: a linear first-order ODE solves to matrix exponentials, so a generic A gives state trajectories that decay or blow up exponentially — the continuous analogue of vanishing/exploding gradients — whereas the HiPPO A is exactly tuned so the state retains a faithful, bounded summary of the whole past.
+Empirically this is decisive: swapping a random A for this matrix in a state space layer lifted sequential-MNIST accuracy from about 60% to 98%.
 
 **Discretization.** To run on a sampled sequence (u_0, u_1, …) with u_k = u(kΔ), the continuous SSM is discretized with a step size Δ. The bilinear (trapezoidal / Tustin 1947) rule yields a linear recurrence
 
@@ -38,21 +36,21 @@ This is the discrete analogue of the continuous map and can be stepped like an R
 
     K̄ = (C̄B̄, C̄ĀB̄, C̄Ā²B̄, …, C̄Ā^{L−1}B̄) ∈ R^L.
 
-If K̄ is known, the convolution is an FFT-based non-circular convolution, O(L log L), fully parallel — ideal for training. The recurrence is ideal for inference (O(1) state update per step). The obstacle is *materializing* K̄: built naively it requires L successive multiplications by Ā, costing O(N²L) time and O(NL) memory, far above the Ω(L+N) one should hope for.
+If K̄ is known, the convolution is an FFT-based non-circular convolution, O(L log L), fully parallel — ideal for training. The recurrence is ideal for inference (O(1) state update per step). Materializing K̄ directly requires L successive multiplications by Ā, costing O(N²L) time and O(NL) memory.
 
-**The immediate predecessor and its wall.** A deep Linear State Space Layer (Gu, Johnson, Goel, Saab, Dao, Rudra, Ré 2021) used the full SSM as a trainable layer, learning A, B, C by gradient descent and unifying the continuous, recurrent, and convolutional views. Initialized with HiPPO, it proved that deep SSMs can in principle handle long-range dependencies. But it computed the kernel essentially naively, inheriting the O(N²L) time and O(NL) memory blow-up — at N = 256 it used orders of magnitude more memory than a comparable RNN or CNN. A faster algorithm was proposed (based on the characteristic polynomial of A and its inverse modulo x^L) but is numerically unstable: for A near the identity, the characteristic polynomial (1−x)^N has coefficients up to about 2^N, and its inverse modulo x^L is larger still, so the intermediate quantities overflow. Likewise, directly diagonalizing the HiPPO matrix is hopeless: its eigenvector matrix has entries of magnitude up to 2^{4N/3} (e.g. an entry C(4i,2i) ≈ 2^{4i}), so the change of basis is catastrophically ill-conditioned.
+**Deep Linear State Space Layer (LSSL)** (Gu, Johnson, Goel, Saab, Dao, Rudra, Ré 2021). A trainable deep SSM with HiPPO initialization, learning A, B, C by gradient descent and unifying the continuous, recurrent, and convolutional views. Initialized with HiPPO, it demonstrated that deep SSMs can handle long-range dependencies. The kernel K̄ is computed by repeated matrix-vector products with Ā.
 
 ## Baselines
 
-**Gated RNNs (LSTM/GRU).** Maintain a hidden state with multiplicative gates regulating information flow. Core gap: still sequential at train time, and despite gating, gradients over very long horizons remain unreliable; effective context is limited well below 10k steps.
+**Gated RNNs (LSTM/GRU).** Maintain a hidden state with multiplicative gates regulating information flow. Training is sequential.
 
-**Orthogonal / unitary / Lipschitz RNNs** (Arjovsky et al. 2016; Erichson et al. 2021). Constrain the recurrent map to have eigenvalues on or near the unit circle so the Jacobian product neither shrinks nor grows. Gap: the constraint restricts expressivity, training remains sequential, and benchmark performance on the hardest long-range tasks stays poor.
+**Orthogonal / unitary / Lipschitz RNNs** (Arjovsky et al. 2016; Erichson et al. 2021). Constrain the recurrent map to have eigenvalues on or near the unit circle so the Jacobian product neither shrinks nor grows.
 
-**Dilated / temporal convolutions** (WaveNet, van den Oord et al. 2016; TCN, Bai et al. 2018). Stack convolutions with exponentially growing dilation to enlarge the receptive field; fully parallel and stable. Gap: the receptive field is finite and grows only with depth/dilation, so genuinely global dependencies require many layers, and there is no single global filter.
+**Dilated / temporal convolutions** (WaveNet, van den Oord et al. 2016; TCN, Bai et al. 2018). Stack convolutions with exponentially growing dilation to enlarge the receptive field; fully parallel and stable.
 
-**Transformers and efficient attention.** Self-attention relates all pairs of positions, giving global context, but costs O(L²) time and memory. The efficient-attention family — linear attention via kernel feature maps (Katharopoulos et al. 2020), random-feature approximations (Performer, Choromanski et al. 2020), locality-sensitive-hashing sparsity (Reformer) — reduces this toward O(L) or O(L log L). Gap: the approximations trade quality for speed and, on dedicated long-range benchmarks, still perform poorly; attention also has no constant-time recurrent inference mode.
+**Transformers and efficient attention.** Self-attention relates all pairs of positions, giving global context, but costs O(L²) time and memory. The efficient-attention family — linear attention via kernel feature maps (Katharopoulos et al. 2020), random-feature approximations (Performer, Choromanski et al. 2020), locality-sensitive-hashing sparsity (Reformer) — reduces this toward O(L) or O(L log L).
 
-**Deep Linear State Space Layer (LSSL)** (Gu et al. 2021). The closest prior method: a trainable deep SSM with HiPPO initialization, exposing recurrent/convolutional/continuous views. Core idea and math as in Background. Gap: O(N²L) time, O(NL) memory from naive kernel computation; the proposed fast algorithm and naive diagonalization are both numerically unstable. This is the wall the next step must break.
+**Deep Linear State Space Layer (LSSL)** (Gu et al. 2021). The closest prior method: a trainable deep SSM with HiPPO initialization, exposing recurrent/convolutional/continuous views. Core idea and math as in Background.
 
 ## Evaluation settings
 

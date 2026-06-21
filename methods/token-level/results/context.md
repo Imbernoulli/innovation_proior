@@ -8,13 +8,14 @@ control problem it costs environment steps, and in a language-model setting it c
 generations plus scoring. Once a batch has been collected, a practical optimizer should reuse it
 for several minibatch updates instead of throwing it away after one gradient step.
 
-That reuse creates the central tension. The batch was sampled from the data-collecting policy
+That reuse creates a central tension. The batch was sampled from the data-collecting policy
 `pi_old`, but the parameters being updated define a different policy `pi_theta`. A usable
-policy-loss rule has to extract more work from the same batch while keeping the update close
-enough to the data-collecting policy that the batch remains a trustworthy local guide. The rule
-must be first-order, cheap to implement, compatible with shared policy/value networks and
-stochastic regularization, and reducible to masked per-token losses when the action sequence is a
-language-model response.
+policy-loss rule has to extract more work from the same batch while keeping the update consistent
+with the data-collecting policy so the batch remains a trustworthy local guide. The question is:
+what per-step policy-loss rule, operating on stored old log-probabilities, recomputed current
+log-probabilities, and supplied advantage estimates, enables multiple first-order minibatch
+updates on a single rollout batch, in settings ranging from continuous control to language-model
+reinforcement learning where the policy acts at token granularity?
 
 ## Background
 
@@ -42,39 +43,28 @@ in the step size. In other words, the linear surrogate is reliable near the curr
 becomes over-optimistic as the update moves away.
 
 The natural distance signal is the KL divergence from `pi_old` to `pi_theta` on states in the
-batch. Theory supports leashing the local surrogate with a KL term or constraint, but the practical
-question remains: how can that leash be made simple enough for repeated first-order minibatch
-updates?
+batch. Theory supports leashing the local surrogate with a KL term or constraint, and the
+practical question is how that leash can be made simple enough for repeated first-order minibatch
+updates.
 
 ## Baselines
 
 **Vanilla policy gradient / actor-critic.** Differentiate
 `E_t[log pi_theta(a_t | s_t) A_hat_t]` and take a gradient step, usually with a learned value
-baseline. Core idea: follow the variance-reduced policy-gradient estimate directly. Gap: after
-one update the same rollout batch is stale, and the objective has no term that notices policy
-drift.
+baseline. Core idea: follow the variance-reduced policy-gradient estimate directly.
 
 **Conservative policy iteration.** Optimize the candidate policy's expected advantage under the
 old state distribution, using conservative mixture steps to retain a monotonic-improvement style
-guarantee. Core idea: the average-advantage surrogate is the right first-order object. Gap: the
-guarantee exposes a step-size penalty, so maximizing the surrogate without a leash is not enough.
+guarantee. Core idea: the average-advantage surrogate is the right first-order object.
 
 **KL-constrained trust-region update.** Maximize the importance-weighted surrogate subject to a
 KL bound between old and new policies. Core idea: optimize the local return model only inside the
-region where it remains reliable. Gap: the usual implementation needs a linearized objective, a
-quadratic KL approximation, Fisher-vector products, conjugate gradient, and line search, making it
-heavy and awkward for noisy or parameter-shared networks.
+region where it remains reliable. The usual implementation uses a linearized objective, a
+quadratic KL approximation, Fisher-vector products, conjugate gradient, and line search.
 
 **KL-penalized surrogate.** Replace the hard constraint with a penalty
 `E_t[r_t A_hat_t - beta KL(pi_old, pi_theta)]`, optionally adapting `beta` after each update.
-Core idea: keep the same trust-region pressure in a first-order objective. Gap: a fixed `beta`
-does not transfer across tasks or training phases, while an adaptive controller adds lag and an
-extra schedule.
-
-**Large-ratio negative-advantage pathology.** In stale or distributed rollout settings, a token
-with `A_hat_t < 0` can have a very large current/old probability ratio. Then the loss contribution
-proportional to `-r_t A_hat_t` can dominate a minibatch. Gap: a robust per-step rule should not
-let a few stale negative-advantage samples create unbounded loss.
+Core idea: keep the same trust-region pressure in a first-order objective.
 
 ## Evaluation settings
 

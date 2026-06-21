@@ -3,21 +3,15 @@
 ## Research question
 
 Large neural networks with millions of parameters reach strong accuracy on image
-classification, machine translation, language modeling, and speech recognition, yet on every
-one of these tasks they still overfit: training accuracy climbs toward perfection while test
-accuracy plateaus or degrades. The standard countermeasures — early stopping, L1/L2 weight
-decay, dropout, batch normalization — share a structural feature. Each one acts on the
-*hidden activations or the weights* of the network. The object the network ultimately exposes
-to the world, the conditional distribution `p_theta(y|x)` over labels that comes out of the
-softmax, is left almost entirely unregularized. The precise problem is to find a regularizer
-that operates on that output distribution directly and that (1) improves generalization across
-very different architectures and tasks, (2) drops into existing pipelines without forcing the
-practitioner to retune the optimizer, schedule, or model, (3) avoids adding a new set of
-task-specific prior choices, and (4) is invariant to how the
-network underneath is parameterized — the output has a natural, fixed scale, whereas the
-significance of any individual weight depends on the values of all the others. Each of the
-prior regularizers below achieves some of this; none of them targets the output distribution
-in a way that satisfies all four at once. Closing that gap is the problem.
+classification, machine translation, language modeling, and speech recognition, and on every
+one of these tasks training accuracy climbs toward perfection while test accuracy plateaus or
+degrades. The standard countermeasures — early stopping, L1/L2 weight decay, dropout, batch
+normalization — share a structural feature: each one acts on the *hidden activations or the
+weights* of the network. The conditional distribution `p_theta(y|x)` over labels that comes
+out of the softmax is the object the network ultimately exposes to the world. The question is
+how to regularize a deep classifier by operating on that output distribution directly,
+improving generalization across architectures and tasks while dropping into existing pipelines
+without retuning the optimizer, schedule, or model.
 
 ## Background
 
@@ -26,32 +20,27 @@ network knows is to identify its knowledge with the mapping from inputs to outpu
 distributions, rather than with the learned values of its parameters. Under that view the
 probabilities a network assigns to the *incorrect* classes are
 themselves knowledge: shown an image of a particular car, a network that puts `1e-3` on a
-visually similar make and `1e-9` on an unrelated object is, all else equal, better than one
+visually similar make and `1e-9` on an unrelated object is, all else equal, different from one
 that reverses those two, because the relative sizes of the wrong-class probabilities encode
 how the network generalizes. Distillation exploits exactly this "dark knowledge" — the
 example-specific ratios among incorrect classes — by training a small network to reproduce a
-large network's soft outputs. Two consequences for regularization follow. First, because the
+large network's soft outputs. One consequence for regularization: because the
 output distribution has a natural scale and the weights do not, a regularizer acting on the
-output is invariant to the underlying parameterization. Second, any regularizer that flattens
-all the incorrect-class probabilities toward a single common value destroys the dark-knowledge
-ratios, which is a cost worth avoiding.
+output is invariant to the underlying parameterization.
 
 **The maximum-entropy principle.** Among all distributions consistent with given constraints,
 the maximum-entropy one is the least committal — it assumes no structure beyond what the
 constraints force (Jaynes, 1957). In supervised learning, searching for the maximum-entropy
 model subject to constraints on empirical statistics is what gives rise to maximum likelihood
-in log-linear models (Berger et al., 1996). For a softmax output, the available scalar
+in log-linear models (Berger et al., 1996). For a softmax output, the entropy
 `H(p_theta(y|x)) = - sum_i p_theta(y_i|x) log p_theta(y_i|x)` measures how committal a
 distribution is: it is maximal for the uniform distribution and zero for a one-hot spike.
 
-**Entropy regularization that already existed in two corners.** First, in network *training as
+**Entropy terms in two corners.** First, in network *training as
 optimization*: deterministic annealing (Rose, 1998), derivable from the maximum-entropy
 principle, introduces an entropy term and slowly anneals it to avoid poor local minima; Miller
 et al. (1996) applied this to train multilayer perceptrons with an annealed entropy-based
-regularizer. Their concern was escaping bad initialization, and the benefit they reported
-diminished quickly once the network had more than a handful of hidden units — so entropy
-regularization of neural-net *training* was on the table, but only as an optimization aid for
-small networks, never evaluated as a generalization regularizer for large modern ones. Second,
+regularizer, their concern being to escape bad initialization. Second,
 in *reinforcement learning*: adding the entropy of a stochastic policy to the objective,
 `+ beta H(pi)`, keeps the policy from collapsing onto a deterministic choice too early and so
 improves exploration. This was introduced by Williams & Peng (1991) in their REINFORCE-with-
@@ -82,20 +71,17 @@ output distributions go hand in hand with large gradient norms during training.
 
 ## Baselines
 
-These are the regularizers a new output-distribution regularizer would be measured against and
-would react to.
+These are the regularizers a new output-distribution regularizer would be measured against.
 
 **Dropout (Srivastava et al., 2014).** Randomly zero hidden units on each forward pass, which
 at test time approximates averaging an exponential ensemble of subnetworks. The dominant
-generalization regularizer of the time and the standard baseline. *Limitation for this
-problem:* it acts on hidden activations, not on the output distribution; empirically it drives
-the softmax toward near-deterministic 0/1 outputs (the peaked histograms above), i.e. it does
-nothing to discourage over-confidence in the predicted distribution itself.
+generalization regularizer of the time and the standard baseline. It acts on hidden
+activations; empirically it drives the softmax toward near-deterministic 0/1 outputs (the
+peaked histograms above).
 
 **L1/L2 weight decay, batch normalization.** Penalize or normalize weights and activations.
-*Limitation:* they act on the internal parameters, whose meaning is entangled across the whole
-network, so a penalty's effect depends on the parameterization; none of them touches the
-output distribution, the object whose over-confidence is the symptom of overfitting.
+They act on the internal parameters, whose meaning is entangled across the whole network, so a
+penalty's effect depends on the parameterization.
 
 **Label smoothing / LSR (Szegedy et al., 2016).** Replace the one-hot target with a mixture of
 the hard label and a fixed label distribution `u`, `q'(k) = (1 - epsilon) delta_{k,y} +
@@ -106,33 +92,24 @@ deviation from the prior, and since `H(u, p) = D_KL(u || p) + H(u)` with `H(u)` 
 second term is a forward-KL penalty `D_KL(u || p)` between the fixed uniform `u` and the
 model's output `p`. Because every entry of `q'` now has a positive floor `epsilon/K`, an
 infinite logit gap incurs infinite cross-entropy, so the correct logit can no longer run away.
-It reliably improves accuracy on ImageNet at `epsilon = 0.1`. *Limitations:* (i) it weights
-every class with the *constant* uniform `u`, applying equal pressure to all classes regardless
-of how confident or wrong the model currently is on each; (ii) it forces the incorrect classes
-toward a single common target value `epsilon/K`, which flattens the dark-knowledge ratios
-among them; (iii) it presupposes a known prior `u` over labels — uniform is natural when
-classes are balanced, but for tasks with highly non-uniform label frequencies (language
-modeling, where words follow a steep frequency distribution) choosing `u` becomes an arbitrary
-and consequential decision (uniform, unigram, higher-order n-gram, …).
+It reliably improves accuracy on ImageNet at `epsilon = 0.1`. It weights every class with the
+constant uniform `u` and forces the incorrect classes toward a common target value `epsilon/K`;
+it presupposes a prior `u` over labels, with uniform `u` natural when classes are balanced.
 
 **Label noise / DisturbLabel (Xie et al., 2016).** With small probability, replace a training
 example's label by one drawn uniformly at random. This penalizes placing very small
 probability on a label that the corruption occasionally makes correct, and improves
-generalization. Label smoothing is its marginalized expectation. *Limitation:* like uniform
-label smoothing it assumes a uniform corruption distribution and injects stochastic noise into
-the targets rather than acting deterministically on the output distribution.
+generalization. Label smoothing is its marginalized expectation. It assumes a uniform
+corruption distribution and injects stochastic noise into the targets.
 
 **Distillation / self-distillation (distillation work; Reed et al., 2014).** Smooth the targets
 with a teacher's soft outputs, or with the model's own current distribution (self-distillation,
-a trust-region-like effect via self-created soft targets). These preserve
-incorrect-class ratios but *limitation:* they need a teacher model (or a careful schedule of
-the model's own predictions) and extra machinery, rather than a single drop-in penalty.
+a trust-region-like effect via self-created soft targets). These preserve incorrect-class
+ratios, using a teacher model or a schedule of the model's own predictions.
 
 **Virtual adversarial training (Miyato et al., 2015).** A smoothing regularizer that penalizes
-the local distributional change under a worst-case input perturbation. *Limitation:* it has
-several hyperparameters and the smoothness gradient needs up to three extra forward/backward
-passes per step, multiplying the cost of both grid search and training relative to a simple
-penalty.
+the local distributional change under a worst-case input perturbation, with several
+hyperparameters, the smoothness gradient computed from extra forward/backward passes per step.
 
 ## Evaluation settings
 
@@ -145,8 +122,7 @@ The natural yardsticks already in use, spanning the tasks where over-confidence 
   batch size 50. Metric: test error.
 - **Language modeling.** Word-level Penn Treebank with a 2-layer 1500-unit LSTM, dropout on
   non-recurrent connections, SGD with learning-rate decay and gradient-norm clipping; metric:
-  validation and test perplexity. The steep, non-uniform word-frequency distribution is the
-  natural stress test for any regularizer that assumes a label prior.
+  validation and test perplexity. Words follow a steep, non-uniform frequency distribution.
 - **Machine translation.** WMT'14 English-to-German with an 8-layer sequence-to-sequence model
   with attention, dropout, beam search; metric: tokenized BLEU.
 - **Speech recognition.** TIMIT phoneme recognition and Wall Street Journal character-level

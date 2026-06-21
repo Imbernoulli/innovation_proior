@@ -1,48 +1,48 @@
 ## Research question
 
-Classical algebraic geometry begins with equations and their solution sets. Over an algebraically closed field, one studies subsets of affine or projective space cut out by polynomial equations, then recovers functions on the set by quotienting the polynomial ring. This works beautifully for many geometric questions, but it builds geometry from visible points first and only later asks what functions remain on those points.
+Classical algebraic geometry begins with equations and their solution sets. Over an algebraically closed field, one studies subsets of affine or projective space cut out by polynomial equations, then recovers functions on the set by quotienting the polynomial ring. Geometry is built from visible points first, and the functions on those points come afterward.
 
-Grothendieck's question reverses the priority. Suppose the polynomial ring, or more generally a commutative ring `A`, is the real object. What is the space whose functions are `A`? Which points should it contain if `A` has nilpotents, if the base is `Z` rather than an algebraically closed field, or if the object is varying in a family over another object?
-
-The scheme answer is: use all prime ideals of `A`, not just classical solutions or maximal ideals, and attach to them a sheaf of local rings. Then define general algebraic-geometric objects as locally ringed spaces locally isomorphic to these prime spectra, patched together by gluing.
+The question is whether the priority can be reversed. Suppose the polynomial ring, or more generally a commutative ring `A`, is taken as the primary object. What is the geometric space whose functions are `A`? Which points should such a space contain when `A` has nilpotents, when the base is `Z` rather than an algebraically closed field, or when the object varies in a family over another object?
 
 ## Background
 
-For a commutative ring `A`, `Spec A` is the set of prime ideals of `A` with the Zariski topology. Basic opens have the form `D(f) = { p in Spec A : f notin p }`. The structure sheaf `O_Spec A` assigns functions locally represented by fractions; on `D(f)` it is governed by the localization `A_f`, and the stalk at a prime `p` is the local ring `A_p`.
+For a commutative ring `A`, the classical study uses the points of `k^n` satisfying a system of polynomials and the coordinate ring of regular functions on those points. The maximal ideals of a finitely generated reduced `k`-algebra over algebraically closed `k` correspond, by the Nullstellensatz, to the ordinary points of the variety. The prime ideals of `A` form a larger set: each prime corresponds to an irreducible subvariety, and containment of primes records specialization.
 
-The pair `(Spec A, O_Spec A)` is not just a topological space. It is a locally ringed space: every point has a local ring of functions, with a unique maximal ideal recording functions that vanish at that point. This local ring is the device that makes infinitesimal and algebraic information part of the geometry, rather than an afterthought.
+A locally ringed space is a topological space together with a sheaf of rings whose stalk at every point is a local ring, with a unique maximal ideal recording functions that vanish at that point. The local ring is the device that carries infinitesimal and algebraic information at a point, beyond the bare value of a function there.
 
-A scheme is a locally ringed space covered by open subsets isomorphic to affine schemes `Spec A`. The phrase "patched from prime spectra" is literal: affine pieces are glued along open subschemes, and the sheaves of rings are glued with the spaces. The local model is algebra, but the final object can be global, singular, reducible, nonreduced, and defined over an arbitrary base.
+In algebraic number theory one studies rings such as `Z` together with their prime ideals; in algebraic geometry one studies polynomial equations over fields. These are pursued as separate subjects with their own languages.
 
 ## Baselines
 
-- **Classical affine varieties.** Start from zeros of polynomials in `k^n`, usually over algebraically closed `k`, and use coordinate rings of regular functions. This misses the generic points naturally associated with irreducible subvarieties, and it usually treats nilpotent functions as invisible because they vanish at every ordinary point.
+- **Classical affine varieties.** Start from zeros of polynomials in `k^n`, usually over algebraically closed `k`, and use coordinate rings of regular functions. Points are the ordinary solutions; functions are polynomial functions on those solutions modulo the ideal of the variety.
 
-- **Maximal ideal spectra.** For finitely generated reduced `k`-algebras over algebraically closed `k`, closed points correspond to maximal ideals by the Nullstellensatz. This identifies ordinary points but not all geometric specializations: prime ideals record irreducible subvarieties as points, including generic points.
+- **Maximal ideal spectra.** For finitely generated reduced `k`-algebras over algebraically closed `k`, closed points correspond to maximal ideals by the Nullstellensatz. This identifies the ordinary points of the variety with the maximal ideals of its coordinate ring.
 
-- **Manifold or analytic-space intuition.** A space is often imagined as a set of points with functions on it. Schemes keep that slogan but change what a point is and what a function is: points are prime ideals, and functions are sheaf-theoretic local ring elements.
+- **Manifold or analytic-space intuition.** A space is imagined as a set of points with functions on it, with charts and transition maps describing local models patched together.
 
-- **Separate treatments of arithmetic and geometry.** Algebraic number theory studies rings such as `Z` and their prime ideals; algebraic geometry studies polynomial equations over fields. Schemes put both under the same formal object, so `Spec Z` is a geometric base with a generic point and closed prime fibers.
+- **Separate treatments of arithmetic and geometry.** Algebraic number theory studies rings such as `Z` and their prime ideals; algebraic geometry studies polynomial equations over fields. Each has its own objects, points, and notion of function.
 
 ## Evaluation settings
 
-The construction must explain why nilpotents matter. `Spec k[epsilon]/(epsilon^2)` and `Spec k` have the same underlying single topological point, but different structure sheaves. The former has a nonzero infinitesimal function `epsilon`, so the scheme remembers first-order thickening that the point set alone would erase.
+Several phenomena are at stake.
 
-It must explain arithmetic fibers. A scheme `X` over `Spec Z` has a generic fiber over `(0)`, usually a characteristic-zero object, and closed fibers over `(p)`, objects in characteristic `p`. Reduction modulo primes is not a side operation; it is taking fibers of one morphism of schemes.
+Nilpotents. The rings `k[epsilon]/(epsilon^2)` and `k` each have a single ordinary point, yet the first carries a nonzero element `epsilon` with `epsilon^2 = 0` that vanishes at every ordinary point. A purely point-set description erases this first-order thickening; an adequate geometric object should retain it.
 
-It must explain families. A morphism `X -> S` is a family of schemes parameterized by `S`; for each point `s in S`, the fiber is `X_s = X x_S Spec k(s)`. Because points of `S` include nonclosed and generic points, the family includes generic behavior, special fibers, degeneration, and base change in one language.
+Arithmetic fibers. Reduction of an arithmetic object modulo a prime `p`, and its behavior in characteristic zero, are usually treated as separate operations. The primes of `Z` are `(0)` and the `(p)`, and one would like characteristic-zero and characteristic-`p` behavior to appear as parts of a single object over `Z`.
 
-It must also recover the classical case. When `A` is a finitely generated reduced algebra over an algebraically closed field, the closed points of `Spec A` recover the classical affine variety, while the full scheme adds generic points and the structure sheaf that makes gluing and morphisms intrinsic.
+Families. A family of geometric objects parameterized by another object, with its generic members, special members, degenerations, and base changes, is usually described case by case. One would like the family and its fibers to be expressed in one language.
+
+The classical case. When `A` is a finitely generated reduced algebra over an algebraically closed field, the ordinary points of the variety are already described by the maximal ideals of `A`; any new object should recover this classical picture.
 
 ## Code framework
 
 The neutral formal scaffold is:
 
 1. Replace a system of equations by its coordinate ring `A`.
-2. Replace the visible solution set by `Spec A`, the set of all prime ideals.
-3. Put the Zariski topology on `Spec A`, where containment of primes encodes specialization.
-4. Attach the structure sheaf `O_Spec A`, with local rings `A_p` as stalks.
-5. Define general objects by gluing affine schemes as locally ringed spaces.
-6. Define maps by morphisms of locally ringed spaces, equivalently ring homomorphisms in the affine opposite direction.
+2. Decide which set of objects associated with `A` plays the role of "points".
+3. Put a topology on that set.
+4. Attach a sheaf of rings recording the functions, with appropriate stalks at each point.
+5. Define general objects by patching together such local models.
+6. Define maps between objects, and relate them to ring homomorphisms.
 
-The key invariant is therefore not just a point set but the pair `(space, sheaf of local rings)`. This is why nilpotents, arithmetic fibers, and families are not separate extensions of the theory; they are ordinary features of the same definition.
+The recurring choice is what data an object should carry: a point set alone, or a point set together with a sheaf of rings of functions.

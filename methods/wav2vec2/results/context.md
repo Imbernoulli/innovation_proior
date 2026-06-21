@@ -3,17 +3,12 @@
 ## Research question
 
 Modern speech recognizers are accurate only because they are fed thousands of
-hours of *transcribed* speech. That requirement is the bottleneck: of the nearly
-7,000 languages spoken on Earth, only a handful have transcription budgets large
-enough to train a competitive recognizer, while raw, untranscribed audio is
-abundant for almost all of them. The precise problem is to learn a
-representation of speech *from audio alone* — no transcripts — such that, once a
-representation is learned, a recognizer can be fitted to it with a tiny amount of
-labeled data (tens of minutes, not thousands of hours) and still reach accuracy
-that today demands the full labeled corpus. A solution would have to (a) consume
-raw waveform, (b) train with an objective that needs no labels, (c) produce
-contextualized frame representations that capture the phonetic structure of
-speech, and (d) transfer to recognition with a thin, cheaply-trained head.
+hours of *transcribed* speech. Of the nearly 7,000 languages spoken on Earth,
+only a handful have transcription budgets large enough to train a competitive
+recognizer, while raw, untranscribed audio is abundant for almost all of them.
+The question is how to learn a useful representation of speech from audio alone —
+no transcripts — so that a recognizer can be fitted to it with a small amount of
+labeled data.
 
 ## Background
 
@@ -24,15 +19,14 @@ labeled task. Masked language modeling (Devlin et al. 2018) hides a fraction of
 tokens and predicts them from bidirectional context; the resulting
 representations transfer broadly. In vision the dominant pretext family is
 *contrastive*: pull together views of the same instance, push apart different
-ones (He et al. 2019; Chen et al. 2020). The open question for speech is which of
-these transfers, because speech is neither discrete tokens nor a single static
-image — it is a continuous-valued sequence with no given segmentation into units.
+ones (He et al. 2019; Chen et al. 2020). Speech is neither discrete tokens nor a
+single static image — it is a continuous-valued sequence with no given
+segmentation into units.
 
 **Contrastive predictive coding (van den Oord et al. 2018).** The load-bearing
 idea behind self-supervised *sequence* learning: instead of reconstructing future
-samples (expensive, and forces modeling of low-level detail that may be
-irrelevant), learn by *prediction in latent space via classification*. Encode
-the signal to latents, summarize the past into a context vector, and train the
+samples, learn by *prediction in latent space via classification*. Encode the
+signal to latents, summarize the past into a context vector, and train the
 context to identify the true future latent among randomly-drawn distractors with
 a noise-contrastive (InfoNCE) loss. This maximizes a bound on the mutual
 information between context and future and avoids ever generating raw audio.
@@ -53,14 +47,6 @@ by summing over all alignments (including a blank symbol) that collapse to the
 target. It is the standard way to attach a recognizer head to a frame-level
 acoustic representation when no alignment is available.
 
-**Empirical pressure from earlier speech systems.** Prior systems that learn a
-discretization of the audio in a separate first step and then learn a contextual
-model on top of those frozen units expose a clear limitation: the unit inventory
-is fixed before the context model can shape it, and the context model only
-ingests already-lossy discrete tokens. Continuous contrastive systems avoid that
-early bottleneck, but their targets still carry speaker, channel, and local
-acoustic detail that a recognizer should not have to preserve exactly.
-
 ## Baselines
 
 **wav2vec / CPC for speech (Schneider et al. 2019; van den Oord et al. 2018).**
@@ -68,27 +54,19 @@ A multi-layer convolutional encoder maps raw audio to latents; a context network
 (also convolutional) predicts future latents via a contrastive loss against
 distractors. Core idea and math: InfoNCE — maximize
 log[exp(sim(c, z₊)) / Σ exp(sim(c, z))] over a positive future latent z₊ and
-sampled negatives. Gap: the representations are continuous throughout and the
-context network is convolutional, with a limited receptive field; there is no
-discrete inventory of speech units and no global self-attention.
+sampled negatives.
 
 **vq-wav2vec / DiscreteBERT (Baevski et al. 2019, 2019).** A two-step pipeline:
 first learn a *vector-quantized* discretization of audio (vq-wav2vec) so each
 frame becomes a discrete token; then run a BERT-style masked-token model over the
 discrete tokens to get contextual representations, and fine-tune for recognition.
-Core idea: by discretizing first, the well-developed masked-language-model
-machinery of NLP applies directly to speech. Gap: the discretization is learned
-and *frozen* before the context model sees it, so the two stages cannot co-adapt;
-the context model only ever ingests the already-lossy discrete tokens, never the
-richer continuous features. This is exactly the "fixed units learned in a prior
-step" weakness above.
+By discretizing first, the well-developed masked-language-model machinery of NLP
+applies directly to speech.
 
 **Semi-supervised self-training / pseudo-labeling (Park et al. 2020; Xu et al.
 2020).** Train a teacher on the available labels, label the unlabeled audio with
-it, and retrain a student on the union, iterating. Strong, but requires labels to
-start, multiple rounds of labeling/filtering/retraining, and a recognizer that is
-already good — it improves a supervised system rather than learning
-representations from audio alone.
+it, and retrain a student on the union, iterating. The method improves a
+supervised system by incorporating unlabeled audio.
 
 ## Evaluation settings
 

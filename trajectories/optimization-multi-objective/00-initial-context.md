@@ -4,10 +4,10 @@ A multi-objective problem `f(x) = (f_1(x), ..., f_M(x))`, all minimized, has no 
 
 ## Prior art / Background / Baselines
 
-- **Layered Pareto ranking + fitness sharing (Srinivas & Deb 1994).** Sort the population into non-domination layers and preserve spread with a sharing kernel of radius `sigma_share`. Gap: the ranking step is expensive, the method is non-elitist, and spread depends on the fragile user-set `sigma_share`.
-- **SPEA — Strength-Pareto EA (Zitzler & Thiele 1998/99).** Maintain an external archive of non-dominated solutions; fitness combines a strength count and a raw domination count, and archive overflow is reduced by clustering. Gap: archive sizing, strength assignment, and clustering add overhead and extra parameters.
-- **Tchebycheff scalarization (Bowman 1976; Miettinen 1999).** Decompose the front into scalar subproblems `max_j w_j |f_j - z*_j|` with an ideal point `z*` and a weight vector `w`. Gap: choosing, distributing, and adapting the weight vectors, and deciding how subproblems interact, is still open.
-- **Real-coded variation (Deb & Agrawal 1995).** Simulated binary crossover (SBX, `eta_c`) and bounded polynomial mutation (`eta_m`, per-variable rate `p_m = 1/n`) are taken as given. Gap: they provide local variation as the population contracts, but no Pareto ranking or elitism by themselves.
+- **Layered Pareto ranking + fitness sharing (Srinivas & Deb 1994).** Sort the population into non-domination layers and preserve spread with a sharing kernel of radius `sigma_share`.
+- **SPEA — Strength-Pareto EA (Zitzler & Thiele 1998/99).** Maintain an external archive of non-dominated solutions; fitness combines a strength count and a raw domination count, and archive overflow is reduced by clustering.
+- **Tchebycheff scalarization (Bowman 1976; Miettinen 1999).** Decompose the front into scalar subproblems `max_j w_j |f_j - z*_j|` with an ideal point `z*` and a weight vector `w`.
+- **Real-coded variation (Deb & Agrawal 1995).** Simulated binary crossover (SBX, `eta_c`) and bounded polynomial mutation (`eta_m`, per-variable rate `p_m = 1/n`).
 
 ## Fixed substrate / Code framework
 

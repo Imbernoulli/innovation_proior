@@ -5,18 +5,10 @@
 The goal is a single, simple, fast, and general framework for **instance segmentation**: given an image,
 detect every object and produce a *pixel-accurate mask for each individual instance*. The task fuses two
 otherwise-separate problems. From **object detection** it inherits the need to find and classify every
-object and localize it; from **semantic segmentation** it inherits per-pixel labeling. But unlike
+object and localize it; from **semantic segmentation** it inherits per-pixel labeling. Unlike
 semantic segmentation, it must separate *instances* — two overlapping objects of the same class must get
-two distinct masks, not one merged blob.
-
-What would a good solution have to achieve? It should (1) match the speed and training simplicity that
-detection frameworks already enjoy, so that experiments take hours not weeks; (2) be accurate at *strict*
-localization (high-IoU mask overlap), since a mask is only useful if its boundary is correct; (3) handle
-the hard case of **within-category overlap** (many people, many cars, touching each other), which is where
-naive per-pixel labeling collapses; and (4) be a *framework*, flexible enough to swap backbones and to
-extend to other instance-level tasks. The prior art either solved detection well but said nothing about
-masks, or solved per-pixel labeling well but could not separate instances, or solved instance
-segmentation through slow, multi-stage, segmentation-first cascades.
+two distinct masks, not one merged blob. The question is how to build such a system on top of existing
+region-based detection infrastructure.
 
 ## Background
 
@@ -33,10 +25,8 @@ map by dividing its coordinates by the feature stride and **rounding** to the ne
 a coordinate `x` becomes `[x/16]` for a stride-16 map. That quantized region is then partitioned into a
 fixed grid of bins (e.g. 7×7); each bin boundary is again rounded to integers; the features inside each
 bin are aggregated by max pooling. There are therefore **two roundings**: region-to-grid and grid-to-bins.
-Each rounding shifts the region by up to half a cell, so the extracted feature map is misaligned with the
-true region by a few pixels at stride 16 and worse at stride 32. This is a known, accepted property: the
-downstream classifier is robust to small translations, so the misalignment was never a problem *for
-classification*. It is an open question what it costs a task that needs per-pixel spatial fidelity.
+Each rounding shifts the region by up to half a cell. The downstream classifier is robust to small
+translations, and this operator is the standard approach for per-region detection.
 
 **Differentiable bilinear sampling.** A separate line of work introduced a differentiable layer that
 samples a feature map at arbitrary, *non-integer* spatial locations by bilinear interpolation from the
@@ -51,8 +41,6 @@ spatial map (Long et al. 2015). The output layer applies a **per-pixel softmax**
 with a multinomial cross-entropy loss, and the coarse output is upsampled (by deconvolution / bilinear
 upsampling) back toward input resolution. The lesson carried forward: a *spatial* target should be
 predicted by convolutions that preserve spatial layout, not by collapsing the feature into a flat vector.
-The property worth noting: the per-pixel softmax makes the C categories **compete** at every pixel — each
-pixel is forced to choose one class.
 
 **Multi-scale features in-network.** A feature-pyramid construction builds a top-down pathway with lateral
 connections from a single-scale input, producing a set of feature maps at multiple scales all with the
@@ -60,58 +48,40 @@ same channel count (Lin et al. 2017). Regions are routed to the pyramid level ap
 This gives strong features for objects across scales at little extra cost, and is a natural backbone for a
 per-region detector.
 
-**Motivating empirical observations about existing systems.** Two facts about the prior art set up the
-problem. First, region-feature extraction with quantization works fine for box classification but has
-never been stress-tested on a task requiring pixel alignment; the misalignment magnitude grows with the
-feature stride, so large-stride (stride-32) features have historically been considered too coarse for
-precise localization. Second, semantic-segmentation FCNs, when adapted to separate instances, struggle on
-overlapping instances of the same class: per-pixel multi-class labeling has no native notion of "which
-instance", so touching same-class objects merge. Systems that predict a shared set of position-sensitive
-channels for class, box, and mask jointly show systematic artifacts and spurious edges precisely on
-overlapping objects — evidence that *coupling* the mask prediction with the classification is part of the
-difficulty.
-
 ## Baselines
 
 **R-CNN (Girshick et al. 2014).** Warp each region proposal to a fixed size, run the full CNN per region,
-classify with SVMs, regress the box. Establishes regions+CNN but is slow (one CNN pass per region) and
-multi-stage (separately trained CNN, classifier, regressor).
+classify with SVMs, regress the box. Establishes regions+CNN; one CNN pass per region, with separately
+trained CNN, classifier, and regressor.
 
 **Fast R-CNN (Girshick 2015).** Run the backbone once; extract per-region features with RoIPool from the
 shared map; two sibling fully-connected heads predict, **in parallel**, a softmax over K+1 classes and a
 per-class bounding-box regression. Trained end-to-end with a multi-task loss `L = L_cls + L_box`, where
 `L_cls` is cross-entropy and `L_box` is a smooth-L1 loss applied to the regression outputs of the
 ground-truth class only. Core contribution: parallel class+box siblings, single-stage training, shared
-computation. Gap it leaves: it produces boxes, not masks, and its RoIPool quantizes coordinates.
+computation.
 
 **Faster R-CNN (Ren et al. 2015).** Replaces external proposals with a **Region Proposal Network**: a
 small conv head slides over the shared feature map; at each location it scores k anchors (multiple scales
 and aspect ratios) for objectness and regresses their box deltas, via two 1×1-conv siblings, trained with
 the same cls+box multi-task loss. The full detector is two stages: stage 1 = RPN proposes regions; stage 2
 = the Fast R-CNN head classifies and refines each region from RoIPool features; both stages share the
-backbone. This is the leading detection framework and the natural base to build on. Gap: still box-only,
-still RoIPool.
+backbone. This is the leading detection framework and the natural base to build on.
 
 **FCN for semantic segmentation (Long et al. 2015).** Fully convolutional per-pixel classification with
-per-pixel softmax + multinomial loss. Strong at semantic labeling; cannot separate instances (no instance
-notion), and its softmax couples segmentation with classification. Gap: no instances.
+per-pixel softmax and multinomial loss. Produces dense per-pixel category labels.
 
 **DeepMask / SharpMask (Pinheiro et al. 2015, 2016).** Learn to *propose* class-agnostic segment
-candidates — a network outputs a mask, but via a **fully-connected** layer — and then classify each
-segment with a Fast R-CNN. Segmentation precedes recognition. Gaps: the fc mask discards spatial structure
-and needs many parameters; segment-then-classify is slow and less accurate; masks are not produced in
-alignment with the detector.
+candidates — a network outputs a mask via a **fully-connected** layer — and then classify each
+segment with a Fast R-CNN. Segmentation precedes recognition.
 
 **MNC — multi-task network cascade (Dai et al. 2016).** A three-stage cascade: propose boxes, predict
-mask instances from boxes, then categorize. It introduced **RoIWarp**, which also uses bilinear resampling
-— but it first *quantizes* the region exactly as RoIPool does, so it does not address alignment. Gaps: the
-cascade makes later stages depend on earlier mask predictions (coupling), it is complex and multi-stage,
-and RoIWarp performs essentially on par with RoIPool.
+mask instances from boxes, then categorize. Introduced **RoIWarp**, which uses bilinear resampling
+after first quantizing the region as RoIPool does.
 
 **FCIS — fully convolutional instance segmentation (Li et al. 2017).** Predicts a set of position-
 sensitive output channels fully convolutionally that *simultaneously* encode class, box, and mask, which
-makes it fast. Gap: the shared position-sensitive channels couple the tasks; it shows systematic errors on
-overlapping instances and creates spurious edges.
+makes it fast.
 
 ## Evaluation settings
 
@@ -124,7 +94,7 @@ reports AP at fixed IoU (AP50, AP75 — AP75 being the strict-localization measu
 large object scales (APS/APM/APL). Box AP uses box IoU under the same protocol. For human pose, the
 keypoint metric AP^kp uses object keypoint similarity. A second dataset, Cityscapes (Cordts et al. 2016),
 provides fine per-instance annotations over 8 categories at 2048×1024, with large numbers of overlapping
-same-category instances per image, and serves as a low-data, high-overlap stress test (mask AP and AP50).
+same-category instances per image, and serves as a stress test (mask AP and AP50).
 These datasets, splits, and metrics all predate the method and are the standard instance-level benchmarks.
 
 ## Code framework

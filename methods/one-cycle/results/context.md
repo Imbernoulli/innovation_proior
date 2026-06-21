@@ -3,24 +3,16 @@
 ## Research question
 
 Training a deep convolutional network with SGD is dominated, in practice, by one knob: the
-learning rate. Set it too high and training diverges; set it too low and it crawls, and the
-characteristic curve for a fixed rate is the same every time — a burst of progress, then a
-long plateau where each iteration buys almost nothing. The standard remedy is to run a large
-rate for many epochs until the test accuracy plateaus, drop the rate by a factor of ten, and
-repeat two or three times. That works, but it spends the overwhelming majority of its
-iterations in those flat plateaus, it demands hand-chosen milestones, and it commits to the
-prevailing wisdom that the learning rate must stay *small* — below some "maximum safe value"
-— for the whole run.
+learning rate. Set it too high and training diverges; set it too low and it crawls. The
+standard remedy is to run a large rate for many epochs until the test accuracy plateaus, drop
+the rate by a factor of ten, and repeat two or three times. This commits to the prevailing
+wisdom that the learning rate must stay *small* — below some "maximum safe value" — for the
+whole run.
 
-The precise goal is a learning-rate schedule that (1) reaches a given test accuracy in far
-fewer iterations than the piecewise-constant recipe; (2) avoids trading speed for final
-generalization; (3) needs little per-dataset, per-architecture tuning, with a principled way
-to pick its bounds from a single short pre-run rather than a grid search; (4) keeps the optimizer type,
-the loss, the data pipeline, and the per-step update rule of SGD-with-momentum exactly as
-they are — only the per-iteration rate (and, optionally, the momentum coefficient) changes;
-and (5) generalizes well, not merely trains fast. The existing schedules below each get part
-of this; none resolves the speed, tuning, and generalization requirements together. Closing
-that gap is the problem.
+The question is what learning-rate schedule to use over a fixed training budget, keeping the
+optimizer type, the loss, the data pipeline, and the per-step update rule of SGD-with-momentum
+exactly as they are — only the per-iteration rate (and, optionally, the momentum coefficient)
+changes.
 
 ## Background
 
@@ -65,12 +57,11 @@ deal about a network's tolerance for learning rates from one short run in which 
 swept linearly upward from near zero. Plotting test accuracy against the rising rate gives a
 curve that climbs, holds, and then — once the rate is too large — turns ragged and falls.
 The position of that turn is a per-architecture fact about the largest usable rate. Two
-observations from such sweeps are the empirical seeds of everything that follows. First, on
-some deep residual networks the accuracy stays high over a strikingly wide band of large
-rates, far past the conventional "safe" ceiling. Second, over a band of large rates the
-*training* loss rises while the *test* loss falls — the generalization gap shrinks as the
-rate grows, which, by the definition above, is the signature of regularization happening *by
-the learning rate itself*.
+observations from such sweeps stand out. First, on some deep residual networks the accuracy
+stays high over a strikingly wide band of large rates, far past the conventional "safe"
+ceiling. Second, over a band of large rates the *training* loss rises while the *test* loss
+falls — the generalization gap shrinks as the rate grows, which, by the definition above, is
+the signature of regularization happening *by the learning rate itself*.
 
 **Curriculum and annealing.** Two old ideas frame how a rate should move over a run.
 Curriculum learning (Bengio et al. 2009) starts easy and ramps up difficulty; simulated
@@ -88,21 +79,15 @@ theta_{i+1} = theta_i  +  v_{i+1}
 so the velocity is a moving average of the gradient and the momentum coefficient `m` scales
 how much past gradients carry forward. Because the update magnitude depends on both `eps` and
 `m`, momentum and learning rate are coupled — they push on the same lever. Sutskever et al.
-(2013) had already shown that a *scheduled* momentum, ramped and then eased back, matters for
-deep nets.
+(2013) showed that a *scheduled* momentum, ramped and then eased back, matters for deep nets.
 
 ## Baselines
 
-These are the prior schedules a new one would be measured against and would react to.
+These are the prior schedules in use at the time.
 
 **Piecewise-constant / step decay (He et al. 2016).** Hold a global rate (commonly ≈0.1) for
 many epochs until the test accuracy plateaus, then divide it by ten and continue, repeating
-two or three times. This is the default training regime for residual networks. **Gap:** each
-constant-rate segment shows the same shape — a quick rise then a long plateau — so most of
-the iterations are spent in plateaus making little progress; the milestone epochs are
-hand-chosen per dataset and architecture; and the whole schedule keeps the rate at
-conventionally small values throughout, never probing the large-rate band where the
-diagnostic sweeps show high accuracy and a shrinking generalization gap.
+two or three times. This is the default training regime for residual networks.
 
 **Cyclical learning rates, triangular policy (Smith 2015).** Rather than a single fixed or
 monotonically decaying rate, let the rate oscillate linearly between a lower and an upper
@@ -120,30 +105,20 @@ motivating insight is that a temporary increase in the rate can hurt in the shor
 help overall — a larger rate traverses saddle-point plateaus that a small rate stalls on.
 This work also introduced the linear *LR range test*: sweep the rate upward over one short
 run and read the largest usable rate off the accuracy curve. Variants halve the amplitude
-each cycle (`triangular2`) or decay the bounds geometrically (`exp_range`). **Gap:** it runs
-many full up-and-down cycles and oscillates between two fixed bounds for the entire run; the
-rate never descends far *below* the lower bound, and on its own the policy does not deliver an
-order-of-magnitude reduction in iterations.
+each cycle (`triangular2`) or decay the bounds geometrically (`exp_range`).
 
 **Cosine annealing with warm restarts, SGDR (Loshchilov & Hutter 2016).** Decay the rate
 along a cosine from a high value to a small one, then jump it back up to the top and decay
-again — a sawtooth of cosine descents. **Gap:** the periodic jumps back to the maximum are a
-restart pattern, not a single rise-hold-fall traversal; the schedule still spends the run
-cycling rather than ramping once and then driving the rate far down at the end.
+again — a sawtooth of cosine descents.
 
 **Linear warmup then decay (He et al. 2016; Goyal et al. 2017).** Begin with a small rate,
 increase it linearly over the first few epochs to a target, then decay (step or cosine).
 Warmup stabilizes the high rates needed for large-batch training, and is in effect a
-discretized version of an increasing-rate phase. **Gap:** it is only the up-ramp followed by
-ordinary decay; there is no single cycle that rises, falls, *and then* anneals the rate orders
-of magnitude below where it started, and the momentum coefficient is left constant throughout.
+discretized version of an increasing-rate phase.
 
 **Adaptive per-parameter methods (AdaGrad, Duchi et al. 2011; AdaDelta, Zeiler 2012; Adam,
 Kingma & Ba 2014; Nesterov momentum, Sutskever et al. 2013).** These set effective
-per-parameter rates from gradient statistics instead of a single schedule. **Gap:** the
-effective rates they use, where they work well, are not in the very-large-rate band; they are
-designed around small, stable steps and do not, by themselves, exploit the large-rate regime
-that the diagnostic sweeps reveal.
+per-parameter rates from gradient statistics instead of a single global schedule.
 
 ## Evaluation settings
 

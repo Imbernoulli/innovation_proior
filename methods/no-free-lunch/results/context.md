@@ -12,10 +12,7 @@ descending when you want a maximum, that simpler hypotheses (Occam's razor) gene
 The precise question is: **is any of this true with no assumption about the problem?** Given two search
 algorithms a₁ and a₂, how does the set of cost functions on which a₁ beats a₂ compare to the set on which
 a₂ beats a₁? Given two learning algorithms, is there an *a priori* reason — a reason that holds before you
-say anything about which problems are likely — to prefer one over the other? The pain point is that the
-whole field benchmarks
-algorithms on a handful of test functions and then generalizes — and nobody has a formal statement of what,
-if anything, such a benchmark licenses you to conclude about other problems.
+say anything about which problems are likely — to prefer one over the other?
 
 ## Background
 
@@ -35,13 +32,8 @@ performance GP as its test accuracy minus the accuracy of random guessing — po
 negative when it does worse. Schaffer argues that summed (averaged) over *all* possible learning tasks,
 total GP is zero: "positive performance in some learning situations must be offset by an equal degree of
 negative performance in others," so "no learning bias can outperform any other bias over the space of all
-possible learning tasks." The immediate consequence is that a simplicity bias like Occam's razor cannot help
-on all problems; whatever it gains on a subset it pays for on the complement. This is stated for
-classification accuracy relative to chance; it is a conservation *intuition* rather than a statement about
-the full distribution P(c) of costs, it is a grand-average claim that says nothing about individual problems,
-it is confined to learning with no counterpart stated for optimization, and
-its airtightness depends on cleanly separating the part of the error that is mere memorization of the
-training set from the part that is genuine generalization.
+possible learning tasks." Whatever a simplicity bias like Occam's razor gains on a subset of problems it
+pays for on the complement.
 
 **Off-training-set error.** Generalization is about test points the learner has *not* seen. In-sample or
 IID-test error mixes two different things: how well the learner reproduces the training labels (which can be
@@ -55,17 +47,13 @@ unit per disagreement — is the cleanest case.
 **Bias and variance.** The standard decomposition of squared-error risk is
 E[(y − ĥ)²] = bias² + variance + noise. A learner trades the two: a rigid, simple learner has high bias and
 low variance; a flexible learner the reverse. Averaging several deterministic learners reduces variance
-without changing bias, by the convexity identity (z − [α+β]/2)² ≤ ½(z−α)² + ½(z−β)². But this is a trade-off
-*within an assumed problem distribution*; what it implies, if anything, once one refuses to assume a
-distribution over problems is not addressed.
+without changing bias, by the convexity identity (z − [α+β]/2)² ≤ ½(z−α)² + ½(z−β)².
 
-**The prevailing wisdom and its diagnostic gap.** Practitioners "match" algorithms to problems all the time,
-but on a heuristic basis; benchmark papers report an algorithm winning on a few sample functions and
-implicitly generalize. The diagnostic fact that sets up the whole investigation is well known: the amount of
-revisiting an algorithm does (re-evaluating points it has already seen) is a complicated, algorithm-and-
-problem-dependent quantity that distorts oracle-based performance counts and cannot simply be filtered out.
-No one has a model of "the underlying mathematical skeleton of optimization theory" — the structure that
-holds before any probability distribution over particular problems is imposed.
+**The prevailing wisdom.** Practitioners "match" algorithms to problems all the time, but on a heuristic
+basis; benchmark papers report an algorithm winning on a few sample functions and implicitly generalize. The
+amount of revisiting an algorithm does (re-evaluating points it has already seen) is a complicated,
+algorithm-and-problem-dependent quantity that distorts oracle-based performance counts and cannot simply be
+filtered out.
 
 ## Baselines
 
@@ -73,20 +61,17 @@ The prior methods a no-assumption result would be measured against (and would re
 
 - **Random search.** Sample distinct points of 𝒳 uniformly without replacement, keep the best. The trivial
   baseline everyone assumes is beatable. Its expected best-so-far depends only on the cost histogram of f,
-  not on any cleverness. Gap: there is no proof that any algorithm beats it averaged over all problems.
+  not on any cleverness.
 
 - **Hill climbing / hill descending.** From the current point, examine neighbors and move to the best (lowest
   for descending, highest for climbing); iterate, with random restarts to escape local optima. Exploits
-  local cost structure. Gap: its advantage is asserted relative to "typical" landscapes, never relative to
-  the set of all landscapes.
+  local cost structure.
 
 - **Simulated annealing (Kirkpatrick et al.).** A Metropolis walk with a cooling temperature, accepting
-  uphill moves with probability ~exp(−Δ/T). Mimics statistical mechanics. Gap: same — its performance is
-  argued on problems with exploitable structure, with no assumption-free baseline.
+  uphill moves with probability ~exp(−Δ/T). Mimics statistical mechanics.
 
 - **Evolutionary algorithms.** Maintain a population, select by fitness, recombine and mutate. Mimic natural
-  selection. The most popular black-box optimizers of the period. Gap: hundreds of variants, each claimed
-  superior on benchmark suites, with no theory of what the benchmarks imply for other problems.
+  selection. The most popular black-box optimizers of the period.
 
 - **Tabu search (Glover).** Hill climbing with a memory of recently visited points, forbidden for a while, to
   avoid cycling and revisiting.
@@ -95,9 +80,7 @@ The prior methods a no-assumption result would be measured against (and would re
   black-box class, because it relies on knowing more than the oracle returns.
 
 - **Cross-validation and Occam's razor (as learning baselines).** Choose among candidate learners by held-out
-  performance; prefer simpler hypotheses. The default model-selection and inductive-bias heuristics. Gap:
-  neither has an assumption-free justification; the warrant for trusting held-out performance to predict
-  performance on unseen targets has never been formalized.
+  performance; prefer simpler hypotheses. The default model-selection and inductive-bias heuristics.
 
 ## Evaluation settings
 
@@ -111,6 +94,4 @@ evaluations (here, *distinct* evaluations) rather than wall-clock time. For lear
 a hypothesis h, a loss function L (zero-one the canonical homogeneous case), and the **off-training-set**
 error as the metric — average loss over test inputs q ∉ d_X. The space of all problems is
 ℱ = 𝒴^𝒳, of size |𝒴|^|𝒳|. The benchmark function suites and standard datasets are the existing comparison
-substrate; the protocol question — what a comparison on a subset of problems licenses about the rest — is
-exactly what is unresolved.
-
+substrate.

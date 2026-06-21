@@ -4,12 +4,12 @@ TD-MPC2 learns a decoder-free latent world model: an encoder maps observations t
 
 ## Prior art / Background / Baselines
 
-A set of representation-normalization ideas can in principle serve as the final activation; each leaves a gap in this setting.
+A set of representation-normalization ideas can in principle serve as the final activation.
 
-- **No final normalization (identity).** Intermediate LayerNorms control pre-activations inside the MLP, but the final linear map emits the latent with unconstrained magnitude. Gap: under a self-predictive plus bootstrapped objective the overall scale is a free degree of freedom that the losses do not pin down, and the value-target feedback loop can drive gradients to explode on harder tasks.
-- **L2 normalization (hypersphere).** Divide the latent by its L2 norm, optionally times a learnable scalar, so every latent has fixed magnitude. Gap: only magnitude is constrained; every point on the sphere is equally available, all coordinates are coupled through one scalar, and the dense, shapeless geometry is not well matched to the value/reward readout.
-- **RMSNorm.** Drop mean-subtraction from LayerNorm and keep only the scale: divide by the root-mean-square of the entries and apply a learnable gain. Gap: it controls global spread without shaping coordinate structure, the learnable gain can re-inflate scale, and the value head learns less efficiently from the resulting geometry.
-- **Discrete latent codes (VQ-VAE).** Split the latent into groups and replace each group by a one-hot from a learned codebook. Gap: the one-hot argmax is non-differentiable, so straight-through estimation and a commitment loss are required; the extra machinery is fragile inside a recurrent world model where gradients must flow cleanly through many dynamics steps.
+- **No final normalization (identity).** Intermediate LayerNorms control pre-activations inside the MLP, but the final linear map emits the latent with unconstrained magnitude.
+- **L2 normalization (hypersphere).** Divide the latent by its L2 norm, optionally times a learnable scalar, so every latent has fixed magnitude.
+- **RMSNorm.** Drop mean-subtraction from LayerNorm and keep only the scale: divide by the root-mean-square of the entries and apply a learnable gain.
+- **Discrete latent codes (VQ-VAE).** Split the latent into groups and replace each group by a one-hot from a learned codebook; the one-hot argmax is non-differentiable, so straight-through estimation and a commitment loss are required.
 
 ## Fixed substrate / Code framework
 
@@ -53,4 +53,4 @@ class CustomSimNorm(nn.Module):
 
 ## Evaluation settings
 
-The model is trained for **200K steps** and evaluated by **episode reward (higher is better)** on DMControl tasks. The leaderboard reports three environments — **walker-walk**, **cheetah-run**, and **cartpole-swingup** — each over three seeds {42, 123, 456}. Walker-walk and cartpole-swingup saturate near the top of their reward range for every normalization; **cheetah-run** is the discriminating task where the latent geometry separates methods. The metric is reported per seed and as the mean.
+The model is trained for **200K steps** and evaluated by **episode reward (higher is better)** on DMControl tasks. The leaderboard reports three environments — **walker-walk**, **cheetah-run**, and **cartpole-swingup** — each over three seeds {42, 123, 456}. The metric is reported per seed and as the mean.

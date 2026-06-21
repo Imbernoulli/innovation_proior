@@ -16,13 +16,9 @@ A single image is generally not Markovian: velocity, contact state, and hidden
 objects may have to be inferred from history. The policy must therefore act in a
 POMDP from image histories, not from the simulator's compact state vector.
 
-Planning would be the natural tool if the dynamics were known. A controller
-could search over future action sequences, predict rewards, execute the first
-action, and re-plan after the next observation. The hard question is whether a
-learned model can be accurate and cheap enough for that inner loop. The model
-must survive compounding rollout errors, represent uncertainty over possible
-futures, avoid brittle extrapolation away from the data, and still score many
-candidate action sequences at every environment step.
+The question is how to build a learned latent model accurate enough for
+inner-loop planning, so that a sample-efficient visual-control agent can be
+realized from pixels alone.
 
 ## Technical Background
 
@@ -41,39 +37,32 @@ functions.
 The states are latent, so learning uses variational inference. An encoder
 $q_\phi(s_t\mid o_{\le t},a_{<t})$ supplies a filtering posterior, and the
 standard VAE machinery gives an evidence lower bound with a reconstruction term
-and a KL term from posterior to transition prior. The filtering restriction is
-important before the target method is known: a training-time smoother could look
-at future images, but an acting agent only has past observations.
+and a KL term from posterior to transition prior. A training-time smoother could
+look at future images, but an acting agent only has past observations.
 
-Two modeling pressures are in tension. A deterministic recurrent state can carry
-memory over long horizons, but it represents one future. A stochastic latent
-state can represent uncertainty, but repeatedly sampling through it makes memory
-fragile. A successful visual-control model has to decide how to use both kinds
-of structure without giving the observation encoder a shortcut that bypasses the
-latent state.
+Two modeling choices recur in the literature. A deterministic recurrent state can
+carry memory over long horizons and represents one trajectory through latent
+space. A stochastic latent state can represent a distribution over futures and
+supplies a well-defined KL term for variational training.
 
 ## Baselines And Gaps
 
 PILCO shows the value of learned probabilistic dynamics for sample-efficient
-control, but it operates on low-dimensional Markov states and scales poorly to
-image observations. E2C and RCE embed images into a latent space with
-locally-linear dynamics, then plan with LQR-style methods; they demonstrate
-visual latent control on simple domains but keep strong Markov and local-linearity
-assumptions.
+control; it operates on low-dimensional Markov states. E2C and RCE embed images
+into a latent space with locally-linear dynamics, then plan with LQR-style
+methods; they demonstrate visual latent control on simple domains under strong
+Markov and local-linearity assumptions.
 
 PETS combines probabilistic neural dynamics ensembles with model-predictive
 control and the cross-entropy method, scaling model-based control to harder
-continuous-control tasks. Its inputs are low-dimensional simulator states rather
-than pixels, so it does not solve the visual filtering problem. World Models
+continuous-control tasks with low-dimensional simulator states. World Models
 compress frames with a VAE, train an MDN-RNN in latent space, and optimize a
-small controller separately; that establishes the usefulness of latent world
-models but does not give an online planner trained end to end with the dynamics.
+small controller separately; this establishes the usefulness of latent world
+models for visual control.
 
 VRNNs, Deep Kalman Filters, deep variational Bayes filters, probabilistic
 recurrent state-space models, and related deep state-space models supply the
-latent-sequence modeling toolbox. Their remaining gap for this problem is not
-just prediction quality: the model must be shaped for fast open-loop planning
-from images under partial observability.
+latent-sequence modeling toolbox for learning distributions over sequences.
 
 ## Evaluation Frame
 
@@ -87,9 +76,9 @@ the compute cost of model learning and action selection.
 Fair comparisons include strong model-free agents trained from the same visual
 observations, learned-model planners that use low-dimensional states, and
 architectural ablations that isolate the role of stochastic state, deterministic
-memory, iterative action search, and online data collection. The pre-method
-requirement is clear: any candidate must expose the same pixel-only interface at
-test time and must not use simulator state during action selection.
+memory, iterative action search, and online data collection. Any candidate must
+expose the same pixel-only interface at test time and must not use simulator
+state during action selection.
 
 ## Code Scaffold
 

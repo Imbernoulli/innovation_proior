@@ -19,9 +19,9 @@ gradient evaluations, where κ = L/γ is the condition number — prohibitive wh
 Stochastic gradient descent samples one index i_t per step and moves along ∇ψ_{i_t}(w). The
 per-step cost is now independent of n, which is why it dominates large-scale learning. But it
 converges only **sublinearly**, O(1/k), and needs a decaying step size η_t = O(1/t) to do even
-that. The precise question is: on a *finite* training set, can one method have SGD's cheap
+that. The question is: on a *finite* training set, can one method have SGD's cheap
 O(1)-per-step iterations **and** gradient descent's linear convergence with a constant step
-size — without paying a memory cost that rules out large or nonconvex models?
+size?
 
 ## Background
 
@@ -69,15 +69,13 @@ computable mean. This is standard Monte Carlo machinery, predating its use in op
 ## Baselines
 
 **Full-batch gradient descent (Cauchy 1847; Nesterov 2004).** w_{k+1} = w_k − η∇P(w_k). Linear
-convergence O(ρ^k), ρ < 1 depending on κ, with constant η for smooth strongly convex P. The
-gap it leaves: iteration cost scales with n, so it is unappealing exactly in the large-n regime
-that motivates stochastic methods.
+convergence O(ρ^k), ρ < 1 depending on κ, with constant η for smooth strongly convex P.
+Iteration cost scales with n.
 
 **Stochastic gradient descent (Robbins & Monro 1951; Bottou).** w_{k+1} = w_k − η_k∇ψ_{i_k}(w_k).
 Cost independent of n; sublinear O(1/k) with η_k = O(1/k). Pegasos (Shalev-Shwartz, Singer &
 Srebro 2007) and stochastic linear-prediction solvers (Zhang 2004) made it the default for
-large-scale learning. The gap: the variance floor above — a constant step cannot converge, and
-the forced decay yields only sublinear progress, slow when an accurate solution is needed.
+large-scale learning.
 
 **Incremental Aggregated Gradient, IAG (Blatt, Hero & Gauchman 2007).** Keeps a table of the
 most recent gradient computed for each i and steps along their average, updating one entry per
@@ -89,26 +87,17 @@ a memory y_i of the last gradient seen for each example and steps along the runn
 x_{k+1} = x_k − (α/n) Σ_i y_i, where on each step one random i_k is refreshed, y_{i_k} ←
 ∇ψ_{i_k}(x_k), and the rest are held. Per-iteration cost is one gradient, yet it attains a
 **linear** rate on smooth strongly convex finite sums — the first method to combine SGD's cheap
-step with GD's geometric rate. Two gaps. (1) It must store all n gradients (an n×d table);
-for least squares that compresses to n scalars, but for general structured-prediction or
-neural-network models the full table is impractical. (2) Its update direction is **biased**
-(the stored average is not, in expectation, ∇P(x_k)), which makes the convergence proof
-intricate and the constants loose.
+step with GD's geometric rate. It stores a table of all n gradient vectors (an n×d table);
+for least squares this compresses to n scalars. Its update direction is **biased**
+(the stored average is not, in expectation, ∇P(x_k)).
 
 **Stochastic Dual Coordinate Ascent, SDCA (Shalev-Shwartz & Zhang 2012; Hsieh et al. 2008 for
 the SVM case).** For P(w) = (1/n)Σφ_i(w) + 0.5λ‖w‖², it ascends the dual one coordinate at a
 time, maintaining dual variables α_i with w = Σ_i α_i. At the optimum α_i* = −(1/λn)∇φ_i(w*),
 so the effective per-step direction ∇φ_i(w) + λnα_i vanishes as (w, α) → (w*, α*). This lets it
 keep a constant-order step and converge linearly; it is the solver inside popular linear-SVM
-packages. Gaps: it is tied to the regularized-ERM / dual structure, and like SAG it stores a
-per-example quantity (the duals) — again impractical for complex nonconvex models.
-
-What the linear-rate methods share is a cost the stochastic methods were meant to avoid: each
-one carries a *per-example memory* (a stored gradient, or a dual), an n-sized quantity updated
-incrementally. For least-squares or plain logistic models that memory compresses to one scalar
-per example and is tolerable, but for structured-prediction or neural-network models, where
-∇ψ_i is a full dense parameter-sized vector with no such compression, an n×d table is
-impractical — exactly the large or nonconvex regime where these methods stall.
+packages. It operates within the regularized-ERM / dual structure and, like SAG, maintains a
+per-example quantity (the duals).
 
 ## Evaluation settings
 

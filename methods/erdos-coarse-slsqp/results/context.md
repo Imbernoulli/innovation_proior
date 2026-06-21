@@ -25,13 +25,10 @@ lag, rescale by `2/n`. The constant is pinned to `0.379005 ≤ C5 ≤ 0.380868�
 
 ## This method's role
 
-This is the first *optimized* rung. Starting from the flat-`1/2` floor (`C = 0.5`), the only lever is the
+This is the first *optimized* rung, starting from the flat-`1/2` floor (`C = 0.5`). The lever is the
 shape of the heights: the worst overlap is a *minimax* (max over shifts of a smooth overlap), constrained
-by the box `[0,1]` and the linear equality `Σ v = n/2`. This method optimizes a small (`n = 24`) profile
-with constrained SLSQP against an annealed soft-max surrogate of the minimax, multi-started to escape
-local minima — the standard "SLSQP + perturbation" tooling the agentic-search record (AutoEvolver)
-reports. Its job is the first large drop off the floor and a legible read on the optimized shape; coarse
-resolution caps it above the frontier.
+by the box `[0,1]` and the linear equality `Σ v = n/2`. The task here is to optimize a small (`n = 24`)
+profile — the first move off the floor at a small, legible piece count — and read off the optimized shape.
 
 ## The fixed substrate
 

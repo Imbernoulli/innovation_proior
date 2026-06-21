@@ -14,9 +14,9 @@ with orthonormal teacher directions `w1*, ..., wr*` spanning `V*` and `r << d`. 
 f_hat(z; W, a) = (1/sqrt(p)) sum_i a_i sigma(<w_i, z>)
 ```
 
-has the right expressive form: the first-layer rows could rotate toward `V*`, and then the readout would only need to fit a function of `r` coordinates. The hard question is whether training actually makes that rotation happen with fewer samples or fewer sequential updates than the known kernel and online-SGD baselines.
+has the right expressive form: the first-layer rows could rotate toward `V*`, and then the readout would only need to fit a function of `r` coordinates. The question is whether gradient-based training makes that rotation happen, and what controls the sample complexity relative to the known kernel and online-SGD baselines.
 
-The observable feature-learning quantity is the projection of each row onto the target subspace, for example `||Pi* w_i||^2 / ||w_i||^2`, where `Pi*` projects onto `V*`. A useful procedure must make that ratio order one for enough rows, and must then convert the learned features into a predictor without entangling the feature-learning analysis with readout optimization.
+The observable feature-learning quantity is the projection of each row onto the target subspace, for example `||Pi* w_i||^2 / ||w_i||^2`, where `Pi*` projects onto `V*`.
 
 ## Background
 
@@ -44,15 +44,15 @@ Stein's lemma rewrites this as a term along `w` plus a term involving `grad f*`;
 
 ## Baselines
 
-**Fixed random features / conjugate-kernel ridge.** If `W` is frozen at initialization and only `a` is fitted, the model is a kernel method with features `sigma(W z)`. In the proportional high-dimensional regime it has a degree barrier: to learn a degree-`k` part of the target it needs `n` and `p` on the order of `d^k`, and it does not discover the low-dimensional teacher subspace.
+**Fixed random features / conjugate-kernel ridge.** If `W` is frozen at initialization and only `a` is fitted, the model is a kernel method with features `sigma(W z)`. In the proportional high-dimensional regime it has a degree barrier: to learn a degree-`k` part of the target it needs `n` and `p` on the order of `d^k`.
 
-**Small first-layer updates.** A small step from initialization remains close to the lazy or linearized regime. It can alter constants and learn a linear component, but it does not create the order-one row alignment needed for genuine subspace adaptation.
+**Small first-layer updates.** A small step from initialization remains close to the lazy or linearized regime and can alter constants and learn a linear component.
 
 **Online one-sample SGD.** For single-index Gaussian problems, the information exponent controls the time to escape the uninformative region. Starting from random overlap `O(d^{-1/2})`, online SGD needs polynomially many samples and updates, `d log d` for exponent `2` and roughly `d^{ell-1}` for larger `ell`, before it reaches nontrivial correlation.
 
-**One-step representation learning with preprocessing.** Earlier multi-index results use one gradient step after estimating and subtracting lower-degree Hermite components of the labels. This can expose several directions at once, but it requires a large batch and a separate low-degree estimation stage.
+**One-step representation learning with preprocessing.** Earlier multi-index results use one gradient step after estimating and subtracting lower-degree Hermite components of the labels, exposing several directions at once using a large batch.
 
-**Staircase analyses.** Boolean and Gaussian staircase results explain when directions become learnable sequentially: already-learned coordinates can make new ones linearly visible after conditioning. The remaining gap is a basis-independent Gaussian treatment that connects early feature motion to the final readout's approximation power.
+**Staircase analyses.** Boolean and Gaussian staircase results explain when directions become learnable sequentially: already-learned coordinates can make new ones linearly visible after conditioning.
 
 ## Evaluation Settings
 

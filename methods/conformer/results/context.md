@@ -1,29 +1,20 @@
 ## Research question
 
 End-to-end ASR maps an audio feature sequence to a label sequence with a single
-neural encoder (plus a small decoder). The encoder must model two very different
-kinds of dependency at once: **global** structure — long-range relations across an
+neural encoder (plus a small decoder). The encoder must model dependencies across
+an utterance at two scales: **global** structure — long-range relations across the
 utterance, the kind that resolve a phoneme from distant context — and **local**
 structure — the fine-grained, position-local feature patterns (formant
-transitions, onsets) that distinguish nearby sounds. The precise question is how
-to build an encoder that captures *both* well and is *parameter-efficient* about
-it, because the two leading building blocks each handle only one of the two and
-pay for the other in depth or parameters. In practice, scaling up a single one of
-these blocks to cover the capability it lacks has been costly in depth or
-parameters and has left accuracy on the table.
+transitions, onsets) that distinguish nearby sounds. The question is how to build
+an encoder that models both scales at a given parameter budget.
 
 ## Background
 
-**Why local and global are different problems.** A self-attention layer relates
-every position to every other in one step, with weights computed from content; it
-is excellent at long-range, content-based interactions but, being a global
-weighted average, it is comparatively poor at extracting sharp, position-local
-feature patterns. A convolution does the opposite: a kernel slides over a local
-window, so it captures edges, onsets, and short patterns cheaply and with
-translation equivariance, but its receptive field grows only one window per layer,
-so reaching global context needs many layers or many parameters. This is the
-core trade-off the field had hit: attention is globally strong / locally weak,
-convolution is locally strong / globally weak.
+**Local and global computation.** A self-attention layer relates every position to
+every other in one step, with weights computed from content, giving long-range,
+content-based interactions as a global weighted average. A convolution slides a
+kernel over a local window, capturing edges, onsets, and short patterns with
+translation equivariance; its receptive field grows one window per layer.
 
 **Self-attention and relative position.** The Transformer (Vaswani et al. 2017)
 computes softmax(QKᵀ/√d_k)V per layer, multi-headed, with a position-wise
@@ -32,59 +23,51 @@ connections and layer normalization. Self-attention is order-agnostic, so positi
 must be injected. Absolute sinusoidal or learned position encodings tie the
 representation to absolute index; **relative positional encoding** (Transformer-XL;
 Dai et al. 2019) instead makes attention depend on the *offset* between positions,
-which generalizes better across the highly variable utterance lengths of speech
-and makes the encoder robust to length.
+which generalizes across the highly variable utterance lengths of speech and makes
+the encoder robust to length.
 
 **Convolutional building blocks.** Depthwise-separable convolution factorizes a
 conv into a per-channel spatial (depthwise) convolution plus a 1×1 (pointwise)
-channel mixing, drastically cutting parameters. The gated linear unit (GLU;
-Dauphin et al. 2017) splits a projection in half and gates one half by a sigmoid
-of the other, x = a ⊙ σ(b), giving the conv a learned multiplicative gate.
-Batch normalization (Ioffe & Szegedy 2015) stabilizes training of deep conv
-stacks. Swish, x·σ(βx) (Ramachandran et al. 2017), is a smooth activation that
-tends to outperform ReLU in deep networks.
+channel mixing, cutting parameters. The gated linear unit (GLU; Dauphin et al.
+2017) splits a projection in half and gates one half by a sigmoid of the other,
+x = a ⊙ σ(b), giving the conv a learned multiplicative gate. Batch normalization
+(Ioffe & Szegedy 2015) stabilizes training of deep conv stacks. Swish, x·σ(βx)
+(Ramachandran et al. 2017), is a smooth activation that tends to outperform ReLU
+in deep networks.
 
-**Pre-norm residual units and the Macaron structure.** Placing layer
-normalization *inside* the residual branch, before the sublayer (pre-norm; Wang et
-al. 2019; Nguyen & Salazar 2019), eases optimization of deep stacks. Separately,
-Macaron-Net (Lu et al. 2019) reinterprets a Transformer block through an
-ordinary-differential-equation lens and argues the single post-attention
-feed-forward layer is better replaced by *two half-step* feed-forward layers, one
-before and one after the attention — sandwiching it — each contributing a
-half-weighted residual.
+**Pre-norm residual units and the Macaron structure.** Placing layer normalization
+*inside* the residual branch, before the sublayer (pre-norm; Wang et al. 2019;
+Nguyen & Salazar 2019), eases optimization of deep stacks. Separately, Macaron-Net
+(Lu et al. 2019) reinterprets a Transformer block through an
+ordinary-differential-equation lens and replaces the single post-attention
+feed-forward layer with *two half-step* feed-forward layers, one before and one
+after the attention — sandwiching it — each contributing a half-weighted residual.
 
 **Combining attention and convolution.** Recent work shows the two are
 complementary: augmenting self-attention with convolutional or relative-offset
 information helps (Bello et al. 2019; Yang et al. 2019; Yu et al. 2018). A
 multi-branch design (Wu et al. 2020) splits the input into a self-attention branch
-and a convolution branch in parallel and concatenates their outputs, improving
-machine translation. These establish that *content-based global* and
-*position-based local* computation should coexist in a block; the open design
-question is *how* to arrange them.
+and a convolution branch in parallel and concatenates their outputs for machine
+translation. These show that content-based global and position-based local
+computation can coexist in a block.
 
 ## Baselines
 
 **RNN / LSTM encoders (Chiu et al. 2018; Graves 2012).** Recurrent encoders were
 the de-facto choice; an LSTM threads a hidden state along time, modeling temporal
-dependencies. Core idea: sequential state updates. Gaps: sequential computation
-limits training efficiency, and very long-range dependencies are hard to carry
-through the recurrence.
+dependencies through sequential state updates.
 
 **Transformer ASR (Zhang et al. 2020; Karita et al. 2019).** Replace recurrence
 with self-attention; parallel over time and strong at long-range context. The
 Transformer Transducer (Zhang et al. 2020) is the strong prior published result on
-LibriSpeech. Gap: self-attention is weaker at fine-grained local feature
-extraction, so a pure-attention encoder leaves accuracy on the table where local
-acoustic detail matters.
+LibriSpeech.
 
 **Convolutional ASR — Jasper / QuartzNet / ContextNet (Li et al. 2019; Kriman et
 al. 2019; Han et al. 2020).** Deep 1-D convolutional encoders capture local
-context layer by layer. ContextNet specifically tries to inject global context by
-adding a squeeze-and-excitation module to each block, which applies a *global
-average* over the whole sequence and rescales channels. Core idea: progressive
-local receptive fields plus a coarse global summary. Gap: squeeze-and-excitation
-gives only a single averaged global vector — it cannot model *dynamic*,
-position-dependent global interactions the way attention can.
+context layer by layer. ContextNet injects global context by adding a
+squeeze-and-excitation module to each block, which applies a *global average* over
+the whole sequence and rescales channels. Core idea: progressive local receptive
+fields plus a coarse global summary.
 
 ## Evaluation settings
 

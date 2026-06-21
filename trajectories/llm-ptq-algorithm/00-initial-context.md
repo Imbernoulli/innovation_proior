@@ -4,10 +4,10 @@ Take a pretrained Mistral-7B-v0.1 (7.24B parameters, FP16) and quantize its line
 
 ## Prior art / Background / Baselines
 
-- **Round-to-nearest (RTN).** Map each weight independently to the closest value on a uniform symmetric grid, with one scale per row or per group of columns. No calibration, no interaction between weights. Gap: every weight is treated as equally important and the layer's output dependence is ignored, so at 3–4 bits the per-element residual accumulates into large output error and perplexity degrades heavily at 7B scale, worst at INT3.
-- **SmoothQuant, Xiao et al. 2023.** Migrate quantization difficulty from activations to weights with a per-input-channel scaling transform based on activation magnitudes, then apply RTN. Built for W8A8, where both weights and activations are quantized. Gap: in a weight-only INT3/INT4 setting the activations stay FP16, so fixed-α smoothing does not address most of the low-bit weight error and does not search the scale against actual output error.
-- **GPTQ, Frantar et al. 2023.** Minimize the layer output error directly by accumulating the input second moment during calibration, then quantizing column by column and compensating each residual onto the still-free columns with the inverse Hessian. Gap: it commits to the calibration distribution through a per-column greedy regression and pays for a Cholesky/inverse plus a full column sweep per layer.
-- **AWQ, Lin et al. 2024.** Identify salient input channels by activation magnitude, scale them up before quantization (and the activations down), and search the per-channel scale and a per-group clip against the layer's real output MSE, without a Hessian inverse. Gap: it still maps weights onto a uniform low-bit grid, so the extreme INT3 regime remains the hardest case.
+- **Round-to-nearest (RTN).** Map each weight independently to the closest value on a uniform symmetric grid, with one scale per row or per group of columns. No calibration, no interaction between weights.
+- **SmoothQuant, Xiao et al. 2023.** Migrate quantization difficulty from activations to weights with a per-input-channel scaling transform based on activation magnitudes, then apply RTN. Built for W8A8, where both weights and activations are quantized.
+- **GPTQ, Frantar et al. 2023.** Minimize the layer output error directly by accumulating the input second moment during calibration, then quantizing column by column and compensating each residual onto the still-free columns with the inverse Hessian.
+- **AWQ, Lin et al. 2024.** Identify salient input channels by activation magnitude, scale them up before quantization (and the activations down), and search the per-channel scale and a per-group clip against the layer's real output MSE, without a Hessian inverse.
 
 ## Fixed substrate / Code framework
 

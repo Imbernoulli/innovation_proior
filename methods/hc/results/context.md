@@ -5,21 +5,15 @@ case an integer-coded joint observation, and we believe the data was generated b
 Bayesian network — a directed acyclic graph `G` whose factorization
 `p(x_1, ..., x_n) = ∏_i p(x_i | Π_i)` (each variable conditioned on its parents `Π_i`) encodes
 the conditional-independence structure of the domain. The graph is hidden; we want to recover
-it from the data alone. The precise goal is to find the network structure that the data most
-supports, in a way that (1) rests on a clear probabilistic criterion rather than an ad-hoc fit
-measure, (2) is computable in closed form from simple sufficient statistics (counts) of the
-database, (3) scales past the handful of variables where one could enumerate structures by
-brute force, and (4) is honest about what observational data can and cannot pin down — two
-networks that assert exactly the same independences are statistically indistinguishable from
-observational data, so the recoverable object is at best the *equivalence class* of the true
-graph, not necessarily a single oriented DAG.
+the network structure that the data most supports from the data alone, using a probabilistic
+criterion computable from the sufficient statistics (counts) of the database. Two networks that
+assert exactly the same independences are statistically indistinguishable from observational
+data, so the recoverable object is the *equivalence class* of the true graph rather than
+necessarily a single oriented DAG.
 
-The obstruction is combinatorial. The number of DAGs on `n` nodes grows
+The space being searched is combinatorial. The number of DAGs on `n` nodes grows
 super-exponentially — Robinson's recursion gives 3 structures for `n = 2`, 25 for `n = 3`,
-about 29,000 for `n = 5`, and roughly `4.2 × 10^18` for `n = 10` — so for any domain past a
-few variables we cannot score every structure and pick the best. Closing the gap between
-"score a structure correctly" and "find the best-scoring structure when you can't look at all
-of them" is the problem.
+about 29,000 for `n = 5`, and roughly `4.2 × 10^18` for `n = 10`.
 
 ## Background
 
@@ -104,9 +98,6 @@ react to.
 unit Dirichlet pseudocounts (`N'_ijk = 1`), the structure-dependent part of the score reduces to
 `∏_i ∏_{j=1}^{q_i} { [ (r_i − 1)! / (N_ij + r_i − 1)! ] · ∏_{k=1}^{r_i} N_ijk! }`, computable
 from counts alone. One can in principle apply this to every structure and take the maximum.
-**Gap:** the number of structures is super-exponential, so exhaustive enumeration is infeasible
-beyond a few variables; and with unit pseudocounts the score is not score-equivalent, so
-isomorphic structures can receive different scores.
 
 **K2 — greedy parent selection under a fixed ordering (Cooper & Herskovits 1992).** Exploit
 decomposability: since the total score factors over nodes, maximize each node's local family
@@ -115,27 +106,18 @@ start with no parents and repeatedly add, from the predecessors of `x_i` in the 
 single candidate parent whose addition most increases the local score `g(i, Π_i)`, stopping
 when no addition helps or a parent-count cap is reached. The ordering guarantees the result is
 acyclic for free. With factorials precomputed, K2 runs in low-order polynomial time and
-recovered ALARM from sampled data. **Gap:** it requires the user to supply a correct variable
-ordering — the quality of the recovered network is hostage to that ordering, which for purely
-observational data is exactly the kind of prior knowledge one usually does not have; without a
-trustworthy ordering K2 cannot be applied as stated.
+recovered ALARM from sampled data.
 
 **Constraint-based skeleton recovery (the Spirtes–Glymour–Scheines line).** Rather than score
 structures, run a battery of conditional-independence tests to decide which arcs to include,
-then orient what the tests determine, returning a CPDAG. **Gap:** accuracy hinges on the
-reliability of many CI tests, which become unreliable when the conditioning set is large and
-data is finite — a different failure mode from the score-based route, and one that does not by
-itself use a global goodness-of-fit criterion.
+then orient what the tests determine, returning a CPDAG.
 
 **Special-case polynomial structure search (Chickering, Geiger & Heckerman 1995).** When every
 node is restricted to at most one parent, the highest-scoring structure can be found exactly in
 polynomial time by reducing to a maximum-branching / maximum-weight-spanning-tree problem on
 edge weights `w(x_i, x_j) = s(x_i | x_j) − s(x_i | ∅)`. With a score-equivalent metric
 the two orientations of an edge carry equal weight, so the problem becomes an undirected
-maximum-weight forest (a Chow–Liu-style tree). **Gap:** the at-most-one-parent restriction is
-severe — real domains have nodes with several parents — and once more than one parent per node
-is allowed, finding the top-scoring structure is NP-hard, so the exact polynomial method does
-not extend.
+maximum-weight forest (a Chow–Liu-style tree).
 
 ## Evaluation settings
 

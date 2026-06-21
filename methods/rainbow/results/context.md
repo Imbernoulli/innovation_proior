@@ -2,15 +2,12 @@
 
 A value-based deep reinforcement learning agent can learn Atari games from pixels with a
 convolutional Q-network, replay, and a periodically copied target network. After that base result,
-several independent improvements exist, each aimed at a different weakness: overestimated
-bootstrap values, uninformative replay samples, poor generalization across actions, slow reward
-propagation, mean-only return estimates, and shallow exploration.
+several independent improvements exist: Double Q-learning, prioritized replay, dueling networks,
+multi-step returns, categorical distributional RL, and noisy linear layers for exploration.
 
-The open question is not whether any one of these improvements works alone. The harder question is
-whether a single agent can use the useful pieces together without creating contradictory
-definitions of the target, the loss, the replay priority, the network head, or the action rule. A
-combined agent has to make these choices coherently, and the evidence must then distinguish true
-complementarity from redundant or interfering components.
+The open question is how to combine multiple such improvements into a single coherent agent — one
+in which the target construction, the loss, the replay priority, the network head, and the
+exploration rule are all consistent with one another.
 
 ## Base Agent
 
@@ -25,9 +22,7 @@ $$
 
 The target network is copied periodically from the online network and is not directly optimized.
 The behavior policy is usually $\epsilon$-greedy with respect to the online Q-values. The replay
-buffer stores recent experience and is sampled uniformly, so the update is stable enough for deep
-function approximation but does not distinguish high-learning-potential transitions from stale
-ones.
+buffer stores recent experience and is sampled uniformly.
 
 ## Existing Ingredients
 
@@ -76,21 +71,6 @@ $$
 With learned noise in the value network, the policy can act greedily while the sampled weights
 produce coherent state-dependent exploration.
 
-## Collision Points
-
-Several ingredients touch the same object. Multi-step returns, double Q-learning, and categorical
-distributional RL all redefine the bootstrap target. Prioritized replay needs one scalar priority
-per sampled transition, but a distributional learner no longer has a squared scalar TD loss as its
-native objective. Dueling networks produce scalar Q-values in their original form, so a categorical
-agent must decide whether to combine value and advantage before or after atom probabilities are
-normalized. Noisy layers replace linear layers and remove the need for random action selection,
-which changes both training-time action selection and evaluation behavior.
-
-The combined design therefore has to answer four precise implementation questions: what
-distribution is bootstrapped at $S_{t+n}$, which network selects and which network evaluates the
-bootstrap action, which scalar is stored as replay priority, and where the dueling aggregation
-occurs relative to the categorical softmax.
-
 ## Evaluation And Code Frame
 
 The benchmark frame is the 57-game Atari Learning Environment setup inherited from DQN-family
@@ -121,6 +101,3 @@ def bootstrap_target(online_net, target_net, batch, gamma):
 def loss_fn(online_net, batch, target):
     raise NotImplementedError
 ```
-
-The method must fill these slots with a single target construction, a single loss, a single replay
-priority, a single head definition, and a single exploration rule.

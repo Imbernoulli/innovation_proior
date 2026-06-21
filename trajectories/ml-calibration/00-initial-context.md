@@ -4,11 +4,11 @@ A trained classifier ranks well but its reported probabilities lie. Among all in
 
 ## Prior art / Background / Baselines
 
-Three existing ways to turn a score into a probability are already on the table, each with a flaw the new mapping has to avoid.
+Three existing ways to turn a score into a probability are on the table.
 
-- **Exact empirical map.** On a fixed dataset the score is honest if `mu(s) = E[Y | f(X)=s]`, the empirical positive rate at each score. But when the classifier gives a distinct score to every instance, that rate is just the instance's own 0/1 label, so the "perfect" map is a pile of 0s and 1s — maximally overfit and useless on unseen data. *Gap:* scores must be aggregated over nearby values, and the aggregation method is not settled; poor choices either chase noise or blur real structure.
-- **Equal-count binning.** Sort by score, chop into a fixed number of equal-size bins, and return each bin's empirical positive rate. *Gap:* bin boundaries fall wherever equal counts put them, not where the score's meaning changes; a boundary in a steeply climbing region averages together examples that deserve different probabilities, and the bin count must be cross-validated — difficult on a small or imbalanced calibration split.
-- **Fitted sigmoid (Platt, 1999).** Commit to a parametric shape, `mu(s) = 1/(1+exp(A f + B))`, fit `A,B` by likelihood. Two parameters, low variance, fine on little data, and exact when the true distortion is sigmoidal. *Gap:* it is exactly one shape; when the true score-to-probability curve bends differently, the sigmoid cannot match it and leaves residual miscalibration.
+- **Exact empirical map.** On a fixed dataset the score is honest if `mu(s) = E[Y | f(X)=s]`, the empirical positive rate at each score. When the classifier gives a distinct score to every instance, that rate is just the instance's own 0/1 label.
+- **Equal-count binning.** Sort by score, chop into a fixed number of equal-size bins, and return each bin's empirical positive rate.
+- **Fitted sigmoid (Platt, 1999).** Commit to a parametric shape, `mu(s) = 1/(1+exp(A f + B))`, fit `A,B` by likelihood. Two parameters, low variance, fine on little data, and exact when the true distortion is sigmoidal.
 
 ## Fixed substrate / Code framework
 

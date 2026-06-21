@@ -14,28 +14,23 @@ Three standard approaches are the starting points.
 
 - **Hand-engineered factor models + linear regression.** Practitioners build a small set of economically
   motivated cross-sectional factors and regress forward return on them. The model is interpretable and
-  cheap, but its signal is bounded by the chosen factors and it cannot discover interactions among the
-  raw price/volume ratios in Alpha360. Gap: the model is only as good as the human factor set.
+  cheap.
 
 - **Gradient-boosted decision trees on engineered features.** An additive ensemble of regression trees
   fits gradient residuals and discovers nonlinear feature interactions automatically. Each stock-day is
-  treated as an independent tabular row, and the 360 input dimensions are split on individually, so the
-  model cannot pool information across the repeated copies of the same base ratio inside the window.
-  Gap: no structured view of the within-window feature layout.
+  treated as an independent tabular row, and the 360 input dimensions are split on individually.
 
 - **Plain feedforward / shallow nets on the flat feature vector.** They add nonlinear capacity over a
-  linear map, but they still treat the 360 features as an unordered vector and are prone to overfitting
-  the noise without strong regularization. Gap: no structured inductive bias for the feature layout,
-  fragile on noisy financial data.
+  linear map on the 360 features as an input vector.
 
 ## Fixed substrate / Code framework
 
 A `qlib` workflow is frozen and must not be touched. It supplies:
 
 - **Features**: Alpha360 — 360 features per stock-day, i.e., six base ratios (open/close/high/low/
-  volume/vwap, normalized to the latest close) over 60 days of history. The flat `[N, 360]` vector can be
-  reshaped with `x.reshape(N, 6, 60).permute(0, 2, 1) -> [N, 60, 6]` for any model that wants a
-  structured view.
+  volume/vwap, normalized to the latest close) over 60 days of history. The flat `[N, 360]` vector
+  encodes six base ratios across 60 days and can be reshaped as `x.reshape(N, 6, 60).permute(0, 2, 1)
+  -> [N, 60, 6]`.
 - **Label**: `Ref($close, -2) / Ref($close, -1) - 1` — the return from T+1 to T+2, predicted at T.
 - **Universes / splits**: `csi300`, `csi100`, `csi300_recent`; instruments and date ranges are fixed by
   the workflow YAML (train 2008–2014, valid 2015–2016, test 2017–2020-08 for csi300).

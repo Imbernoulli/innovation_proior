@@ -10,17 +10,13 @@ tightest generalization certificates in statistical learning.
 
 The practical goal is to *learn* `ρ` by directly **minimizing the bound** — turning a
 certificate into a training objective — so that the same quantity certifies generalization
-and drives the fit, with no held-out tuning. That is what makes the certificate non-vacuous
-and the procedure self-contained. The obstacle is that the tightest known bound is awkward to
-minimize over `ρ`: it is the solution of an implicit relation that is not convex in `ρ`, so
-the optimization is hard and people fall back on a *linear* surrogate `E_ρ[L̂] + β·KL(ρ‖π)/n`
-whose trade-off coefficient `β` must be picked by cross-validation. Cross-validation is
-expensive — for models with super-quadratic training cost such as kernel SVMs it means
-retraining many times on almost the whole dataset — and it is known to be able to mislead.
-A solution would have to be (1) a bound nearly as tight as the best one, (2) **convex in `ρ`**
-so the posterior can be optimized rigorously, and (3) able to set the empirical-risk /
-complexity trade-off **from the data without cross-validation**, ideally with a guarantee
-that the optimizer reaches the true minimum of the bound.
+and drives the fit. The tightest known bound is the solution of an implicit relation that is
+not convex in `ρ`; a common alternative is to optimize a *linear* surrogate
+`E_ρ[L̂] + β·KL(ρ‖π)/n` whose trade-off coefficient `β` is picked by cross-validation, which
+for models with super-quadratic training cost such as kernel SVMs means retraining many times
+on almost the whole dataset. The question is how to formulate a bound on `E_ρ[L(h)]` that can
+itself serve as the training objective for `ρ`, with the empirical-risk / complexity trade-off
+determined from the data.
 
 ## Background
 
@@ -35,7 +31,7 @@ It comes from Donsker & Varadhan's (1975) variational characterization of the KL
 sup_ρ { E_ρ[f] - KL(ρ‖π) }`, with the supremum attained at the *Gibbs/Boltzmann measure*
 `dπ_f/dπ ∝ e^{f}`. One then applies Markov's inequality to the `π`-expectation of the moment
 generating function and, using independence of `π` and `S`, swaps the order of the two
-expectations. The whole art of a PAC-Bayes bound is the choice of `f` and the bound on its
+expectations. The art of a PAC-Bayes bound is the choice of `f` and the bound on its
 moment generating function `E_S[e^{f(h,S')}]`.
 
 **The PAC-Bayes-kl bound (Seeger 2002; Maurer 2004; Langford 2005).** The classical choice is
@@ -47,48 +43,45 @@ gives, with probability `≥ 1-δ`, simultaneously for all `ρ`,
 ```
 kl( E_ρ[L̂(h,S)] ‖ E_ρ[L(h)] ) ≤ ( KL(ρ‖π) + ln(2√n/δ) ) / n.
 ```
-This is the tightest of the standard bounds, and the binary `kl` is trivially invertible
-numerically: solving for the largest `L` with `kl(L̂‖L) ≤ c` recovers a certificate on
-`E_ρ[L(h)]` from `L̂` and `c = (KL + ln(2√n/δ))/n`. The catch is its *shape* as a function of
-`ρ`: `E_ρ[L(h)]` is defined implicitly through the `kl`, and the resulting upper bound is
-**not convex in `ρ`**.
+This is the tightest of the standard bounds, and the binary `kl` is invertible numerically:
+solving for the largest `L` with `kl(L̂‖L) ≤ c` recovers a certificate on `E_ρ[L(h)]` from
+`L̂` and `c = (KL + ln(2√n/δ))/n`. As a function of `ρ`, `E_ρ[L(h)]` is defined implicitly
+through the `kl`.
 
 **Relaxations via Pinsker.** Tolstikhin & Seldin (2013) and McAllester (2003) record the
 standard route to an explicit bound. The lower bound on the binary KL, `kl(p‖q) ≥ 2(p-q)²`
 (Pinsker), inverts to the *PAC-Bayes-classic* bound
 `E_ρ[L] ≤ E_ρ[L̂] + √((KL + ln(2√n/δ))/(2n))`. A refinement of Pinsker valid for `p < q`,
-`kl(p‖q) ≥ (q-p)²/(2q)`, is tighter when the risk is below `1/4` and gives instead
+`kl(p‖q) ≥ (q-p)²/(2q)`, gives instead
 ```
 E_ρ[L(h)] - E_ρ[L̂(h,S)] ≤ √( 2·E_ρ[L(h)]·(KL(ρ‖π) + ln(2√n/δ))/n ).
 ```
-This is closer to the truth at low risk, but `E_ρ[L(h)]` — the very quantity being bounded —
-now sits *inside the square root on the right*. Viewed as a quadratic in `√(E_ρ[L])` it can
-be solved explicitly (the *PAC-Bayes-quadratic* form), but the square root couples the unknown
-to the empirical and complexity terms in a way that is inconvenient for optimizing over `ρ`.
+Here `E_ρ[L(h)]` — the quantity being bounded — sits inside the square root on the right.
+Viewed as a quadratic in `√(E_ρ[L])` it can be solved explicitly (the *PAC-Bayes-quadratic*
+form), `E_ρ[L] ≤ ( √(E_ρ[L̂] + κ) + √κ )²` with `κ = (KL + ln(2√n/δ))/(2n)`.
 
 **Catoni's trade-off bound (Catoni 2007).** Catoni took a different exponential-tilt
 choice of `f`, engineered so that its moment generating function is exactly `1`.
-Substituted into the change-of-measure lemma it yields a bound *convex in `ρ`* —
-it has the linear-in-`L̂`-plus-`KL` structure that makes the optimum tractable — at the price
-of carrying a free trade-off parameter `λ`. The companion exact-minimization story (recounted
-e.g. in Alquier's introduction) is clean: minimizing `E_ρ[L̂] + KL(ρ‖π)/η` over `ρ` is, by
-Donsker-Varadhan with `h = -η L̂`, solved in closed form by the *Gibbs posterior*
-`ρ̂_η(dh) ∝ π(dh)·e^{-η L̂(h,S)}`; when the coefficient is written as `KL/(nλ)`, the same
-calculation gives the temperature `η = nλ`. Catoni's bound, however, **holds for a single fixed `λ`**,
-chosen before seeing the data. If one wants to tune `λ` to the sample, one must take a union
-bound over a (geometrically spaced) grid of `λ`-values, which both pays an extra logarithmic
-penalty and is a discretization rather than a continuous optimization. Keshet, McAllester &
-Hazan (2011) used a related parametrized convex bound but, as with Catoni's, the additional
-trade-off parameter was in practice replaced by the same linear surrogate and tuned by
-cross-validation; rigorous tuning of the trade-off parameter through bound minimization had
-not been demonstrated.
+Substituted into the change-of-measure lemma it yields a bound with the
+linear-in-`L̂`-plus-`KL` structure, *convex in `ρ`*, carrying a free trade-off parameter `λ`:
+```
+E_ρ[L] ≤ (1/(1-e^{-λ}))·(1 - exp(-(λ E_ρ[L̂] + (KL + ln(1/δ))/n))).
+```
+The companion exact-minimization story (recounted e.g. in Alquier's introduction) is clean:
+minimizing `E_ρ[L̂] + KL(ρ‖π)/η` over `ρ` is, by Donsker-Varadhan with `h = -η L̂`, solved in
+closed form by the *Gibbs posterior* `ρ̂_η(dh) ∝ π(dh)·e^{-η L̂(h,S)}`; when the coefficient is
+written as `KL/(nλ)`, the same calculation gives the temperature `η = nλ`. Catoni's bound
+holds for a single fixed `λ`, chosen before seeing the data. Keshet, McAllester &
+Hazan (2011) used a related parametrized convex bound, with the trade-off parameter set in
+practice by the same linear surrogate and cross-validation.
 
-**Why convexity keeps breaking.** Two further obstacles recur. First, to keep `KL(ρ‖π)`
-tractable, the posterior and prior are often restricted to a parametric family (Gaussian
-posteriors with Gaussian priors is the popular choice); even a bound convex in the abstract
-`ρ` can lose convexity under such a reparametrization. Second, on an infinite hypothesis space
-the Gibbs posterior's normalizer (the partition function `E_π[e^{-λ n L̂}]`) is generally
-intractable, which is part of why parametric restrictions are imposed in the first place.
+**Convexity under reparametrization.** Two practical considerations recur. First, to keep
+`KL(ρ‖π)` tractable, the posterior and prior are often restricted to a parametric family
+(Gaussian posteriors with Gaussian priors is the popular choice), and convexity in the
+abstract `ρ` can behave differently under such a reparametrization. Second, on an infinite
+hypothesis space the Gibbs posterior's normalizer (the partition function
+`E_π[e^{-λ n L̂}]`) is generally intractable, which is one reason parametric restrictions are
+imposed.
 
 ## Baselines
 
@@ -96,32 +89,22 @@ These are the bound formulations a new bound is measured against and reacts to.
 
 **PAC-Bayes-kl (Seeger 2002; Maurer 2004).** `kl(E_ρ[L̂] ‖ E_ρ[L]) ≤ (KL + ln(2√n/δ))/n`,
 inverted numerically for a certificate on `E_ρ[L]`. *Core idea:* the sharpest concentration of
-the empirical loss around the true loss, via the binary-KL moment bound. *Gap:* the implicit
-`kl`-inverted upper bound is not convex in `ρ`, so it cannot be used directly as an objective
-for learning the posterior; in practice it is reserved for the *final* certificate while
-training is done on something else.
+the empirical loss around the true loss, via the binary-KL moment bound. As a function of
+`ρ`, the certificate is defined implicitly through the inverted `kl`.
 
 **PAC-Bayes-classic / McAllester (McAllester 1999, 2003).**
 `E_ρ[L] ≤ E_ρ[L̂] + √((KL + ln(2√n/δ))/(2n))`, from Pinsker `kl(p‖q) ≥ 2(p-q)²`. *Core idea:*
-trade the tight implicit bound for an explicit additive one. *Gap:* loose — the
-`√` term does not shrink with the empirical risk, so at low risk it is far above PAC-Bayes-kl;
-the additive `√(complexity)` over-penalizes a confident posterior.
+trade the implicit bound for an explicit additive one with a `√(complexity)` penalty.
 
 **PAC-Bayes-quadratic (Seeger 2002; Maurer 2004; Rivasplata et al. 2019).** From the refined
 Pinsker `kl(p‖q) ≥ (q-p)²/(2q)`, solving the resulting quadratic in `√(E_ρ[L])`:
 `E_ρ[L] ≤ ( √(E_ρ[L̂] + κ) + √κ )²` with `κ = (KL + ln(2√n/δ))/(2n)`. *Core idea:* keep the
-`E_ρ[L]`-inside-the-root tightness at low risk and solve it out. *Gap:* tighter than classic
-at small risk, but the way the unknown risk enters under the square root makes the bound a
-nonlinear coupling of the empirical and complexity terms, which is less convenient as a
-trade-off to optimize and offers no separate, tunable empirical/complexity balance.
+`E_ρ[L]`-inside-the-root form and solve it out.
 
 **Catoni's parametrized bound (Catoni 2007; Keshet-McAllester-Hazan 2011).** A bound
 `E_ρ[L] ≤ (1/(1-e^{-λ}))·(1 - exp(-(λ E_ρ[L̂] + (KL + ln(1/δ))/n)))`, convex in `ρ`, with a
-free `λ`. *Core idea:* introduce a trade-off parameter to buy convexity in the posterior, with
-the Gibbs posterior as the closed-form `ρ`-optimum. *Gap:* it holds only for a *fixed*,
-data-independent `λ`; selecting `λ` from the data requires a union bound over a grid of `λ`,
-paying a logarithmic penalty and giving a discretized rather than continuous trade-off, and in
-practice the parameter was still set by cross-validation rather than by minimizing the bound.
+free, data-independent `λ`. *Core idea:* introduce a trade-off parameter to obtain convexity in
+the posterior, with the Gibbs posterior as the closed-form `ρ`-optimum.
 
 ## Evaluation settings
 
@@ -148,7 +131,7 @@ parameter, reparametrized so a forward pass with `sample=True` draws fresh weigh
 `sample=False` uses the posterior mean), a routine that sums the analytic `KL(ρ‖π)` across the
 probabilistic layers, a bounded surrogate loss in `[0,1]`, the numerical binary-KL inverter
 `inv_kl(q,c)` (largest `p` with `kl(q‖p) ≤ c`), and a Monte-Carlo estimator of the zero-one
-risk. What is *not* settled is the bound itself: the functional that turns empirical risk and
+risk. The bound itself is the open part: the functional that turns empirical risk and
 `KL` into a certificate, the training objective derived from it, and how the final certificate
 is read off. Those are the empty slots.
 

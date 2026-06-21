@@ -5,18 +5,16 @@ Given a few thousand real LLM training runs, recover a table of numeric descript
 There are three families:
 
 - **`sld-vocab`** — vocabulary scaling: the *unigram-normalised* loss (which **can be negative** — do not clip) as a function of non-vocabulary parameters `N`, vocabulary size `V`, and training characters `D`.
-- **`sld-lrbsz`** — learning-rate & batch-size scaling: LM loss as a joint function of learning rate `l`, batch size `b`, training tokens `D`, and non-embedding parameters `N`. This family has an *interior optimum* in `(l, b)` and is the hardest; held-out `R²` is routinely negative.
+- **`sld-lrbsz`** — learning-rate & batch-size scaling: LM loss as a joint function of learning rate `l`, batch size `b`, training tokens `D`, and non-embedding parameters `N`. This family has an interior optimum in `(l, b)`.
 - **`sld-dataconstrained`** — data-constrained scaling: loss as a function of unique tokens `U`, parameters `N`, and total tokens `D`, where `D` can exceed `U` because data is repeated.
-
-The intended contribution is a *law*, not a generic tabular regressor: a shared symbolic expression per family with group-specific coefficients and sensible asymptotics on the extrapolation region.
 
 ## Prior art / Background / Baselines
 
-- **Kaplan et al. (2020)** — Neural language-model scaling is described by single-factor power laws, `L(N) ∝ N^{-α_N}` and `L(D) ∝ D^{-α_D}`, fitted in log-log space. Gap: each law holds only when the other factor is abundant, so there is no joint surface and no treatment of repeated data or of an interior optimum in `(l, b)`.
-- **Hoffmann et al. (2022)** — Loss follows an irreducible floor plus independent capacity-gap and data-gap power terms, `L(N, D) = E + A/N^α + B/D^β`, fitted in log space. Gap: the additive, decoupled form has no cross-axis interaction, treats a re-read token as equivalent to a fresh one, and has been validated only on single-epoch runs.
-- **Tao et al. (2024)** — Vocabulary scaling extends the power-law story to a third axis, modeling unigram-normalised loss as a function of `N`, `V`, and `D`. Gap: the established form is additive across axes; whether `V` and `D` interact is left open.
-- **Muennighoff et al. (2023)** — Data-constrained scaling replaces raw token counts with effective counts that saturate under repetition, paired with a symmetric excess-parameter term. Gap: the saturation constants must be re-fit per family, and the published coefficients do not transfer to these subsets.
-- **SLDBench / Step-law lineage (Li et al. 2025; SLDBench, Liu et al. 2025)** — For learning rate and batch size, current practice fits only the optimal `lr*` and `bsz*` as power laws of `N` and `D` from a handful of best runs. Gap: modeling only the optima discards most of the data and gives no loss prediction off the optimum.
+- **Kaplan et al. (2020)** — Neural language-model scaling is described by single-factor power laws, `L(N) ∝ N^{-α_N}` and `L(D) ∝ D^{-α_D}`, fitted in log-log space.
+- **Hoffmann et al. (2022)** — Loss follows an irreducible floor plus independent capacity-gap and data-gap power terms, `L(N, D) = E + A/N^α + B/D^β`, fitted in log space.
+- **Tao et al. (2024)** — Vocabulary scaling extends the power-law story to a third axis, modeling unigram-normalised loss as a function of `N`, `V`, and `D`.
+- **Muennighoff et al. (2023)** — Data-constrained scaling replaces raw token counts with effective counts that saturate under repetition, paired with a symmetric excess-parameter term.
+- **SLDBench / Step-law lineage (Li et al. 2025; SLDBench, Liu et al. 2025)** — For learning rate and batch size, current practice fits only the optimal `lr*` and `bsz*` as power laws of `N` and `D` from a handful of best runs.
 
 ## Fixed substrate / Code framework
 
@@ -66,4 +64,4 @@ class ScalingLawModel:
 
 ## Evaluation settings
 
-Each family runs at seed `42` (the fit is deterministic given the split). Four metrics per family: `R²` (primary, weighted 2×, higher is better, can be negative), `MAE`, `RMSE`, and `NMAE` (lower is better, weighted 1× each). The per-family score is the weighted mean, and the task score is the **geometric mean across the three families**, so one badly negative `R²` drags the overall score down. On `sld-lrbsz`, where held-out `R²` is often negative, `MAE`/`RMSE` are the practical discriminators. Strong solutions fit coefficients per `group` and preserve sensible asymptotics on larger/denser test points.
+Each family runs at seed `42` (the fit is deterministic given the split). Four metrics per family: `R²` (primary, weighted 2×, higher is better, can be negative), `MAE`, `RMSE`, and `NMAE` (lower is better, weighted 1× each). The per-family score is the weighted mean, and the task score is the **geometric mean across the three families**, so one badly negative `R²` drags the overall score down. On `sld-lrbsz`, `MAE`/`RMSE` are practical discriminators alongside `R²`. Strong solutions fit coefficients per `group` and preserve sensible asymptotics on larger/denser test points.

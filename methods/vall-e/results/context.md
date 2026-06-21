@@ -4,39 +4,33 @@ The goal is **zero-shot text-to-speech**: given the text to speak and a *short* 
 
 ## Research question
 
-Cascaded TTS systems map text → mel-spectrogram (acoustic model) → waveform (vocoder). They sound excellent when trained on clean, studio-quality, single- or few-speaker corpora. But they generalize poorly: for a speaker unseen in training, naturalness and speaker similarity collapse. The standard fixes are heavy — speaker *adaptation* (fine-tune the model on the new speaker's data) or speaker *encoding* (a separately trained speaker-verification-style encoder produces an embedding that conditions the synthesizer). Both demand extra machinery and still leave a generalization gap between seen and unseen speakers.
+Cascaded TTS systems map text → mel-spectrogram (acoustic model) → waveform (vocoder). They sound excellent when trained on clean, studio-quality, single- or few-speaker corpora. The standard approaches for new speakers are speaker *adaptation* (fine-tune the model on the new speaker's data) or speaker *encoding* (a separately trained speaker-verification-style encoder produces an embedding that conditions the synthesizer). Text language models, by contrast, generalize to new tasks via in-context learning once trained at scale.
 
-The precise problem: build a TTS system that, from a ~3-second enrolled clip, produces high-quality personalized speech for *arbitrary unseen speakers*, with no fine-tuning, no pre-designed acoustic features, and no specialized speaker encoder — and that improves as you scale training data, the way text language models do.
-
-What a solution must achieve:
-- **Strong zero-shot generalization** to unseen speakers from seconds of reference audio.
-- **An intermediate representation that scales to messy, large data.** A mel-spectrogram trained under an L1/L2 regression loss overfits to clean data and wastes capacity on short-range continuous detail; it cannot absorb tens of thousands of hours of noisy, loosely-transcribed audio.
-- **A formulation that admits in-context learning / prompting**, so a single pretrained model handles new speakers by conditioning, not retraining.
-- **Speaker, prosody, and acoustic-environment fidelity** carried by the reference, plus output diversity.
+The question: how can a TTS system produce high-quality personalized speech for arbitrary unseen speakers from seconds of reference audio, at the scale that large language models operate?
 
 ## Background
 
 Two currents converge here: the scaling lesson from text language models, and the maturation of discrete audio representations.
 
-**The scaling lesson.** Text language models improved monotonically as their training corpora grew — from ~16 GB to ~1 TB of text — and large autoregressive LMs (GPT-3 class) acquired **in-context learning**: a frozen model performs a new task from a few exemplars in its prompt, no weight updates. Speech understanding showed the same data-scaling trend (hundreds → tens of thousands → over a million hours). Meanwhile, advanced multi-speaker TTS was still trained on only hundreds of hours — plausibly the root of its poor generalization. The hypothesis: replicate the text-LM recipe in speech — train a language model on *vastly* more, *diverse*, semi-supervised speech data — and zero-shot generalization may follow.
+**The scaling lesson.** Text language models improved monotonically as their training corpora grew — from ~16 GB to ~1 TB of text — and large autoregressive LMs (GPT-3 class) acquired **in-context learning**: a frozen model performs a new task from a few exemplars in its prompt, no weight updates. Speech understanding showed the same data-scaling trend (hundreds → tens of thousands → over a million hours). Meanwhile, advanced multi-speaker TTS was still trained on only hundreds of hours. The hypothesis: replicate the text-LM recipe in speech — train a language model on *vastly* more, *diverse*, semi-supervised speech data — and zero-shot generalization may follow.
 
-**Why mel-spectrograms block this.** Regression on continuous mel frames (L1/L2) is sensitive to data quality and spends modeling capacity on short-range continuous structure; it does not benefit from — and is destabilized by — large noisy corpora. To borrow the language-model recipe, speech needs to become a sequence of **discrete tokens**, like text.
+**Mel-spectrograms and discrete representations.** Regression on continuous mel frames (L1/L2) is sensitive to data quality and spends modeling capacity on short-range continuous structure. To borrow the language-model recipe, speech could instead be modeled as a sequence of **discrete tokens**, like text.
 
-**Speech quantization, and why neural codec codes win.** Audio is stored as 16-bit samples (65,536 values) at >10 kHz — far too long and high-cardinality to model directly. μ-law (WaveNet) quantizes amplitude to 256 values but does not shorten the sequence, so AR synthesis stays slow. Self-supervised discrete units (vq-wav2vec, HuBERT k-means codes) reconstruct *content* and shorten sequences, but discard speaker identity and reconstruct at low quality. **Neural audio codec codes** from EnCodec's residual vector quantizer are the right representation: they (1) retain abundant speaker and acoustic information, so reconstruction preserves identity even for unseen speakers; (2) come with an off-the-shelf decoder to a high-quality waveform, no separate vocoder training; and (3) shorten the sequence (320× downsampling → 75 Hz).
+**Speech quantization, and neural codec codes.** Audio is stored as 16-bit samples (65,536 values) at >10 kHz — far too long and high-cardinality to model directly. μ-law (WaveNet) quantizes amplitude to 256 values but does not shorten the sequence, so AR synthesis stays slow. Self-supervised discrete units (vq-wav2vec, HuBERT k-means codes) reconstruct *content* and shorten sequences. **Neural audio codec codes** from EnCodec's residual vector quantizer are another representation: they (1) retain abundant speaker and acoustic information, so reconstruction preserves identity even for unseen speakers; (2) come with an off-the-shelf decoder to a high-quality waveform, no separate vocoder training; and (3) shorten the sequence (320× downsampling → 75 Hz).
 
 **The structure of RVQ codes — load-bearing.** EnCodec encodes each frame as `N_q=8` codes (for the 6 kbps, 24 kHz setting) from a residual vector quantizer: the first codebook captures the dominant acoustic content (including speaker identity), and each subsequent codebook models the residual the previous ones missed — so importance decreases down the hierarchy. A 10-second clip becomes a `750 × 8` matrix of codes (`750 = 24000·10/320`). The codebooks are *ordered*: the first carries the dominant content, and codebook `j` models the residual left by codebooks `< j`.
 
-**AudioLM — the immediate ancestor.** AudioLM trains language models over both self-supervised semantic tokens and neural-codec acoustic tokens to do high-quality **speech-to-speech** continuation, demonstrating that LM-style modeling of codec tokens yields natural audio and needs no separately trained vocoder. *Limitation:* it is speech-to-speech (continuation/conditioned on audio), with no explicit text control — you cannot tell it *what* to say.
+**AudioLM — the immediate ancestor.** AudioLM trains language models over both self-supervised semantic tokens and neural-codec acoustic tokens to do high-quality **speech-to-speech** continuation, demonstrating that LM-style modeling of codec tokens yields natural audio and needs no separately trained vocoder. It is speech-to-speech (continuation/conditioned on audio), with no explicit text control.
 
 ## Baselines
 
-**YourTTS (the SOTA zero-shot baseline).** A flow-based multi-speaker TTS system extending VITS, conditioned on a speaker embedding from a pretrained speaker encoder, trained on a combination of VCTK/LibriTTS-scale data. It is the strongest prior zero-shot TTS. *Gap:* it relies on a speaker-encoder embedding and a few-hundred-hour training set; speaker similarity for genuinely unseen speakers is limited, and it does not scale its representation to large noisy corpora.
+**YourTTS (the SOTA zero-shot baseline).** A flow-based multi-speaker TTS system extending VITS, conditioned on a speaker embedding from a pretrained speaker encoder, trained on a combination of VCTK/LibriTTS-scale data. It is the strongest prior zero-shot TTS.
 
-**Speaker-adaptation TTS.** Fine-tune a multi-speaker model on the target speaker's recordings. *Gap:* requires per-speaker fine-tuning data and a separate model per speaker to host — operationally heavy.
+**Speaker-adaptation TTS.** Fine-tune a multi-speaker model on the target speaker's recordings.
 
-**Speaker-encoding TTS.** A pretrained speaker encoder (often a speaker-verification network) produces an embedding that conditions one shared TTS model. *Gap:* a generalization gap between seen and unseen speakers; quality hinges on the encoder, which may need to be increasingly complex.
+**Speaker-encoding TTS.** A pretrained speaker encoder (often a speaker-verification network) produces an embedding that conditions one shared TTS model.
 
-**Cascaded acoustic-model-plus-vocoder TTS (e.g. FastSpeech-class, Tacotron-class).** Predict mel-spectrograms then vocode. *Gap:* mel regression overfits to clean data, doesn't scale to noisy corpora, and offers no in-context-learning route to new speakers.
+**Cascaded acoustic-model-plus-vocoder TTS (e.g. FastSpeech-class, Tacotron-class).** Predict mel-spectrograms then vocode.
 
 **AudioLM (speech LM over codec tokens).** As above — the methodological template (LM over discrete codec codes), but speech-to-speech, not text-controllable.
 

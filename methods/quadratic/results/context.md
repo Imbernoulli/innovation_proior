@@ -8,24 +8,9 @@ model capacity, and a modern over-parameterized network has far more parameters 
 training examples. Plugged into those bounds, the capacity term dwarfs the sample size and
 the certificate exceeds 1, i.e. it is *vacuous*: it tells you the error rate is at most some
 number above 100%, which is no guarantee at all. Yet these same networks generalize well in
-practice. So the question is sharp: can we compute a *non-vacuous* numerical upper bound on
-the true risk of a deep network — a number well below the trivial 1, valid with high
-probability over the draw of the training sample — and can we make that number *tight*,
-close enough to the test error that it is actually informative?
-
-A solution has to clear several bars at once. (1) The certificate must hold with high
-probability `1 - delta` over the random training sample, simultaneously over whatever
-predictor the learner ends up choosing (the learner looks at the data, so the bound must be
-uniform over data-dependent choices). (2) It must be *computable* — every term must be
-either evaluated exactly or upper-bounded by something we can compute, including the
-empirical loss of a randomized predictor, which is itself an expectation we can only sample.
-(3) It must be *optimizable*: ideally the very expression we certify can be minimized by
-gradient descent during training, so the learner directly drives down the guarantee rather
-than minimizing a proxy and hoping the bound follows. (4) For the regime that matters — a
-network that has driven its empirical error close to zero — the bound must stay tight; a
-guarantee that is only good when the training error is large is useless for the models we
-build. (5) Ideally it is *self-certified*: the certificate should not consume a held-out
-test set as part of the guarantee.
+practice. The question is: can we compute a *non-vacuous* numerical upper bound on the true
+risk of a deep network — a number well below the trivial 1, valid with high probability over
+the draw of the training sample — that is close enough to the test error to be informative?
 
 ## Background
 
@@ -99,12 +84,8 @@ interest.
 Generalization Bounds for Deep (Stochastic) Neural Networks with Many More Parameters than
 Training Data", arXiv:1703.11008) showed that optimizing a PAC-Bayes bound by SGD over a
 Gaussian distribution on the weights of an over-parameterized MNIST network yields the first
-*non-vacuous* bounds — bound values well below 1. But their reported certificate (on the
-order of 0.16-0.22 on MNIST) sits far above the actual test error (a few percent): the bound
-is non-vacuous but loose. The diagnostic feature visible in the objective is that, as the
-empirical loss approaches zero, the remaining complexity contribution is still an additive
-square-root term. Closing that gap between the certificate and the test error is the open
-problem.
+*non-vacuous* bounds — bound values well below 1. Their reported certificate sits on the
+order of 0.16-0.22 on MNIST, against an actual test error of a few percent.
 
 ## Baselines
 
@@ -120,11 +101,7 @@ L(Q)  <=  Lhat_S(Q) + sqrt( ( KL(Q || Q0) + log(2 sqrt(n)/delta) ) / (2n) ) .
 As a training objective (replacing the 0-1 loss with the bounded cross-entropy) this is
 `f_classic`, essentially the objective Dziugaite & Roy optimized. It holds simultaneously
 over all `Q`, so it can be minimized over `Q`, and the complexity term is the genuine
-KL-to-prior rather than a capacity count. **Limitation:** the complexity contribution enters
-as an *additive* square-root term that does not shrink as the empirical loss goes to zero. In
-the regime a trained network reaches — empirical loss near zero — the certificate is
-dominated by this `sqrt(complexity/2n)` term and stays at the square-root scale of the
-complexity, no matter how small the empirical loss becomes.
+KL-to-prior rather than a capacity count.
 
 **PAC-Bayes-lambda bound (Thiemann, Igel, Wintenberger & Seldin 2017, "A Strongly Quasiconvex
 PAC-Bayesian Bound", ALT).** Built from a relative-entropy relaxation of pb-kl combined with
@@ -138,10 +115,7 @@ L(Q)  <=  Lhat_S(Q) / (1 - lambda/2)
 
 It is jointly quasiconvex in `(Q, lambda)`, so one alternates minimization over `Q` and
 `lambda` (or grid-searches `lambda` without weakening the guarantee). As `f_lambda` it is a
-strong *training* objective. **Limitation:** it carries an extra parameter to tune, and
-because the AM-GM step inserts a `lambda`-dependent slack, the risk certificates it yields are
-generally not as tight as the underlying relative-entropy relaxation could in principle
-deliver; the slack is the price of arriving at a clean linear-in-`Lhat` objective.
+strong *training* objective.
 
 **Bayes by Backprop (Blundell et al. 2015, "Weight Uncertainty in Neural Networks", ICML).**
 Not a certificate at all, but the optimization substrate. It learns a diagonal-Gaussian
@@ -151,8 +125,7 @@ objective (expected negative log-likelihood plus `KL(Q || Q0)`), using the repar
 `sigma > 0` under unconstrained `rho`). The pathwise gradient estimator — differentiate
 through the sampled weights — gives low-variance unbiased gradients of an expectation-over-`Q`
 objective, and the gradients for `mu` and `rho` are the ordinary backprop gradients, shifted
-and scaled. **Limitation:** the objective is an ELBO with a free KL-trade-off coefficient;
-minimizing it certifies nothing about risk on unseen data.
+and scaled.
 
 **Data-dependent priors (Ambroladze et al. 2007; Parrado-Hernández et al. 2012; the prior-
 mean-by-ERM construction).** The KL term dominates the bound, so shrinking it is the lever for
@@ -161,11 +134,7 @@ is large. The remedy is to learn the prior from data — but the PAC-Bayes-kl bo
 `Q0` to be *data-free with respect to the sample on which the bound is evaluated*. The clean
 construction splits the training set: use one part to learn the prior mean by empirical risk
 minimization, and the disjoint remainder to learn the posterior and evaluate the certificate;
-on that remainder the prior is still data-free, so pb-kl applies. **Limitation/cost:** the
-construction must keep the bound-evaluation subset disjoint from the prior-learning subset, or
-else recover validity with much heavier machinery (differential-privacy / max-information
-corrections, as in the two-stage SGLD approach of Dziugaite & Roy 2018) that lacked finite-
-sample guarantees.
+on that remainder the prior is still data-free, so pb-kl applies.
 
 ## Evaluation settings
 
@@ -203,9 +172,6 @@ Monte-Carlo loops over the stochastic forward pass estimate empirical 0-1 and bo
 cross-entropy risks; and `inv_kl(q, c)` numerically inverts the binary KL by bisection. The
 standard bounded cross-entropy is available through `F.nll_loss` on log-probabilities
 clamped at `log(pmin)`.
-
-What is *not* settled is the scalar upper-bound formula, the differentiable training
-objective, and the final certificate-evaluation procedure. That is the single empty slot.
 
 ```python
 import math

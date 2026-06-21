@@ -1,37 +1,37 @@
 ## Research question
 
-Hastad Switching Lemma explains why constant-depth Boolean circuits with unbounded fan-in still have a rigid weakness: after a carefully chosen random restriction, each small-width DNF or CNF block almost surely becomes simple enough to be represented by a small decision tree. The central question is how this local simplification can be iterated to prove global circuit lower bounds, especially the lower bound that parity is not in `AC0`.
+Constant-depth Boolean circuits with unbounded fan-in (`AC0`) are a natural model of fast, highly parallel computation. The central question is how to prove size lower bounds for such circuits, and in particular whether `PARITY_n` can be computed by polynomial-size constant-depth circuits. The setting is the depth-`d` circuit of `AND`, `OR`, and input-negation gates: after pushing negations to the leaves and arranging the gates into alternating layers, the bottom two layers form a collection of small-width DNFs or CNFs. The question is how to control the residual structure of these bottom blocks well enough to argue about the whole circuit.
 
-The target model is a depth-`d` circuit of `AND`, `OR`, and input negation gates. After pushing negations to the leaves and alternating layers, the bottom two layers are collections of DNFs or CNFs. If those bottom blocks can be switched to the opposite normal form without a large blowup, the switched top gates merge with the layer above and the whole circuit loses one layer.
+The technical handle is the random restriction. A restriction partially assigns variables: each variable is fixed to `0` or `1`, or left live as `*`. A random restriction freezes most variables and leaves a small random subset live, and applying it to a formula or circuit gives a residual function on the live variables. The problem is to quantify how a random restriction acts on a width-`w` DNF or CNF, and to use that to reason about a depth-`d` circuit computing parity.
 
 ## Background
 
-A restriction partially assigns variables: each variable is either fixed to `0` or `1`, or left live as `*`. A random restriction freezes most variables and leaves a small random subset live. Applying a restriction to a formula or circuit gives the residual function on the live variables.
+A restriction `rho` partially assigns the input variables; the live variables are those left as `*`. A random restriction with live probability `p` keeps each variable live with probability `p` and otherwise fixes it to a random Boolean value. The residual `F|rho` is the function on the live variables obtained by substituting the fixed assignments.
 
-Parity is the hard comparison object because it is stable under restrictions. Fixing some inputs of `PARITY_n` leaves either parity or negated parity on the surviving variables. Thus, if `m` variables survive, the residual function still has full decision-tree depth `m` and still needs exponentially many terms in depth 2.
+Parity is the chosen target object because it is stable under restrictions. Fixing some inputs of `PARITY_n` leaves either parity or negated parity on the surviving variables. So if `m` variables survive, the residual function still has full decision-tree depth `m`, and in depth 2 a DNF or CNF for `PARITY_m` needs a separate full-width term or clause for exponentially many assignments.
 
-By contrast, a width-`w` DNF or CNF is fragile. A random assignment kills many terms or clauses outright, and the few parts that survive usually mention only a small number of live variables. The switching lemma gives the sharp quantitative version: for a width-`w` DNF under a random restriction with live probability `p`, the probability that the residual function has decision-tree depth at least `s` is bounded by roughly `(C p w)^s`.
+A width-`w` DNF or CNF behaves differently under a random assignment: many terms or clauses are killed outright, and the surviving parts typically mention only a small number of live variables. Decision-tree depth is the unit of residual complexity used here, because a function with decision-tree depth at most `s` has both a width-`s` DNF and a width-`s` CNF representation: each root-to-leaf path supplies a conjunction of at most `s` queried literals.
 
 ## Core insight
 
-The unique proof move is not to analyze the circuit on every input, but to randomly freeze inputs until hidden simplicity is exposed. A worst-case DNF can look combinatorially tangled before restriction, but after most variables are fixed, its surviving terms can be queried by a shallow decision tree. Decision-tree depth is the right certificate because a depth-`s` decision tree yields both a width-`s` DNF and a width-`s` CNF.
+The proof move is to randomly freeze inputs until the residual structure of the bottom blocks becomes simple, rather than to analyze the circuit on every input. Restrictions act in opposite ways on the two objects of interest: small-width depth-2 formulas tend to collapse to shallow residual functions, while parity remains parity on the live variables. The aim is to convert this contrast into a global statement by combining a per-block residual estimate with a union bound over all bottom blocks of the circuit.
 
-That dual representation is the word "switching." A restricted DNF that has a small decision tree can be written as a small-width CNF, and a restricted CNF can be written as a small-width DNF. Once the bottom block is switched, its top gate has the same type as the gate above it, so the two layers merge. The local collapse of small-width depth-2 formulas becomes a global depth-reduction step.
-
-This creates the lower-bound wedge: random restrictions simplify small `AC0` circuits, but they do not simplify parity. Repeating the restriction-and-switch step strips off layer after layer of the circuit while leaving enough live variables that the final restricted parity function is still hard for depth 2.
+When a restricted DNF has a small decision tree it can be rewritten as a small-width CNF, and a restricted CNF as a small-width DNF. If the bottom block is rewritten into the opposite normal form, its new top gate has the same type as the gate above it, and the two adjacent layers merge into one. Random restrictions thus give a candidate depth-reduction step: simplify the bottom blocks, merge a layer, and repeat, while keeping enough live variables that the final restricted parity function is still hard for depth 2.
 
 ## Baselines
 
-Furst, Saxe, and Sipser introduced the random-restriction route for `AC0` lower bounds. Their estimates were strong enough to show super-polynomial lower bounds, but the failure probability for simplifying a block was too weak to survive cleanly through many union bounds and iterations.
+Furst, Saxe, and Sipser introduced the random-restriction route for `AC0` lower bounds. Their per-block estimate bounds the probability that a restricted bottom block fails to simplify, and iterating it across the `d - 2` rounds of depth reduction yields super-polynomial lower bounds for parity.
 
-Yao obtained the first exponential-strength lower bound using sharper probabilistic ideas, but the switch was approximate: the restricted block agreed with a simpler form on most inputs, rather than being exactly equal to it. That required tracking approximation error through the depth-reduction process.
+Yao obtained an exponential-strength lower bound for parity using sharper probabilistic estimates on how random restrictions act on small-width formulas. In this analysis the restricted block agrees with a simpler form on most inputs, and the approximation error is tracked through the depth-reduction process.
 
-Hastad's switching lemma made the method both sharp and exact. The failure probability decays exponentially in the target decision-tree depth, and the residual block exactly has the switched representation when the good event occurs. This is the quantitative improvement that turns "random restrictions help" into near-optimal `AC0` lower bounds.
+Both approaches share the same architecture: a quantitative bound on the residual decision-tree complexity of a width-`w` DNF or CNF under a random restriction, applied via a union bound over the bottom blocks and iterated to strip layers off the circuit until a depth-2 circuit for parity remains.
 
 ## Evaluation settings
 
-The key parameters are the original circuit depth `d`, size `S`, bottom width `w`, restriction live probability `p`, and switching target `s`. A useful switching estimate must make the bad event small enough that a union bound over all bottom blocks succeeds, while still leaving enough live variables after `d - 2` rounds.
+The key parameters are the original circuit depth `d`, size `S`, bottom width `w`, restriction live probability `p`, and target residual decision-tree depth `s`. A per-block estimate is used through a union bound over all bottom blocks across `d - 2` rounds of restriction, and the live probability `p` is chosen so that parity still has many live variables after all rounds.
 
-For parity, the iteration yields the standard size-depth tradeoff: any depth-`d` `AC0` circuit computing `PARITY_n` has size at least `2^{Omega(n^{1/(d-1)})}` up to constant choices in the exponent. Equivalently, polynomial-size circuits for parity require depth on the order of `log n / log log n`.
+For parity, the iteration is designed to yield a size-depth tradeoff of the form
 
-The proof is evaluated by how well it balances two forces: restrictions must be aggressive enough to expose simple structure in small-width formulas, but gentle enough that parity still has many live variables at the end. Hastad's lemma succeeds because it makes the per-block failure probability depend on the switching depth `s`, not on a crude polynomial-in-`n` estimate.
+`size_depth-d(PARITY_n) >= 2^{Omega(n^{1/(d-1)})}`
+
+up to constant choices in the exponent, equivalently that polynomial-size circuits for parity require depth on the order of `log n / log log n`. The analysis is evaluated by how well it balances two forces: restrictions aggressive enough to expose simple structure in small-width formulas, and gentle enough that parity retains many live variables through the final round.

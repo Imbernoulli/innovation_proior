@@ -1,15 +1,15 @@
 ## Research question
 
-Cooperative multi-agent reinforcement learning under partial observability: `n` agents each see only a local observation, the team receives one shared scalar reward, and execution must be decentralizable — each agent acts on `o_i` alone. Training happens in a simulator, so a baseline value function may use anything available centrally (the global state, all observations). This is Centralized-Training-with-Decentralized-Execution (CTDE). The design problem here is the **centralized critic architecture for MAPPO**: what the value function conditions on and how it mixes per-agent features. The actor, the EPyMARL `ppo_learner`, optimizer, GAE/`n`-step settings, and the smaclite SMAC interface are fixed. Only the critic's input set and network are free, and that choice sets the bias-variance of the per-agent advantages.
+Cooperative multi-agent reinforcement learning under partial observability: `n` agents each see only a local observation, the team receives one shared scalar reward, and execution must be decentralizable — each agent acts on `o_i` alone. Training happens in a simulator, so a baseline value function may use anything available centrally (the global state, all observations). This is Centralized-Training-with-Decentralized-Execution (CTDE). The design problem here is the **centralized critic architecture for MAPPO**: what the value function conditions on and how it is structured. The actor, the EPyMARL `ppo_learner`, optimizer, GAE/`n`-step settings, and the smaclite SMAC interface are fixed. Only the critic's input set and network are free, and that choice sets the bias-variance of the per-agent advantages.
 
 ## Prior art / Background / Baselines
 
 The starting baselines are the main centralized-critic methods available for CTDE:
 
-- **COMA (Foerster et al., 2018).** A single centralized action-value critic `Q(s, A)` for the team plus a counterfactual baseline that marginalizes agent `i`'s own action while holding the others fixed. Gap: the critic takes the joint action as input, so its input dimension scales with `n`; forming the baseline requires evaluating `Q` once per candidate action; and the critic is coupled to every agent's current policy.
-- **MADDPG (Lowe et al., 2017).** A separate centralized action-value critic `Q_i(x, a_1,…,a_n)` per agent, conditioning on global information and the joint action so that each agent's world looks stationary when the joint action is fixed. Gap: one critic per agent, joint-action input that scales with `n`, and an off-policy replay/target-network setup.
-- **Value decomposition (VDN, Sunehag et al., 2018; QMIX, Rashid et al., 2018).** Factorize the joint action-value into per-agent values — a sum for VDN, or a monotonic state-conditioned mixing for QMIX — so the argmax is decentralizable. Gap: still action-value critics and off-policy, and the factorization restricts the representable class (VDN cannot represent interactions where one agent's best action depends on another's; QMIX's monotonicity is a softer but real constraint).
-- **Independent learning (IQL / IAC).** Each agent learns from its own stream with no centralization. Gap: co-learners change one another's dynamics, so value targets go stale and the classic non-stationarity instability appears.
+- **COMA (Foerster et al., 2018).** A single centralized action-value critic `Q(s, A)` for the team plus a counterfactual baseline that marginalizes agent `i`'s own action while holding the others fixed.
+- **MADDPG (Lowe et al., 2017).** A separate centralized action-value critic `Q_i(x, a_1,…,a_n)` per agent, conditioning on global information and the joint action so that each agent's world looks stationary when the joint action is fixed.
+- **Value decomposition (VDN, Sunehag et al., 2018; QMIX, Rashid et al., 2018).** Factorize the joint action-value into per-agent values — a sum for VDN, or a monotonic state-conditioned mixing for QMIX — so the argmax is decentralizable.
+- **Independent learning (IQL / IAC).** Each agent learns from its own stream with no centralization.
 
 ## Fixed substrate / Code framework
 

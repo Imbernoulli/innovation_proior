@@ -4,25 +4,21 @@ The problem is to predict chemical properties of a molecule from its structure: 
 toxicity, blood-brain-barrier penetration, enzyme inhibition, hydration free energy, and so on.
 This is one of the oldest cheminformatics tasks and the central modeling step in early-stage
 drug discovery, where running a real assay is slow and expensive, so a model that screens
-candidates *in silico* is valuable only if it is accurate on molecules the chemist has *not*
+candidates *in silico* is valuable if it is accurate on molecules the chemist has *not*
 seen — new scaffolds, new chemical series, the next quarter's compounds.
 
-Two distinct families of models exist, and a solution has to be measured against both. The
-first runs an off-the-shelf classifier or regressor on a *fixed* vector encoding of the
-molecule — a fingerprint or a set of expert descriptors. The second feeds the molecular graph
-directly into a graph convolutional network that *learns* its own encoding end to end against
-the property labels. The published evidence on which family is better is contradictory: one
-large benchmark reports that the graph-convolution models outperform, another reports the opposite.
-Part of the disagreement traces to how the data is split. Under a random train/test split a
-learned model can score well by *memorizing the scaffolds* present in training rather than
-learning chemistry that transfers, so a random-split number overstates how well the model will
-do on genuinely novel chemistry. The precise goal, then, is twofold: (1) a single learned
-molecular representation that can compete with both the fixed-descriptor models and the prior
-graph networks across many datasets and across the diverse size/sparsity regimes drug-discovery
-datasets come in; and (2) an evaluation that actually measures generalization to new chemical
-space, not memorization. The learned-graph family also has to be judged against two recurring
-pressures: datasets are often small, and a fixed number of message-passing steps can make the
-representation local even when the property depends on the molecule more globally.
+Two distinct families of models exist. The first runs an off-the-shelf classifier or regressor
+on a *fixed* vector encoding of the molecule — a fingerprint or a set of expert descriptors. The
+second feeds the molecular graph directly into a graph convolutional network that *learns* its
+own encoding end to end against the property labels. The published evidence on which family is
+better is mixed: one large benchmark reports that the graph-convolution models outperform,
+another reports the opposite. Part of the disagreement traces to how the data is split: under a
+random train/test split, train and test can share the same scaffolds, whereas the chemistry the
+model is ultimately used on is genuinely novel. The question is how to learn a single molecular
+representation from the graph that can be compared against both the fixed-descriptor models and
+the prior graph networks across many datasets and the diverse size/sparsity regimes
+drug-discovery datasets come in, and how to evaluate it so that the number reflects performance
+on new chemical space.
 
 ## Background
 
@@ -47,16 +43,16 @@ h_v^{t+1} = U_t(h_v^t, m_v^{t+1})
 where `N(v)` are the neighbors of `v`, `M_t` is a learned message function and `U_t` a learned
 vertex-update function, with `h_v^0` some function of the atom features `x_v`. A **readout
 phase** then maps the final node states to a prediction, `y_hat = R({h_v^T : v in G})`, where
-`R` must be invariant to the ordering of the nodes (a molecule has no canonical atom ordering).
-The whole thing is differentiable and trained end to end. The number of steps `T` matters: a
-node only ever hears about nodes within `T` bonds of it, so with `T` smaller than the diameter
-of the molecule the learned representation is fundamentally *local*.
+`R` is invariant to the ordering of the nodes (a molecule has no canonical atom ordering).
+The whole thing is differentiable and trained end to end. The number of steps `T` sets the
+receptive field: a node hears about nodes within `T` bonds of it.
 
 Several well-known graph models are instances of this framework, most of them placing the
 main hidden states and messages **on atoms**:
 - The neural-fingerprint convolution of Duvenaud et al. (2015) takes the message as a
   concatenation `M(h_v, h_w, e_vw) = (h_w, e_vw)`, updates with a degree-specific weight matrix
-  through a sigmoid, and reads out by summing a softmax over all steps and atoms.
+  through a sigmoid, and reads out by summing a softmax over all steps and atoms. The message
+  sums over connected nodes and connected edges separately, `m_v = (sum_w h_w, sum_w e_vw)`.
 - The gated graph network of Li et al. (2016) uses an edge-type-dependent linear message
   `M = A_{e_vw} h_w` and a GRU as the update.
 - The "weave" model of Kearnes et al. (2016) is the lone prior model that maintains explicit
@@ -64,36 +60,27 @@ main hidden states and messages **on atoms**:
 - Interaction networks, deep tensor networks, and the spectral / Laplacian convolutions are
   further instances.
 
-There is also a deep connection between message passing and *belief propagation* in
-probabilistic graphical models (Pearl 1988; Koller & Friedman). On tree-structured graphical
-models, exact inference is organized as local messages whose schedule and bookkeeping determine
-whether information is reused cleanly or redundantly. Dai et al. (2016), under the name
-structure2vec, showed that the fixed-point updates of mean-field and loopy belief propagation
-on a pairwise Markov random field can be embedded as learned graph representations. Their work
-matters here as a structural warning: the usual node-centered graph convolution is only one
-inference-inspired update, and changing the way local evidence moves through a graph can change
-what the representation records. It is not, by itself, a molecule-property architecture with
-chemical bond features, a molecular readout, or a drug-discovery training harness.
+There is also a connection between message passing and *belief propagation* in probabilistic
+graphical models (Pearl 1988; Koller & Friedman). On tree-structured graphical models, exact
+inference is organized as local messages whose schedule and bookkeeping determine how
+information moves through the graph. Dai et al. (2016), under the name structure2vec, showed
+that the fixed-point updates of mean-field and loopy belief propagation on a pairwise Markov
+random field can be embedded as learned graph representations. That line is a representation
+learner, not a molecule-property architecture with chemical bond features, a molecular readout,
+or a drug-discovery training harness.
 
-The motivating empirical and structural facts about the *existing* atom-centered models:
+Structural facts about the *existing* atom-centered models:
 - Because `m_v^{t+1}` sums `M_t` over the full neighbor set `N(v)`, the unrolled computation
   includes walks of the form `v_1 v_2 ... v_n` with `v_i = v_{i+2}` — a step out and
-  immediately back. These *totters* (Mahe et al. 2004) revisit and re-mix the same local
-  information, so an atom-centered representation can become noisy with short backtracking
-  echoes.
-- The concatenation message of the neural-fingerprint model sums over connected nodes and
-  connected edges separately, `m_v = (sum_w h_w, sum_w e_vw)`, so it cannot represent
-  correlations between a neighbor atom's state and the bond connecting to it.
+  immediately back (Mahe et al. 2004).
 - Datasets in this field are often tiny — hundreds to a few thousand molecules — and a model
-  that learns its representation from scratch has little to learn from and overfits artifacts;
-  in the lowest-data regimes the fixed-descriptor models can beat learned ones.
-- With `T < diam(G)`, the representation is local, so properties that depend on the whole
-  molecule are hard for a purely message-passed encoding to capture.
+  that learns its representation from scratch has little to learn from; in the lowest-data
+  regimes the fixed-descriptor models can match or beat learned ones.
+- With `T < diam(G)`, a node's receptive field does not cover the whole molecule.
 
 ## Baselines
 
-These are the prior methods a new learned representation would be measured against and would
-react to.
+These are the prior methods a new learned representation would be measured against.
 
 **Fixed fingerprints / descriptors + a classifier.** Encode the molecule as a fixed vector and
 run a standard learner on it. Morgan / extended-connectivity fingerprints (ECFP; Rogers &
@@ -101,35 +88,23 @@ Hahn 2010) hash circular atom environments of growing radius into a bit (or coun
 RDKit and Dragon descriptors are hand-designed physico-chemical quantities. On top of these
 sit random forests (Breiman 2001), support vector machines (Cortes & Vapnik 1995), or
 feed-forward networks; Mayr et al. (2018) concatenate several descriptor sets into one large
-FFN. **Core idea:** a strong, general, *fixed* prior about chemistry, computed once, never
-adapted to the task. **Gap:** the representation cannot specialize to the property being
-predicted — it is whatever the fingerprint designers chose — and on several tasks a learned
-representation is reported to do better; count-based binary descriptor vectors also feed poorly
-into a regression head.
+FFN. **Core idea:** a strong, general, *fixed* prior about chemistry, computed once.
 
 **Atom-centered message passing networks (the MPNN instances above).** Duvenaud et al. (2015),
 Li et al. (2016), Kearnes et al. (2016), and the rest learn the representation from the graph
 by iterating the atom-centered update `m_v^{t+1} = sum_{w in N(v)} M_t(h_v^t, h_w^t, e_vw)`,
 `h_v^{t+1} = U_t(h_v^t, m_v^{t+1})`, then read out over atoms. **Core idea:** let the network
 discover task-specific atom environments rather than hand-coding them; given enough data these
-are flexible and strong. **Gaps:** (i) every node aggregates over *all* its neighbors each
-step, so the unrolled computation includes short backtracking walks that re-mix information it
-already has; (ii) the neural-fingerprint variant's separate sums over neighbor states and
-edges cannot capture atom-bond correlations; (iii) being atom-centered and local
-(`T < diam`), it struggles with global properties; (iv) on small datasets it overfits and
-underperforms the fixed-descriptor models.
+are flexible and strong.
 
 **Belief propagation as a structural reference (Pearl 1988; Dai et al. 2016).** Not a property
 predictor on its own, but the principled object that many graph-message-passing stories borrow
-from. It shows why local bookkeeping matters in graphical models and why the same graph can
-support more than one learned inference-style update. **Gap:** this line does not hand over a
-drop-in chemistry encoder; it leaves open how to combine atom features, bond features, a
-permutation-invariant molecular readout, and a scalable batched implementation for property
-prediction.
+from. It shows how local bookkeeping works in graphical models and that the same graph can
+support more than one learned inference-style update.
 
 ## Evaluation settings
 
-The natural yardsticks already in use, all pre-existing facts about the data and protocol:
+The yardsticks already in use, all pre-existing facts about the data and protocol:
 
 - **MoleculeNet** (Wu et al. 2018): a suite of public benchmarks spanning quantum mechanics
   (QM7/8/9), physical chemistry (ESOL solubility, FreeSolv hydration free energy,
@@ -144,12 +119,11 @@ The natural yardsticks already in use, all pre-existing facts about the data and
   BBBP (blood-brain-barrier penetration, 2,039 molecules, 1 task), BACE (β-secretase 1
   inhibition, 1,513 molecules, 1 task), Tox21 (toxicity across 12 assays, 7,831 molecules,
   multi-task with missing labels).
-- **Splitting.** A *random* split lets a learned model memorize training scaffolds and overstate
-  generalization. A **scaffold split** partitions molecules by their Murcko scaffold (computed
+- **Splitting.** A **scaffold split** partitions molecules by their Murcko scaffold (computed
   by RDKit) so that train and test share no scaffold, which makes the test set structurally
   novel; it is used as a proxy for the **chronological / time split** that real drug-discovery
-  pipelines evaluate on. Sheridan (2015) earlier argued scaffold/time splits are harder and
-  more realistic than random splits.
+  pipelines evaluate on. Sheridan (2015) argued scaffold/time splits are harder and more
+  realistic than random splits.
 - **Protocol.** Identical featurization across models (RDKit-computed atom/bond features);
   cross-validation over several random-seeded splits because datasets are small; an Adam
   optimizer with a warmup-then-decay learning-rate schedule; for regression, targets normalized

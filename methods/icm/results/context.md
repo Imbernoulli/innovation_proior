@@ -5,12 +5,8 @@ environments the extrinsic reward is *extremely sparse or absent* — a single $
 goal hundreds of steps away, and zero everywhere else — and no shaped reward can be hand-built.
 Then the agent learns nothing until it *stumbles* into the goal, which random action noise will
 essentially never do in any but the simplest environment. The question: can the agent generate
-its own *intrinsic* reward that drives it to explore efficiently, learn useful skills, and
-generalize — entirely from raw high-dimensional observations (images), with little or no extrinsic
-reward? Such a signal would have to (i) scale to image state spaces, (ii) push the agent toward
-states that genuinely teach it something about the consequences of its actions, and — the crux —
-(iii) *not* be hijacked by parts of the environment that are unpredictable but irrelevant to the
-agent, so that exploration does not stall on noise.
+its own *intrinsic* reward that drives it to explore, learn useful skills, and generalize —
+entirely from raw high-dimensional observations (images), with little or no extrinsic reward?
 
 # Background
 
@@ -21,23 +17,18 @@ payoff — is the model. In RL, intrinsic-reward formulations fall into two broa
 model of the state distribution (Bellemare et al., 2016, pseudo-counts; Lopes et al., 2012); and
 *prediction-error / uncertainty-seeking*, which rewards actions whose consequences the agent
 predicts poorly and therefore requires a *dynamics model* predicting $s_{t+1}$ from $s_t,a_t$
-(Schmidhuber, 1991, 2010; Stadie et al., 2015; Houthooft et al., 2016, VIME). Both kinds of model
-are hard to build in high-dimensional continuous (image) state spaces.
+(Schmidhuber, 1991, 2010; Stadie et al., 2015; Houthooft et al., 2016, VIME).
 
-**The noisy-TV / artificial-curiosity trap.** The decisive diagnostic for prediction-error
-curiosity: if the intrinsic reward is the *pixel-space* prediction error, the agent is permanently
-rewarded by anything inherently unpredictable — white noise on a television, leaves moving in a
-breeze, shadows, distractor objects, other agents whose motion is irrelevant to the agent's goals.
-The pixel error there never decreases, so curiosity never moves on; the agent stalls, transfixed by
-noise (Schmidhuber, 2010). Tabular novelty counts have the same pathology. A proposed remedy is to
-reward only states that are *hard to predict but learnable* (Schmidhuber, 1991), but there is no
-known computationally feasible way to estimate learnability (Lopes et al., 2012).
+**Prediction-error curiosity in pixel space.** One way to instantiate prediction-error curiosity
+is to make the intrinsic reward the *pixel-space* error of a model predicting the next observation
+from the current observation and action. A related proposal is to reward states that are *hard to
+predict but learnable* (Schmidhuber, 1991), which calls for estimating learnability (Lopes et al.,
+2012).
 
 **Three sources of observation change.** Anything that changes the agent's observation is one of:
 (1) things the agent *can control*; (2) things the agent *cannot* control but that *affect* it
 (e.g. a vehicle driven by someone else); (3) things out of the agent's control *and* not affecting
-it (moving leaves, TV static). A curiosity signal should respond to (1) and (2) and be blind to
-(3) — the agent has no reason to care about variation that is inconsequential to it.
+it (moving leaves, TV static).
 
 **Self-supervised feature learning from agent experience.** The agent's own
 $(s_t,a_t,s_{t+1})$ tuples come labelled for free, which has been used as supervision to learn
@@ -49,27 +40,21 @@ candidate ways to learn a representation of an image observation from interactio
 **Policy learning by actor-critic.** The asynchronous advantage actor-critic A3C (Mnih et al.,
 2016) optimizes a policy $\pi(s;\theta_P)$ to maximize the expected return $\mathbb{E}[\sum_t r_t]$
 via the policy gradient $\nabla\log\pi(a|s)\,A(s,a)$ with an advantage baseline and an entropy
-bonus, trained on parallel asynchronous workers. It is a natural, scalable policy optimizer that
+bonus, trained on parallel asynchronous workers. It is a scalable policy optimizer that
 can consume any scalar reward, intrinsic or extrinsic.
 
 # Baselines
 
 **A3C with $\epsilon$-greedy / entropy exploration (Mnih et al., 2016).** The plain policy-gradient
 agent: maximize $\mathbb{E}[\sum_t r_t^e]$ with the environment's extrinsic reward, exploring via
-the stochastic policy and an entropy bonus. **Gap:** with sparse $r^e$ the gradient is almost
-always zero; the entropy bonus produces only local dithering and cannot carry the agent across long
-reward-free stretches.
+the stochastic policy and an entropy bonus.
 
 **Pixel-prediction-error curiosity (Schmidhuber line; Stadie et al., 2015).** Augment the reward
 with the error of a model predicting the next *observation* (pixels) from the current observation
-and action. **Gap:** the noisy-TV trap — inherently unpredictable but irrelevant visual variation
-keeps the error (and thus the bonus) permanently high, so the agent is rewarded for staring at
-noise and stops making progress; and predicting pixels is itself hard and arguably the wrong
-objective.
+and action.
 
 **Count/novelty-based intrinsic reward (Bellemare et al., 2016).** Reward visiting low-count
-states via a density model over states. **Gap:** also responds to irrelevant stochastic variation
-(every noisy frame looks novel), and needs a good state-density model in image space.
+states via a density model over states.
 
 # Evaluation settings
 
@@ -78,7 +63,7 @@ Two visual environments. *VizDoom* 3-D navigation (`DoomMyWayHome-v0`): four dis
 reward $+1$ for reaching the vest (zero otherwise), episodes capped at 2100 steps;
 $\sim$350 steps for an optimal policy from the farthest room. Difficulty is varied by initial-goal
 distance ("dense", "sparse", "very sparse" spawns), and a noise variant adds uncontrollable visual
-noise to the input to probe the noisy-TV failure. *Super Mario Bros*: 14 composite joystick
+noise to the input. *Super Mario Bros*: 14 composite joystick
 actions, four levels, played with *no extrinsic reward at all* (curiosity only); long-range
 dependencies (a long jump may require repeating an action up to 12 times). Generalization is tested
 by pre-training on one level/map and measuring exploration speed on unseen levels/maps with new

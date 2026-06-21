@@ -4,9 +4,9 @@ Design a better **action method** for the OpenVLA-OFT PD&AC scaffold on LIBERO-G
 
 ## Prior art / Background / Baselines
 
-- **End-to-end imitation policies (e.g. ACT).** A from-scratch transformer predicts a chunk of future actions non-causally from per-timestep query embeddings, trained with L1 reconstruction. Gap: trained on a few hundred trajectories per task, it lacks an Internet-scale prior and generalizes poorly to novel objects, distractors, and rephrased instructions.
-- **Diffusion Policy.** Replaces the point-estimate head with a conditional denoising-diffusion model over the action chunk. Gap: many sequential denoising steps at inference, slow training convergence, and still no web prior.
-- **Vision-language-action models (RT-2 / OpenVLA).** Fine-tune a web-pretrained vision-language model to emit actions as discrete tokens by quantizing each action dimension into 256 bins. Gap: autoregressive decoding produces K·D sequential passes per chunk at 3-5 Hz, and the 256-bin grid limits action precision.
+- **End-to-end imitation policies (e.g. ACT).** A from-scratch transformer predicts a chunk of future actions non-causally from per-timestep query embeddings, trained with L1 reconstruction.
+- **Diffusion Policy.** Replaces the point-estimate head with a conditional denoising-diffusion model over the action chunk.
+- **Vision-language-action models (RT-2 / OpenVLA).** Fine-tune a web-pretrained vision-language model to emit actions as discrete tokens by quantizing each action dimension into 256 bins. Autoregressive decoding produces K·D sequential passes per chunk at 3-5 Hz.
 - **Parallel decoding + action chunking (PD&AC).** Fills the K·D action positions with positionally-marked slots and applies bidirectional attention to predict the whole chunk in one forward pass. This collapses the K·D sequential factor and is the fixed substrate here.
 
 ## Fixed substrate / Code framework

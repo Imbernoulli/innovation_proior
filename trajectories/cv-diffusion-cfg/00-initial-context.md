@@ -4,8 +4,8 @@ Text-to-image diffusion sampling is only weakly prompt-aligned when using the co
 
 ## Prior art / Background / Baselines
 
-- **Classifier guidance (Dhariwal & Nichol 2021).** It steers the unconditional score with the gradient of a separately trained, noise-aware classifier `p(c|z_t)`: `score <- score + s * grad_z log p(c|z_t)`, with `s` around 10 for strong conditioning. *Gap:* it requires an extra network trained on noisy latents, and the update direction is a classifier gradient rather than a native generative direction.
-- **Classifier-free guidance, CFG (Ho & Salimans 2022).** A single network trained with random null conditioning produces both `eps_uc` and `eps_c`; the guided noise is the linear mix `eps_g = eps_uc + w (eps_c - eps_uc)`, and in a DDIM step this `eps_g` is used for both the Tweedie denoise and the renoise. *Gap:* at the moderately-high scales `w` in roughly `[5, 30]` that give strong prompt adherence, the sampler tends to oversaturate colors, collapse modes, accumulate trajectory error, and lose DDIM invertibility.
+- **Classifier guidance (Dhariwal & Nichol 2021).** It steers the unconditional score with the gradient of a separately trained, noise-aware classifier `p(c|z_t)`: `score <- score + s * grad_z log p(c|z_t)`, with `s` around 10 for strong conditioning.
+- **Classifier-free guidance, CFG (Ho & Salimans 2022).** A single network trained with random null conditioning produces both `eps_uc` and `eps_c`; the guided noise is the linear mix `eps_g = eps_uc + w (eps_c - eps_uc)`, and in a DDIM step this `eps_g` is used for both the Tweedie denoise and the renoise.
 
 ## Fixed substrate / Code framework
 

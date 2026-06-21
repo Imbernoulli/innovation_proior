@@ -4,7 +4,7 @@
 
 Given a directed graph (flowgraph) with a start vertex $s$, a vertex $u$ dominates $v$ if every path from $s$ to $v$ passes through $u$. For every vertex $v$ reachable from $s$, compute its immediate dominator $\mathrm{idom}(v)$ (the unique dominator of $v$, other than $v$, that is dominated by all other dominators of $v$). Output the dominator tree ($\mathrm{parent}[v] = \mathrm{idom}(v)$).
 
-The graph may contain cycles, self-loops, and parallel edges, and not every vertex need be reachable from $s$ — vertices unreachable from $s$ have no dominators to report and are left out of the tree. The graph can be large ($n, m$ up to $\sim 10^5$ or more), so an algorithm whose cost grows with $n \cdot m$ is too slow.
+The graph may contain cycles, self-loops, and parallel edges, and not every vertex need be reachable from $s$ — vertices unreachable from $s$ have no dominators to report and are left out of the tree. The graph can be large ($n$ vertices and $m$ edges, each up to $\sim 10^5$ or more).
 
 ## Code framework
 

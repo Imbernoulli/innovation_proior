@@ -1,4 +1,4 @@
-# Context: making greedy equivalence search less greedy (circa 2025)
+# Context: Greedy Equivalence Search and its variants (circa 2025)
 
 ## Research question
 
@@ -11,23 +11,10 @@ improves the score (the forward phase), then the highest-scoring edge deletion u
 improves it (the backward phase), and a decomposable, consistent, score-equivalent scoring
 criterion makes this two-phase greedy climb provably correct.
 
-GES is a hallmark algorithm, but in practice it faces two challenges shared across causal
-discovery: (1) *computational cost* — the problem is NP-hard and GES struggles to scale in
-high-dimensional settings; and (2) *finite-sample accuracy* — with limited data GES often fails
-to recover the true MEC, and its output is known to include adjacencies between variables that
-are non-adjacent in the truth. The question this work asks is whether the *basic assumption of
-GES* — that the greedy choice of the highest-scoring neighbor is the best one — is actually the
-right strategy, and whether a *less greedy* choice can improve both accuracy and runtime while
-retaining the large-sample guarantee.
-
-What a good solution must achieve: (1) **keep the guarantee** — recover the true MEC in the
-sample limit, for any data faithful to a DAG, from any initial class; (2) **reduce finite-sample
-structural error** — in particular, stop introducing the excess adjacencies that GES's greedy
-forward phase adds and that the backward phase may fail to remove; and (3) **reduce runtime** —
-do less work per state by pruning the candidate operators. The constraint is to stay strictly
-within the GES family — same decomposable score, same `Insert`/`Delete` operators, same
-equivalence-class search — so that the correctness machinery carries over and the change is a
-controlled modification of the search strategy, not a new algorithm.
+The question this work asks is whether the *basic assumption of GES* — that the greedy choice of
+the highest-scoring neighbor is the best one — is actually the right strategy, and whether a
+different choice of insertion can improve both accuracy and runtime while retaining the
+large-sample guarantee.
 
 ## Background
 
@@ -56,52 +43,30 @@ difference. `Delete(X, Y, H)` is the backward analogue. Crucially, **both operat
 validity-tested locally on the CPDAG without ever enumerating member DAGs**, and the score change
 of an operator equals the score change of any witness DAG (by decomposability + score equivalence).
 
-**GES's guarantee and its limits.** Given a score with the three properties and data `D ∼ P(V)`
-with `P` Markov and faithful to some DAG, GES recovers the true MEC in the sample limit
-(Chickering 2002, Lemma 10). The forward phase reaches a class with respect to which `P` is Markov
-(it has at least the true edges, possibly more); the backward phase removes the excess down to the
-perfect map. The PC algorithm (Spirtes, Glymour & Scheines 2000) has similar asymptotic
-guarantees but uses CI tests instead of a score, while many methods — max-min hill-climbing
-(Tsamardinos et al. 2006), NOTEARS (Zheng et al. 2018) — lack such large-sample guarantees. The
-documented weakness of GES is that its output contains adjacencies absent from the true MEC; since
-these are introduced by `Insert` operators (Nandy et al. 2018; Chickering 2020 / SE-GES), the
-target for improvement is the *choice of which `Insert` to apply*.
+**GES's guarantee.** Given a score with the three properties and data `D ∼ P(V)` with `P` Markov
+and faithful to some DAG, GES recovers the true MEC in the sample limit (Chickering 2002,
+Lemma 10). The forward phase reaches a class with respect to which `P` is Markov (it has at least
+the true edges, possibly more); the backward phase removes the excess down to the perfect map. The
+PC algorithm (Spirtes, Glymour & Scheines 2000) has similar asymptotic guarantees but uses CI
+tests instead of a score, while many methods — max-min hill-climbing (Tsamardinos et al. 2006),
+NOTEARS (Zheng et al. 2018) — lack such large-sample guarantees.
 
-**Generalizing GES (the load-bearing relaxation).** The key observation that opens the door:
-GES's greedy "apply the highest-scoring neighbor" is not necessary for correctness. Generalized
-GES (GGES) allows the search to be initialized from an arbitrary MEC, to use any order of
-operators, and — critically — to apply *any* valid score-increasing operator, not just the
-highest-scoring one. GGES still finds the global optimum of the score in the sample limit
-(Correctness of GGES). This means one is free to choose *which* score-increasing insertion to
-take, and in particular to *decline* certain insertions GES would have made.
+**Generalizing GES.** Generalized GES (GGES) allows the search to be initialized from an
+arbitrary MEC, to use any order of operators, and to apply *any* valid score-increasing operator,
+not just the highest-scoring one. GGES still finds the global optimum of the score in the sample
+limit (Correctness of GGES). This means one is free to choose *which* score-increasing insertion
+to take.
 
-**A diagnostic about non-adjacency (the basis for declining).** For a non-adjacent pair `(X, Y)`,
-in the sample limit, if a valid `Insert(X, Y, T)` operator is *score-decreasing* for some `T`,
-that is evidence the pair is non-adjacent in the true MEC: such a `T` exposes a conditioning set
-under which `X ⊥ Y`, and by local consistency a score-decreasing insertion means exactly "this
-independence is real" (Proposition 1 here). However, even a single score-decreasing
-`Insert(X, Y, T)` does not imply that *all* `Insert(X, Y, *)` are score-decreasing — GES may apply
-a different `Insert(X, Y, T')` and introduce a spurious adjacency anyway (Example 2). This is the
-exact mechanism by which GES over-adds.
+**A diagnostic about non-adjacency.** For a non-adjacent pair `(X, Y)`, in the sample limit, if a
+valid `Insert(X, Y, T)` operator is *score-decreasing* for some `T`, that exposes a conditioning
+set under which `X ⊥ Y`, and by local consistency a score-decreasing insertion means exactly "this
+independence is real" (Proposition 1 here). Even a single score-decreasing `Insert(X, Y, T)` does
+not imply that *all* `Insert(X, Y, *)` are score-decreasing — GES may apply a different
+`Insert(X, Y, T')` and introduce a spurious adjacency anyway (Example 2).
 
 **The XGES heuristics (related prior work).** Extremely Greedy Equivalence Search (Nazaret & Blei
 2024) introduces complementary heuristics — prioritizing insertions before deletions, and forcing
-edge deletions with restarts — which are reused as optional add-ons; the present work's core
-contribution is the insertion *selection* strategy, not these scheduling heuristics.
-
-## What a solution looks like
-
-A modification of the GES *forward phase only*: a less-greedy insertion strategy that, for each
-non-adjacent pair, declines the pair's insertions when the score implies an independence, and
-otherwise keeps the score-increasing candidates and applies the best. Two concrete strategies are
-needed — a *conservative* one (most accurate empirically) and a *safe* one (provably returns a
-score-increasing insertion whenever one exists, hence provably correct) — together with the
-unchanged GES backward (delete) phase, so the whole search recovers the true MEC in the sample
-limit. The discrete instantiation uses the same BDeu (uniform-Dirichlet multinomial) score as GES.
-
-Primary references: Ejaz & Bareinboim, "Less Greedy Equivalence Search," NeurIPS 2025
-(arXiv:2506.22331); reference implementation at https://github.com/CausalAILab/lges. Building on
-Chickering (2002), Meek (1997), Nazaret & Blei (2024), Heckerman, Geiger & Chickering (1995).
+edge deletions with restarts — which are available as optional add-ons in this family of methods.
 
 ## Code framework
 
@@ -113,15 +78,15 @@ from causallearn.score.LocalScoreFunctionClass import LocalScoreClass
 from causallearn.score.LocalScoreFunction import local_score_BDeu
 
 
-def lges_skeleton(X: np.ndarray) -> GeneralGraph:
-    """Minimal LGES scaffold: conservative forward insert + GES backward delete."""
+def ges_variant(X: np.ndarray) -> GeneralGraph:
+    """Scaffold: modified forward insert + GES backward delete."""
     N = X.shape[1]
     score_func = LocalScoreClass(data=X, local_score_fun=local_score_BDeu, parameters=None)
     nodes = [GraphNode("X%d" % (i + 1)) for i in range(N)]
     G = GeneralGraph(nodes)  # start from the empty-graph class
     cache = {}
 
-    # Forward: for each non-adjacent pair, discard all Inserts once any is score-decreasing
+    # Forward: choose which Insert operators to apply from among valid score-increasing ones
     # Backward: greedily apply the highest-scoring Delete until none improves
     # (populate the loops with causal-learn GES operator primitives)
 

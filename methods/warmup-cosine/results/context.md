@@ -7,17 +7,9 @@ fixed pipeline: the optimizer type (SGD, momentum 0.9, weight decay 5e-4), the d
 augmentation, the weight initialization (Kaiming normal), the loss (cross-entropy), and the
 epoch budget (200 epochs) are all held constant. The one knob left free is the learning rate,
 and more precisely the *learning rate as a function of training time* — the value `eta(t)` fed
-to SGD at each epoch `t`. The learning rate is the single most consequential hyperparameter in
-this setup, and a single constant value is wrong at both ends of training for opposite reasons.
-Immediately after random initialization the network sits in a region of the loss surface whose
-local curvature is high, so a large step overshoots and the loss can blow up; late in training,
-near a minimum, a large step cannot settle and the parameters rattle around at the
-gradient-noise floor instead of converging. The precise goal is therefore to design a schedule
-`eta(t)` — a curve over the 200 epochs — that keeps early steps safe, makes fast progress in
-the bulk of training, and lets the model settle cleanly at the end, all without touching the
-optimizer, the data, or any other hyperparameter, and ideally without introducing a pile of
-new schedule hyperparameters that themselves need tuning. The yardstick is the best test
-accuracy reached during the run.
+to SGD at each epoch `t`. The question is how to design the schedule `eta(t)` — a curve over
+the 200 epochs — without touching the optimizer, the data, or any other hyperparameter.
+The yardstick is the best test accuracy reached during the run.
 
 ## Background
 
@@ -60,49 +52,30 @@ new schedule is proposed.
 
 ## Baselines
 
-These are the prior schedule families a new schedule would be measured against and would react
-to. Each is a real, used recipe; the gap noted for each is where it stalls.
-
 **Constant learning rate.** Hold `eta(t) = base_lr` for all epochs. This is the degenerate
-baseline. **Gap:** it is simultaneously too large at the start (early instability / loss spike on
-the high-curvature initial region) and too large at the end (cannot settle into the minimum,
-parameters oscillate at the noise floor). No single value serves both phases.
+baseline.
 
 **Step decay (He et al. 2016; Wide-ResNet recipe, Zagoruyko & Komodakis 2016).** Hold the rate
 constant, then multiply it by a fixed factor at a few hand-picked milestones — divide by 10 at,
 say, 50% and 75% of the budget in the ResNet recipe; the Wide-ResNet recipe multiplies by 0.2
 at epochs 60/120/160 of a 200-epoch run. This is the workhorse that produced the leading
 residual-net results. It captures "large early, small late" in a piecewise-constant way.
-**Gaps:** (1) the milestone epochs are extra hyperparameters tied to the specific budget and
-must be retuned if the budget or model changes; (2) each drop is a *discontinuity* — the rate
-falls by a large factor in one step, which shocks the training dynamics (and, with momentum,
-mismatches the velocity to the new rate) at exactly the moments it fires; (3) it leaves the
-*start* of training untreated — the very first step already uses the full rate, so it does
-nothing about the early-instability observations above.
 
 **Constant low-rate prefix (He et al. 2016).** Prepend a short phase of a low *constant* rate
-before resuming the normal (e.g. step-decay) schedule, to get past early instability. **Gap:**
-as observed above, the abrupt return from the low prefix to the full rate re-creates the
-instability it was meant to prevent — the training error spikes at the transition out of the
-prefix and training can fail to recover. The prefix treats the symptom for a few epochs but the
-discontinuity at its end reintroduces the disease.
+before resuming the normal (e.g. step-decay) schedule, to get past early instability.
 
 **Restart-based schedules in optimization (O'Donoghue & Candes 2012; conjugate-gradient
 restarts, Fletcher-Reeves / Powell 1977).** A separate lineage: in (accelerated) gradient and
 conjugate-gradient methods, periodically *resetting* the method — discarding accumulated
 momentum/history and restarting — provably restores the optimal convergence rate on
 ill-conditioned problems, because overused momentum induces a periodic oscillation whose period
-scales with the square root of the condition number. **Gap relative to this setting:** these are
-restart *mechanisms* for deterministic (accelerated) optimization; they say to reset periodically
-but do not, by themselves, prescribe the within-phase learning-rate curve for noisy minibatch
-SGD on a deep net, nor address the start-of-training instability.
+scales with the square root of the condition number. These are restart *mechanisms* for
+deterministic (accelerated) optimization.
 
 **Cyclical learning rates (Smith 2015/2017).** Let the rate oscillate between bounds on a
 repeating (triangular) cycle rather than only decrease, on the argument that periodically
-raising the rate helps traverse saddle-point plateaus. **Gap:** the triangular shape has sharp
-corners (slope discontinuities at the peaks and troughs), and the method is framed around
-repeated cycling rather than a single clean anneal to a small final rate; the cycle bounds and
-period are themselves hyperparameters.
+raising the rate helps traverse saddle-point plateaus. The cycle bounds and period are
+themselves hyperparameters.
 
 ## Evaluation settings
 
@@ -111,8 +84,7 @@ The natural yardsticks already in use at the time, all pre-existing:
 - **Datasets / models.** CIFAR-10 (32x32 color, 10 classes, 50k train / 10k test) with a
   CIFAR-style ResNet-20; CIFAR-100 (100 classes) with ResNet-56; FashionMNIST (28x28
   grayscale, upsampled, 10 classes) with a CIFAR-adapted MobileNetV2. These are the standard
-  small-image classification benchmarks; the schedule must work across architectures (residual
-  vs inverted-residual) and dataset difficulties without per-case retuning.
+  small-image classification benchmarks.
 - **Optimizer / protocol (fixed).** SGD with momentum 0.9 and weight decay 5e-4, minibatch 128,
   `base_lr = 0.1`, Kaiming-normal initialization, cross-entropy loss, 200 epochs. Data
   augmentation: `RandomCrop(32, padding=4)` + `RandomHorizontalFlip` + per-channel

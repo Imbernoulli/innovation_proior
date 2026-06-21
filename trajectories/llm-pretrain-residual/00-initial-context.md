@@ -1,16 +1,16 @@
 ## Research question
 
-A GPT-style language model is a stack of identical transformer blocks, each reading a normalized copy of a shared residual stream and writing its attention or MLP output back onto it. The only design object here is **how information flows through that residual stream across layers**. Everything else — attention, MLP, normalization, data, optimizer schedule — is fixed. The default rule is the plain Pre-LN additive residual, `x = x + sublayer(LN(x))`, repeated twice per block. The goal is to redesign that depth-flow rule to lower validation loss on FineWeb: improve gradient flow, feature reuse, and training stability across a 24-layer stack without changing anything except the residual logic.
+A GPT-style language model is a stack of identical transformer blocks, each reading a normalized copy of a shared residual stream and writing its attention or MLP output back onto it. The only design object here is **how information flows through that residual stream across layers**. Everything else — attention, MLP, normalization, data, optimizer schedule — is fixed. The default rule is the plain Pre-LN additive residual, `x = x + sublayer(LN(x))`, repeated twice per block. The question is how to design the depth-flow rule for a 24-layer stack on FineWeb, given only the residual logic is editable.
 
 ## Prior art / Background / Baselines
 
-- **Plain stacked layers.** A depth-`L` network composes `L` width-preserving maps directly. Gap: per-layer signal/gradient gains compound as `r^L`, so unless every gain is essentially 1.0 the forward signal and backward gradient vanish or explode; deep plain nets train worse than shallow ones.
+- **Plain stacked layers.** A depth-`L` network composes `L` width-preserving maps directly. Per-layer signal/gradient gains compound as `r^L`.
 
-- **Residual connection (He et al. 2015), `x_{l+1} = σ(x_l + F(x_l))`.** Each layer adds a learned nudge to an identity skip, so gradients have a clean additive route through depth. Gap: the branch fires at full strength at initialization, so the residual-stream variance still grows with depth and training remains unstable at large `L`.
+- **Residual connection (He et al. 2015), `x_{l+1} = σ(x_l + F(x_l))`.** Each layer adds a learned nudge to an identity skip, so gradients have a clean additive route through depth.
 
-- **Post-LN Transformer, `x ← LN(x + sublayer(x))`.** Normalization is placed after the residual addition. Gap: the LayerNorm Jacobian sits on the residual highway, so the backward path is a product of normalization Jacobians and produces large, depth-imbalanced gradients near the output at init; the optimizer needs careful warm-up to survive early steps.
+- **Post-LN Transformer, `x ← LN(x + sublayer(x))`.** Normalization is placed after the residual addition. The LayerNorm Jacobian sits on the residual highway.
 
-- **Pre-LN Transformer, `x ← x + sublayer(LN(x))`.** Normalization is moved inside the branch, restoring a clean identity-plus-addition highway and making gradients scale like `1/√L`; a final LayerNorm before the head handles the growing stream scale. Gap: the residual stream is still a fixed unit-weight accumulator, so in deep stacks the stream variance climbs with depth, the deepest blocks' Jacobians shrink toward identity, and the bottom layers stay under-trained.
+- **Pre-LN Transformer, `x ← x + sublayer(LN(x))`.** Normalization is moved inside the branch, restoring a clean identity-plus-addition highway; a final LayerNorm before the head handles the growing stream scale. Gradients scale like `1/√L`.
 
 ## Fixed substrate / Code framework
 

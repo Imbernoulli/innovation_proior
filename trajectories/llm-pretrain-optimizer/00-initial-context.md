@@ -4,10 +4,10 @@ GPT-style language-model pretraining at a fixed model and data budget. The entir
 
 ## Prior art / Background / Baselines
 
-- **SGD.** Updates parameters by subtracting a single learning-rate-scaled gradient. Limitation: one step size must serve coordinates with very different gradient magnitudes, slowing progress in low-curvature directions.
-- **Classical momentum (Polyak 1964).** Maintains a running velocity and steps in that averaged direction. Limitation: the velocity is updated before the current gradient is incorporated, so the step can overshoot or lag sudden gradient changes; it also keeps a single global step size.
-- **Adam (Kingma & Ba 2014).** Keeps per-coordinate moving averages of gradient and squared gradient and normalizes each update by estimated standard deviations. Limitation: the normalized update can be noisy early in training and can shrink updates in directions where squared-gradient estimates are large.
-- **AdamW (Loshchilov & Hutter 2019).** Applies weight decay directly to parameters before taking an Adam-style adaptive step. Limitation: it inherits Adam's sensitivity to noisy second-moment estimates and its per-coordinate normalization behavior.
+- **SGD.** Updates parameters by subtracting a single learning-rate-scaled gradient.
+- **Classical momentum (Polyak 1964).** Maintains a running velocity and steps in that averaged direction.
+- **Adam (Kingma & Ba 2014).** Keeps per-coordinate moving averages of gradient and squared gradient and normalizes each update by estimated standard deviations.
+- **AdamW (Loshchilov & Hutter 2019).** Applies weight decay directly to parameters before taking an Adam-style adaptive step.
 
 ## Fixed substrate / Code framework
 

@@ -10,25 +10,11 @@ coordinates, partitioned into a ligand (a small drug-like molecule, tens of atom
 *pocket* (the residues lining the binding site, cropped to a shell around the ligand). The output
 is a single scalar.
 
-The hard part is not fitting the training set; many models do that. The hard part is
-*generalization* to complexes unlike those seen in training, and *interpretability* — a score a
-medicinal chemist can trust because it reflects the actual physics of binding rather than a
-dataset shortcut. Binding affinity is, physically, a free energy that arises from non-covalent
-contacts across the protein-ligand interface: hydrogen bonds, salt bridges, hydrophobic packing,
-pi-stacking, each between specific atom pairs at specific distances and geometries. A model whose
-internal computation mirrors that physics should both generalize better and expose *which contacts*
-drive its prediction. The question is what assumptions to bake into a graph neural network so that
-the function class it can represent is restricted to ones consistent with binding physics, while
-still being trainable end-to-end from structures and affinity labels.
-
-Concretely a solution has to: (1) represent both the internal chemistry of the ligand and pocket and
-the short-range contacts across the interface, because those relations play different physical
-roles; (2) be invariant to rigid motions of the complex (translating or rotating the whole complex
-must not change the predicted affinity, since binding strength is a physical property of the
-arrangement, not of the coordinate frame), without paying for that invariance with brute-force data
-augmentation; (3) use enough 3D geometry to distinguish contacts with the same distance but different
-local shape; and (4) leave room for chemically meaningful attribution instead of hiding all interface
-evidence inside one opaque graph-level statistic.
+Binding affinity is, physically, a free energy that arises from non-covalent contacts across the
+protein-ligand interface: hydrogen bonds, salt bridges, hydrophobic packing, pi-stacking, each
+between specific atom pairs at specific distances and geometries. The question is how to design a
+graph neural network that maps such a complex to its affinity, trainable end-to-end from structures
+and affinity labels.
 
 ## Background
 
@@ -53,14 +39,13 @@ than one relation: covalent within each molecule, and non-covalent across the in
 created between every ligand-pocket atom pair closer than a cutoff (5 angstroms is the standard
 contact shell).
 
-Invariance is a free, physics-mandated inductive bias. Binding affinity does not change if you
-translate or rotate the whole complex. A model that uses raw 3D coordinates as input is *not*
-invariant — it would have to learn invariance from data, wasting capacity and demanding rotational
-augmentation. The clean alternative, well established by this time, is to feed the network only
-quantities that are themselves invariant to rigid motion: interatomic distances, bond/contact
-angles, and areas of the triangles atoms span. These are computable from coordinates but unchanged
-by any rotation or translation, so any model built on them is invariant by construction. A standard
-geometric featurization of an edge `i->j` collects, over the neighbors `k` of `j`, the angle
+Invariance to rigid motion. Binding affinity does not change if you translate or rotate the whole
+complex. A model that uses raw 3D coordinates as input is *not* invariant; one established way to
+obtain invariance is to feed the network only quantities that are themselves invariant to rigid
+motion: interatomic distances, bond/contact angles, and areas of the triangles atoms span. These
+are computable from coordinates but unchanged by any rotation or translation, so any model built on
+them is invariant by construction. A standard geometric featurization of an edge `i->j` collects,
+over the neighbors `k` of `j`, the angle
 `angle(g_j - g_i, g_k - g_i)`, the triangle area `0.5||(g_j-g_i) x (g_k-g_i)||`, and the distance
 `||g_i - g_k||`, summarized by their max/sum/mean, plus the direct `i-j` distance in both L1 and L2
 norm — eleven invariant geometric numbers per edge (each scaled by a small constant, ~0.1, to keep
@@ -76,40 +61,28 @@ representations and pass it through an MLP to the scalar target. The design spac
 how a message is formed (and how edge geometry enters it), how messages are aggregated, and how the
 final graph readout turns node embeddings into the prediction.
 
-Where the pooled-readout recipe is weak. The standard readout — pool all node embeddings into one
-graph vector, then regress — compresses interface evidence before the scalar is produced. That makes
-the prediction a black box at the interface (you cannot read off which contacts mattered) and lets
-the model fit affinity through whatever node-embedding statistics happen to correlate with the label
-on the training distribution, rather than through the contact physics — exactly the kind of dataset
-shortcut that hurts out-of-distribution generalization.
-
 ## Baselines
 
-These are the structure-based scoring models a new method is measured against and reacts to.
+These are the structure-based scoring models a new method is measured against.
 
 **SchNet (Schutt et al., NeurIPS 2017; arXiv:1706.08566).** A continuous-filter convolutional
 network for atomistic systems. The complex is a single homogeneous graph (edges by a radius cutoff);
 each atom embedding is updated by interaction blocks of the form
 `x'_i = sum_{j in N(i)} x_j ⊙ h(RBF(d_ij))`, where `RBF(d)` expands the scalar interatomic
 distance `d_ij` onto a bank of Gaussians and `h` is an MLP producing a continuous filter, modulated
-by a smooth cosine cutoff so contributions vanish at the cutoff radius. Readout is a sum over atom
-embeddings followed by an MLP. **Gaps:** the only geometric input is the scalar distance — no angles,
-no triangle areas, no directionality of a contact; the graph is homogeneous, so covalent and
-non-covalent interactions are processed by the same filter rather than treated as the chemically
-distinct relations they are; and the readout pools atoms into one vector, so contact-level evidence
-is only indirect.
+by a smooth cosine cutoff so contributions vanish at the cutoff radius. The geometric input is the
+scalar interatomic distance; the graph is homogeneous, so covalent and non-covalent interactions
+are processed by the same filter. Readout is a sum over atom embeddings followed by an MLP.
 
 **EGNN (Satorras, Hoogeboom & Welling, ICML 2021; arXiv:2102.09844).** An E(n)-equivariant
 message-passing network. Each message is an MLP of the two endpoint features and the squared
 distance `radial = ||x_i - x_j||^2` (a rotation/translation invariant); node features and, in the
-full model, coordinates are updated equivariantly. **Gaps:** as with SchNet the geometry entering a
-message is a single scalar (the squared distance) — richer invariants like contact angle and
-triangle area are unused; all edges share one convolution rather than separating covalent from
-non-covalent; and the affinity is read off a pooled node embedding, leaving interface attribution
-implicit.
+full model, coordinates are updated equivariantly. The geometry entering a message is the single
+scalar squared distance, all edges share one convolution, and the affinity is read off a pooled
+node embedding.
 
 **GIGN (Yang, Zhong, Lv, Dong, Chen; J. Phys. Chem. Lett. 2023, 14(8):2020-2033;
-DOI 10.1021/acs.jpclett.2c03906).** The direct predecessor in this line, and the one that first
+DOI 10.1021/acs.jpclett.2c03906).** A structure-based scoring model that
 separates the two interaction types inside message passing. GIGN keeps the complex as one node set
 with two edge index sets — intramolecular (covalent) and intermolecular (non-covalent) — and a
 *heterogeneous interaction layer* runs two parallel message passes over the same nodes:
@@ -119,15 +92,7 @@ over non-covalent edges, and the node update combines them through two separate 
 `x'_i = mlp_cov(x_i + agg_intra_i) + mlp_ncov(x_i + agg_inter_i)`. Three such layers, then
 `global_add_pool` over node embeddings and an MLP to the scalar. Because every message depends only
 on the interatomic distance (an invariant), the whole network is translation- and rotation-invariant
-with no augmentation, and separating the two interaction types lets the model treat the binding-
-relevant non-covalent edges differently from the conformation-setting covalent ones.
-**Gaps it leaves open:** (1) the only geometry a message sees is the scalar distance through the RBF;
-the angle, triangle-area, and multi-neighbor distance invariants computed for each edge never enter
-the convolution. (2) The readout is `global_add_pool` of node embeddings followed by an MLP, so the
-scalar prediction is separated from individual non-covalent contacts by a pooled graph vector; the
-model is free to fit affinity from pooled node statistics, and contact-level attribution is only
-available post-hoc, by visualizing embeddings. (3) The interface evidence is compressed into one
-graph-level summary, hiding how ligand-side and pocket-side evidence each contribute to the score.
+with no augmentation, and the two interaction types are processed by separate convolutions.
 
 ## Evaluation settings
 

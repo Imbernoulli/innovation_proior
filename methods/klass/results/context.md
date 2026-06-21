@@ -7,19 +7,11 @@ for every still-masked position, a categorical distribution over the vocabulary.
 strategy* then decides three things at that step: a **schedule** (how many positions to commit this
 step), a **position selection** (which masked positions), and a **token assignment** (which token id
 to write). The number of steps is a budget; the fewer forward passes used, the cheaper the
-generation. The pain is a direct tension between those knobs. Commit one token per step and the
-quality is good but the cost is one network evaluation per generated token — as slow as
-autoregressive decoding, throwing away the diffusion model's defining ability to predict many
-positions at once. Commit many tokens per step on a fixed schedule and you go fast but you commit
-tokens the model is not actually sure about, locking in errors that the still-masked context would
-later have corrected. The precise goal is a single decoding strategy that resolves this tension:
-commit *multiple* tokens per step **when it is safe to do so** and make conservative progress when it
-is not, so that the step count drops sharply without degrading sample quality. It
-must be training-free (the pretrained model is fixed), add no auxiliary model, require only modest
-fixed bookkeeping, and work both in **semi-autoregressive block decoding** (the generation region split
-into blocks decoded left-to-right, used for reasoning-task accuracy) and in **fully-parallel decoding**
-(the whole region treated as one block, used for open-ended text). Closing the speed/quality gap
-inside that existing decoding harness is the problem.
+generation. The question is how to design a demasking strategy that controls how many and which
+positions to commit at each step, within the existing decoding harness, working both in
+**semi-autoregressive block decoding** (the generation region split into blocks decoded left-to-right,
+used for reasoning-task accuracy) and in **fully-parallel decoding** (the whole region treated as one
+block, used for open-ended text).
 
 ## Background
 
@@ -48,14 +40,6 @@ left-to-right — directly, with no retraining. Dream 7B (Ye et al. 2025) is a c
 diffusion LM supporting arbitrary-order generation and a tunable quality/speed trade-off. Both expose
 the same three demasking levers above and ship default position-selection heuristics.
 
-**A failure mode left by confidence-only decoding.** Confidence-only decoding has a recurring
-failure mode on reasoning and code tasks: a sampler can commit a token with a very high top
-probability, only for the remaining masked context to make that commitment look premature. The
-problem is not merely that low-confidence positions are dangerous; some dangerous positions are
-already high-confidence at the instant they are chosen. The open problem is to decide whether a
-high-confidence candidate deserves an irreversible commit, using the same pretrained model and the
-same iterative denoising loop, without adding a planner or retraining.
-
 ## Baselines
 
 These are the prior demasking strategies a new one would be measured against and would react to.
@@ -64,48 +48,36 @@ These are the prior demasking strategies a new one would be measured against and
 generating a masked sequence in a few parallel steps: predict every masked position at once, keep only
 the most confident predictions (confidence = the maximum softmax probability \(\max_v p^i(v)\)),
 remask the rest, and repeat under a decreasing mask schedule \(\gamma\) (cosine/concave) so fewer
-positions stay masked each step. *Gap:* the only signal is the current-step confidence. A token that
-the model is momentarily confident about is kept even if later context would have changed the
-decision; the scheme has no way to ask whether the hidden part of the sequence can still overturn it.
+positions stay masked each step.
 
 **Low-confidence remasking (LLaDA, Nie et al. 2025).** LLaDA's default sampler is exactly this idea
 carried to a large LM: predict all masked tokens, then remask the ones with the *lowest* confidence,
 keeping the high-confidence ones — equivalently, unmask the top-\(k\) by max probability, where \(k\)
 follows the uniform schedule \(\lfloor(\#\text{masks})/\text{steps}\rfloor\) per step. In block
-diffusion this runs block-by-block. *Gap:* the number unmasked per step is fixed by the schedule, not
-by how sure the model actually is, and the selection within a step is again confidence-only — the same
-"confident but premature" tokens get committed.
+diffusion this runs block-by-block.
 
 **Top-\(k\) margin (Dream, Ye et al. 2025).** Dream offers a sharper single-step certainty signal:
 rank masked positions by the *margin* between the top and second probabilities,
 \(p^i_{(1)} - p^i_{(2)}\), and unmask the top-\(k\) by margin. The margin penalizes positions where
-two tokens are nearly tied, which max probability alone misses. *Gap:* it is still a certainty
-heuristic read at the current decision point; a large margin can still be misleading when the
-surrounding positions are under-specified.
+two tokens are nearly tied, which max probability alone misses.
 
 **Confidence-threshold parallel decoding (Fast-dLLM, Wu et al. 2025).** Instead of a fixed per-step
 count, unmask *every* masked position whose confidence clears an absolute threshold \(\tau\) — so the
 number committed per step adapts to the model's certainty — and, if no position clears \(\tau\),
-always unmask the single most-confident one to guarantee progress and avoid a stall. It is justified
-by a clean result: if for some target sequence the model's per-position marginals are all
+always unmask the single most-confident one to guarantee progress. It is justified by a clean result:
+if for some target sequence the model's per-position marginals are all
 high-confidence, \(p_\theta(x^*_{i_j}\mid E) > 1-\epsilon\), and \((n+1)\epsilon \le 1\), then greedy
 parallel decoding from the product of marginals \(q\) selects the same sequence as greedy sequential
 decoding from the true joint \(p\) (the bound is tight at \(\epsilon = 1/(n+1)\)), with accompanying
-distance bounds between \(q\) and \(p\). So committing many positions at once is provably safe *in the
-high-confidence regime*. *Gap:* the safety certificate, and the trigger, rest on confidence alone. The
-failure cases above show why this is incomplete: a high-confidence position can still be a bad
-permanent commitment when the surrounding context is under-resolved.
+distance bounds between \(q\) and \(p\).
 
 **Single-token-per-step and planner-based samplers.** The First-Hitting Sampler (Zheng et al. 2024)
 draws each unmasking event's time without discretization error and unmasks exactly one token per
-event; unbiased, but \(O(L)\) sequential events make it scale with sequence length. A separate line
-adds a "planner" or auxiliary distribution to choose what to unmask (Liu et al. 2024; Peng et al.
-2025; Kim et al. 2025) or remasks committed tokens (ReMDM, Wang et al. 2025). *Gap:* the first is slow
-by construction; the second adds a second model, extra computation, and the risk of the planner's
-distribution drifting from the base model's own. Concurrent training-free certainty heuristics
-(SlowFast, Wei et al. 2025; entropy-bounded EB-Sampler, Ben-Hamu et al. 2025; top-2-gap Prophet, Li
-et al. 2025; Dimple, Yu et al. 2025) all key off some flavor of single-step certainty, so they inherit
-the same unresolved question: when should a confident candidate be trusted permanently?
+event. A separate line adds a "planner" or auxiliary distribution to choose what to unmask (Liu et
+al. 2024; Peng et al. 2025; Kim et al. 2025) or remasks committed tokens (ReMDM, Wang et al. 2025).
+Concurrent training-free certainty heuristics include SlowFast (Wei et al. 2025), entropy-bounded
+EB-Sampler (Ben-Hamu et al. 2025), top-2-gap Prophet (Li et al. 2025), and Dimple (Yu et al. 2025),
+all keying off some flavor of single-step certainty.
 
 ## Evaluation settings
 

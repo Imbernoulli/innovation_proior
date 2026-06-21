@@ -2,14 +2,12 @@
 
 A frozen binary classifier hands me a positive-class probability `p` for every example, and those probabilities are not honest — among the examples it labels `0.7`, the true positive rate is not `0.7`. I want them honest inside every subgroup, not just on average: a calibrator that looks perfect pooled across the whole population can still be over-confident on one protected subgroup and under-confident on another. The metric that matters is the worst subgroup's calibration error. The only thing I get to design is the post-hoc calibration mapping applied to those probabilities, optionally using a subgroup id. Everything upstream — the data, the shifted splits, and the base classifier — is fixed.
 
-The difficulty is the shift. A domain score peels off a held-out tail for the test set; calibration is fit on the source region and evaluated on the shifted tail. A map learned on the calibration split is judged on a distribution it never saw, and any per-group machinery that overfits a small calibration sample will be punished when those quirks fail to transfer.
-
 ## Prior art / Background / Baselines
 
-The methods on this ladder answer the same sub-question — given a held-out labeled calibration set, what family of maps `p ↦ q` do I fit? — and react to older choices that the rungs below either reuse or reject.
+The methods here answer the same sub-question — given a held-out labeled calibration set, what family of maps `p ↦ q` do I fit?
 
-- **Platt scaling (Platt 1999).** It squashes the score through a fitted sigmoid `q = σ(a·z + b)` on the logit `z = logit(p)`, two parameters fit by maximum likelihood. Gap: one rigid shape — it can only spread scores toward the extremes, never gather them — and a nonzero intercept moves the decision boundary, so it can change the predicted class.
-- **Histogram / equal-count binning (Zadrozny & Elkan 2001).** It chops the scores into bins and reports each bin's empirical positive rate. Gap: the bin boundaries fall wherever equal counts put them, not where the score changes meaning, and the bin count needs tuning that is unreliable on a small, shifted calibration split.
+- **Platt scaling (Platt 1999).** It squashes the score through a fitted sigmoid `q = σ(a·z + b)` on the logit `z = logit(p)`, two parameters fit by maximum likelihood.
+- **Histogram / equal-count binning (Zadrozny & Elkan 2001).** It chops the scores into bins and reports each bin's empirical positive rate.
 - **Maximum-likelihood fitting.** Parametric methods here minimize negative log-likelihood, because NLL is a proper scoring rule — in expectation it is minimized exactly when the reported probability equals the true conditional probability — while binned ECE is non-differentiable and only measured, never optimized.
 - **Empirical-Bayes / James–Stein shrinkage (Stein 1956; James & Stein 1961; Efron & Morris 1973).** When many related parameters are each estimated from their own small sample, the per-coordinate MLE is inadmissible; pulling every estimate toward a common center, harder for the noisier ones, strictly reduces total risk.
 

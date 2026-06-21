@@ -8,24 +8,24 @@ The system still has to try actions. Earlier adaptive control work handles this 
 
 ## Prediction Helps But Does Not Assign The Actor's Derivative
 
-Temporal-difference prediction gives a way to turn delayed outcomes into ongoing evaluative signals. A critic can learn from changes between successive predictions and can supply denser internal reinforcement. That helps with temporal credit assignment, but it leaves a separate actor-side question: the action selector sampled an output, and no teacher supplied the derivative of reward with respect to that sampling probability.
+Temporal-difference prediction gives a way to turn delayed outcomes into ongoing evaluative signals. A critic can learn from changes between successive predictions and can supply denser internal reinforcement. That helps with temporal credit assignment. The action selector sampled an output, and no teacher supplied the derivative of reward with respect to that sampling probability.
 
 ## Local Reinforcement Rules Have The Right Shape But Need A General Test
 
-Reward-modulated eligibility traces are attractive because each weight can keep a local trace and later multiply it by a scalar evaluation. Special cases show useful behavior, but the rule should not merely look plausible. It should say what objective is being followed, what expectation is being differentiated, and when the expected weight change really points uphill.
+Reward-modulated eligibility traces are attractive because each weight can keep a local trace and later multiply it by a scalar evaluation. Special cases show useful behavior, and a general theoretical account would say what objective is being followed, what expectation is being differentiated, and when the expected weight change really points uphill.
 
-## The Needed Object
+## Research Question
 
-The missing object is a one-sample quantity available at the stochastic unit itself. It must use the observed reinforcement, the unit's own sampled output distribution, and locally computable derivatives. It must also tolerate an output-independent reference level, accumulate through time when reward is delayed, and reduce to familiar local rules in Bernoulli action units while still covering broader stochastic policies.
+How can a stochastic unit or network compute a valid gradient estimate of expected reinforcement using only the scalar reward signal, the sampled output, and locally available quantities?
 
 ## Code framework
 
 ```python
 import torch
 
-def reinforce_loss(log_probs, rewards, baseline=0.0):
+def policy_gradient_loss(log_probs, rewards, baseline=0.0):
     """
-    REINFORCE loss whose gradient is the score-function estimate.
+    Policy-gradient loss for a stochastic controller.
 
     Args:
         log_probs: tensor of log probabilities of sampled actions.
@@ -35,7 +35,7 @@ def reinforce_loss(log_probs, rewards, baseline=0.0):
     Returns:
         Scalar loss; call .backward() to get the policy gradient update.
     """
-    advantages = rewards - baseline
-    loss = -(log_probs * advantages).mean()
+    adjusted = rewards - baseline
+    loss = -(log_probs * adjusted).mean()
     return loss
 ```

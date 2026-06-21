@@ -11,30 +11,16 @@ categorical dimensions, and because training is stochastic (minibatch SGD, rando
 initialization, MCMC sampling, RL seeds), we never see `f(x)` directly but only a noisy
 observation `y(x) = f(x) + eps`, `eps ~ N(0, sigma^2)`.
 
-What makes this hard now, in a way it was not a few years ago, is cost. The best models take
-days or weeks to train, so a single evaluation of `f` is enormously expensive. The total
-budget a researcher can spend tuning is often not much larger than fully training a handful of
-models. A practical optimizer therefore has to satisfy a demanding and partly conflicting set
-of requirements at once:
-
-1. **Strong anytime performance** — yield good configurations after a budget comparable to a
-   few full trainings, not after hundreds.
-2. **Strong final performance** — given a larger budget, return the best configuration in the
-   space, which requires *guidance*, not luck.
-3. **Effective use of parallel resources** — clusters and cloud are available; the method must
-   exploit many workers near-linearly.
-4. **Scalability** — handle anywhere from a few to many dozens of hyperparameters.
-5. **Robustness and flexibility** — cope with very noisy objectives (deep RL), objectives
-   sensitive to a few key knobs (probabilistic models), and all hyperparameter types (binary,
-   categorical, integer, continuous).
-
-Two further requirements bear specifically on whatever statistical model guides the search:
-**simplicity** (few moving parts, easy to reimplement and verify) and **computational
-efficiency** (the model-fitting and proposal cost must not dominate when evaluations are made
-cheap). Each existing method below meets a subset of these; none meets all of them
-simultaneously. Closing that gap — an optimizer that is fast early *and* converges to the best
-configuration, while staying simple, scalable, parallel, and robust across hyperparameter
-types — is the problem.
+The best models take days or weeks to train, so a single evaluation of `f` is enormously
+expensive, and the total budget a researcher can spend tuning is often not much larger than
+fully training a handful of models. The setting therefore puts several demands on a search
+method at once: it should return good configurations early in a run as well as after a large
+budget; it should exploit clusters and cloud, where many workers are available in parallel; it
+should handle anywhere from a few to many dozens of hyperparameters; and it should cope with
+very noisy objectives (deep RL), objectives sensitive to a few key knobs (probabilistic
+models), and all hyperparameter types (binary, categorical, integer, continuous). The question
+is how to choose which configurations to evaluate, and at what cost, from the history of past
+evaluations.
 
 ## Background
 
@@ -53,49 +39,37 @@ a(x) = E[ max(0, alpha - f(x)) ] = integral max(0, alpha - f(x)) dp(f | D).
 
 Each BO iteration (1) selects `x_new = argmax_x a(x)`, (2) evaluates `y_new = f(x_new) + eps`,
 and (3) augments `D` and refits the surrogate. The dominant surrogate is the Gaussian process
-(GP), prized for smooth, well-calibrated uncertainty. The crucial empirical fact about
-black-box BO, observed repeatedly, is that **it behaves like random search early on**: with
-few observations the surrogate is uninformative, so its first dozens of suggestions are
-essentially random, and only later does the model start to pay off. Because every observation
-here is a *full, expensive* training run, "later" can be very far away in wall-clock time.
+(GP), prized for smooth, well-calibrated uncertainty. An empirical fact about black-box BO,
+observed repeatedly, is that with few observations the surrogate is uninformative, so its first
+dozens of suggestions are essentially random, and the model starts to pay off only once enough
+data has accumulated. Every observation here is a full training run.
 
 **Configuration evaluation — multi-fidelity / bandit methods.** A different observation drives
 the second line: for most ML objectives one can define *cheap approximations*
 `tilde f(., b)` of `f` parameterized by a **budget** `b in [b_min, b_max]`, where
 `tilde f(., b_max) = f` and smaller `b` gives a cheaper, noisier proxy. The budget can be
 training epochs, the number of data points, the number of MCMC steps, or the number of RL
-trials. The diagnostic phenomenon is that a configuration's quality is often *partially
-revealed* at small `b`: poor configurations frequently look poor early, so spending full
-budget on them is wasteful. This is what bandit-style methods exploit — pour resources into
-configurations that look promising at low fidelity and cut the rest early. The catch, also
-observed empirically, is that low-fidelity rankings are only *partially* faithful: a
-configuration can look mediocre at small `b` and excellent at `b_max`, so any method that
-commits hard to low-fidelity verdicts can discard the eventual winner.
+trials. A configuration's quality is often *partially revealed* at small `b`: poor
+configurations frequently look poor early. This is what bandit-style methods exploit — pour
+resources into configurations that look promising at low fidelity and cut the rest early. Low-
+fidelity rankings are only *partially* faithful: a configuration can look mediocre at small `b`
+and excellent at `b_max`.
 
-These two lines barely talk to each other. Selection methods get guidance but treat `f` as an
-all-or-nothing black box, paying full price per evaluation and starting blind. Evaluation
-methods get the speed of cheap fidelities but, as detailed below, throw away the information
-their many evaluations contain. The prevailing wisdom is that GP-based BO is the gold standard
-for low-dimensional continuous problems, that GPs struggle on high-dimensional or mixed/
-categorical spaces, and that simple resource-allocation heuristics are surprisingly strong for
-small-to-medium budgets.
+The prevailing wisdom is that GP-based BO is the standard for low-dimensional continuous
+problems, that GPs are harder to apply on high-dimensional or mixed/categorical spaces, and
+that simple resource-allocation heuristics are strong for small-to-medium budgets.
 
 ## Baselines
 
 **Random search (Bergstra and Bengio, JMLR 2012).** Sample configurations uniformly from `X`.
 Trivial, embarrassingly parallel, robust to the shape of `X`, and a strong baseline when only
-a few hyperparameters matter. *Limitation:* it never uses what it has seen — every draw is
-independent of all previous results — so to find a good configuration in a large space it must
-get lucky, and its progress per evaluation does not improve over a run.
+a few hyperparameters matter. Every draw is independent of all previous results.
 
 **Gaussian-process Bayesian optimization (Snoek et al., NIPS 2012; Hutter et al., LION 2011
 for the random-forest variant SMAC).** GP-BO as above, with a GP surrogate. State of the art
-on low-dimensional continuous problems. *Limitations:* fitting a GP is cubic in the number of
-observations `O(|D|^3)` and scales poorly past a handful of dimensions; off-the-shelf kernels
-do not apply to complex conditional or categorical spaces without bespoke engineering; and the
-results depend sensitively on hyperpriors that themselves need careful, often
-problem-dependent setting. Like all black-box BO it also starts cold, indistinguishable from
-random search until the surrogate has enough data.
+on low-dimensional continuous problems. Fitting a GP is cubic in the number of observations
+`O(|D|^3)`. Off-the-shelf kernels target continuous spaces; conditional or categorical spaces
+require bespoke kernel engineering. The results depend on hyperpriors that are set per problem.
 
 **Tree Parzen Estimator (TPE) (Bergstra, Bardenet, Bengio, and Kégl, NIPS 2011).** Rather than
 modeling `p(y | x)`, model the *inputs* split by performance. Pick a quantile `gamma` of the
@@ -117,26 +91,19 @@ EI(x)  ∝  ( gamma + (g(x)/l(x))·(1 - gamma) )^{-1},
 
 which is monotone decreasing in `g(x)/l(x)`, so maximizing EI is minimizing `g/l`, equivalently
 maximizing `l/g`. Because it uses kernel density estimators, TPE handles mixed
-continuous/discrete spaces naturally and its model-build cost is **linear** in `|D|`, not cubic —
-directly addressing the GP scalability and
-flexibility limitations. As originally formulated, TPE models the joint density as a *hierarchy
-of one-dimensional* Parzen estimators (a product of 1-D pdfs), fitting each hyperparameter's
-density independently. *Limitations:* it is still a black-box single-fidelity method — every
-evaluation is a full training run, so it inherits the cold start and the per-evaluation
-expense; and modeling each dimension on its own does not represent how hyperparameters
-interact.
+continuous/discrete spaces naturally and its model-build cost is **linear** in `|D|`, not cubic.
+As originally formulated, TPE models the joint density as a *hierarchy of one-dimensional*
+Parzen estimators (a product of 1-D pdfs), fitting each hyperparameter's density independently.
+It is a black-box single-fidelity method: every evaluation is a full training run.
 
 **SuccessiveHalving (SH) (Jamieson and Talwalkar, AISTATS 2016).** A bandit heuristic for
 allocating a fixed budget across `n` candidate configurations. Evaluate all `n` on a small
 budget, sort by performance, keep the best `1/eta`, multiply the budget by `eta`, and repeat
-until the maximum budget is reached — so survivors get exponentially more resources. *The
-"n versus B/n" limitation:* SH needs `n` as an input, and for a fixed total budget `B` the
-budget per configuration is `~B/n`. There is no way to know in advance whether to prefer many
-configurations each run briefly (large `n`, aggressive early stopping — right when quality
-shows up early) or few configurations each run long (small `n`, conservative — right when
-configurations only separate at large budgets). The correct choice depends on the unknown rate
-at which configurations differentiate, and a wrong choice can stop the eventual winner
-prematurely or waste the budget on too few candidates.
+until the maximum budget is reached — so survivors get exponentially more resources. SH takes
+`n` as an input, and for a fixed total budget `B` the budget per configuration is `~B/n`: a
+large `n` means many configurations each run briefly with aggressive early stopping, while a
+small `n` means few configurations each run long. The split between number of configurations
+and budget per configuration is set by the choice of `n`.
 
 **Hyperband (HB) (Li, Jamieson, DeSalvo, Rostamizadeh, and Talwalkar, JMLR 2018;
 arXiv:1603.06560).** Sidestep the `n`-versus-`B/n` choice by hedging over it: run SH for a
@@ -148,20 +115,15 @@ budget `r = b_max · eta^{-s}`. The bracket counts are chosen so every bracket c
 the same total resource `B = (s_max + 1)·b_max`: a bracket has about `s+1` rungs each costing
 about `n_ideal·r`, and `(s+1)·n_ideal·r = (s_max+1)·b_max`. The most aggressive bracket (`s = s_max`,
 largest `n`, smallest `r`) maximizes early stopping; the last bracket (`s = 0`) is plain
-random search at full budget. HB inherits all of random search's robustness, scalability, and
-flexibility, and adds strong anytime performance from cheap low-fidelity evaluations — it
-typically beats random search and black-box BO at small-to-medium budgets. *Limitation:* it
-draws the `n` configurations for every bracket **uniformly at random** and never conditions
-those draws on the outcomes of past evaluations. So as the budget grows its advantage over
-random search shrinks toward nothing, and its final-quality performance trails methods that
-learn where good configurations lie.
+random search at full budget. HB inherits random search's robustness, scalability, and
+flexibility, and adds anytime performance from cheap low-fidelity evaluations — it typically
+beats random search and black-box BO at small-to-medium budgets. It draws the `n`
+configurations for every bracket **uniformly at random**, independent of the outcomes of past
+evaluations.
 
-The picture, then: the model-based methods (GP-BO, TPE) have guidance but no cheap fidelities
-and a cold start; the multi-fidelity methods (SH, HB) have the cheap fidelities and the speed
-but draw blind. Independent attempts to bring the two together existed concurrently — some
-modeling the budget as just another GP input, some rebuilding a model from scratch inside each
-SH run — but each inherited the GP limitations above or discarded information across
-iterations.
+Concurrent work brings the model-based and multi-fidelity lines together in various ways —
+some modeling the budget as just another GP input, some rebuilding a model from scratch inside
+each SH run.
 
 ## Evaluation settings
 

@@ -4,10 +4,10 @@ Design an iteration map for `min_x max_y f(x,y)` that uses only a first-order sa
 
 ## Prior art / Background / Baselines
 
-- **Simultaneous gradient descent-ascent.** Descend in `x` and ascend in `y` at once: `z_{t+1} = z_t − τ F(z_t)`. Gap: on `f=xy` the update is orthogonal to the direction toward the saddle, so the trajectory spirals outward for every `τ>0`.
-- **Proximal point / implicit step.** The resolvent `z_{t+1} = (I+τF)^{-1}(z_t)` is firmly nonexpansive for monotone `F` and contracts unconditionally. Gap: each step requires evaluating `F` at the unknown next point, i.e. a nonlinear solve.
-- **Extragradient.** Take a forward look-ahead point, evaluate the operator there, then step from the current iterate. Gap: it converges on monotone Lipschitz problems, but under noise it settles in an `O(τσ²)` ball and reduces the gradient norm only at an `O(1/k)` rate.
-- **Halpern anchoring.** Mix each iterate back toward a fixed reference point. Gap: convergence is tied to a vanishing step size, and anchoring far from the solution biases the iterates.
+- **Simultaneous gradient descent-ascent.** Descend in `x` and ascend in `y` at once: `z_{t+1} = z_t − τ F(z_t)`.
+- **Proximal point / implicit step.** The resolvent `z_{t+1} = (I+τF)^{-1}(z_t)` is firmly nonexpansive for monotone `F` and contracts unconditionally; each step requires evaluating `F` at the unknown next point.
+- **Extragradient.** Take a forward look-ahead point, evaluate the operator there, then step from the current iterate. It converges on monotone Lipschitz problems and under noise settles in an `O(τσ²)` ball, reducing the gradient norm at an `O(1/k)` rate.
+- **Halpern anchoring.** Mix each iterate back toward a fixed reference point, with convergence tied to a vanishing step size.
 
 ## Fixed substrate / Code framework
 

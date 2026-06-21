@@ -8,27 +8,8 @@ and a losing (dispreferred) one. The goal is to nudge the policy so that, at gen
 produces responses more like the winning ones and less like the losing ones, *without* running a
 full reinforcement-learning loop.
 
-What makes this hard at scale is a chain of practical costs. The classical recipe trains a separate
-reward model and then optimizes the policy against it with on-policy RL — two extra models in memory,
-an unstable actor-critic loop, and a reward that the policy can hack. The newer offline approach
-removes the explicit reward model but, in its standard form, still keeps a *frozen reference copy* of
-the policy resident throughout training, doubling the activation/parameter footprint of the forward
-pass and adding compute for a second set of log-probabilities on every batch. On a memory-constrained
-multi-GPU box fine-tuning a multi-billion-parameter model, every model you must keep loaded is
-expensive.
-
-There is also a subtler issue than cost. The quantity a trained policy is ultimately judged on is how
-it *ranks and generates* sequences at inference — and at inference there is no reference model in the
-loop at all; decoding (beam search, multiple-choice scoring) ranks candidates by their per-token
-average log-likelihood under the policy. If the objective optimized during training scores sequences
-by a *different* quantity than the one used to rank them at generation, then driving the training
-score in the right direction need not move the generation-time ranking in the right direction. The
-precise goal, then, is an offline preference objective that: (1) needs only the policy being trained —
-no reward model and no reference model — so it is light in memory and compute; (2) optimizes a
-training signal that is *the same kind of quantity* the model is scored by at generation time; (3)
-does not reward the model for simply making responses longer; and (4) actually separates winning from
-losing responses by a controllable amount. Each existing method below hits a subset of these; none
-hits all four at once.
+How can offline preference optimization be made more memory- and compute-efficient while keeping
+the training objective well-aligned with how the model actually ranks responses at generation time?
 
 ## Background
 
@@ -68,9 +49,9 @@ A few diagnostic phenomena about *existing* preference-trained models are also p
   the *summed* log-probability of a response decreases with length (more tokens, each contributing a
   negative log-prob), so any objective that rewards higher summed log-prob on the winning response can
   be satisfied by inflating probabilities on long sequences when the winner happens to be longer.
-- **Training-vs-generation ranking mismatch in reference-based offline training.** For a reference-
-  based offline objective, satisfying its training-time reward ordering on a triple does not guarantee
-  that the policy assigns higher average log-likelihood to the winner than the loser; in practice only
+- **Training-vs-generation ranking in reference-based offline training.** For a reference-based
+  offline objective, satisfying its training-time reward ordering on a triple does not guarantee that
+  the policy assigns higher average log-likelihood to the winner than the loser; in practice only
   about half of the training triples end up satisfying the average-log-likelihood ordering after such
   training, and concurrent analyses report near-chance ranking accuracy by that metric even after
   extensive optimization.
@@ -101,35 +82,25 @@ L_DPO = - E_{(x,y_w,y_l)~D} [ log sigma( beta log[pi_theta(y_w|x)/pi_ref(y_w|x)]
 
 This bypasses both the explicit reward model and the RL loop — a single maximum-likelihood objective.
 Its gradient up-weights triples the implicit reward currently mis-ranks and moves
-`nabla log pi(y_w) - nabla log pi(y_l)`. **Gaps:** (1) the reference policy `pi_ref` must be held in
-memory and run on every batch to compute the log-ratios — extra memory and compute; (2) the implicit
-reward it optimizes is a log-*ratio* to `pi_ref`, but generation ranks by the policy's average
-log-likelihood, so the training signal and the generation metric are different quantities — satisfying
-the training ordering need not satisfy the generation ordering; (3) the gradient term
-`nabla log pi(y_w) - nabla log pi(y_l)` is the *summed* log-prob gradient, not normalized by length,
-so a response with more tokens contributes a larger update and can dominate training — a channel for
-the length bias above.
+`nabla log pi(y_w) - nabla log pi(y_l)`. The reference policy `pi_ref` must be held in memory and
+run on every batch to compute the log-ratios. The implicit reward is a log-ratio to `pi_ref`;
+the gradient term `nabla log pi(y_w) - nabla log pi(y_l)` uses the *summed* log-prob gradient,
+not normalized by length.
 
 **IPO — Identity Preference Optimization (Azar et al. 2023).** Replaces the Bradley-Terry sigmoid
 (which can saturate and overfit when preferences are near-deterministic) with a squared-loss objective
-that regresses the policy's log-ratio gap toward a fixed target tied to `1/(2 tau)`. It thereby builds
-in a *target separation* between winner and loser rather than pushing the gap to infinity. **Gap:** it
-still keeps the reference model `pi_ref` in the log-ratios, and its squared regression behaves
-differently from the logistic objective; it does not address the training-vs-generation metric
-mismatch.
+that regresses the policy's log-ratio gap toward a fixed target tied to `1/(2 tau)`. It builds in a
+*target separation* between winner and loser rather than pushing the gap to infinity, while keeping
+the reference model `pi_ref` in the log-ratios.
 
 **ORPO — Odds-Ratio Preference Optimization (Hong et al. 2024).** A reference-free objective: it adds,
 to the ordinary supervised fine-tuning loss on the winner, a penalty on the log odds-ratio between
 winning and losing responses, `log[odds(y_w)/odds(y_l)]` with `odds(y) = pi(y)/(1-pi(y))`. No
-reference model is needed. **Gap:** the contrastive signal is an odds-ratio plus an SFT term rather
-than a quantity aligned with the average-log-likelihood generation metric, and it carries no explicit
-length normalization of the preference term; its reward is not the per-token score the model is judged
-by at decoding.
+reference model is needed.
 
 **Reward-model + PPO (the classical pipeline, Ouyang et al. 2022; Schulman et al. 2017).** Fit `r_phi`
-by Bradley-Terry MLE, then maximize `E[r_phi] - beta KL` on-policy with PPO. **Gaps:** three models in
-play (policy, reference, reward), an unstable actor-critic loop, reward hacking, and heavy
-engineering — exactly what the offline methods set out to avoid.
+by Bradley-Terry MLE, then maximize `E[r_phi] - beta KL` on-policy with PPO. Three models are in
+play (policy, reference, reward), with an actor-critic loop and substantial engineering overhead.
 
 ## Evaluation settings
 

@@ -7,22 +7,13 @@ that transports a *source* image distribution `π_cond` to a *target* image dist
 given paired examples. Diffusion bridges do this directly in pixel space: instead of mapping
 target images to Gaussian noise and back (the standard diffusion route), they build a stochastic
 path whose two ends are the source and the target. Because the source and target images already
-look a lot alike — far more than a target image looks like white noise — the path is short, and
-short paths are cheap to traverse and easy to learn.
+look a lot alike — far more than a target image looks like white noise — the path is short.
 
-The practical problem is that the bridge families that achieve high image quality are
-expensive and rigid. The transition kernel that defines a bridge is parameterized by quantities
-that are tied together, so the space of paths one can actually build is artificially small.
-Sampling a high-quality bridge can require hundreds of network evaluations, and the fast samplers
-that exist impose a positivity condition that forbids some strong stochasticity schedules.
-On top of this, a translation that should be *one-to-many* — one edge map admits many plausible
-handbags, in different colors and textures — collapses to near-identical outputs across random
-seeds. A solution has to deliver, simultaneously: (1) a flexible path family with parameters one
-can tune independently; (2) a sampler that reaches good FID in a *small* number of denoiser calls
-(the regime of interest is on the order of five); (3) the freedom to set any stochasticity level
-along the path, including ones the fast samplers cannot reach; (4) sharp endpoints (no residual
-noise smearing the final image); and (5) a way to restore conditional diversity in one-to-many
-tasks. The existing families each give a subset; none gives all five.
+The setting here is sampling such a bridge to translate a source image into a target image under
+a small budget of denoiser calls (on the order of five), with the latitude to set the level of
+stochasticity along the path, and — in *one-to-many* tasks where one edge map admits many
+plausible handbags in different colors and textures — to produce varied outputs across random
+seeds.
 
 ## Background
 
@@ -43,35 +34,23 @@ from `t = T` to `t = 0`, both of which need the score `∇_{x_t} log p_t(x_t | x
 intractable in closed form but can be estimated by denoising bridge score matching, regressing a
 network against the analytic kernel score.
 
-Two background facts shape every design choice below.
+Two background facts shape the design choices below.
 
-**A denoiser is the natural reparameterization of the score.** Karras et al. (2022, EDM) observed
+**A denoiser is a reparameterization of the score.** Karras et al. (2022, EDM) observed
 that for a Gaussian-corrupted variable, the score is an affine function of the L2-optimal denoiser
 `D(x; σ) = E[clean | noisy]`: the score points from the current state toward the predicted clean
 image. Parameterizing the network to predict the clean signal `x̂_0`, rather than the raw score,
-avoids the `1/γ²` blow-up of the score at the endpoints (`γ_t → 0` as `t → 0` and `t → T`), which
-otherwise makes training unstable. EDM also showed that *training and sampling can be decoupled*:
-with a fixed trained denoiser, the sampler — its discretization, its noise schedule, its
-time-step spacing — is a separate design problem with its own large design space, including a
-stochastic sampler whose injected noise is a tunable knob.
+avoids the `1/γ²` behavior of the score at the endpoints (`γ_t → 0` as `t → 0` and `t → T`). EDM
+also showed that *training and sampling can be decoupled*: with a fixed trained denoiser, the
+sampler — its discretization, its noise schedule, its time-step spacing — is a separate design
+problem with its own large design space, including a stochastic sampler whose injected noise is a
+tunable knob.
 
 **Many distinct dynamics can realize the same interpolating marginals.** Stochastic interpolants
 (Albergo, Boffi & Vanden-Eijnden 2023) separate the specification of the time-indexed marginals
-from the ODE or SDE used to realize them. Their viewpoint says that an interpolant's law can be
+from the ODE or SDE used to realize them. In their viewpoint, an interpolant's law can be
 transported by deterministic and stochastic dynamics whose drifts are learned from data, so the
-process dynamics need not be inherited from a pinned reference diffusion. What is still missing
-for paired translation is the bridge-specific graft: conditioning on the observed terminal image,
-using a single denoiser that sees the source image, and keeping the sampler valid under a hard
-small-NFE budget.
-
-Three diagnostic observations about existing systems set up the problem. First, the vanilla
-reverse-SDE sampler of a high-quality bridge needs on the order of a hundred-plus denoiser
-calls; under a five-call budget its FID is enormous. Second, the existing fast bridge sampler is
-derived under a positivity condition `γ_{t-Δt}² - 2 ε_t Δt > 0`; strong stochastic schedules can
-violate it, so the fast sampler has settings where its square root is undefined. Third, holding a
-source image fixed and resampling, existing bridges produce visually near-identical outputs — the
-injected diffusion noise barely changes the sample — so one-to-many translation loses its
-diversity.
+process dynamics need not be inherited from a pinned reference diffusion.
 
 ## Baselines
 
@@ -86,11 +65,9 @@ dX_t = [f̄_t X_t + ḡ_t²(s − ½h)] dt              (ODE),
 ```
 
 with `s = ∇log p_{T|t}(x_T|X_t)`, `h = ∇log p_{t|T}(X_t|x_T)`, the score estimated by a denoiser.
-Substantive and effective, but limited: the path is controlled by only the two functions `a_t`
-and `σ_t`, which are *convolved* inside `α_t, β_t, γ_t` — they cannot be moved independently. And
-DDBM ships exactly one reverse SDE plus its one ODE; it offers no dial for how much noise to
-inject during sampling, and its vanilla SDE sampler is expensive (hundreds of NFEs), with FID
-that is unusable at a five-call budget.
+The path is controlled by the two functions `a_t` and `σ_t`, which enter `α_t, β_t, γ_t` through
+the SNR convolution above. DDBM ships one reverse SDE plus its one ODE, and its vanilla SDE
+sampler runs at hundreds of NFEs.
 
 **DBIM — Diffusion Bridge Implicit Models (Zheng et al. 2024).** The bridge counterpart of DDIM.
 Observes that the bridge score depends only on the marginals, so one can build *non-Markovian*
@@ -105,36 +82,26 @@ x_{t_n} = α_{t_n} x̂_0 + β_{t_n} x_T
 ```
 
 with `ρ_{t_n}` a per-step stochasticity level interpolating deterministic (`ρ = 0`) to stochastic,
-and a "booting noise" first step for diversity. Up to ~25× faster than DDBM's sampler. Two
-limitations matter here. It is derived *inside* DDBM's coupled kernel, so it inherits the same
-restricted path family. And its stochasticity is bounded by the marginals through the
-`√(γ² − ρ²)` term — equivalently the positivity condition `γ_{t-Δt}² − 2 ε_t Δt > 0`. A strong
-noise schedule (one matching the full reverse-SDE injection) can violate this condition, at which
-point the update's square root becomes imaginary and the sampler is undefined; it cannot reach
-those settings at all.
+and a "booting noise" first step for diversity. Up to ~25× faster than DDBM's sampler. It is
+derived inside DDBM's kernel and shares its `N` marginals, and its per-step stochasticity enters
+through the `√(γ² − ρ²)` term, equivalently the positivity condition `γ_{t-Δt}² − 2 ε_t Δt > 0`.
 
 **I2SB — Image-to-Image Schrödinger Bridge (Liu et al. 2023).** A tractable Schrödinger-bridge
-construction for restoration. Strong on inverse problems, but it is one specific Markovian bridge:
-its sampler is a single point in the design space (the case where the `x_T` coefficient in a
-DBIM-style update vanishes), again with no independent control of the path or the sampler noise,
-and it too runs at high NFE.
+construction for restoration, strong on inverse problems. It is one specific Markovian bridge: its
+sampler corresponds to the case where the `x_T` coefficient in a DBIM-style update vanishes, and
+it runs at high NFE.
 
 **Stochastic Interpolants (Albergo, Boffi & Vanden-Eijnden 2023).** Builds transport directly via
-the flow map `x_t = α_t x_0 + β_t x_T + γ_t z`, `z ~ N(0,I)`, with `α_t, β_t, γ_t` *decoupled* and
-free to design subject only to boundary conditions `α_0 = β_T = 1`, `α_T = β_0 = γ_0 = γ_T = 0`.
-Far larger and cleaner path design space than the `h`-transform constructions, and the framework
-that supplies ODE/SDE realizations for interpolating marginals. Limitation: as formulated for
-generation it is *unconditional* — it does not condition on a terminal endpoint `x_T`, so for
-paired translation it requires training two separate models (one per direction) and has not taken
-on the bridge community's practical machinery (endpoint conditioning, denoiser preconditioning,
-fast bridge samplers).
+the flow map `x_t = α_t x_0 + β_t x_T + γ_t z`, `z ~ N(0,I)`, with `α_t, β_t, γ_t` designed
+independently subject only to boundary conditions `α_0 = β_T = 1`, `α_T = β_0 = γ_0 = γ_T = 0`.
+The framework supplies ODE/SDE realizations for the interpolating marginals. As formulated for
+generation it is *unconditional* — it does not condition on a terminal endpoint `x_T`.
 
 **EDM (Karras et al. 2022).** Not a bridge, but the methodological backbone: the
 score↔denoiser reparameterization, the unit-variance preconditioning of network inputs/targets,
 the decoupling of training from sampling, and a stochastic sampler with a controllable churn knob.
 Its time-step schedule `t_i = (t_max^{1/ρ} + (i/N)(t_min^{1/ρ} − t_max^{1/ρ}))^ρ` is the standard
-way to place a small number of steps non-uniformly. Limitation: it is an *unconditional* diffusion
-recipe; nothing in it is about bridges or endpoint conditioning.
+way to place a small number of steps non-uniformly. It is an *unconditional* diffusion recipe.
 
 ## Evaluation settings
 

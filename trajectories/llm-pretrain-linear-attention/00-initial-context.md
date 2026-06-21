@@ -5,8 +5,7 @@ sequence length, yet stays competitive with standard quadratic softmax attention
 builds an `L×L` score matrix, so compute and memory scale like `L²`, and at inference the key/value
 cache grows with the context already generated. The design target is the attention sublayer — the
 `CausalSelfAttention` class and the `Block` that wraps it — replaced by a mechanism with a fixed-size
-state and a subquadratic training path. Everything else is fixed. Cheapness is easy; cheapness that
-does not lose quality against a strong softmax Transformer on the same data is the problem.
+state and a subquadratic training path. Everything else is fixed.
 
 ## Prior art / Background / Baselines
 
@@ -16,20 +15,13 @@ baselines are:
 - **Linear attention (Katharopoulos et al. 2020).** Replace the softmax kernel `exp(qₜ·kᵢ)` with a
   feature-map dot product `φ(qₜ)·φ(kᵢ)`, so `φ(qₜ)` factors out of the causal sum and the layer
   becomes a linear recurrent update `Sₜ = S_{t−1} + kₜᵀvₜ` read by `oₜ = qₜ Sₜ`. This gives
-  `O(1)`-per-step inference with no growing cache. **Gap:** the state accumulates every past
-  key-value outer product without forgetting, so older content dilutes the present and quality
-  falls behind softmax on language modeling and recall tasks.
+  `O(1)`-per-step inference with no growing cache.
 - **State-space models (S4, Gu et al. 2021).** A linear recurrence `sₜ = A s_{t−1} + B xₜ`, `oₜ = C sₜ`
   whose unrolled form is a convolution trainable by FFT — parallel to train and strong at long range.
-  **Gap:** `A,B,C` are input-independent, so the model cannot perform the content-dependent selection
-  that attention does; it cannot decide from the token itself what to keep or discard.
 - **Fixed-decay linear attention.** Add a single global scalar decay, `Sₜ = γ S_{t−1} + kₜᵀvₜ`, to
-  bias the state toward recent tokens while keeping the parallel matmul form. **Gap:** one scalar
-  applies to every token, channel, and context, so the forgetting rate cannot adapt to the data.
+  bias the state toward recent tokens while keeping the parallel matmul form.
 - **Gated RNNs (LSTM; Gers et al. 2000).** Use multiplicative gates, including a data-dependent
-  forget gate `fₜ ⊙ c_{t−1}`, to control how much past state is retained. **Gap:** the standard
-  data-dependent gate reads the previous state, which serializes the recurrence and removes the
-  parallel training form.
+  forget gate `fₜ ⊙ c_{t−1}`, to control how much past state is retained.
 
 ## Fixed substrate / Code framework
 

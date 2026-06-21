@@ -1,30 +1,30 @@
 ## Research question
 
-Modern convolutional networks have enough capacity to overfit even on standard vision benchmarks, so training usually leans on two families of regularization: data augmentation and dropout-like noise. Image augmentation is cheap and effective, but the common transforms are mostly geometric or photometric. Dropout is simple and broadly useful, but it is much less reliable inside convolutional layers than in fully connected layers, especially once batch normalization and strong augmentation are already present.
+Modern convolutional networks have enough capacity to overfit even on standard vision benchmarks, so training usually leans on two families of regularization: data augmentation and dropout-like noise. Image augmentation is cheap and effective, and the common transforms are mostly geometric or photometric. Dropout is simple and broadly used, applied in fully connected layers and, in various forms, inside convolutional layers.
 
-The question is whether there is a regularizer that targets the convolutional setting directly, stays compatible with batch normalization and ordinary augmentation, adds almost no training cost, and can be inserted without changing the classifier architecture or loss.
+The question is how to regularize a convolutional classifier so that it improves on an already strong baseline that uses batch normalization and ordinary augmentation, while keeping the classifier architecture, loss, and test-time pipeline unchanged.
 
 ## Background
 
-The standard small-image recognition setup is already crowded with helpful machinery: residual or wide-residual networks, batch normalization, SGD with momentum, weight decay, random crops, horizontal flips, and per-channel normalization. A useful new regularizer has to improve this strong baseline rather than replace it.
+The standard small-image recognition setup is already crowded with helpful machinery: residual or wide-residual networks, batch normalization, SGD with momentum, weight decay, random crops, horizontal flips, and per-channel normalization. A useful new regularizer is compared against this strong baseline.
 
-The weakness of dropout in convolutional layers has two parts. First, convolutional layers have far fewer parameters than dense layers, so they are less exposed to the exact overfitting problem dropout was designed for. Second, nearby image pixels and nearby feature activations are highly correlated. Removing one activation often leaves the same information available through its neighbors, so pointwise removal behaves more like noise injection than like the exponential model averaging that makes dropout powerful in dense layers.
+Dropout was designed to discourage co-adaptation of units. In convolutional layers, two properties differ from the dense case. First, convolutional layers have far fewer parameters than dense layers. Second, nearby image pixels and nearby feature activations are highly correlated, so pointwise removal of an activation behaves more like noise injection than like the exponential model averaging dropout produces in dense layers.
 
-Feature-map-level dropout variants try to respond to this spatial correlation, but they operate after feature maps already exist. That means the same visual evidence may survive elsewhere in the representation, and the network can see an inconsistent noisy version of the input rather than a genuinely missing cue.
+Several feature-map-level dropout variants have been proposed for this spatially correlated setting; they operate on the feature maps inside the network.
 
 ## Baselines
 
-**Dropout (Hinton et al., 2012; Srivastava et al., 2014).** During training, hidden units are randomly set to zero; at test time a corresponding scaling rule approximates averaging many thinned networks. It discourages co-adaptation and works well in dense layers. Its limitation in convolutional layers is spatial redundancy: neighboring units often carry the removed information forward.
+**Dropout (Hinton et al., 2012; Srivastava et al., 2014).** During training, hidden units are randomly set to zero; at test time a corresponding scaling rule approximates averaging many thinned networks. It discourages co-adaptation and is widely used in dense layers.
 
-**SpatialDropout (Tompson et al., 2015).** Entire feature maps are dropped rather than individual spatial positions. This avoids within-map neighbor redundancy, but it is still feature-level and channel-local, and its advantage can disappear once batch normalization is part of the model.
+**SpatialDropout (Tompson et al., 2015).** Entire feature maps are dropped rather than individual spatial positions, which removes within-map neighbor redundancy in the dropped channel.
 
-**Max-drop and stochastic dropout variants (Park & Kwak, 2016; Wu & Gu, 2015).** These methods alter which convolutional activations or pooling outputs are removed, sometimes focusing on strong activations or changing the drop probability. They show that the placement and structure of dropout matter in CNNs, but they do not by themselves settle the need for a simple augmentation-like regularizer.
+**Max-drop and stochastic dropout variants (Park & Kwak, 2016; Wu & Gu, 2015).** These methods alter which convolutional activations or pooling outputs are removed, sometimes focusing on strong activations or changing the drop probability. They show that the placement and structure of dropout matter in CNNs.
 
-**Denoising autoencoders (Vincent et al., 2010).** Inputs are corrupted and the model is trained to reconstruct the original. This establishes the value of learning from damaged inputs, but the objective is reconstruction and the common corruption is not a drop-in supervised classifier regularizer.
+**Denoising autoencoders (Vincent et al., 2010).** Inputs are corrupted and the model is trained to reconstruct the original, learning representations from damaged inputs under a reconstruction objective.
 
-**Context encoders (Pathak et al., 2016).** A larger missing image region is reconstructed from its surroundings, forcing more global semantic understanding than scattered pixel corruption. This is useful precedent for representation learning under missing visual evidence, but it comes with an encoder-decoder reconstruction task rather than the ordinary classification loop.
+**Context encoders (Pathak et al., 2016).** A larger missing image region is reconstructed from its surroundings, using an encoder-decoder reconstruction task that forces more global semantic understanding than scattered pixel corruption.
 
-**Occlusion-style augmentation.** Earlier image augmentation work includes fake scratches, dots, scribbles, and partial occlusions on characters. This supplies the practical motivation: real recognition systems should not depend on one always-visible local cue.
+**Occlusion-style augmentation.** Earlier image augmentation work includes fake scratches, dots, scribbles, and partial occlusions on characters, motivated by the goal that recognition systems should not depend on a single always-visible local cue.
 
 ## Evaluation settings
 
@@ -32,11 +32,11 @@ The core benchmarks are CIFAR-10 and CIFAR-100: 50,000 training and 10,000 test 
 
 The relevant training baselines use ResNet-18, WideResNet-28-10, WideResNet-16-8, and shake-shake ResNet/ResNeXt models. CIFAR training uses per-channel normalization, optional zero-padding by 4 pixels followed by a random 32x32 crop, horizontal mirroring with probability 0.5, batch size 128, SGD with Nesterov momentum 0.9, weight decay 5e-4, and step-decayed learning rates. Hyperparameters for any new regularizer are selected on a held-out 10% validation split before full training.
 
-The main metric is test error rate. The comparison must also check whether the regularizer remains useful on models that already include batch normalization, convolutional dropout, and standard augmentation.
+The main metric is test error rate. The comparison also checks whether the regularizer remains useful on models that already include batch normalization, convolutional dropout, and standard augmentation.
 
 ## Code framework
 
-The available implementation surface is a normal torchvision data pipeline feeding an unchanged classifier, cross-entropy loss, SGD optimizer, and learning-rate scheduler. A candidate method should fit here without requiring new labels, an auxiliary decoder, a saliency pre-pass, or changes to the network forward pass.
+The available implementation surface is a normal torchvision data pipeline feeding an unchanged classifier, cross-entropy loss, SGD optimizer, and learning-rate scheduler.
 
 ```python
 import torch

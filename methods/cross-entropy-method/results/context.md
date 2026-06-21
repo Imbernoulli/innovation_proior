@@ -8,13 +8,13 @@ a probability so small (10⁻⁵ and below) that the event essentially never hap
 
     γ* = max_{x∈X} S(x)
 
-together with a maximizer x*. The combinatorial cases — travelling salesman, max-cut, the quadratic assignment problem — are NP-hard; the continuous cases are multi-extremal, riddled with local optima.
+together with a maximizer x*. The combinatorial cases — travelling salesman, max-cut, the quadratic assignment problem — are NP-hard; the continuous cases are multi-extremal, with several local optima.
 
-The pain point common to both is that the *interesting* configurations are vanishingly rare under any naive sampling law. In estimation, the failure set {S ≥ γ} is almost never visited, so a draw-and-count estimator reports zero or pure noise. In optimization, the near-optimal states {S ≥ γ*−ε} are a microscopic fraction of X, so blind random search almost never lands on them. A solution would have to *learn where the good mass lives* and steer sampling there, while staying honest — unbiased for the estimation problem, and convergent to a true optimum for the optimization problem.
+In both, the *interesting* configurations are rare under naive sampling. In estimation, the failure set {S ≥ γ} is almost never visited; in optimization, the near-optimal states {S ≥ γ*−ε} are a tiny fraction of X. The common question is how to construct a sampling density concentrated on the set {S ≥ γ}, when that set cannot be reached by chance in feasible time.
 
 ## Background
 
-**Crude Monte-Carlo and its relative error.** To estimate ℓ = E_u[1_{S≥γ}], draw X₁,…,X_N i.i.d. from f(·; u) and average the indicator. The estimator is unbiased with variance ℓ(1−ℓ)/N, so its *relative* error is ≈ √((1−ℓ)/(Nℓ)) ≈ 1/√(Nℓ). Pinning that to 1% relative error needs N ≈ 10⁴/ℓ draws. For ℓ = 10⁻⁵ that is already 10⁹ runs; the scaling is the wall.
+**Crude Monte-Carlo and its relative error.** To estimate ℓ = E_u[1_{S≥γ}], draw X₁,…,X_N i.i.d. from f(·; u) and average the indicator. The estimator is unbiased with variance ℓ(1−ℓ)/N, so its *relative* error is ≈ √((1−ℓ)/(Nℓ)) ≈ 1/√(Nℓ). Pinning that to 1% relative error needs N ≈ 10⁴/ℓ draws; for ℓ = 10⁻⁵ that is 10⁹ runs.
 
 **Importance sampling and the likelihood ratio.** The same expectation can be taken under a different sampling density g, as long as each sample is reweighted. If g(x) = 0 only where 1_{S(x)≥γ} f(x; u) = 0, then
 
@@ -26,7 +26,7 @@ with the *likelihood ratio* W(x) = f(x; u)/g(x). The estimator ℓ̂ = (1/N) Σ 
 
     g*(x) = 1_{S(x)≥γ} f(x; u) / ℓ,
 
-i.e. the nominal law restricted to the rare set and renormalized. Under g* the integrand 1_{S≥γ} f/g* equals ℓ identically, so the estimator has *zero* variance and one sample suffices. But g* contains the unknown ℓ in its normalizer — it presupposes the answer. As a written-down density it is unusable as a recipe.
+i.e. the nominal law restricted to the rare set and renormalized. Under g* the integrand 1_{S≥γ} f/g* equals ℓ identically, so the estimator has *zero* variance and one sample suffices. Its normalizer is the unknown ℓ.
 
 **Kullback–Leibler divergence (cross-entropy).** A standard measure of dissimilarity between two densities g and h is
 
@@ -38,21 +38,21 @@ It is non-negative, zero iff g = h, and not symmetric. The second term, −∫ g
 
 **Exponential tilting / change of measure for light tails.** For light-tailed laws, the way to make a tail event typical without distorting the exponential decay rate is to reweight f by an exponential and renormalize — an exponential family of tilts. For a random walk that must climb to a far level, large-deviations theory points to an exponential tilt that reverses the drift and makes the crossing typical under the new measure. These tilts form an exponential family, so a single reference parameter indexes the candidate change of measure.
 
-**The recurring structure that ties the two problems together.** A maximization can be turned into a sequence of rare-event estimation problems: introduce the family of indicators {1_{S(x)≥γ}} and the *associated stochastic problem* ℓ(γ) = E_u[1_{S(X)≥γ}]. When γ approaches γ*, the set {S ≥ γ} shrinks to the optimizer(s), and a density that puts its mass on {S ≥ γ} therefore concentrates on x*. Both faces reduce to the same question: *how do you find a sampling density concentrated on {S ≥ γ}, when you cannot afford to wait for that set to be hit by chance?*
+**The recurring structure that ties the two problems together.** A maximization can be turned into a sequence of rare-event estimation problems: introduce the family of indicators {1_{S(x)≥γ}} and the *associated stochastic problem* ℓ(γ) = E_u[1_{S(X)≥γ}]. When γ approaches γ*, the set {S ≥ γ} shrinks to the optimizer(s), and a density that puts its mass on {S ≥ γ} therefore concentrates on x*. Both faces reduce to the same question: how to find a sampling density concentrated on {S ≥ γ}.
 
 ## Baselines
 
-**Crude Monte-Carlo (estimation).** Draw from f(·; u), count, divide. Unbiased and correct, but relative error ≈ 1/√(Nℓ); certifying a 10⁻⁵ probability to 1% costs ~10⁹ runs, and even a few-percent estimate still costs ~10⁸ runs. The gap it leaves: it never exploits *where* the rare mass concentrates.
+**Crude Monte-Carlo (estimation).** Draw from f(·; u), count, divide. Unbiased, with relative error ≈ 1/√(Nℓ); certifying a 10⁻⁵ probability to 1% costs ~10⁹ runs, and a few-percent estimate costs ~10⁸ runs.
 
-**Static importance sampling with a hand-picked tilt.** Fix a single reference parameter v by analysis (large-deviations, a guessed shift), sample from f(·; v), reweight by W. This can cut variance by orders of magnitude *when* the tilt is right, but the optimal v is generally very hard to obtain in closed form for a complex system, and a poorly chosen v can make the variance *worse* than crude MC — the few relevant samples carry exploding weights. The gap: no constructive, self-tuning way to find a good v.
+**Static importance sampling with a hand-picked tilt.** Fix a single reference parameter v by analysis (large-deviations, a guessed shift), sample from f(·; v), reweight by W. The variance reduction depends on the chosen v.
 
 **Variance minimization of the reference parameter.** Choose v to directly minimize the second moment of the IS estimator,
 
     v = argmin_v E_w[ 1_{S(X)≥γ} W(X; u, v) W(X; u, w) ],
 
-estimated from a sample under w. This targets exactly the right objective, but the program is a generally non-convex numerical optimization with no closed-form solution even for nice families; it is awkward to run inside an adaptive loop. The gap: tractability — each step demands an inner numerical search.
+estimated from a sample under w. This is a numerical optimization over v for a given family.
 
-**Randomized search heuristics for optimization.** Simulated annealing (accept-with-Boltzmann-probability local moves), tabu search (memory-guided local search), genetic algorithms and ant-colony optimization (population-based recombination / pheromone reinforcement) all attack max S(x) by maintaining and perturbing candidate solutions. They are general and often effective, but each is a bundle of problem-specific operators and schedules (temperature cooling, mutation/crossover rates, pheromone evaporation) tuned by hand; none defines a single mathematical objective whose optimum *is* the parameter update. The gap: the update rule is hand-designed rather than self-tuning, a bundle of tuned operators with no underlying principle fixing it.
+**Randomized search heuristics for optimization.** Simulated annealing (accept-with-Boltzmann-probability local moves), tabu search (memory-guided local search), genetic algorithms and ant-colony optimization (population-based recombination / pheromone reinforcement) all attack max S(x) by maintaining and perturbing candidate solutions. Each carries problem-specific operators and schedules (temperature cooling, mutation/crossover rates, pheromone evaporation) set by the user.
 
 ## Evaluation settings
 

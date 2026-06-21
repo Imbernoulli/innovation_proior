@@ -4,11 +4,9 @@
 
 By the early 1990s, two pressures point in the same direction without yet looking identical.
 
-The first comes from approximation. Cook, Levin, and Karp have made exact satisfiability, clique, vertex cover, and many other decision problems into one hardness world. But an exact reduction is brittle near the optimum. If a target solution is merely near-optimal, the reduction may pull it back to a source object that is also merely near-correct, and the yes/no separation disappears. A theory of inapproximability needs reductions that preserve a numerical gap: satisfiable instances should map to optimum 1, while unsatisfiable instances should map to optimum bounded away from 1.
+The first comes from approximation. Cook, Levin, and Karp have made exact satisfiability, clique, vertex cover, and many other decision problems into one hardness world. But an exact reduction is brittle near the optimum. A theory of inapproximability needs reductions that preserve a numerical gap: satisfiable instances should map to optimum 1, while unsatisfiable instances should map to optimum bounded away from 1.
 
 The second comes from proof verification. A deterministic verifier for NP reads the whole witness. Interactive proofs show that randomness and algebra can verify much more surprising claims, and multi-prover proofs show that consistency checks can replace direct trust. The question is whether ordinary NP witnesses can be rewritten so that a randomized verifier inspects only a few carefully chosen locations while still rejecting false claims reliably.
-
-The pre-method challenge is to find a source of robust local signal. A false witness must not be able to hide its falsehood in one coordinate, and a gap reduction must not have to be designed from scratch for every optimization problem.
 
 ## Background
 
@@ -18,16 +16,14 @@ Interactive proof systems change the verifier. LFKN arithmetize Boolean claims i
 
 Transparent-proof work scales the idea toward NP. BFLS show that computations can be checked in polylogarithmic Monte Carlo time when the theorem candidate is encoded. FGLSS then connects low-access verification to clique approximation by turning accepting local views into vertices and consistency into edges. The soundness gap of the verifier becomes a numerical gap in clique size.
 
-The remaining obstacle is parameter compression. The algebraic machinery can make global correctness locally meaningful, but the local answers are still too large or too numerous.
-
 ## Baselines
 
-- Static NP witness: exact, deterministic, and complete, but the verifier reads the whole witness and produces no approximation gap.
-- LFKN sum-check: a global polynomial-sum claim can be checked through random univariate consistency checks, but the protocol is interactive and not a fixed proof string with constant access.
-- BFL multi-prover verification: `NEXP` gets efficient randomized proof systems through arithmetization and multilinearity testing, but this lives at the exponential scale.
-- BFLS transparent proofs: computations can be checked in polylogarithmic time after error-correcting encoding, but polylogarithmic access is still far from constant.
-- FGLSS clique construction: proof-checking soundness becomes an approximation gap, but the available verifier parameters yield weaker hardness consequences until both randomness and query complexity are compressed.
-- Algebraic self-testing: BLR and Rubinfeld-Sudan show how local tests can certify global algebraic structure, but they do not by themselves give a full NP verifier with constant proof access.
+- Static NP witness: exact, deterministic, and complete; the verifier reads the whole witness.
+- LFKN sum-check: a global polynomial-sum claim can be checked through random univariate consistency checks; the protocol is interactive and operates over a fixed proof string with adaptive queries.
+- BFL multi-prover verification: `NEXP` gets efficient randomized proof systems through arithmetization and multilinearity testing, operating at the exponential scale.
+- BFLS transparent proofs: computations can be checked in polylogarithmic time after error-correcting encoding.
+- FGLSS clique construction: proof-checking soundness becomes an approximation gap by turning accepting local views into vertices and consistency into edges.
+- Algebraic self-testing: BLR and Rubinfeld-Sudan show how local tests can certify global algebraic structure.
 
 ## Evaluation Settings
 
@@ -46,5 +42,3 @@ The algebraic yardsticks are finite fields, low-degree polynomial tables, relati
 ## Available Ingredients
 
 The pieces on the table are a Cook-Levin style NP-complete relation, arithmetization over finite fields, sum-check reasoning, local tests for linearity and low degree, and the verifier-to-gap conversion of FGLSS.
-
-The missing piece is a way to combine them without leaving local answers too large to be useful. The desired verifier must turn global correctness into a proof format where a random local check catches false claims with noticeable probability, while keeping proof access tiny enough to export as an approximation gap.

@@ -6,9 +6,9 @@ Unsupervised anomaly detection on heterogeneous multivariate time series — ser
 
 The first rung reacts to prior reconstruction backbones. Each maps a normal window to its reconstruction, and the reconstruction error becomes the anomaly score.
 
-- **Dense autoencoders / LSTM-AE.** Map the window through a bottleneck or roll an LSTM encoder-decoder to reproduce it. **Gap:** period-length dependencies must survive many recurrent transitions, so long-range periodic structure is washed out and the computation is strictly sequential.
-- **Point-wise Transformer reconstructors (Anomaly Transformer).** Apply self-attention over every pair of individual time steps and reconstruct each point from the rest. **Gap:** the token is a single time step, and in a window dominated by normal points the rare abnormal step is drowned out by its normal neighbors, blunting its anomaly score.
-- **Frequency-/decomposition-aware models (Autoformer, FEDformer).** Estimate period lengths from the spectrum or autocorrelation and aggregate same-phase information. **Gap:** they still operate on a single 1D representation, mixing within-cycle shape with across-cycle drift, so neither periodic detail nor long-range variation is modeled cleanly.
+- **Dense autoencoders / LSTM-AE.** Map the window through a bottleneck or roll an LSTM encoder-decoder to reproduce it.
+- **Point-wise Transformer reconstructors (Anomaly Transformer).** Apply self-attention over every pair of individual time steps and reconstruct each point from the rest.
+- **Frequency-/decomposition-aware models (Autoformer, FEDformer).** Estimate period lengths from the spectrum or autocorrelation and aggregate same-phase information.
 
 ## Fixed substrate / Code framework
 

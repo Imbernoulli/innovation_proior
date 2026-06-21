@@ -4,13 +4,13 @@ Predict the binding affinity (`-logKd/Ki`, higher means tighter binding) of a pr
 
 ## Prior art / Background / Baselines
 
-- **Message passing networks (Gilmer et al. 2017).** Core idea: propagate edge-conditioned messages between atom nodes and sum-aggregate them to update node states. Gap: geometry never enters the messages, and a single homogeneous message function treats every edge identically, so covalent bonds and ligand-pocket contacts are not distinguished.
+- **Message passing networks (Gilmer et al. 2017).** Core idea: propagate edge-conditioned messages between atom nodes and sum-aggregate them to update node states.
 
-- **SchNet (Schütt et al. 2017).** Core idea: build continuous filters from Gaussian-expanded interatomic distances and apply them as elementwise gates in message passing. Gap: only the scalar distance is used; angle and triangle-area statistics are discarded, and the same filter is applied to covalent and non-covalent edges alike.
+- **SchNet (Schütt et al. 2017).** Core idea: build continuous filters from Gaussian-expanded interatomic distances and apply them as elementwise gates in message passing.
 
-- **EGNN (Satorras et al. 2021).** Core idea: E(n)-equivariant message passing that updates node coordinates alongside features. Gap: binding affinity is an invariant scalar, so equivariant coordinate updates do not directly target the task; it also uses a single convolution for all edges and provides no interface decomposition.
+- **EGNN (Satorras et al. 2021).** Core idea: E(n)-equivariant message passing that updates node coordinates alongside features, preserving E(n)-invariance for scalar outputs.
 
-- **Interaction-graph networks (IGN, GIGN, EHIGN).** Core idea: model the complex as a heterogeneous graph with separate intra- and inter-molecular convolutions and read affinity from the interface. Gap: existing variants still leave residual prediction error on the core benchmarks, especially for complexes with subtle interface geometry or similar binding modes.
+- **Interaction-graph networks (IGN, GIGN, EHIGN).** Core idea: model the complex as a heterogeneous graph with separate intra- and inter-molecular convolutions and read affinity from the interface.
 
 ## Fixed substrate / Code framework
 

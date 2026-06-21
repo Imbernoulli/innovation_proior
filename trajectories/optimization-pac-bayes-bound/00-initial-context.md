@@ -1,14 +1,14 @@
 ## Research question
 
-I need a single number, computed from the training data, that is a true high-probability upper bound on the unseen-data error of an overparameterized neural network and is small enough to be worth printing. The object being designed is the **PAC-Bayes bound itself** — the functional that maps empirical risk and `KL(Q‖P)` to a risk certificate, the training objective derived from it, and the final certificate evaluation. Everything else — stochastic layers, the data-dependent prior split, the outer SGD loop — is fixed.
+I need a single number, computed from the training data, that is a true high-probability upper bound on the unseen-data error of an overparameterized neural network. The object being designed is the **PAC-Bayes bound itself** — the functional that maps empirical risk and `KL(Q‖P)` to a risk certificate, the training objective derived from it, and the final certificate evaluation. Everything else — stochastic layers, the data-dependent prior split, the outer SGD loop — is fixed.
 
 ## Prior art / Background / Baselines
 
-- **McAllester's PAC-Bayesian theorem.** Replaces the union-bound penalty `log|H|` with `KL(Q‖P)`, measuring how far the learner moves from a data-free prior rather than the size of the hypothesis class. Gap: the additive square-root form does not shrink as empirical risk shrinks, and the constants leave the bound loose on deep networks.
-- **Seeger / Langford-Caruana PAC-Bayes-kl.** Controls the binary KL between empirical and true risk, giving the tightest standard bound at low risk. Gap: the bound is implicit in the true risk and non-convex in `Q`, so it can be inverted to report a number but not differentiated as a training objective.
-- **Maurer's constant refinement.** Sharpens the exponential-moment constant, halving the sample-size dependence inside the logarithm. Gap: it tightens the constant but leaves the bound's shape unchanged.
-- **Catoni's localization bound.** A fixed-`λ` trade-off that is convex in `Q`, with a Gibbs-posterior optimum. Gap: it holds only for a single `λ` chosen before the data; adapting `λ` to the sample requires a union bound over a grid.
-- **PAC-Bayes with backprop and data-dependent priors.** Parameterizes `Q` as diagonal Gaussians over weights with an analytic KL, trains a deterministic prior on one half of the data, and minimizes a PAC-Bayes bound by SGD on the disjoint half. Gap: even with a trainable posterior and data split, the resulting 0-1 certificates on standard vision benchmarks remain far above the observed test error, and the choice of bound functional strongly affects the reported value.
+- **McAllester's PAC-Bayesian theorem.** Replaces the union-bound penalty `log|H|` with `KL(Q‖P)`, measuring how far the learner moves from a data-free prior rather than the size of the hypothesis class. The bound takes an additive square-root form: `L(Q) ≤ L̂(Q) + √((KL(Q‖P) + log(2√n/δ))/(2n))`.
+- **Seeger / Langford-Caruana PAC-Bayes-kl.** Controls the binary KL between empirical and true risk, giving a bound implicit in the true risk. It can be inverted numerically (binary-KL inversion) to report a risk certificate.
+- **Maurer's constant refinement.** Sharpens the exponential-moment constant, halving the sample-size dependence inside the logarithm of the McAllester-style bound.
+- **Catoni's localization bound.** A fixed-`λ` trade-off that is convex in `Q`, with a Gibbs-posterior optimum: `L(Q) ≤ L̂(Q)/(1−λ/2) + (KL(Q‖P) + log(2√n/δ))/(n·λ·(1−λ/2))` for `λ ∈ (0,2)`.
+- **PAC-Bayes with backprop and data-dependent priors.** Parameterizes `Q` as diagonal Gaussians over weights with an analytic KL, trains a deterministic prior on one half of the data, and minimizes a PAC-Bayes bound by SGD on the disjoint half.
 
 ## Fixed substrate / Code framework
 

@@ -2,25 +2,23 @@
 
 ## Research question
 
-Designing neural network architectures by hand is slow and requires expert intuition. Automating it — neural architecture search — is appealing, but the dominant approaches are brutally expensive: they treat the architecture as a point in a *discrete*, non-differentiable space and search it with reinforcement learning or evolution, training thousands of candidate networks to convergence to get a single scalar reward each. That costs thousands of GPU-days. The question: can architecture search be made *orders of magnitude* cheaper by turning the discrete search into a continuous, differentiable optimization, so that the architecture is learned by gradient descent jointly with the network weights?
+Designing neural network architectures by hand is slow and requires expert intuition. Neural architecture search (NAS) automates it. The dominant approaches treat the architecture as a point in a *discrete* space and search it with reinforcement learning or evolution, training many candidate networks to get a scalar validation signal for each, at a cost measured in thousands of GPU-days. The question: how to search for good cell architectures at a small fraction of that cost.
 
 ## Background
 
-The field state at the time: NAS works but is dominated by black-box optimizers over a discrete space.
+The field state at the time: NAS is driven by black-box optimizers over a discrete search space.
 
 - **Cell-based search spaces (Zoph et al., 2017; Real et al.; Liu et al.).** Rather than search a whole network, search a small *cell* (a directed acyclic graph of operations) and stack copies of it. This shrinks the search space and gives transferable building blocks. A convolutional network stacks the cell; a recurrent network connects it recursively. A cell has a few input nodes, several intermediate nodes, and an output formed by combining the intermediate nodes.
-- **Reinforcement-learning NAS (Zoph & Le, 2016; Zoph et al., 2017; Pham et al., ENAS).** A controller RNN samples a discrete architecture; the child is trained and its validation accuracy is the reward; the controller is updated by policy gradient. Treats validation performance as a non-differentiable reward.
+- **Reinforcement-learning NAS (Zoph & Le, 2016; Zoph et al., 2017; Pham et al., ENAS).** A controller RNN samples a discrete architecture; the child is trained and its validation accuracy is the reward; the controller is updated by policy gradient.
 - **Evolutionary NAS (Real et al.; Liu et al.).** Mutate/select architectures using validation fitness. Same discrete, sample-and-evaluate structure.
-- **Bilevel / gradient-based hyperparameter optimization (Maclaurin et al., 2015; Pedregosa; Franceschi et al.).** Treat hyperparameters as an upper-level variable optimized against validation loss, with weights as a lower-level variable optimized against training loss; differentiate through the inner optimization. The architecture can be viewed as a (very high-dimensional) hyperparameter.
+- **Bilevel / gradient-based hyperparameter optimization (Maclaurin et al., 2015; Pedregosa; Franceschi et al.).** Treat hyperparameters as an upper-level variable optimized against validation loss, with weights as a lower-level variable optimized against training loss; differentiate through the inner optimization. An architecture can be viewed as a very high-dimensional hyperparameter.
 - **One-step unrolled / truncated differentiation (Finn et al., MAML; Luketina et al.; Metz et al., unrolled GANs).** Approximate the inner argmin by a single gradient step and differentiate through it — a cheap surrogate for the exact inner solution.
-
-A diagnostic point that motivates the whole approach: the reason NAS is expensive is precisely that the search variable is discrete, so the validation signal can only be obtained by *sampling and fully training* candidates — there is no gradient of validation performance with respect to the architecture.
 
 ## Baselines
 
-- **NAS with RL (Zoph et al., 2017).** Controller RNN + policy gradient over discrete cell choices; state-of-the-art architectures but thousands of GPU-days. Gap: discrete search, enormous compute.
-- **Evolutionary search (Real et al., 2018, AmoebaNet).** Tournament evolution over architectures; competitive accuracy, also very expensive. Gap: discrete, sample-inefficient.
-- **ENAS (Pham et al., 2018).** Weight sharing across sampled child architectures cuts cost dramatically while keeping the RL controller. Gap: still a discrete controller optimized by RL; search is over sampled discrete architectures rather than a continuous, directly-differentiable representation.
+- **NAS with RL (Zoph et al., 2017).** Controller RNN + policy gradient over discrete cell choices; state-of-the-art architectures at a cost of thousands of GPU-days.
+- **Evolutionary search (Real et al., 2018, AmoebaNet).** Tournament evolution over architectures; competitive accuracy at comparable cost.
+- **ENAS (Pham et al., 2018).** Weight sharing across sampled child architectures cuts search cost while keeping the RL controller over sampled discrete architectures.
 
 ## Evaluation settings
 
@@ -31,7 +29,7 @@ A diagnostic point that motivates the whole approach: the reason NAS is expensiv
 
 ## Code framework
 
-The primitives that already exist: an autodiff framework with conv/pool/identity ops and recurrent activations, SGD and Adam optimizers, cross-entropy, a DAG-of-nodes cell abstraction where each intermediate node sums transformed predecessors, normal and reduction cells shared across a stacked network, and a train/validation data split. What does *not* yet exist is how the choice of operation on each edge enters the search. That is the empty slot.
+The primitives that already exist: an autodiff framework with conv/pool/identity ops and recurrent activations, SGD and Adam optimizers, cross-entropy, a DAG-of-nodes cell abstraction where each intermediate node sums transformed predecessors, normal and reduction cells shared across a stacked network, and a train/validation data split. The scaffold below leaves open how the choice of operation on each edge is represented and driven by the search.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F

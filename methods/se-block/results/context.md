@@ -1,6 +1,6 @@
 ## Channel Mixing Is Entangled
 
-A convolutional layer already combines spatial and channel information. If the input is
+A convolutional layer combines spatial and channel information. If the input is
 `X = [x^1, ..., x^{C'}]` and the `c`-th learned filter is
 `v_c = [v_c^1, ..., v_c^{C'}]`, then the `c`-th output map is
 
@@ -10,13 +10,11 @@ u_c = v_c * X = sum_{s=1}^{C'} v_c^s * x^s.
 
 The sum across `s` is a channel composition, but it is not exposed as a separate object.
 The same filter coefficients specify both the spatial pattern and the cross-channel mixture.
-Each response is also produced from a finite receptive field. In lower and middle layers,
-the response at one location cannot directly consult the whole image before it decides how
-the input channels should be combined.
+Each response is produced from a finite receptive field, so the channel composition at any
+location is determined by a local patch of the input.
 
 Once training fixes the convolution weights, this channel composition is the same for every
-input. Different images can activate the resulting channels differently, but the operator
-itself has no content-dependent channel policy inside the block.
+input.
 
 ## Deep Backbones Protect Information Flow
 
@@ -33,27 +31,23 @@ y = F(x) + x
 
 or, when dimensions change, a learned projection shortcut in place of the literal identity.
 The useful property is that the through-path remains simple while the residual branch learns
-the nontrivial transformation. Any new block-level computation has to respect that interface:
-it may enrich the residual computation, but it should not casually close or distort the
-shortcut that makes the network trainable.
+the nontrivial transformation.
 
 ## Existing Channel And Attention Tools
 
-Several pre-existing tools touch nearby problems without isolating this one. A `1x1`
-convolution recombines channels cheaply, but it does so independently at each spatial
-location with fixed learned weights. Grouped and multi-branch convolutions, including
-Inception and ResNeXt-style designs, enlarge the set of local transformations and channel
-partitions, but the selected compositions remain fixed after training.
+Several pre-existing tools touch nearby problems. A `1x1` convolution recombines channels
+cheaply at each spatial location using fixed learned weights. Grouped and multi-branch
+convolutions, including Inception and ResNeXt-style designs, enlarge the set of local
+transformations and channel partitions.
 
 Batch Normalization has a learned per-channel affine scale and shift, so it is structurally
-close to channel modulation. Its scale and shift, however, are learned parameters applied
-uniformly at inference rather than functions of the current example.
+close to channel modulation. Its scale and shift are learned parameters fixed at inference.
 
 Attention and gating mechanisms provide another precedent. Recurrent visual attention and
 spatial transformer networks bias where a model samples or aligns information in space.
 Highway networks use gates to regulate transform-versus-carry flow through depth. Residual
-attention networks add trunk-and-mask modules, but those masks are produced by comparatively
-heavy auxiliary subnetworks and are not a minimal replacement for a standard residual block.
+attention networks add trunk-and-mask modules that produce spatial masks via auxiliary
+subnetworks.
 
 ## Evaluation Settings
 

@@ -8,20 +8,18 @@ a Boolean condition `C` on the `N` states `S₁,…,S_N`, with `C(S_ν)=1` for a
 `S_ν` and `C(S)=0` for every other state, and `C(S)` can be evaluated on any state in unit time. The
 goal is to identify `ν`.
 
-Classically the answer is bleak and well understood. With no sorting to guide the search, an algorithm
-can only probe items one at a time; each probe reveals whether that single item is the target. A
-deterministic algorithm needs `N−1` probes in the worst case and `N/2` on average; a randomized one
-still needs `Θ(N)` probes to succeed with constant probability, because each query rules out at most
-one candidate. So `Θ(N)` is the classical cost, and it feels fundamental — there is simply no
-information to act on until you have looked at almost everything.
+Classically the cost is well understood. With no sorting to guide the search, an algorithm probes
+items one at a time; each probe reveals whether that single item is the target. A deterministic
+algorithm needs `N−1` probes in the worst case and `N/2` on average; a randomized one still needs
+`Θ(N)` probes to succeed with constant probability, because each query rules out at most one
+candidate. So `Θ(N)` is the classical cost.
 
-The question that matters is whether a *quantum* computer — a device whose memory can hold a
-superposition of all `N` states at once and whose evolution is unitary — can break the linear barrier
-for this most structureless of all search problems, and if so, exactly how far the cost can be pushed
-down. This matters because unstructured search is the abstract heart of an enormous range of problems:
-deciding satisfiability of a formula over `n` binary variables is exactly searching `N=2ⁿ`
-assignments for one that works, so a sub-linear search would bear directly on the hardest problems in
-`NP`.
+The question is whether a *quantum* computer — a device whose memory can hold a superposition of all
+`N` states at once and whose evolution is unitary — can break the linear barrier for this most
+structureless of all search problems, and if so, how far the cost can be pushed down. This matters
+because unstructured search is the abstract heart of an enormous range of problems: deciding
+satisfiability of a formula over `n` binary variables is exactly searching `N=2ⁿ` assignments for one
+that works, so a sub-linear search would bear directly on the hardest problems in `NP`.
 
 ## Background
 
@@ -45,55 +43,46 @@ load-bearing background:
   `W_{ij}=2^{-n/2}(−1)^{i·j}`, where `i·j` is the bitwise dot product. Acting on the all-zeros state
   it produces the **uniform superposition**: every one of the `N=2ⁿ` amplitudes equals `1/√N`, built
   in `O(log N)` gates. (2) A **selective phase rotation**: a diagonal unitary `diag(e^{iφ₁},…)` that
-  multiplies chosen states by a phase. Crucially it leaves every `|amplitude|²` unchanged, so it has
-  no analogue among classical probabilistic operations, yet it can tag a state. (3) The ability to
-  query the condition `C` coherently — an **oracle** that acts on the register while leaving no record
-  of which state it inspected, so that computational paths leading to the same outcome remain
-  indistinguishable and can interfere.
+  multiplies chosen states by a phase. It leaves every `|amplitude|²` unchanged, so it has no analogue
+  among classical probabilistic operations, yet it can tag a state. (3) The ability to query the
+  condition `C` coherently — an **oracle** that acts on the register while leaving no record of which
+  state it inspected, so that computational paths leading to the same outcome remain indistinguishable
+  and can interfere.
 
-Several facts about these primitives set up the problem. The uniform superposition, by itself, is
-worthless for search: it spreads amplitude equally, so a measurement returns a uniformly random
-item — success probability `1/N`, no better than a single classical guess. Quantum parallelism
-("examine all `N` states at once") is therefore a trap; the difficulty is never breadth, it is getting
-the amplitude to *concentrate* on the one state you want before you measure. The available primitives
-that act differently on a chosen state — notably the selective phase rotation — change amplitudes by a
-sign or phase only, and a measurement sees just `|amplitude|²`, so any such tagging is on its own
-invisible at readout. And the classical information-theoretic intuition that "you must look at `Θ(N)` items"
-hangs over everything as the benchmark to beat.
+Several facts about these primitives set up the problem. The uniform superposition spreads amplitude
+equally over all `N` states, so a measurement of it returns a uniformly random item — success
+probability `1/N`, the same as a single classical guess. A measurement sees only `|amplitude|²`, so a
+selective phase rotation, which changes amplitudes by a sign or phase, does not by itself alter the
+measurement statistics. And the classical information-theoretic intuition that "you must look at
+`Θ(N)` items" stands as the benchmark to beat.
 
 The one prior quantum speedup of comparable fame, Shor's (1994) polynomial-time factoring algorithm,
 achieves its exponential advantage by exploiting *structure* — the periodicity of modular
 exponentiation, extracted by a quantum Fourier transform. Unstructured search has, by definition, no
-such periodicity to lever, so the route that works for factoring is unavailable here; a genuinely
-different mechanism is needed.
+such periodicity.
 
 ## Baselines
 
 - **Classical exhaustive / randomized search.** Probe items one at a time; stop when `C` returns 1.
   Deterministic worst case `N−1`, average `N/2`; randomized `Θ(N)` for constant success. Core idea:
-  each query tests one candidate and rules out at most one. The gap it leaves: it uses no
-  superposition and no interference, so it cannot test possibilities in parallel — and information-
-  theoretically it appears stuck at `Θ(N)` for unstructured instances.
+  each query tests one candidate and rules out at most one. It uses no superposition and no
+  interference.
 
 - **Classical probabilistic algorithms (Markov-chain view).** Maintain a probability distribution over
   states; evolve by premultiplying the probability vector by a stochastic transition matrix (e.g.
-  simulated annealing). Core idea: a distribution that can be steered toward good states. The gap:
-  probabilities are non-negative and add, so distinct paths can only reinforce, never cancel; there is
-  no destructive interference to suppress the `N−1` wrong answers.
+  simulated annealing). Core idea: a distribution that can be steered toward good states. Probabilities
+  are non-negative and add, so distinct paths reinforce.
 
 - **Quantum parallelism via Walsh–Hadamard alone (Deutsch–Jozsa 1992 style).** Put the register in the
   uniform superposition and evaluate the function on all inputs simultaneously. Core idea: one
-  evaluation touches every state. The gap, fatal for search: the result is still a uniform spread, so
-  a measurement gives a random state with success `1/N`. Deutsch–Jozsa extracts a single global
-  property (a parity) by interference, but that trick reads out one bit about the whole function — it
-  does not single out one marked state among `N`.
+  evaluation touches every state; a measurement then gives a state with success `1/N`. Deutsch–Jozsa
+  extracts a single global property (a parity) by interference, reading out one bit about the whole
+  function.
 
 - **Shor's factoring (1994), as the contrasting quantum algorithm.** Core idea: reduce factoring to
   finding the period of `a^x mod N`, then read the period off with a quantum Fourier transform; cost
-  polynomial in `log N`. The gap relative to the present problem: it is entirely structure-dependent.
-  Remove the periodic structure — as in a black-box unsorted database — and the QFT has nothing to
-  lock onto. It shows quantum computers *can* win big, but says nothing about how to win without
-  structure.
+  polynomial in `log N`. It is structure-dependent: the QFT locks onto the periodic structure of the
+  problem. It shows quantum computers *can* win big.
 
 ## Evaluation settings
 
@@ -103,7 +92,7 @@ probability `≥ 1/2`). The instance family is parameterized by the database siz
 marked item among `N`; the relevant regime is large `N`. Two reference points frame any result. The
 classical baseline is `Θ(N)` queries. The information-theoretic question — "how few queries can *any*
 quantum algorithm use, given no structure?" — is posed in the oracle (black-box) model; this is the
-setting in which a matching lower bound would be proved. Success is measured purely in asymptotic query
+setting in which a matching lower bound would be proved. Success is measured in asymptotic query
 count and in the success probability achieved after a prescribed number of iterations; the precise
 iteration count, and not just its order, is reported as part of the protocol.
 

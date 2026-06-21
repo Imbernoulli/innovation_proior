@@ -4,23 +4,13 @@
 
 Modern language models are decoder-only Transformers built by stacking many identical
 blocks, each adding the output of an attention or feed-forward sublayer back onto a shared
-residual stream. Two coupled facts make this stack hard to optimize as it gets deep. First,
-training is unstable: loss and gradient spikes appear, and the deeper the model, the more
-fragile the run, often forcing smaller learning rates, careful initialization, or a learning-
-rate warmup just to avoid divergence. Second — and more insidiously — *deep* Transformers
-frequently underperform what their parameter count promises: past a certain depth, adding
-layers buys little, and diagnostic probing shows the deepest layers do almost nothing, behaving
-close to identity maps that could be removed with negligible effect.
-
-The goal is a modification of how each block writes into the residual stream that (1) keeps
-training stable as depth grows — few or no loss/gradient spikes — without sacrificing the final
-loss; (2) lets deep layers actually contribute, so adding depth keeps reducing validation loss;
-(3) costs essentially nothing — no meaningful extra parameters, FLOPs, or memory, and no
-architectural surgery to the attention/FFN sublayers themselves; and (4) is general across the
-normalization variants people actually use (pre-norm, post-norm, and their hybrids) rather than
-tied to one. A salient feature of the levers that exist for these goals is that they all act at
-*initialization* and then hand control to the optimizer for the rest of training. Closing the gap
-between what those init-time levers achieve and the four goals above is the problem.
+residual stream. Two coupled facts characterize this stack. First, training instability — loss
+and gradient spikes — increases with depth, often forcing smaller learning rates, careful
+initialization, or a learning-rate warmup. Second, deep Transformers frequently underperform
+what their parameter count promises: past a certain depth, adding layers provides diminishing
+returns, and diagnostic probing shows the deepest layers behave close to identity maps. The
+question is how to modify how each block writes into the residual stream to address these
+behaviors as depth grows.
 
 ## Background
 
@@ -33,7 +23,7 @@ Where the normalization sits relative to the skip splits the field. **Post-LN**
 it is expressive but unstable at depth and needs a learning-rate warmup to train at all.
 **Pre-LN** (`x_{l+1} = x_l + F_l(Norm(x_l))`, Xiong et al. 2020; Radford et al. 2019) normalizes
 the sublayer *input*, leaving the skip untouched; this is far more stable and is the modern
-default, but it has a known pathology of its own (below). Hybrids exist — **Sandwich-LN**
+default. Hybrids exist — **Sandwich-LN**
 (Ding et al. 2021) adds a second norm on the branch output, and **DeepNorm** (Wang et al. 2022)
 is a Post-LN that up-scales the skip and down-scales the init — each trading stability against
 the bottom-vs-top gradient imbalance differently.
@@ -43,7 +33,7 @@ Pre-LN recursion: each block adds `F_l(Norm(x_l))` to `x_l`, and since the norm 
 of the *branch input* but not the *stream*, the variance of `x_l` accumulates with depth.
 Sun et al. (2025, "The Curse of Depth") make this precise: under normal, zero-mean weights,
 `σ²_{x_l} = σ²_{x_1}·Θ(∏_{k=1}^{l-1}(1 + 1/σ_{x_k}))`, so by depth `L` the stream variance is
-bounded as `Θ(L) ≤ σ²_{x_L} ≤ Θ(exp(L))`. The consequence is the damaging part. The block Jacobian is
+bounded as `Θ(L) ≤ σ²_{x_L} ≤ Θ(exp(L))`. The block Jacobian is
 `∂Pre-LN(x)/∂x = I + (∂f(LN(x))/∂LN(x))(∂LN(x)/∂x)`; because `Norm` divides by the (now large)
 stream scale, the second term shrinks as `σ_{x_l}` grows, and the end-to-end norm
 `‖∂y_L/∂x_1‖₂ ≤ ∏_{l}(1 + A/σ_{x_l} + B/σ²_{x_l})` *converges to a finite constant* when the
@@ -75,43 +65,28 @@ through all the deep layers above it — so the two ends of the stack are entang
 training the deep end is feeding on, and feeding back into, representations that have not
 stabilized.
 
-**The prevailing toolkit and its shape.** The accumulated wisdom for taming deep residual
-training is to *control the magnitude of the model update at initialization* — through depth- or
+**The prevailing toolkit.** The accumulated wisdom for taming deep residual training is to
+*control the magnitude of the model update at initialization* — through depth- or
 width-aware initializations and through scalars multiplying the residual branch — so the network
-starts in a benign regime and the optimizer takes over from there. Every tool in the next
-section shares that shape: it sets up the first step and is then either frozen or left to the
-optimizer.
+starts in a benign regime and the optimizer takes over from there.
 
 ## Baselines
 
 **ResNet identity skip (He et al. 2016).** `x_{l+1} = x_l + F_l(x_l)`. The skip is the enabling
-trick for depth. *Limitation:* by itself it does not control how large the branch contribution
-`F_l` is, so at scale the stream's statistics and the per-layer contributions can drift; deep
-Transformers built on plain skips remain unstable without further measures.
+trick for depth.
 
 **Pre-LN vs. Post-LN (Vaswani et al. 2017; Xiong et al. 2020).** Pre-LN removes the need for a
-warmup and trains stably; Post-LN is more expressive but unstable and warmup-dependent. *Gap:*
-Pre-LN trades its stability for the variance-explosion-into-identity pathology of Diagnostic 1
-(its deep layers go dead), while Post-LN's gradients concentrate in the last layers and starve
-the bottom — neither distributes useful work evenly across depth, and the choice between them is
-itself a compromise.
+warmup and trains stably; Post-LN is more expressive but unstable and warmup-dependent.
 
 **ReZero (Bachlechner et al. 2020).** Put a single scalar on each residual branch and learn it:
 `x_{i+1} = x_i + α_i·F[W_i](x_i)`, with every `α_i` initialized to 0. At init the net is exactly
 identity (trivially dynamically isometric); the toy stack `x_L = (1+αw)^L x_0` has Jacobian
 `(1+αw)^L`, so `α=0` preserves the input signal where `α=1` would blow it up. The `α_i` are then
-trained by gradient descent like any other parameter. *Gap:* because each `α_i` is *learned and
-independent*, nothing constrains the order or the timing of how the branches turn on — the
-optimizer may grow a deep branch before the shallow ones it depends on have settled, and there
-is no notion of "respect the training phase." The mechanism is fixed *at init* (start at zero);
-after that it is at the mercy of the gradient.
+trained by gradient descent like any other parameter.
 
 **SkipInit (De & Smith 2020).** Replace normalization with a single learnable scalar `α` per
 residual branch, initialized to `0` (or `1/√d`), reproducing normalization's
-identity-at-init bias without the norm; this alone trains 1000-layer nets. *Gap:* same as ReZero
-in spirit — it is an *initialization* choice plus a free scalar; it does not impose any
-depth-ordering or any explicit dependence on the stage of training. Once learned, the scalar is
-static.
+identity-at-init bias without the norm; this alone trains 1000-layer nets.
 
 **Fixup / T-Fixup / DeepNorm (Zhang et al. 2019; Huang et al. 2020; Wang et al. 2022).** This
 line identifies the *exploding model update* as the cause of deep-Transformer instability and
@@ -119,31 +94,20 @@ bounds it by a constant via depth-aware initialization and residual scaling. Dee
 concrete and scalable: `x_{l+1} = Norm(α·x_l + F_β(x_l))` with a *constant* skip scale `α`
 (decoder-only form `(2L)^{1/4}`) and matching branch-weight scale `β` (decoder-only form
 `(8L)^{-1/4}`), which provably bounds the update at init
-and trains past 1000 layers. *Gap:* the bound is derived from, and enforced at, *initialization*
-— it is applied uniformly throughout training. Once the model has left the chaotic early regime
-and entered the stable phase, a constraint sized for the worst moment of training is unnecessarily
-conservative and can cap the learning capacity of the very layers it is protecting.
+and trains past 1000 layers.
 
 **LayerNorm Scaling (Sun et al. 2025).** To cure Diagnostic 1 directly, divide the normalized
 branch input by `√l`: `x_{l+1} = x_l + F(Norm(x_l)/√l)`. This down-weights deeper residuals,
 flattens the variance curve from exponential toward linear, and keeps deep Jacobians away from
-identity. *Gap:* the `1/√l` factor is purely *depth-dependent and static* — it never changes over
-training. As models get very deep, a fixed `1/√l` over-suppresses the deepest branches for the
-entire run, throttling their contribution even in the late phase when they should be learning at
-full strength.
+identity.
 
 **Progressive stacking / freezing (Gong et al. 2019; Yang et al. 2020; Erdogan et al. 2025).**
 Train a shallow model and *add* layers in stages, or *freeze* layers once converged, exploiting
-the shallow-converge-first phenomenon to save wall-clock. *Gap:* these operate on layers/parameters
-as discrete on/off objects — adding or freezing whole blocks — which changes the model's effective
-depth or trainable set mid-run; they do not offer a smooth, continuous, per-layer dial on how much
-a present-and-trainable layer is allowed to contribute at a given moment.
+the shallow-converge-first phenomenon to save wall-clock.
 
 **Residual-stream widening (Wang et al. 2019; Zhu et al. 2024).** DLCL and Hyper-Connections
 maintain or aggregate multiple residual streams with learned transition/weighting to improve
-representation capacity and gradient flow. *Gap:* orthogonal to stability-at-depth and they *add*
-parameters and memory (multiple streams, transition matrices); they do not address the timing of
-when each existing layer should engage.
+representation capacity and gradient flow.
 
 ## Evaluation settings
 

@@ -28,9 +28,7 @@ The dilemma is structural. To find the best arm the agent must *explore* — sam
 means it is still unsure of — but every exploratory pull of a truly worse arm is regret. Yet
 without exploration a single unlucky early sample of the best arm could make it look bad and
 bury it forever, costing regret that grows linearly in `n`. The goal is a policy whose regret
-grows as slowly as possible, with a bound that one can actually write down — and ideally a
-bound that holds for *every* finite horizon `n`, holds for *any* bounded reward distributions
-(not just a parametric family), and comes from a rule that is *cheap* to compute at each step.
+grows as slowly as possible.
 
 ## Background
 
@@ -55,15 +53,13 @@ be sure arm `j` is worse, the agent must collect enough samples to statistically
 exactly how many samples that takes. So `Theta(ln n)` pulls of each bad arm is unavoidable, and
 the best one can hope for is to match that order with the right constant.
 
-**That floor is reachable — but the known rules to reach it were awkward.** Lai & Robbins
-(1985) also exhibited rules attaining the bound, via a quantity they attached to each arm and
-called an "upper confidence index": play the arm whose index is largest, where the index is an
-optimistic estimate of the arm's mean. But computing their index is, in general, hard — it
-depends on the entire sequence of rewards seen from the arm — and the construction is tied to
-single-parameter families. Agrawal (1995) improved the practicality: a family of index rules
-whose index is a *simple function of the total reward obtained so far* from the arm, far
-cheaper to compute, while keeping the optimal logarithmic order (at the price of a larger
-leading constant in some cases).
+**Index rules reach the floor.** Lai & Robbins (1985) also exhibited rules attaining the bound,
+via a quantity they attached to each arm and called an "upper confidence index": play the arm
+whose index is largest, where the index is an optimistic estimate of the arm's mean. Their index
+depends on the entire sequence of rewards seen from the arm, and the construction is tied to
+single-parameter families. Agrawal (1995) introduced a family of index rules whose index is a
+*simple function of the total reward obtained so far* from the arm, while keeping the optimal
+logarithmic order.
 
 **A concentration tool sets the size of optimism.** For bounded random variables the
 Chernoff-Hoeffding inequality controls how far an empirical average can stray from its mean.
@@ -81,45 +77,27 @@ is the property that fixes how wide a confidence interval of a given confidence 
 `P{ S_n >= E[S_n] + a } <= exp(-(a^2/2)/(sigma^2 + a/2))` is the variance-aware refinement used
 when the reward variance, rather than just the range, is the relevant scale.)
 
-A diagnostic worth keeping in mind, because it is the failure mode the whole design must avoid:
-a policy that simply plays the arm with the highest *empirical* mean can get permanently stuck.
+A policy that simply plays the arm with the highest *empirical* mean can get permanently stuck.
 If the best arm yields a few unlucky low samples early, its empirical mean drops below a
 mediocre arm's, the greedy rule stops pulling it, and because it is never pulled again its
 estimate never recovers — the policy locks onto the wrong arm and pays gap-sized regret on
-every remaining round, i.e. `Theta(n)` total. Some persistent willingness to revisit
-under-sampled arms is therefore not optional.
+every remaining round, i.e. `Theta(n)` total.
 
 ## Baselines
 
 **Greedy / "play the empirical best" (folklore; the eps-greedy fix, Sutton & Barto 1998).**
-Track each arm's empirical mean and play the largest. Cheap and intuitive, but as noted it can
-lock onto a suboptimal arm forever after an unlucky start, giving linear regret. The standard
-patch is `eps`-greedy: with probability `1 - eps` play the empirical best, with probability
-`eps` play a uniformly random arm. A *constant* `eps` keeps exploring forever and so also
-incurs linear regret (a fixed `eps` fraction of all rounds is random). **Gap:** to get
-sublinear regret the exploration rate must be made to decay with time, and tuning that decay
-correctly requires knowing something about the instance (such as a lower bound on the smallest
-gap); with a constant rate the regret stays linear.
+Track each arm's empirical mean and play the largest. The standard variant is `eps`-greedy:
+with probability `1 - eps` play the empirical best, with probability `eps` play a uniformly
+random arm.
 
 **Lai & Robbins (1985) upper-confidence-index rules.** Attach to each arm an index — an
 optimistic estimate of its mean built from that arm's reward history — and play the arm of
 largest index. This achieves `E[T_j(n)] <= (1/D(p_j || p*) + o(1)) ln n`, matching the lower
-bound's order and constant asymptotically. **Gap:** the index is "generally hard" to compute,
-depending on the whole reward sequence; the analysis is tied to single-parameter reward
-families; and the guarantee is purely *asymptotic* — it says what happens as `n -> infinity`,
-not a bound that holds at a given finite horizon.
+bound's order and constant asymptotically.
 
 **Agrawal (1995) simple-index rules.** A family of index policies whose index is a simple
 function of the total reward seen so far from each arm, much easier to compute than Lai &
 Robbins', retaining the optimal logarithmic order (with a possibly larger leading constant).
-**Gap:** the guarantees in this line are still stated asymptotically rather than as a bound
-valid for every finite `n`, and the strongest cleanly distribution-free finite-horizon
-statement for arbitrary bounded rewards was not yet in hand.
-
-So the prior art established that logarithmic regret is both necessary and asymptotically
-achievable, and made the index cheap to compute, but left a hole: a *finite-time* regret bound
-— one that holds uniformly over `n` — for an index rule that is simple to run and assumes only
-that the rewards are bounded, with the bound written explicitly in terms of the gaps `Delta_j`.
 
 ## Evaluation settings
 

@@ -7,13 +7,9 @@ untargeted adversarial example for a correctly classified image `x` of class `y`
 at most `k` spatial pixels. A pixel counts as changed if any color channel differs from the
 original, and once a pixel is chosen its channels may take any value in `[0,1]`. The attack
 succeeds when `argmax_r f_r(x') != y`. The query budget is the main resource, because each
-score evaluation costs a full model forward pass.
-
-A useful solution must satisfy five constraints at once: use scores only, never gradients or a
-surrogate model; keep every candidate inside the exact `L0` budget; spend far fewer than the
-input dimension `d = h*w*c` queries; scale from small `32x32` images up to `224x224` ImageNet
-(`d = 150,528`); and be strong enough to serve as an *accurate robustness evaluation*, i.e.
-not under-report a model's vulnerability the way a weak attack would.
+score evaluation costs a full model forward pass. The question is how to design a score-only
+black-box attack that respects an exact `L0` pixel budget and scales from small (`32x32`)
+images to large (`224x224` ImageNet, `d = 150,528`) ones.
 
 ## Background
 
@@ -25,18 +21,12 @@ handful of pixels, but allow each to change a lot. The natural sparse budget is 
 "norm" `||delta||_0 = #{i : delta_i != 0}`; such perturbations are visible but localized, do
 not alter semantic content, and can be realized physically (stickers, tags, occlusions).
 
-**Why the `L0` ball breaks continuous optimization.** Dense `L_inf`/`L_2`/`L_1` attacks
-operate on continuous norm balls: convex bodies with smooth boundaries, where projected
-gradient descent glides — take a step, clip back, repeat — and the PGD-based robustness
-estimate is known to be reliable (Madry et al. 2018). The `L0` feasible set is different: it
-is the union of all `k`-dimensional coordinate subspaces, indexed by the chosen support.
-Projecting onto it means *selecting* which coordinates stay nonzero — a discrete top-`k`
-operation, not a continuous clip. A gradient step spreads mass over many coordinates while the
-projection abruptly discards all but `k`, so the support lurches discontinuously and the
-iteration settles on poor supports. Empirically, PGD-style `L0` attacks give *inaccurate*
-(too optimistic) robustness estimates — the discrete structure of the `L0` ball is simply not
-amenable to continuous optimization. In the black-box setting it is worse: estimating a useful
-gradient by finite differences burns many score queries before the attack commits to anything.
+**The structure of the `L0` ball.** Dense `L_inf`/`L_2`/`L_1` attacks operate on continuous
+norm balls: convex bodies with smooth boundaries, where projected gradient descent — take a
+step, clip back, repeat — gives a reliable robustness estimate (Madry et al. 2018). The `L0`
+feasible set is different: it is the union of all `k`-dimensional coordinate subspaces,
+indexed by the chosen support. Projecting onto it means *selecting* which coordinates stay
+nonzero — a discrete top-`k` operation.
 
 **The two-part structure of a sparse perturbation.** A sparse perturbation has two separable
 objects: a **support** `M` of perturbed pixels, and the **values** placed on that support. The
@@ -49,52 +39,43 @@ and current value into an effective weight vector `w_hat_x = y*w_x ⊙ (1 - 2x)`
 coordinate `i` contributes one coefficient, and the optimal `k`-sparse attack chooses the `k`
 smallest entries of `w_hat_x`. The black-box obstacle is that `w_hat_x` is hidden: a naive
 strategy estimates the weights coordinate by coordinate at `O(d)` query cost, which on
-ImageNet (`d = 150,528`) is already outside a practical budget. But the exact `k` smallest are
-more than an attack usually needs — a relaxed target is to find `k` coordinates among the `m`
-smallest for some `m > k`. This reframes query efficiency as a hitting-time question over
-subsets, and since modern ReLU networks are piecewise-linear (Arora et al. 2018), a linear
-analysis holds approximately in a small neighborhood of `x`. (These are facts about the
-problem structure, knowable before any specific attack.)
+ImageNet (`d = 150,528`) is already outside a practical budget. A relaxed target is to find
+`k` coordinates among the `m` smallest for some `m > k`. This reframes query efficiency as a
+hitting-time question over subsets, and since modern ReLU networks are piecewise-linear (Arora
+et al. 2018), a linear analysis holds approximately in a small neighborhood of `x`. (These are
+facts about the problem structure, knowable before any specific attack.)
 
 ## Baselines
-
-The prior sparse attacks a new method would be measured against, with the gap each leaves.
 
 **JSMA — Jacobian Saliency Map Attack (Papernot et al., EuroS&P 2016; arXiv:1511.07528).**
 White-box, targeted. Build a *saliency map* from the Jacobian of the outputs w.r.t. the input,
 ranking pixels by how much perturbing them raises the target logit while lowering the others,
 then greedily perturb the most salient pixel(s). Core idea: support selection by first-order
-sensitivity. **Gap:** needs white-box gradients (a Jacobian per class); a score-only version
-requires expensive gradient estimation at `O(d)`/`O(m)` cost; greedy and not budget-bounded.
+sensitivity.
 
 **SparseFool (Modas et al., CVPR 2019; arXiv:1811.02248).** White-box, geometry-inspired.
 Linearizes the decision boundary in the DeepFool style to get a minimal crossing direction,
-then sparsifies it. Core idea: exploit local linear geometry of the boundary. **Gap:**
-white-box; built for `L1`; a single linearization is a poor model of the discrete `L0` set.
+then sparsifies it. Core idea: exploit local linear geometry of the boundary.
 
 **CornerSearch (Croce & Hein, ICCV 2019; arXiv:1909.05040).** Black-box, score-based, sparse.
 Probes color-cube corners `{0,1}^c` per pixel to build an ordering of pixels by adversarial
 impact, then searches over small subsets in that ordering. Core idea: a black-box "saliency"
-ordering from corner probes. **Gap:** the initial scoring phase alone costs about `8*h*w`
-queries (`8*224*224 ~ 401k` on ImageNet) — orders of magnitude over any practical budget — and
-it *minimizes* the number of changed pixels rather than attacking at a fixed budget.
+ordering from corner probes. The initial scoring phase costs about `8*h*w` queries
+(`8*224*224 ~ 401k` on ImageNet). It minimizes the number of changed pixels rather than
+attacking at a fixed budget.
 
 **ADMM `L0` attack (Zhao et al. 2019).** Black-box alternating-direction optimization that
-first finds a successful perturbation and then shrinks its `L0`-norm. **Gap:** minimizes `L0`
-rather than attacking at a budget, and is query-heavy.
+first finds a successful perturbation and then shrinks its `L0`-norm.
 
 **Pointwise Attack (Schott et al. 2019).** Greedily resets perturbed pixels and resamples,
-used to probe robust MNIST models. **Gap:** designed to minimize changed pixels on small
-images; not query-efficient or scalable.
+used to probe robust MNIST models. Designed to minimize changed pixels on small images.
 
 **PGD0 — projected gradient descent on the `L0` ball (Croce & Hein 2019).** White-box: take a
 gradient step, then project onto the `L0` ball by keeping the top-`k` coordinates by
-magnitude. **Gap:** white-box; the discrete top-`k` projection makes the iteration unstable
-and the resulting robustness estimate inaccurate.
+magnitude.
 
 **Finite-difference gradient estimation (Ilyas et al. 2018).** Estimate `∇_z L` from pairs of
-score queries and feed it to a white-box attack. **Gap:** reading the full gradient is `O(d)`
-queries — the cost the linearized analysis above flags as prohibitive.
+score queries and feed it to a white-box attack. Reading the full gradient costs `O(d)` queries.
 
 **Random search for dense black-box attacks (Andriushchenko, Croce, Flammarion, Hein, ECCV
 2020; arXiv:1912.00049).** For the *dense* `L_inf`/`L_2` threat model, a random-search attack
@@ -105,12 +86,9 @@ fields); a specific initialization (vertical stripes / a grid); a *piecewise-con
 schedule* halving the touched fraction `p^(i)` at fixed iteration thresholds
 `{10,50,200,...,8000}` for `N=10000` (rescaled for other `N`), in analogy to step-size decay;
 and the margin objective `f_y - max_{r!=y} f_r`, all controlled by a single knob `p_init`.
-**Gap:** this geometry — "on the boundary of the ball", "a square of side `sqrt(p*w^2)`" — is
-defined for a *continuous* `L_p` ball. For the `L0` set the budget is *which coordinates* are
-nonzero, not a radius; "boundary of the ball" and "square of a given area" have no meaning. The
-transferable part is only the derivative-free accept-if-improve skeleton, the margin objective,
-the single-knob decaying schedule, and "use the budget maximally"; the sparse setting still
-needs its own way to sample feasible supports and values.
+This geometry — "on the boundary of the ball", "a square of side `sqrt(p*w^2)`" — is defined
+for a *continuous* `L_p` ball. For the `L0` set the budget is *which coordinates* are nonzero,
+not a radius.
 
 ## Evaluation settings
 
@@ -135,9 +113,7 @@ needs its own way to sample feasible supports and values.
 A score-based black-box attack plugs into a generic random-search harness. What already
 exists: a model returning logits for a batch (the only oracle), the margin objective whose
 sign is the misclassification certificate, and the outer loop that proposes a candidate,
-queries it, and keeps it iff it improves. What is *not* settled — and is the whole problem —
-is how a candidate that respects the `L0` budget should be proposed and how the proposal should
-change over the run. That is the single empty slot below.
+queries it, and keeps it iff it improves.
 
 ```python
 import torch

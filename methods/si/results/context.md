@@ -4,22 +4,14 @@ A network is trained not on one dataset but on a *sequence* of tasks `μ = 1, 2,
 arriving one at a time. While training on task `μ` the learner sees only that task's loss
 `L_μ`; the data and loss functions of all earlier tasks `ν < μ` are gone. The goal is the
 total loss over everything ever seen, `L = Σ_μ L_μ`, but we can only ever descend one summand
-at a time. The structural problem is that ordinary gradient descent on `L_μ` moves the shared
-weights wherever lowering `L_μ` demands, and those same weights encoded the earlier tasks, so
-the earlier losses `L_ν` inadvertently shoot back up. After a handful of tasks the network
-solves only the most recent one and has reverted to chance on the first — the network forgets
-catastrophically.
+at a time. Ordinary gradient descent on `L_μ` moves the shared weights to lower `L_μ`, and
+those same weights encoded the earlier tasks, so the earlier losses `L_ν` tend to increase.
+This is the problem of catastrophic forgetting in continual learning — a network may end up
+solving only the most recent task after training through a sequence.
 
-A solution has to keep the network *plastic* enough to learn each new task well, yet *stable*
-enough that learning a new task does not destroy the old ones — the stability-plasticity
-dilemma. Concretely it must answer two coupled questions. First, *which* parameters were
-important for the tasks already learned, so that those in particular should be held in place?
-Second, *how* should that importance be turned into a penalty added to the per-step loss, so
-that future training flows preferentially through the parameters that did not matter before?
-The practical bar set by the deployment setting is steep: whatever measures importance must be
-cheap (no extra backward passes per datapoint), must use only quantities available *during*
-ordinary training, must cost constant memory as the number of tasks grows, and must be
-computable locally, per parameter, from the optimization itself.
+How can a regularizer added to the per-step loss protect what the network learned on earlier
+tasks while still allowing it to learn new ones, using only quantities available during
+ordinary gradient-based training and without growing memory with the number of tasks?
 
 ## Background
 
@@ -37,19 +29,17 @@ Choy et al. 2006).
 Several framings of the loss geometry are available and load-bearing for any importance-based
 fix. A deep network is heavily over-parameterized, so a task does not pin down a single
 solution but a whole low-loss manifold (Sussmann 1992): there are typically many weight
-configurations achieving the same performance on task A. That over-parameterization is the
-source of hope — after learning A there may well be a nearby configuration that *also* solves
-B, if only one can be steered toward it instead of toward an arbitrary B-minimum. Near a
-converged point `θ*` of a task, a first-order Taylor expansion of the loss in a small
-parameter move is `L(θ + δ) − L(θ) ≈ Σ_k g_k δ_k` with `g_k = ∂L/∂θ_k`; and a second-order
+configurations achieving the same performance on task A. Near a converged point `θ*` of a
+task, a first-order Taylor expansion of the loss in a small parameter move is
+`L(θ + δ) − L(θ) ≈ Σ_k g_k δ_k` with `g_k = ∂L/∂θ_k`; and a second-order
 expansion `L(θ) ≈ L(θ*) + ½ (θ−θ*)ᵀ H (θ−θ*)` describes the local bowl by its Hessian `H`,
 whose curvature along a direction says how much loss is paid for moving the weights that way.
 Stiff (high-curvature) directions are exactly the ones a past task cared about; flat
 (low-curvature) directions are free to move. Empirically the relevant Hessian in these
-problems is *low rank* — most directions in weight space are flat for any given task — which is
-precisely what leaves room for later tasks to be solved without disturbing earlier ones. The
-first-order expansion also assigns an immediate coordinate-wise contribution to a small update,
-which gives a local language for asking which parameters did work during optimization.
+problems is *low rank* — most directions in weight space are flat for any given task — which
+leaves room for later tasks to be solved without disturbing earlier ones. The first-order
+expansion also assigns an immediate coordinate-wise contribution to a small update, which
+gives a local language for asking which parameters did work during optimization.
 
 There is also a probabilistic framing. Optimizing a task is finding the most probable
 parameters given its data, and after task A all that A taught is, in principle, summarized in
@@ -82,35 +72,22 @@ L(θ) = L_B(θ) + Σ_i (λ/2) · F_i · (θ_i − θ*_{A,i})^2 .
 
 The spring is stiff exactly on the weights A cared about (large `F_i`) and slack on the rest,
 so B is learned through the unimportant directions. `F_i = E[(∂ log p(y|x) / ∂θ_i)^2]` is the
-diagonal Fisher, positive-semidefinite and equal near a minimum to the curvature. **Gaps:**
-the Fisher is a *point* estimate evaluated *at the converged endpoint* `θ*_A`, computed in a
-*separate phase after* the task finishes — an extra sweep that is not part of training and that
-sees only the final point, not how the network got there. Computing the diagonal Fisher
-exactly requires summing over all possible output labels, so its cost grows with the number of
-outputs, restricting the method to low-dimensional output spaces. And for a third task one must
-either keep a separate Fisher per past task (memory growing with the number of tasks) or fold
-them together.
+diagonal Fisher, positive-semidefinite and equal near a minimum to the curvature. The Fisher is
+evaluated at the converged endpoint `θ*_A` in a separate phase after the task finishes.
 
 **Functional / distillation regularizers (Li & Hoiem 2016, "Learning without Forgetting"; Jung
 et al. 2016).** Instead of constraining the weights, constrain the network's *function*: when
 training on new data, keep the new network's outputs (or final hidden activations) close to the
-old network's via a distillation penalty (Hinton et al. 2014). **Gap:** every new datapoint
-requires a forward pass through a stored copy of the *old* network to produce the target to
-match, which is computationally expensive, and it preserves the input-output map only on the
-distribution of the *new* data.
+old network's via a distillation penalty (Hinton et al. 2014). Every new datapoint uses a
+forward pass through a stored copy of the old network to produce the target to match.
 
 **Architectural methods (freezing layers, Razavian et al. 2014; reduced learning rates for
 shared layers, Donahue et al. 2014, Yosinski et al. 2014; Progressive Networks, Rusu et al.
 2016).** Prevent interference by changing the network rather than the objective — freeze the
-weights of solved tasks, or copy the whole network per task and add fresh capacity. **Gap:** the
-architecture (and hence memory and compute) grows with the number of tasks, and frozen weights
-forfeit any positive transfer to later tasks.
+weights of solved tasks, or copy the whole network per task and add fresh capacity.
 
-**A single quadratic anchor (uniform-stiffness L2).** The crude regularizer
-`Σ_i (θ_i − θ*_{A,i})^2` pulls *every* weight back equally. **Gap:** one global stiffness cannot
-be right — large enough to hold A in place is too rigid to learn B; small enough to learn B
-fails to hold A. The whole point is that the stiffness must be *per parameter*, set by how much
-each weight mattered.
+**A single quadratic anchor (uniform-stiffness L2).** The regularizer
+`Σ_i (θ_i − θ*_{A,i})^2` pulls every weight back equally with a single global stiffness.
 
 ## Evaluation settings
 
@@ -138,13 +115,12 @@ protocols already in use:
 
 The regularizer plugs into an otherwise-ordinary minibatch training loop that sweeps the tasks
 in sequence and, on each step, adds a regularization penalty to the task loss before
-backpropagation. What is *not* settled — and is exactly what must be designed — is the per-
-parameter importance and the penalty built from it, so the substrate is only the generic
-sequential-training machinery that already exists: a loop over tasks, a per-step update of the
-parameters by an existing optimizer, a snapshot of the parameters taken when a task ends to
-serve as the reference point the penalty pulls toward, and two empty slots. The first slot is
-filled once per task, after it finishes, and returns a per-parameter update to the carried
-importance; the second is called every step and returns the scalar penalty added to the loss.
+backpropagation. The substrate is the generic sequential-training machinery: a loop over tasks,
+a per-step update of the parameters by an existing optimizer, a snapshot of the parameters
+taken when a task ends to serve as the reference point the penalty pulls toward, and two empty
+slots. The first slot is filled once per task, after it finishes, and returns a per-parameter
+update to the carried importance; the second is called every step and returns the scalar penalty
+added to the loss.
 
 ```python
 import torch

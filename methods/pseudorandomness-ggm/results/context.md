@@ -27,28 +27,20 @@ plausible hardness assumption — and do it constructively, so the generator is 
 **Why the classical measures of randomness do not generate randomness.** Kolmogorov, Chaitin,
 Solomonoff measure the randomness of an individual string by the length of its shortest program: a
 k-bit string is random if no program shorter than k bits outputs it. This is an inherent property of
-the individual string, and it is the "right" notion of information content. But it is useless for
-*generating* randomness. It is non-constructive; the set of Kolmogorov-random strings is
-non-recursive (uncomputable); and crucially, *no* efficient algorithm that reads fewer than k truly
-random bits can output a k-bit Kolmogorov-random string — by definition the short input is a short
-description of the output. Generalizations that require the description to be both short *and*
-efficient (Sipser, Hartmanis, Levin's early notes) inherit the same obstruction. So shortest-
-description randomness, however philosophically correct, forbids the very thing I want: stretching.
+the individual string and the right notion of information content. It is non-constructive; the set
+of Kolmogorov-random strings is non-recursive (uncomputable). Generalizations that require the
+description to be both short *and* efficient (Sipser, Hartmanis, Levin's early notes) inherit the
+same character.
 
-**Statistical-test randomness, and its weakness.** The pragmatic tradition (Knuth) tests a
-pseudorandom sequence against a battery of statistical tests — roughly the right count of 0s and 1s,
-no short repeats, the right run-lengths. The linear congruential generator x_{i+1} = a·x_i + b
-mod n passes these and produces "well-mixed" numbers cheaply. But it is catastrophically
-predictable: Plumstead showed the entire sequence can be inferred from a few outputs even when
-a, b, n are all unknown. Passing *some* fixed list of tests is no guarantee; an adversary simply
-devises a test not on the list — here, "predict the next number." Blum, Blum and Shub make the same
-point: a sequence can have a hard problem embedded in it and still fail to look random (its high-
-order bits can be biased and predictable). So I cannot trust any fixed finite battery.
+**Statistical-test randomness.** The pragmatic tradition (Knuth) tests a pseudorandom sequence
+against a battery of statistical tests — roughly the right count of 0s and 1s, no short repeats,
+the right run-lengths. The linear congruential generator x_{i+1} = a·x_i + b mod n passes these
+and produces well-mixed numbers cheaply. Blum, Blum and Shub observe that a sequence can have a
+hard problem embedded in it and still have biased high-order bits.
 
 **Unpredictability as a candidate.** Shamir built a generator from RSA whose next *number* is as
 hard to predict as inverting RSA. That is a real step — hardness is now *embedded*, not hoped for —
-but it produces numbers, not bits, and an unpredictable number can still look very non-random (e.g.
-its top bits biased), so dividing the output into k-bit chunks need not yield uniform-looking bits.
+but it produces numbers, not bits.
 
 **The hardness primitives on the table.** Diffie–Hellman's one-way function idea is now formalized:
 a one-way function f is efficiently computable but, for every efficient algorithm A and random x,
@@ -78,35 +70,27 @@ compute the i-th bit, for i up to 2^k, in poly(k) time, and would such random ac
 ## Baselines
 
 **Linear congruential generators (Knuth; analysed by Plumstead).** x_{i+1} = a·x_i + b mod n. Fast,
-passes Knuth's statistical batteries, used everywhere for simulation. Gap: fully predictable — the
-recurrence (hence all future outputs) is inferable from a handful of outputs even with a, b, n
-secret. No embedded hardness; worthless against an adversary who tests for predictability.
+passes Knuth's statistical batteries, used everywhere for simulation.
 
 **Shamir's RSA-number generator.** Emits a sequence of numbers x_i from a secret seed such that
-predicting the next number is as hard as inverting RSA. Gap: outputs numbers, not bits; an
-unpredictable number need not *look* random (high-order bits can be biased), so it is not safe to
-slice into uniform-looking bits, and it gives no clean per-bit guarantee.
+predicting the next number is as hard as inverting RSA.
 
 **Blum–Micali cryptographically-strong sequence generator (the immediate ancestor).** From a
 one-way permutation f on a domain D (e.g. discrete-exp f(s)=g^s mod p), produce a bit sequence from a
 secret seed. They define security by the *next-bit test*: for every efficient
 predictor C and every i, Pr[C(b_1…b_i) = b_{i+1}] < 1/2 + negligible — no efficient observer of the
 prefix guesses the next bit better than a coin. They prove their generator passes this test by a
-reduction to the intractability of discrete log. Two gaps this leaves open. (i) Passing the *next-bit* test is one specific test —
-does it imply passing *all* efficient tests (true indistinguishability from uniform)? Blum and
-Micali conjecture so and note Yao's claim of equivalence, but the next-bit test alone is not
-obviously the universal notion. (ii) The construction gives a polynomial-length consecutive
-sequence from one seed; it does not give a way to jump to exponentially far positions while
-preserving randomness. The separate easy-access question, highlighted for pads based on squaring
-modulo a Blum integer, asks whether the exponentially-long pad as a whole can be randomly accessed
-without losing its random-looking behavior.
+reduction to the intractability of discrete log. Blum and Micali conjecture that passing the
+next-bit test implies passing all efficient tests (true indistinguishability from uniform), and note
+Yao's claim of equivalence. The construction gives a polynomial-length consecutive sequence from one
+seed. The separate easy-access question, highlighted for pads based on squaring modulo a Blum
+integer, asks whether the exponentially-long pad as a whole can be randomly accessed.
 
 **Goldwasser–Micali probabilistic encryption / bit security.** Defines a single bit's encryption to
 be "bit-secure" if no small circuit guesses the encrypted bit better than 1/2 + negligible, and
 proves (via a separator/hybrid argument) that encryptions of long strings are unseparable iff the
 single-bit scheme is bit-secure. This supplies the template of "indistinguishability of two
-ensembles, reduced to a one-bit hardness by a hybrid," but it is about encryption, not about
-generating randomness or random functions.
+ensembles, reduced to a one-bit hardness by a hybrid."
 
 ## Evaluation settings
 
@@ -124,5 +108,3 @@ function at points of its choice and must decide whether it is talking to a memb
 adaptive "chosen-exam" prediction game: query f adaptively, then name a fresh point x and try to
 recognize f(x) among random alternatives. The computational models are the Turing machine and,
 interchangeably, the Boolean circuit with poly(k) gates.
-
-

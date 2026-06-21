@@ -2,13 +2,11 @@
 
 ## Research question
 
-A large language model generates text autoregressively: one token at a time, left to right, each token sampled from the conditional distribution over the next token given everything so far. That single mechanism, scaled up, handles arithmetic, commonsense, and symbolic tasks through prompting, but it is still a committed left-to-right walk. Once a token is emitted, the model does not explicitly revisit it; the pass runs forward and does not return.
-
-The question is whether that mechanism is enough for general problem solving, and if not, which kinds of problems expose its limits. The suspicious cases are those where early decisions are pivotal: a poor early commitment can foreclose every later solution, and the left-to-right pass has no recourse once it has been made. Game of 24 makes this concrete: given four numbers and the operations `+ - * /`, a model can know the arithmetic perfectly while still making a first equation that forecloses all later solutions, then plow forward to a wrong answer.
+A large language model generates text autoregressively: one token at a time, left to right, each token sampled from the conditional distribution over the next token given everything so far. That single mechanism, scaled up, handles arithmetic, commonsense, and symbolic tasks through prompting. The question is how to extend language-model problem solving to tasks where partial progress is meaningful and early commitments matter — such as Game of 24, where four numbers and the operations `+ - * /` must be combined in sequence to equal 24, and where an early equation step determines which numbers remain.
 
 ## Background
 
-**Autoregressive decoding.** A pretrained LM with parameters θ factorizes a sequence as p_θ(x) = ∏_i p_θ(x[i] | x[1..i-1]). Greedy decoding, beam search, top-k sampling, and top-p sampling all operate at the token level: they choose among likely next tokens, scored by the model's own probability or a variant of it. Beam search keeps several token prefixes alive, but its ranking signal is likelihood, not whether a partial answer is on track toward the task goal.
+**Autoregressive decoding.** A pretrained LM with parameters θ factorizes a sequence as p_θ(x) = ∏_i p_θ(x[i] | x[1..i-1]). Greedy decoding, beam search, top-k sampling, and top-p sampling all operate at the token level: they choose among likely next tokens, scored by the model's own probability or a variant of it. Beam search keeps several token prefixes alive, ranked by likelihood.
 
 **Prompting as problem solving.** The standard in-context setup wraps an input x with instructions and/or a few input-output examples, then samples y from p_θ(y | prompt_IO(x)). This works when the input-output map is shallow enough to materialize in one completion.
 
@@ -16,17 +14,17 @@ The question is whether that mechanism is enough for general problem solving, an
 
 **Problem solving as search.** Newell, Shaw, and Simon framed problem solving as search through a combinatorial problem space: nodes are partial solutions, branches are operators that extend them, and heuristics guide which branches to take, prune, or revisit. Search procedures such as breadth-first search, depth-first search, A*, and Monte Carlo tree search are standard, but their heuristic functions have usually been hand-programmed or learned separately.
 
-**Dual-process framing.** Cognitive science often contrasts fast associative decisions with slower deliberate planning. Token-by-token generation resembles the fast mode, and the question is what the slower, more deliberate mode would have to look like for an LM. The Game of 24 diagnosis makes the gap concrete: a strong model can fail after an early equation step, not because it lacks arithmetic knowledge, but because the decoding process has no recourse after a poor early commitment.
+**Dual-process framing.** Cognitive science often contrasts fast associative decisions with slower deliberate planning. Token-by-token generation resembles the fast mode; deliberate planning involves evaluating partial progress and selecting among alternatives.
 
 ## Baselines
 
-**Input-output prompting.** y ~ p_θ(y | prompt_IO(x)). One forward pass produces one answer. It has no explicit intermediate computation, so tasks that need working steps depend on the completion happening to include the right implicit path.
+**Input-output prompting.** y ~ p_θ(y | prompt_IO(x)). One forward pass produces one answer.
 
-**Chain-of-thought prompting.** z_i ~ p_θ^CoT(z_i | x, z_{1..i-1}) and y ~ p_θ^CoT(y | x, z_{1..n}); in implementation, [z_{1..n}, y] is sampled as a continuous chain. It provides intermediate steps but remains one linear path with no branching, no partial-state evaluation, and no backtracking.
+**Chain-of-thought prompting.** z_i ~ p_θ^CoT(z_i | x, z_{1..i-1}) and y ~ p_θ^CoT(y | x, z_{1..n}); in implementation, [z_{1..n}, y] is sampled as a continuous chain. It provides intermediate steps in a single linear path.
 
-**Self-consistency with chain-of-thought.** Sample k independent complete chains [z_{1..n}^{(i)}, y^{(i)}] and return argmax_y #{i : y^{(i)} = y}. This explores a richer set of full solutions, but it does not explore alternatives within a chain at a pivotal step, and the frequency heuristic is natural only when answers repeat in a limited output space.
+**Self-consistency with chain-of-thought.** Sample k independent complete chains [z_{1..n}^{(i)}, y^{(i)}] and return argmax_y #{i : y^{(i)} = y}. This explores a set of full solutions and uses the frequency of final answers as a selection heuristic.
 
-**Self-refinement.** Generate a full answer, then condition on it and feedback to produce a revised answer, repeating for a small number of rounds. This can revise globally, but it does not directly target the local branch where a partial solution first went wrong and may require an external correctness signal.
+**Self-refinement.** Generate a full answer, then condition on it and feedback to produce a revised answer, repeating for a small number of rounds.
 
 ## Evaluation settings
 

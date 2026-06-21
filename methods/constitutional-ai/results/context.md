@@ -1,20 +1,18 @@
-The setting is training a large language-model assistant to be helpful *and* harmless, around 2022, when the established alignment recipe is reinforcement learning from human feedback (RLHF). The aim is an assistant that is helpful, honest, and harmless (HHH), but the standard way of getting harmlessness — collecting tens of thousands of human preference labels on which of two responses is less harmful — is expensive, slow to iterate, opaque, and pushes models toward unhelpful evasiveness.
+The setting is training a large language-model assistant to be helpful *and* harmless, around 2022. The established alignment recipe is reinforcement learning from human feedback (RLHF). The aim is an assistant that is helpful, honest, and harmless (HHH). The standard way of getting harmlessness is to collect tens of thousands of human preference labels on which of two responses is less harmful.
 
 ## Research question
 
-Can an assistant be made harmless **without any human feedback labels for harm** — using only a short, explicit list of natural-language principles as the human input — while staying helpful and *non-evasive*? Four pain points motivate this:
+Can an assistant be made harmless using only a short, explicit list of natural-language principles as the human input, rather than human feedback labels for harm — while staying helpful and non-evasive? Several considerations frame this:
 
-1. **Scaling supervision.** Human labeling of harmful behavior does not scale, and as models approach or exceed human ability on some tasks we will need ways for AI to help supervise AI, with humans providing a small amount of high-quality, legible oversight rather than exhaustive labels.
-2. **Evasiveness.** When harmlessness is taught by rewarding human-preferred responses to harmful prompts, crowdworkers tend to reward refusals, so the assistant learns to be evasive — it stonewalls controversial questions ("I can't help with that") instead of engaging and explaining its objection. This creates a real tension: training hard for harmlessness costs helpfulness.
-3. **Transparency.** The objective of a model trained on tens of thousands of private preference labels is effectively unknowable — no one can summarize what all those labels collectively encode. Encoding the goals as a short list of written principles would make the training objective legible.
-4. **Iteration cost.** Changing the harmlessness objective under RLHF means collecting a fresh batch of human labels. A method whose objective lives in a few sentences could be re-steered without new data collection.
-
-A solution must drive harmlessness down to a short written principle list, eliminate evasiveness (engage and explain rather than refuse blankly), and keep helpfulness.
+1. **Scaling supervision.** As models approach or exceed human ability on some tasks, AI can help supervise AI, with humans providing a small amount of high-quality, legible oversight rather than exhaustive labels.
+2. **Evasiveness.** When harmlessness is taught by rewarding human-preferred responses to harmful prompts, crowdworkers tend to reward refusals, so the assistant learns to be evasive — it stonewalls controversial questions ("I can't help with that") instead of engaging and explaining its objection.
+3. **Transparency.** Encoding the goals as a short list of written principles would make the training objective legible, in contrast to a model trained on tens of thousands of private preference labels.
+4. **Iteration cost.** Changing the harmlessness objective under RLHF means collecting a fresh batch of human labels; an objective living in a few sentences could be re-steered without new data collection.
 
 ## Background
 
-- **RLHF** (Christiano et al. 2017; Stiennon et al. 2020; Bai et al. 2022 "Training a Helpful and Harmless Assistant"; Ouyang et al. 2022 InstructGPT). Pipeline: collect human preference comparisons (which of two model responses is better), train a **preference model (PM)** that scores responses, then fine-tune the policy with reinforcement learning (PPO-style) against the PM reward, with a KL penalty to a reference model to keep the policy from drifting. RLHF already takes one step toward scaled supervision — the immediate reward at RL time comes from a learned PM, not a human in the loop — but it still needs tens of thousands of human labels to *train* that PM. The Bai et al. (2022) HH assistant is the direct predecessor: it trains separate helpfulness and harmlessness preference data and exhibits the helpfulness/harmlessness tradeoff and the evasiveness problem.
-- **Helpful/harmless tension and Elo evaluation.** Prior work measures helpfulness and harmlessness by crowdworker preference comparisons converted to Elo scores; helpful-only models are more helpful but more harmful, HH models are more harmless but more evasive. The crux observation: evasiveness was *rewarded* by crowdworkers as a response to harmful inputs.
+- **RLHF** (Christiano et al. 2017; Stiennon et al. 2020; Bai et al. 2022 "Training a Helpful and Harmless Assistant"; Ouyang et al. 2022 InstructGPT). Pipeline: collect human preference comparisons (which of two model responses is better), train a **preference model (PM)** that scores responses, then fine-tune the policy with reinforcement learning (PPO-style) against the PM reward, with a KL penalty to a reference model to keep the policy from drifting. At RL time the immediate reward comes from a learned PM, not a human in the loop; training that PM uses tens of thousands of human labels. The Bai et al. (2022) HH assistant trains separate helpfulness and harmlessness preference data and exhibits a helpfulness/harmlessness tradeoff.
+- **Helpful/harmless tension and Elo evaluation.** Prior work measures helpfulness and harmlessness by crowdworker preference comparisons converted to Elo scores; helpful-only models are more helpful but more harmful, HH models are more harmless but more evasive. Evasiveness was *rewarded* by crowdworkers as a response to harmful inputs.
 - **Red teaming.** Crowdworkers write adversarial prompts designed to bait the assistant into harmful content (Ganguli et al. 2022, "Red Teaming Language Models"), producing datasets of harmful prompts used to elicit and then measure harmful behavior.
 - **In-context capabilities of large LMs.** Large models can follow natural-language instructions and respond to instructions about a piece of text. Their answer probabilities are often well-calibrated when a question is posed as a multiple-choice question (Kadavath et al. 2022 — language models' answer probabilities are calibrated).
 - **Chain-of-thought reasoning** (Nye et al. 2021 scratchpads; Wei et al. 2022; Kojima et al. 2022 "Let's think step by step"): prompting a model to reason step by step before answering improves performance on judgment tasks and makes the reasoning legible.
@@ -22,9 +20,9 @@ A solution must drive harmlessness down to a short written principle list, elimi
 
 ## Baselines
 
-- **Helpful RLHF.** RLHF trained only on helpfulness comparisons. Very helpful, but harmful (will comply with pernicious requests). Used here as the *starting* assistant.
-- **HH RLHF** (Bai et al. 2022). RLHF on both helpfulness and harmlessness human comparisons. More harmless than helpful-only, but evasive and with reduced helpfulness — and requires the full harmlessness human-label collection. Any replacement has to preserve harmlessness without those labels and without the evasiveness.
-- **Other instruction/feedback-trained assistants** (InstructGPT, LaMDA, Sparrow): RLHF-family systems with rule- or human-feedback-based safety; all depend on substantial human supervision for safety behavior.
+- **Helpful RLHF.** RLHF trained only on helpfulness comparisons. Very helpful, will comply with pernicious requests. Used here as the *starting* assistant.
+- **HH RLHF** (Bai et al. 2022). RLHF on both helpfulness and harmlessness human comparisons. More harmless than helpful-only, more evasive and less helpful, and requires the full harmlessness human-label collection.
+- **Other instruction/feedback-trained assistants** (InstructGPT, LaMDA, Sparrow): RLHF-family systems with rule- or human-feedback-based safety, depending on human supervision for safety behavior.
 
 ## Evaluation settings
 

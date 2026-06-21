@@ -1,8 +1,6 @@
 ## Research question
 
-First-order theories can describe many infinite structures, but they do not by themselves determine a unique intended infinite size. A theory may force infinitude by saying that every finite list misses something, yet each such sentence is still finite and only quantifies over first-order variables. The question is how far that limitation goes: if a first-order theory has an infinite model in a countable language, must it also have a much smaller infinite model satisfying exactly the same first-order sentences?
-
-The useful target is stronger than merely finding any smaller model of the same axioms. If a large structure `M` is already given, a sharp result would carve from it a substructure `N` of controlled cardinality such that every first-order formula with parameters from `N` has the same truth value in `N` as in `M`. This would show that first-order truth is preserved even after shrinking the domain, so long as the smaller domain contains enough witnesses.
+First-order theories can describe many infinite structures, but they do not by themselves determine a unique intended infinite size. A theory may force infinitude by saying that every finite list misses something, yet each such sentence is still finite and only quantifies over first-order variables. The question is how far that limitation goes: if a first-order theory has an infinite model in a countable language, what can be said about the range of infinite cardinalities in which it can be satisfied, and to what extent does first-order truth depend on the size of the domain?
 
 ## Background
 
@@ -18,22 +16,17 @@ Skolem's paradox is the visible pressure point. Set theory may prove, internally
 
 ## Baselines
 
-- **Plain substructure.** Taking an arbitrary subset and closing it under the language's original function symbols gives a substructure. Gap: existential formulas may be true in the large structure only because of witnesses outside the chosen substructure.
+- **Plain substructure.** Taking an arbitrary subset and closing it under the language's original function symbols gives a substructure that satisfies universal and atomic formulas when those hold in the larger structure.
 
-- **Complete elementary equivalence.** Compactness and Henkin constructions can build models of a theory with controlled size. Gap: this can produce a model satisfying the same sentences without necessarily preserving the given structure's parameter-by-parameter truth.
+- **Complete elementary equivalence.** Compactness and Henkin constructions can build models of a theory with controlled size, producing a model satisfying the same sentences as a given theory.
 
-- **Finite approximations to infinity.** First-order theories can include schemes saying there are at least `n` distinct elements for each finite `n`. Gap: no single first-order sentence in the ordinary language says "the domain has exactly this infinite cardinality," so finite expressibility does not pin down intended infinite size.
+- **Finite approximations to infinity.** First-order theories can include schemes saying there are at least `n` distinct elements for each finite `n`, encoding infinitude through finitely many first-order sentences.
 
-- **Cardinality by naming elements.** Adding constants can force a model to contain a chosen small parameter set. Gap: naming elements alone does not ensure existential witnesses for formulas using those parameters are also present.
+- **Cardinality by naming elements.** Adding constants to a language can force a model to contain any chosen small parameter set.
 
 ## Evaluation settings
 
-The artifact is a theorem and proof in model theory. The natural setting is a first-order language `L`, an `L`-structure `M`, and a chosen subset `A subseteq M`. For the countable case, `L` is countable and `A` is finite or countable. The proof should produce an elementary substructure containing `A` whose size is no larger than `max(|A|, |L|, aleph_0)`.
+The artifact is a theorem and proof in model theory. The natural setting is a first-order language `L`, an `L`-structure `M`, and a chosen subset `A subseteq M`. For the countable case, `L` is countable and `A` is finite or countable.
 
 Stress cases include uncountable models in countable languages, structures with many definable existential choices, and set-theoretic structures where the smaller elementary submodel is externally countable while still satisfying first-order statements that internally describe uncountability.
 
-## Proof artifact
-
-The final artifact should state the downward theorem in Skolem-hull form: for any `L`-structure `M` and any `A subseteq M`, there is `N prec M` with `A subseteq N` and `|N| <= max(|A|, |L|, aleph_0)`. In a countable language, every infinite structure has a countable elementary substructure containing any prescribed countable set.
-
-The proof should choose witness functions for all formulas, close `A` under the original functions and these witness choices by an omega-stage construction, bound the size at each stage, and then apply the Tarski-Vaught test. The size control should come from the fact that only `|L| + aleph_0` many formulas and finite tuples have to be handled at each stage.

@@ -7,13 +7,9 @@ asserted in a margin around 1637 that it does not, and left no proof. For three 
 question resisted every general method. By the 1980s the partial results came from one tradition:
 Kummer's nineteenth-century work on cyclotomic fields and ideal class numbers had settled the
 exponent p for every "regular" prime, and refinements of that circle of ideas pushed verification
-to large but finite bounds. None of it reached infinity. The pain point is structural: the equation
-is one Diophantine fact, and the cyclotomic machinery attacks it head-on, prime by prime, without
-any deeper object to leverage. A genuine solution would have to recast the lone equation as an
-instance of some far more general arithmetic phenomenon — one rich enough that proving the general
-phenomenon kills the equation as a side effect.
+to large but finite bounds.
 
-The reframing that makes this conceivable is to attach geometry to a hypothetical solution. Given a
+The reframing that makes progress conceivable is to attach geometry to a hypothetical solution. Given a
 counterexample a^p + b^p = c^p (p an odd prime), form the elliptic curve
 
     E:  y^2 = x(x - a^p)(x + b^p).
@@ -24,9 +20,8 @@ semistable. The mod-p Galois representation on its p-torsion, rho: Gal(Qbar/Q) -
 then unramified at every odd bad prime q ≠ p and finite flat at p: the p-th-power structure of
 the discriminant makes the tame inertia disappear modulo p. A representation that flat and that
 unramified is exactly the kind that "should not exist" once it is forced to be modular. So the
-research question becomes: can one prove that a semistable elliptic curve over Q must be modular —
-arise from a modular form — and thereby let level-lowering drive the Frey curve to an impossible
-space of modular forms?
+research question becomes: can one prove that every semistable elliptic curve over Q is modular —
+arising from a modular form?
 
 ## Background
 
@@ -87,40 +82,29 @@ between a Selmer group and its dual, and between Selmer groups as the allowed ra
 
 **Euler systems.** Kolyvagin's method of Euler systems produces, from a compatible family of
 cohomology classes (e.g. Heegner points, cyclotomic units), sharp upper bounds on Selmer groups and
-Tate-Shafarevich groups. Flach constructed what looked like the first step of such a system in the
-setting needed here. An Euler system, if completed, would bound the relevant Selmer group directly.
+Tate-Shafarevich groups. Flach constructed what looks like the first step of such a system in the
+setting needed here.
 
 ## Baselines
 
 - **Kummer's cyclotomic approach to FLT (regular primes).** Works in Z[zeta_p]; for primes p not
   dividing the class number of Q(zeta_p) (regular primes), unique factorization obstructions vanish
-  and FLT for exponent p follows. Limitation: irregular primes are infinitely many and not handled
-  uniformly; the method never reaches all exponents and offers no general object — it attacks the
-  equation directly.
+  and FLT for exponent p follows.
 - **Langlands-Tunnell theorem.** For a continuous odd irreducible complex representation with finite
   solvable projective image (dihedral, A_4, or S_4), the representation is modular and arises from a
   weight-one form. Read mod p with p = 3: since PGL_2(F_3) ≅ S_4, every odd irreducible mod-3
   representation with image defined over F_3 has projective image in a solvable group, and the
   weight-one result gives the needed residual modularity after the standard mod-3 weight adjustment.
-  Limitation: it gives only the residual modularity in the solvable case; it says nothing about
-  characteristic-zero lifts, and it does not apply when the mod-3 representation is reducible.
 - **Ribet's theorem / Serre's epsilon conjecture.** Level-lowering: a mod-p modular representation
   unramified at q (and finite flat at p) that occurs at level qN already occurs at level N.
-  Consequence for the Frey curve: modular => weight-2 level-2 => contradiction. Limitation: it
-  assumes the Frey curve is modular; it does not prove modularity of anything. It converts FLT into
-  the modularity of semistable curves but leaves that modularity wide open.
+  Consequence for the Frey curve: modular => weight-2 level-2 => contradiction. This converts FLT
+  into the modularity of semistable curves.
 - **Mazur's R=T expectation and deformation rings.** Gives the language (universal deformation ring,
-  Hecke ring) and the conjecture that they agree in special cases, but no general proof technique;
-  the deformation theory needed development (e.g. a flat-deformation theory at p, the minimal-level
-  theory).
-- **Euler systems (Kolyvagin, Flach).** Bound Selmer groups when a long enough compatible system of
-  classes exists. Limitation here: the system constructed extending Flach's first step is not long
-  enough / not complete in the generality required — it does not establish the upper bound on the
-  Selmer group for the cases needed.
-- **Iwasawa-theoretic class-number formulas.** Give the right kind of bound in the cyclotomic CM
-  setting, but translated into the ring-theoretic (deformation) language they appear to require
-  unknown principles of base change — exact relations between Hecke rings for different fields in the
-  cyclotomic tower, not just up to torsion.
+  Hecke ring) and the conjecture that they agree in special cases.
+- **Euler systems (Kolyvagin, Flach).** Bound Selmer groups when a compatible system of cohomology
+  classes exists.
+- **Iwasawa-theoretic class-number formulas.** Give sharp bounds on class groups / Selmer groups in
+  the cyclotomic CM setting via special values of L-functions.
 
 ## Evaluation settings
 

@@ -2,11 +2,11 @@
 
 ## Problem
 
-Given a string `s` of length `n`, return a longest substring that reads the same forwards and backwards. The implementation should run in `O(n)` time and expose reusable center data for callers that need more than the single longest substring.
+Given a string `s` of length `n`, return a longest substring that reads the same forwards and backwards.
 
 ## Code framework
 
-The input is a Python string. The lower-level routine returns per-center data; the public convenience routine uses that data to recover one longest palindromic substring.
+The input is a Python string. A lower-level routine computes auxiliary data; a public convenience routine uses that data to return one longest palindromic substring.
 
 ```python
 def manacher(s):

@@ -2,11 +2,11 @@
 
 ## Research Question
 
-Self-attention is the main runtime and memory bottleneck in a Transformer when the sequence length `N` grows, because the score matrix has `N^2` entries. Long-document, code, image, audio, and video use cases push context length upward, but most large training and inference systems still want exact softmax attention rather than a low-rank, sparse, or kernel approximation.
+In a Transformer, self-attention runtime and memory grow with the sequence length `N`, because the score matrix has `N^2` entries. Long-document, code, image, audio, and video use cases push context length upward, and most large training and inference systems use exact softmax attention rather than a low-rank, sparse, or kernel approximation.
 
-The question is therefore a systems question: given an exact attention primitive that already avoids materializing the full `N x N` attention matrix, can the kernel be brought closer to GEMM-like throughput without changing the mathematical output and without returning to quadratic activation memory?
+The question is a systems question: given an exact attention primitive that already avoids materializing the full `N x N` attention matrix, how close to GEMM-like throughput can the kernel run while keeping the mathematical output unchanged and the activation memory linear in `N`?
 
-The important constraint is that the target computation remains
+The constraint is that the target computation remains
 
 ```text
 S = Q K^T
@@ -47,17 +47,15 @@ The row vector `D` is the row-wise dot product of `dO` and `O`; it is the same a
 
 ## Existing Baselines
 
-The standard implementation calls a GEMM for `QK^T`, writes the `N x N` score matrix to HBM, reads it back for softmax, writes the `N x N` probability matrix, then reads that matrix again for `PV`. It also stores the probability matrix for the backward pass. This has quadratic memory in `N` and is dominated by HBM traffic when `N` is much larger than the head dimension `d`.
+The standard implementation calls a GEMM for `QK^T`, writes the `N x N` score matrix to HBM, reads it back for softmax, writes the `N x N` probability matrix, then reads that matrix again for `PV`. It also stores the probability matrix for the backward pass. This has quadratic memory in `N`.
 
-The IO-aware exact baseline uses tiling and recomputation. It loads blocks of `Q`, `K`, and `V` into SRAM, computes a score tile, uses online softmax to update the output, and never stores the full `S` or `P` matrix in HBM. In the backward pass it recomputes score/probability tiles from `Q`, `K`, `V`, and saved per-row softmax statistics. This gives exact attention, `O(N^2 d)` arithmetic, and linear extra memory in `N`, with large speedups over standard attention because HBM traffic falls.
+The IO-aware exact baseline uses tiling and recomputation. It loads blocks of `Q`, `K`, and `V` into SRAM, computes a score tile, uses online softmax to update the output, and never stores the full `S` or `P` matrix in HBM. In the backward pass it recomputes score/probability tiles from `Q`, `K`, `V`, and saved per-row softmax statistics. This gives exact attention, `O(N^2 d)` arithmetic, and linear extra memory in `N`. It launches independent thread blocks over batch and heads, splits work inside a block over the key/value dimension, and performs an elementwise normalization in each online-softmax update.
 
-That baseline still leaves clear pre-method bottlenecks. It exposes too few independent thread blocks when parallelism is only over batch and heads, especially in long-sequence settings where batch size is small. Inside a block, a split over the key/value dimension makes warps exchange partial results through shared memory. Its online-softmax update also performs repeated elementwise normalization work. These are facts about the starting implementation and hardware profile, not changes to the mathematical attention definition.
-
-Approximate-attention methods such as low-rank, sparse, locality-sensitive hashing, or kernelized attention reduce asymptotic cost by changing the attention operator. They are useful comparison points, but they do not solve the exact-kernel problem.
+Approximate-attention methods such as low-rank, sparse, locality-sensitive hashing, or kernelized attention reduce asymptotic cost by changing the attention operator. They are comparison points for a different operator.
 
 ## Evaluation Frame
 
-The natural kernel-level measurements are forward and backward throughput as a fraction of theoretical device FLOPs/s, peak memory as sequence length grows, and latency across causal and non-causal attention at head dimensions such as 64 and 128. A strong GEMM can reach roughly 80-90% of peak, while the IO-aware exact baseline is substantially below that in both forward and backward.
+The natural kernel-level measurements are forward and backward throughput as a fraction of theoretical device FLOPs/s, peak memory as sequence length grows, and latency across causal and non-causal attention at head dimensions such as 64 and 128. A strong GEMM can reach roughly 80-90% of peak.
 
 The natural model-level measurements are training throughput and model FLOPs utilization when the attention primitive is inserted into GPT-style Transformer training. The implementation should preserve exactness, support causal masking, and keep memory linear in the sequence length apart from inputs and outputs.
 

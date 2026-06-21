@@ -2,11 +2,11 @@
 
 ## Research question
 
-In offline goal-conditioned reinforcement learning, the agent receives a fixed dataset of unlabeled trajectories and must later reach arbitrary goal states without collecting new interaction data. The standard interface gives the actor and value function the raw current observation and the raw goal observation, for example `V(s, g)` and `pi(a | s, g)`. That interface is convenient, but it makes the goal coordinate system do almost none of the work.
+In offline goal-conditioned reinforcement learning, the agent receives a fixed dataset of unlabeled trajectories and must later reach arbitrary goal states without collecting new interaction data. The standard interface gives the actor and value function the raw current observation and the raw goal observation, for example `V(s, g)` and `pi(a | s, g)`.
 
-Raw observations carry nuisance variation such as textures, lighting, object appearance, proprioceptive noise, and camera details. More importantly, raw similarity is often not reachability similarity. Two image frames can be nearly identical while lying on opposite sides of a wall, and two visually different states can be one controllable step apart. A downstream value function conditioned on raw goals must therefore learn the environment's long-horizon reachability structure at the same time that it learns control.
+Raw observations carry nuisance variation such as textures, lighting, object appearance, proprioceptive noise, and camera details. Raw similarity is also distinct from reachability similarity: two image frames can be nearly identical while lying on opposite sides of a wall, and two visually different states can be one controllable step apart. A value function conditioned on raw goals must learn the environment's long-horizon reachability structure together with control.
 
-The open problem is to learn a reusable goal code from offline trajectories, put that code in front of an existing goal-conditioned agent, and make the code useful before the downstream actor has to rediscover the whole geometry. Such a representation should filter nuisance information, be trainable with only hindsight-labeled transitions, fit the bootstrapped offline value-learning machinery already used in GCRL, and expose enough structure that the same learned code can support both value prediction and goal-directed policy conditioning.
+The question is how to learn a reusable goal code from offline trajectories that can be placed in front of an existing goal-conditioned agent, using only hindsight-labeled transitions and the bootstrapped offline value-learning machinery already used in GCRL.
 
 ## Background
 
@@ -16,9 +16,9 @@ Goal-conditioned value functions already contain temporal reachability informati
 V*(s, g) = -d*(s, g),
 ```
 
-where `d*(s, g)` is the minimum number of time steps needed by an optimal policy. This identity appears in early GCRL work and in quasimetric-RL analyses. The quasimetric viewpoint matters because temporal distance has `d*(s, s) = 0` and a triangle inequality, but it need not be symmetric: climbing up, going down, and moving through one-way dynamics can have different costs in the two directions.
+where `d*(s, g)` is the minimum number of time steps needed by an optimal policy. This identity appears in early GCRL work and in quasimetric-RL analyses. Temporal distance has `d*(s, s) = 0` and a triangle inequality, and need not be symmetric: climbing up, going down, and moving through one-way dynamics can have different costs in the two directions.
 
-Offline optimal value learning is difficult because the Bellman optimality backup contains a maximization over actions or next states. A function approximator queried on actions outside the dataset can hallucinate high values, producing the overestimation failure familiar in offline RL. Implicit Q-Learning avoids that explicit out-of-distribution maximization by using expectile regression. The asymmetric squared loss
+Offline optimal value learning involves a Bellman optimality backup that contains a maximization over actions or next states. A function approximator queried on actions outside the dataset can produce the overestimation seen in offline RL. Implicit Q-Learning avoids that explicit out-of-distribution maximization by using expectile regression. The asymmetric squared loss
 
 ```text
 L_2^tau(u) = |tau - 1(u < 0)| * u^2
@@ -34,19 +34,19 @@ HIQL adapts this idea to goal-conditioned learning without an action-value funct
 
 and applies expectile regression over the next states seen in the data. The recipe also supplies practical stabilizers: twin value heads, target-network smoothing, layer-normalized MLPs, and a relabeling distribution that draws goals from future states in the same trajectory or from random dataset states.
 
-Several representation-learning baselines also try to make state embeddings reflect time or controllability. Temporal contrastive methods, robotic visual pretraining, value-implicit pretraining, Laplacian features, successor features, and metric-aware skill abstractions all provide useful ingredients. Their limitations are different: some embeddings are frozen and then consumed as generic features, some preserve appearance rather than reachability, and some require online rollouts to learn the abstraction.
+Several representation-learning approaches make state embeddings reflect time or controllability. Temporal contrastive methods, robotic visual pretraining, value-implicit pretraining, Laplacian features, successor features, and metric-aware skill abstractions each provide ingredients. Some produce frozen embeddings consumed as generic features, some preserve appearance, and some learn the abstraction from online rollouts.
 
 ## Baselines
 
-**Raw-goal concatenation.** Feed `[s, g]` directly to `V(s, g)` and `pi(a | s, g)`. This is simple and assumption-free. Its cost is that nuisance information and reachability structure are both left for the downstream networks to infer from scratch.
+**Raw-goal concatenation.** Feed `[s, g]` directly to `V(s, g)` and `pi(a | s, g)`. This is simple and assumption-free; the downstream networks infer nuisance information and reachability structure.
 
-**Goal-conditioned IQL/HIQL with raw goals.** Learn a scalar goal-conditioned value by action-free expectile regression, then train the policy with advantage-weighted regression. This already uses hindsight goals and an in-support optimality surrogate. Its limitation is that any reachability structure remains implicit inside a scalar predictor, not exposed as a reusable goal code for later control.
+**Goal-conditioned IQL/HIQL with raw goals.** Learn a scalar goal-conditioned value by action-free expectile regression, then train the policy with advantage-weighted regression. This uses hindsight goals and an in-support optimality surrogate, with the reachability structure carried inside a scalar predictor.
 
-**Reconstruction or dynamics-based goal encoders.** Train an encoder through autoencoding, inverse dynamics, or forward prediction. These objectives often preserve information useful for reconstructing observations or predicting local dynamics, but they can spend capacity on appearance details that are irrelevant to reaching a goal.
+**Reconstruction or dynamics-based goal encoders.** Train an encoder through autoencoding, inverse dynamics, or forward prediction. These objectives preserve information useful for reconstructing observations or predicting local dynamics, including appearance details.
 
-**Temporal visual feature pretraining.** Train an embedding so nearby points in a trajectory are closer than far-apart points, then freeze it for control. This can capture temporal regularities, but the controller still has to learn how to use the geometry after pretraining; the representation is treated as input features rather than as the object being optimized by the goal-reaching Bellman backup.
+**Temporal visual feature pretraining.** Train an embedding so nearby points in a trajectory are closer than far-apart points, then freeze it for control. This captures temporal regularities; the controller then learns to use the geometry, with the representation treated as input features.
 
-**Online skill-abstraction methods.** Learn latent directions or controllable features by collecting rollouts under the current policy. These can produce structured skills, but the online interaction assumption is incompatible with a fixed offline dataset.
+**Online skill-abstraction methods.** Learn latent directions or controllable features by collecting rollouts under the current policy. These produce structured skills from online interaction.
 
 ## Evaluation settings
 

@@ -1,12 +1,12 @@
 ## Research question
 
-Pool-based active learning for tabular classification: a large pool of unlabeled inputs is free, but each label costs money or expert time. The budget is spent in rounds — each round the rule selects a batch of `n` still-unlabeled examples, the oracle reveals their labels, they are folded into the training set, and the classifier is retrained from scratch. The only design choice is the **batch acquisition rule**: given the current model and the unlabeled pool, which `n` examples do I label next? A strong rule trades off uncertainty, diversity, representativeness, and information gain. The contribution is the rule itself; nothing else in the loop changes.
+Pool-based active learning for tabular classification: a large pool of unlabeled inputs is free, but each label costs money or expert time. The budget is spent in rounds — each round the rule selects a batch of `n` still-unlabeled examples, the oracle reveals their labels, they are folded into the training set, and the classifier is retrained from scratch. The only design choice is the **batch acquisition rule**: given the current model and the unlabeled pool, which `n` examples do I label next? The contribution is the rule itself; nothing else in the loop changes.
 
 ## Prior art / Background / Baselines
 
-- **PAC / uniform-convergence bounds.** They guarantee that a hypothesis consistent with an i.i.d. training sample of size `m` generalizes with error `ε` and confidence `1−δ`. Their limitation: the guarantee assumes examples are drawn like the deployment distribution and says nothing about which examples to buy; the budget is spent blindly.
-- **Survey sampling / simple random sampling.** Every unit receives the same inclusion probability, producing an unbiased estimate of population statistics. Its limitation: representativeness reproduces the pool's imbalance, so rare classes or important subgroups receive too few labels.
-- **Region of uncertainty / query by disagreement.** Only examples on which competing consistent hypotheses disagree can change the model, and the volume of that region shrinks as labels arrive. Its limitation: a passive rule keeps sampling from settled regions, so the information gained per label decays.
+- **PAC / uniform-convergence bounds.** They guarantee that a hypothesis consistent with an i.i.d. training sample of size `m` generalizes with error `ε` and confidence `1−δ`, assuming examples are drawn like the deployment distribution.
+- **Survey sampling / simple random sampling.** Every unit receives the same inclusion probability, producing an unbiased estimate of population statistics.
+- **Region of uncertainty / query by disagreement.** Only examples on which competing consistent hypotheses disagree can change the model, and the volume of that region shrinks as labels arrive.
 
 ## Fixed substrate / Code framework
 

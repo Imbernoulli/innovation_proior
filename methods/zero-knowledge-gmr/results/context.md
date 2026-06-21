@@ -15,16 +15,11 @@ might not have been able to find on its own in polynomial time. The Hamiltonian 
 just the fact of Hamiltonicity. The proof leaks its *witness*.
 
 The question is whether a proof can convey *only* the truth of the statement and nothing more. To even
-ask it precisely we must answer a prior question: what does "nothing more" mean for a verifier that is
-a computational device? It is not obvious what the right yardstick for "knowledge" even is here — a
+ask it precisely requires answering a prior question: what does "nothing more" mean for a verifier that
+is a computational device? It is not obvious what the right yardstick for "knowledge" is here — a
 verifier truthfully told a single bit has clearly suffered no harm, yet some notions of "information"
 would count that bit, while others credit an unbounded verifier with knowing every logical consequence
-already. A solution would have to (i) let the prover convince the verifier that `x ∈ L`, with
-overwhelming confidence; (ii) guarantee a cheating prover cannot convince the verifier of a false
-`x ∉ L`; and (iii) guarantee that the verifier — even one that deviates from the protocol to try to
-extract secrets — comes away knowing nothing beyond `x ∈ L`. Pinning down a precise mathematical
-meaning for (iii), and exhibiting a protocol that provably satisfies all three for a language not known
-to be efficiently decidable, is the goal. The applications are cryptographic: in a protocol one party often must convince another of
+already. The applications are cryptographic: in a protocol one party often must convince another of
 some fact ("this number is a product of two primes," "I followed the protocol honestly") without
 handing over the secret that makes the fact true.
 
@@ -45,8 +40,7 @@ NP. A separate, more flexible idea — letting the verifier flip coins and *keep
 the prover only some function `f(R)` of its randomness — appears implicitly in Blum's
 coin-flipping-by-telephone protocol and in Goldwasser–Micali's protocols below. Whether public coins
 are enough for recognizing languages is a different question from whether a verifier's hidden
-randomness can keep an interaction from leaking a witness; the hiding question still needs its own
-definition.
+randomness can keep an interaction from leaking a witness.
 
 **Security definitions for semantic-secure encryption.** Goldwasser–Micali (*Probabilistic
 Encryption*, JCSS 1984) defined security of an encryption scheme. They reject the notion that security
@@ -56,9 +50,8 @@ without the ciphertext.** Formally this rests on *polynomial security* — for a
 efficient adversary picks, it cannot distinguish their encryptions: for every poly-size circuit (the
 "line-tapper") the probability of outputting 1 on an encryption of `m₁` versus `m₂` differs by less
 than `1/poly`. Security is thus phrased as the *indistinguishability of two probability distributions*
-to a bounded judge. This is a definition for *encryption* — a one-way transfer of a hidden message.
-Yao's work on trapdoor functions and pseudorandomness uses the same distribution-indistinguishability
-lens.
+to a bounded judge. Yao's work on trapdoor functions and pseudorandomness uses the same
+distribution-indistinguishability lens.
 
 **The number theory the protocols will stand on.** For an integer `x`, let `Z*_x = {y : 1 ≤ y < x,
 gcd(x,y) = 1}`; membership is testable in polynomial time. `y ∈ Z*_x` is a *quadratic residue* (QR)
@@ -83,52 +76,36 @@ neither is known to be decidable in probabilistic polynomial time. They are the 
 a proof system that hides its witness, because the obvious NP proof — handing over `x`'s factorization
 — would give away exactly the secret whose hardness everything rests on.
 
-**An early "don't reveal the factorization" protocol, and its open question.** Blum's protocol for
-the language `BL` of certain Blum integers, and Goldwasser–Micali's protocols for `GM1` (integers with
-exactly two prime divisors) and `GM2`, already let a prover demonstrate membership *without sending
-the factorization*. Under the assumption that factoring is hard, these protocols are conjectured not
-to give away the factorization. But "does not give away the factorization, in any obvious way" is not
-a definition. It leaves open the precise question: *how much* knowledge does such a protocol release?
-That open question is the gap.
+**An early "don't reveal the factorization" protocol.** Blum's protocol for the language `BL` of
+certain Blum integers, and Goldwasser–Micali's protocols for `GM1` (integers with exactly two prime
+divisors) and `GM2`, already let a prover demonstrate membership *without sending the factorization*;
+the verifier's secret challenges keep the prover from cheating. Under the assumption that factoring is
+hard, these protocols are conjectured not to give away the factorization.
 
 ## Baselines
 
 - **NP proof systems (Cook 1971).** Core idea: `x ∈ L` iff there is a short certificate `α` such that
   a deterministic poly-time verifier accepts `(x, α)`. The whole of `L`'s difficulty is pushed into
-  finding `α`; checking is easy. **Gap:** the certificate is exactly a witness, and the verifier
-  re-checks it, so it cannot be hidden — the proof transfers the witness in full. For SAT the verifier
-  ends up holding a satisfying assignment; for QR, the natural certificate is a square root or the
-  factorization, the very secrets the application needs to protect.
+  finding `α`; checking is easy. For SAT the verifier ends up holding a satisfying assignment; for QR,
+  the natural certificate is a square root or the factorization.
 
 - **Arthur–Merlin games (Babai); Babai–Szemerédi.** Core idea: an interactive proof in which an
   all-powerful Merlin and a randomized Arthur alternate, but every Arthur message is a fresh public
   random string Merlin gets to see (*public coins*). This already recognizes languages
   (matrix-group nonmembership/order) not known to be in NP, so interaction + randomness adds
-  recognizing power beyond static proofs. **Gap:** because Merlin sees all of Arthur's randomness, the
-  verifier has no secret to hide behind; the model is designed for *recognizing* languages, and it
-  gives no handle on *how much the prover reveals*. There is no notion here of the verifier learning,
-  or not learning, anything.
+  recognizing power beyond static proofs.
 
 - **Blum coin-flipping / `GM1`, `GM2` membership protocols (Blum; Goldwasser–Micali).** Core idea:
   interactive protocols by which a prover convinces a verifier that an integer `n` has a special
   multiplicative structure (e.g. `n ∈ BL`, or `n` has exactly two prime factors) without sending `n`'s
   factorization; the verifier's secret challenges keep the prover from cheating. Under the hardness of
-  factoring, these are believed not to reveal the factorization. **Gap:** "believed not to reveal the
-  factorization, in any obvious way" is informal. There is no definition of what the verifier learns,
-  no quantification over *cheating* verifiers that deviate to extract more, and no proof that *nothing*
-  beyond membership is released. The protocols cry out for a definition that makes "releases no
-  knowledge" precise and provable.
+  factoring, these are believed not to reveal the factorization.
 
 - **Semantic / polynomial security for encryption (Goldwasser–Micali 1984).** Core idea: phrase "the
   adversary learns nothing" as "whatever it computes from the ciphertext it could compute without it,"
   and make that rigorous via indistinguishability of distributions to a bounded judge (poly-size
-  circuit), with `|Pr[C(E(m₁))=1] − Pr[C(E(m₂))=1]| < 1/poly`. **Gap (for our problem):** this is a
-  definition for *encryption*, a one-way transfer of a single hidden message, with a fixed adversary
-  (a passive line-tapper). Our setting is an *interactive proof* of a *public* statement: there is no
-  single hidden message, the prover and verifier exchange many rounds, and the adversary (the verifier)
-  is an active participant that chooses its own moves and may already hold side information about `x`.
-  Whether and how a security notion phrased for the static-ciphertext setting carries over to a
-  multi-round interaction with an actively misbehaving party is not addressed here.
+  circuit), with `|Pr[C(E(m₁))=1] − Pr[C(E(m₂))=1]| < 1/poly`. This is a definition for *encryption*,
+  a one-way transfer of a single hidden message, with a fixed adversary (a passive line-tapper).
 
 ## Evaluation settings
 
@@ -142,8 +119,5 @@ whether it can be *proven* to satisfy three properties.
 - **Releases no knowledge:** the property whose definition is the open problem — there is no agreed
   way yet to say what, or how much, the verifier learns beyond `x ∈ L`, nor to measure it.
   The natural candidate languages on which to demonstrate it are `QR` and `QNR` — in `NP ∩ co-NP` but
-  not known to be in probabilistic polynomial time, so a releases-no-knowledge proof for them would be
-  the first such proof for a language not known to be efficiently recognizable. Graph isomorphism is a
-  related candidate (believed not NP-complete, not known in P).
-
-
+  not known to be in probabilistic polynomial time. Graph isomorphism is a related candidate
+  (believed not NP-complete, not known in P).

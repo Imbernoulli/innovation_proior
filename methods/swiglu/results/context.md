@@ -14,14 +14,9 @@ FFN(x) = f(x W1 + b1) W2 + b2,        d_ff = expansion-factor × d_model  (typic
 
 The pointwise function `f` is the *only* nonlinearity in the whole sublayer, and the hidden
 activation at every unit is just `f` applied to a *single* learned linear view `x W1` of the
-input. The question is whether this layer — the model's main per-position transformer — can
-be made to fit the language-modeling objective better *without spending more parameters or
-compute*, by changing how the hidden representation is formed rather than by widening it. Any
-candidate must (1) be a drop-in replacement confined to this sublayer (no change to attention,
-normalization, the data pipeline, the optimizer schedule, or evaluation), (2) preserve the
-input/output shape `(batch, length, d_model)`, and (3) be matched to the baseline FFN in both
-parameter count and FLOPs, so that any quality change is attributable to the *form* of the
-layer rather than to a larger budget.
+input. The question is whether changing how the hidden representation is formed inside this
+sublayer — rather than widening it — can improve the layer's fit to the language-modeling
+objective.
 
 ## Background
 
@@ -32,7 +27,7 @@ the default because the gradient flows undiminished on the positive half-line (i
 there is exactly 1), it is cheap, and it induces sparsity. ReLU makes a *hard sign gate*: it
 multiplies the input by 0 or 1 depending only on `sign(x)`, zeroing both the output and the
 gradient on the entire negative half-line. Two smoother "weight by value rather than gate by
-sign" replacements became available:
+sign" alternatives are available:
 
 - **GELU** (Hendrycks & Gimpel 2016). `GELU(x) = x · Φ(x)`, where `Φ` is the standard-normal
   CDF, `Φ(x) = P(X ≤ x), X ~ N(0,1)`. It is derived as the *expectation* of a stochastic 0/1
@@ -50,7 +45,7 @@ sign" replacements became available:
   automated search* over compositions of unary/binary primitives (an RNN controller trained
   with policy gradient, plus exhaustive search for small spaces): each candidate is built from
   a "core unit" `b(u₁(x), u₂(x))` and scored by a child network's validation accuracy. Two
-  findings from that search are load-bearing here. First, the best-performing functions
+  findings from that search stand out. First, the best-performing functions
   overwhelmingly share the structure `b(x, g(x))` — the *raw* preactivation `x` recombined with
   some gate `g(x)` of itself (ReLU itself fits this, with `b=max` and `g(x)=0`). Second,
   *functions that use division performed poorly, because the output explodes when the
@@ -71,23 +66,21 @@ rather than passing one through a fixed pointwise map:
 - **Multiplicative / bilinear interactions** (Mnih & Hinton 2007). A log-bilinear language
   model predicts the next word through a *bilinear* coupling of real-valued distributed
   representations — a learned multiplicative interaction between linear projections, rather
-  than an additive-then-pointwise transform. The lesson carried forward is that a *product* of
-  two learned linear maps of the same input can express feature interactions a single
-  projection-then-nonlinearity cannot.
+  than an additive-then-pointwise transform. A *product* of two learned linear maps of the
+  same input can express feature interactions that a single projection-then-nonlinearity cannot.
 - **Gating in sequence models.** LSTMs (Hochreiter & Schmidhuber 1997) multiply a content
   signal by learned sigmoid gates to control what survives across many steps; the gate is the
-  canonical device for *data-dependent multiplicative modulation*. The diagnostic finding that
-  matters here — established on existing gated convolutional language models — concerns how the
-  *choice of what to carry on the content path* affects gradient flow when many such layers are
-  stacked. For an LSTM-style "gated tanh unit" `tanh(X) ⊗ σ(X)`, the gradient is
+  canonical device for *data-dependent multiplicative modulation*. Work on gated convolutional
+  language models analyzes how the *choice of what to carry on the content path* affects
+  gradient flow when many such layers are stacked. For the "gated tanh unit" `tanh(X) ⊗ σ(X)`,
+  the gradient is
 
   ```
   ∇[tanh(X) ⊗ σ(X)] = tanh'(X)∇X ⊗ σ(X) + σ'(X)∇X ⊗ tanh(X),
   ```
 
-  in which *both* paths carry a saturating activation-derivative factor (`0 ≤ tanh' ≤ 1`,
-  `0 ≤ σ' ≤ ¼`), with no derivative-free route through the content; the corresponding signal is
-  observed to attenuate as layers are stacked.
+  in which both paths carry a saturating activation-derivative factor (`0 ≤ tanh' ≤ 1`,
+  `0 ≤ σ' ≤ ¼`), and the gradient signal is observed to attenuate as layers are stacked.
 
 By 2019 the Transformer is the dominant sequence-modeling architecture, and the recipe of
 pretraining on a large denoising / span-corruption objective and fine-tuning downstream is
@@ -96,24 +89,16 @@ knob, and the layer's *shape* — two matrices, one pointwise map — is taken f
 
 ## Baselines
 
-The prior art a new FFN would be measured against and reacts to:
+The prior FFN variants that any new design would be measured against:
 
 - **ReLU FFN** (Vaswani et al. 2017; bias-free T5 form, Raffel et al. 2019).
   `FFN_ReLU(x) = max(0, xW1)W2`. Two weight matrices `W1 ∈ R^{d×d_ff}`, `W2 ∈ R^{d_ff×d}`,
   `d_ff ≈ 4d`. The hidden vector is one linear projection passed through a hard sign gate.
-  **Gap:** the only input-dependence in the hidden activation is through the single projection
-  `xW1`; the nonlinearity is fixed and hard, with zero output and zero gradient on the whole
-  negative half-line, and every hidden unit's modulation is locked to that one scalar
-  preactivation.
 - **GELU FFN.** `FFN_GELU(x) = GELU(xW1)W2`. Same two-matrix shape; the hard ReLU gate is
-  replaced by GELU's smooth value-weighting. **Gap:** smoother and better-behaved at the
-  origin, but structurally identical to the ReLU FFN — one projection, one pointwise map, the
-  smooth factor `Φ(xW1)` tied to the same scalar preactivation whose magnitude it weights.
+  replaced by GELU's smooth value-weighting, `Φ(xW1)` tied to the same scalar preactivation
+  whose magnitude it weights.
 - **Swish FFN.** `FFN_Swish(x) = Swish_1(xW1)W2`. Same shape again; the pointwise map is the
-  smooth, non-monotonic `x·σ(x)`. **Gap:** identical structure to the others — a single
-  projection through a single fixed (if smoother, non-monotonic, and able to exceed unit gain)
-  pointwise function, with one learned scalar per hidden unit setting both content and
-  modulation at once.
+  smooth, non-monotonic `x·σ(x)`.
 
 Across all three baselines the hidden representation at each unit is `f(one linear map of x)`.
 Whatever value-weighting exists (GELU's `Φ`, Swish's `σ`) is a *fixed* function of the very

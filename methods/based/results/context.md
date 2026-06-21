@@ -5,34 +5,27 @@
 A language model's sequence mixer — the layer that lets each position read information from
 earlier positions — is judged on two axes at once: how well it *recalls* (grounds a generation
 in a specific token seen earlier in the context), and how cheaply it runs, especially during
-autoregressive generation. Softmax attention wins the first axis decisively but loses the second:
-to generate each new token it attends over a growing cache of all past keys and values (the
-"KV-cache"), so the per-token cost and the memory footprint both grow linearly with how much
-context has already been seen. On long sequences this KV-cache dominates memory and throttles
-throughput. The precise problem is to build a sequence mixer whose *recurrent state during
-generation is bounded* (so memory and per-token cost do not grow with sequence length) yet that
-still performs in-context key-value lookup as well as attention — and ideally one whose state
-size is a tunable knob, so the same design can be slid from "cheap and forgetful" to "expensive
-and recall-perfect." The hard part is that recall and a small state appear to be in direct
-tension, and it is not obvious whether that tension is fundamental or just an artifact of the
-particular efficient architectures tried so far.
+autoregressive generation. Softmax attention recalls strongly; to generate each new token it
+attends over a growing cache of all past keys and values (the "KV-cache"), so the per-token cost
+and the memory footprint both grow linearly with how much context has already been seen. The
+question is how to build a sequence mixer whose *recurrent state during generation is bounded*
+(so memory and per-token cost do not grow with sequence length) while it still performs
+in-context key-value lookup.
 
 ## Background
 
 By this time, sub-quadratic alternatives to attention have proliferated — gated convolutions
 (H3, Hyena), input-dependent recurrences and state-space models (RWKV, Mamba) — and several
-match attention in *aggregate* perplexity while running much faster. But aggregate perplexity
-hides skill-level differences. A specific, well-documented one is *associative recall*: the
+match attention in *aggregate* perplexity while running much faster. Aggregate perplexity
+aggregates over skills. A specific, well-documented one is *associative recall*: the
 ability to retrieve a value bound to a key earlier in the context. The canonical stress test is
 **Multi-Query Associative Recall (MQAR)** (Arora, Eyuboglu et al. 2023): the input is a stream of
 key-value token pairs followed by query keys, and at each query position the model must emit the
 value that was bound to that key. A reported diagnostic finding is that full softmax attention
 solves MQAR with a model dimension that is *constant* in sequence length, while gated-convolution
-mixers need their hidden dimension to grow at least linearly with sequence length to keep up — and
-empirically these convolutional mixers (Hyena, H3) sit well below the recall-vs-memory frontier,
-whereas an input-dependent recurrence (Mamba) makes the best use of a fixed memory budget among the
-prior sub-quadratic options but still degrades on MQAR as the number of key-value pairs grows,
-because it must compress every key seen into one fixed-size hidden state.
+mixers need their hidden dimension to grow at least linearly with sequence length to keep up. Among
+the sub-quadratic options, an input-dependent recurrence (Mamba) makes the best use of a fixed
+memory budget on MQAR; it compresses every key seen into one fixed-size hidden state.
 
 Two structural facts about the design space are load-bearing. First, what governs generation cost
 is the size of the model's *recurrent state* — the quantity it must carry forward from one
@@ -48,11 +41,11 @@ Alongside this, two efficiency primitives are already on the table that each *bo
 state in a different way. (i) *Linear attention* removes the softmax so that the attention scores
 factor through a feature map; matrix-product associativity then lets the layer carry a
 fixed-shape running summary instead of a growing cache. (ii) *Sliding window attention* restricts
-each query to attend over only the last w keys, capping the cache at w. Each, on its own, is known
-to leave a gap (below). Finally, a separate line of analysis of *feature maps* for linear attention
-observes that softmax attention's effective weights are "spiky" — low-entropy, concentrated on a
-few keys — and monotonic in the query-key dot product, and that linear-attention feature maps which
-fail to reproduce this spikiness tend to underperform on recall (Zhang et al. 2024).
+each query to attend over only the last w keys, capping the cache at w. Separately, a line of
+analysis of *feature maps* for linear attention observes that softmax attention's effective weights
+are "spiky" — low-entropy, concentrated on a few keys — and monotonic in the query-key dot product,
+and that linear-attention feature maps which fail to reproduce this spikiness tend to underperform
+on recall (Zhang et al. 2024).
 
 ## Baselines
 
@@ -63,9 +56,9 @@ causal output is
 y_i = sum_{j<=i} [ exp(q_i^T k_j / sqrt(d)) v_j ] / sum_{m<=i} exp(q_i^T k_m / sqrt(d)).
 ```
 
-It is recall-perfect and, with IO-aware kernels, trains in O(N) memory. **Gap:** generation keeps a
+It is recall-strong and, with IO-aware kernels, trains in O(N) memory. Generation keeps a
 KV-cache {k_i, v_i} that grows with the sequence; producing token n costs O(nd) over a state whose
-size is unbounded in N, so memory and throughput degrade on long contexts.
+size is unbounded in N.
 
 **Linear attention (Katharopoulos et al. 2020, "Transformers are RNNs").** Replace the softmax
 kernel exp(q^T k) with a feature-map dot product phi(q)^T phi(k), phi: R^d -> R^{d~}. The attention
@@ -78,38 +71,30 @@ y_i = phi(q_i) ( sum_{j<=i} phi(k_j)^T v_j ) / ( phi(q_i) sum_{j<=i} phi(k_j)^T 
 so the layer trains in O(N d~^2) instead of O(N^2), and during generation it carries a *fixed-shape*
 recurrent state: a KV-state S_i = S_{i-1} + phi(k_i)^T v_i in R^{d~ x d} and a normalizer
 z_i = z_{i-1} + phi(k_i)^T in R^{d~}, with y_i = phi(q_i) S_i / (phi(q_i) z_i) — O(1) per token. The
-original feature map is phi(x) = elu(x) + 1 (chosen to keep the kernel non-negative so weights stay
-positive). **Gap:** with such generic feature maps, linear attention underperforms softmax on recall;
-the weights it produces are flat/high-entropy rather than spiky, and it lacks the precision for local
-token shifts and comparisons.
+original feature map is phi(x) = elu(x) + 1, chosen to keep the kernel non-negative so weights stay
+positive.
 
 **Feature maps for linear attention (Zhang et al. 2024; Choromanski et al. 2020).** A range of phi
 have been proposed — random Fourier features that approximate the softmax kernel in expectation
 (Performer), ReLU with cosine reweighting (cosFormer), and learned single-layer MLPs trained to
-match softmax weights (Hedgehog). **Gap:** random-feature maps are unbiased only in expectation and
-need many features to be accurate; learned maps add parameters and a training stage; and the ones
-that map R^d -> R^{d^2} to better approximate softmax incur O(N d^3) time/space and a large state.
+match softmax weights (Hedgehog). Random-feature maps are unbiased in expectation over the drawn
+features; learned maps add parameters and a training stage; maps from R^d -> R^{d^2} that more
+closely approximate softmax run in O(N d^3) time/space.
 
 **Sliding window attention (Parmar et al. 2018; Child et al. 2019; Beltagy et al. 2020; used in
 Mistral 7B).** Each query q_i attends exactly (softmax) only over keys {k_{i-w+1}, ..., k_i}, giving
-O(Nw) cost and a KV-cache capped at w. **Gap:** anything bound more than w tokens back is invisible,
-so associative-recall range is limited by the window; widening w to recover long-range recall grows
-the state and the cost linearly again (deployed windows are large, e.g. w=4096).
+O(Nw) cost and a KV-cache capped at w. Deployed windows are large, e.g. w=4096.
 
 **Input-dependent state-space models (Mamba; Gu & Dao 2023).** A selective SSM with a fixed-size
 recurrent hidden state h, input-dependent transition and input matrices, run as a linear recurrence
-h_i = A-bar_i h_{i-1} + B-bar_i u_i, z_i = C_i^T h_i. Fixed state -> O(1)/token generation, strong
-aggregate quality, and the best recall-per-memory among prior sub-quadratic mixers. **Gap:** it must
-compress all keys into one fixed hidden state, so its recall falls off as the number of key-value
-pairs grows; its state cannot be cheaply dialed up to attention's recall without losing the
-efficiency that motivated it.
+h_i = A-bar_i h_{i-1} + B-bar_i u_i, z_i = C_i^T h_i. The fixed state gives O(1)/token generation,
+strong aggregate quality, and the best recall-per-memory among prior sub-quadratic mixers; it
+compresses all keys into one fixed hidden state.
 
 **Gated convolutions and the BaseConv canonical form (Arora et al. 2023).** A broad class built from
 gating (Hadamard products) and (possibly long) convolutions; BaseConv,
 z = (uW^B + b^B) ⊙ (K * u + b^K), is a minimal operator that can simulate any such architecture.
-**Gap:** this class provably cannot solve MQAR in a constant number of layers / with dimension
-independent of sequence length, which is why convolutional mixers fall below the recall-memory
-frontier.
+A reported result is that this class solves MQAR only when its dimension grows with sequence length.
 
 ## Evaluation settings
 

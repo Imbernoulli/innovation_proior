@@ -4,10 +4,10 @@ Distill a large math-tuned teacher into a small student under an **on-policy** t
 
 ## Prior art / Background / Baselines
 
-- **Supervised knowledge distillation (Hinton, Vinyals & Dean 2015; Sanh et al. 2019).** Train the student to match the teacher's softened token distribution on a fixed corpus via forward KL `KL(p_T ‖ p_S)`. Gap: the training prefixes are fixed and off-policy, and forward KL is mass-covering, so an under-capacity student spreads probability over teacher-unlikely tokens.
-- **Sequence-level KD (Kim & Rush 2016).** Approximate the teacher's whole-sequence distribution by its beam-search mode and train the student by negative log-likelihood on that single output. Gap: still fixed, teacher-generated, single-mode, and off-policy; it discards the per-token distribution.
-- **Behavior cloning (Pomerleau 1989, ALVINN; Ross & Bagnell 2010).** Fit a policy to expert `(state, action)` pairs. Gap: the loss is minimized under the expert's state distribution but the policy is deployed under its own, so early errors compound over the horizon.
-- **DAgger (Ross, Gordon & Bagnell 2011).** Roll out a mixture of the expert and current learner, collect visited states, label them with the expert, aggregate, and refit while scheduling the expert mix to zero. Gap: it is framed for control and uses hard expert labels, ignoring the full soft distribution available from a queryable teacher.
+- **Supervised knowledge distillation (Hinton, Vinyals & Dean 2015; Sanh et al. 2019).** Train the student to match the teacher's softened token distribution on a fixed corpus via forward KL `KL(p_T ‖ p_S)`.
+- **Sequence-level KD (Kim & Rush 2016).** Approximate the teacher's whole-sequence distribution by its beam-search mode and train the student by negative log-likelihood on that single output.
+- **Behavior cloning (Pomerleau 1989, ALVINN; Ross & Bagnell 2010).** Fit a policy to expert `(state, action)` pairs.
+- **DAgger (Ross, Gordon & Bagnell 2011).** Roll out a mixture of the expert and current learner, collect visited states, label them with the expert, aggregate, and refit while scheduling the expert mix to zero.
 
 ## Fixed substrate / Code framework
 

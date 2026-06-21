@@ -1,8 +1,6 @@
 ## Research question
 
-How can we build a generative model of high-dimensional natural images that (a) lets us evaluate the **exact** log-likelihood of a datapoint, (b) lets us infer the **exact** latent code of a datapoint with no approximation, (c) **trains and samples in parallel** on modern hardware, and (d) actually produces sharp, realistic, high-resolution samples — all at once?
-
-Each existing family gives up at least one of these. Autoregressive models give exact likelihood but sample one subpixel at a time, so synthesis is serial and painfully slow on a 256×256 image. Variational autoencoders sample in parallel but only optimize a *lower bound* on the likelihood and only infer the latent *approximately*. Adversarial models make beautiful images but have no encoder, no tractable likelihood, and no way to even measure how well they fit the data. A model built from exactly-invertible transformations could in principle deliver all four properties simultaneously, but the existing instances of that idea lagged behind on likelihood and had never been shown to scale to realistic high-resolution synthesis. The question is whether the invertible-transformation approach can be pushed to close those gaps.
+How can we build a generative model of high-dimensional natural images, based on exactly-invertible transformations, that evaluates the exact log-likelihood of a datapoint, infers the exact latent code with no approximation, trains and samples in parallel on modern hardware, and synthesizes sharp, realistic, high-resolution images? The setting is the normalizing-flow family — a bijection between data and a simple latent — and the question is how to design its invertible layers for high-resolution image synthesis.
 
 ## Background
 
@@ -39,9 +37,7 @@ log P(x) = log ∫_bin p(x') dx'
 
 Thus the negative log-likelihood objective carries the fixed constant `−M log a`; with `a = 1/n_bins`, the log-likelihood accumulator adds `M log a = −M log(n_bins)`.
 
-**Why this family is attractive.** Because `f` is an exact bijection, latent inference `z = f(x)` is exact (no approximate posterior as in VAEs, no missing encoder as in adversarial models), and the continuous-density term `log p_θ(x)` is exact once the data have been dequantized. Both directions are feed-forward neural nets, so training and sampling parallelize on a GPU — unlike autoregressive models, whose sampling is inherently sequential in the number of pixels. And because the layers are invertible, activations can be recomputed on the backward pass rather than stored, giving memory cost roughly constant in depth (Gomez et al., 2017, RevNets).
-
-**Diagnostic observations that shape the design.** Two facts about the existing systems matter. First, a coupling layer leaves half the variables unchanged, so the permutation placed between coupling layers decides which variables can condition which later variables; fixed reversal and fixed random shuffling are arbitrary, non-learned routing choices. Second, batch normalization, the standard tool for training deep nets, injects activation noise whose variance is inversely proportional to the per-processing-unit minibatch size; for high-resolution images memory forces a minibatch of size 1 per GPU, the regime where batch-normalization statistics are at their noisiest and least reliable.
+**Properties of this family.** Because `f` is an exact bijection, latent inference `z = f(x)` is exact, and the continuous-density term `log p_θ(x)` is exact once the data have been dequantized. Both directions are feed-forward neural nets, so training and sampling run on a GPU. Because the layers are invertible, activations can be recomputed on the backward pass rather than stored, giving memory cost roughly constant in depth (Gomez et al., 2017, RevNets).
 
 ## Baselines
 
@@ -51,7 +47,7 @@ Thus the negative log-likelihood objective carries the fixed constant `−M log 
 y_a = x_a,    y_b = x_b + m(x_a),
 ```
 
-with inverse `x_a = y_a, x_b = y_b − m(y_a)`. Because `m` is only ever evaluated, never inverted, it can be any network. The Jacobian is triangular with **ones on the diagonal**, so its determinant is `1` and its log-determinant is `0` — the map is volume-preserving. Stacking such layers requires swapping which half is updated between layers (otherwise the same variables would only condition while the other half alone changed), so NICE alternates the partition. To let the model rescale volume at all, NICE appends a single learned **diagonal scaling** `z = s ⊙ h` at the end, contributing `Σ log|s|` to the log-determinant. **Gap it leaves:** the per-layer transformation is purely additive (no per-coupling scaling), the mixing between layers is a hand-fixed partition, and it was demonstrated on small data rather than convolutional image models at scale.
+with inverse `x_a = y_a, x_b = y_b − m(y_a)`. Because `m` is only ever evaluated, never inverted, it can be any network. The Jacobian is triangular with **ones on the diagonal**, so its determinant is `1` and its log-determinant is `0` — the map is volume-preserving. Stacking such layers requires swapping which half is updated between layers (otherwise the same variables would only condition while the other half alone changed), so NICE alternates the partition. To let the model rescale volume at all, NICE appends a single learned **diagonal scaling** `z = s ⊙ h` at the end, contributing `Σ log|s|` to the log-determinant.
 
 **RealNVP — Density estimation using Real NVP (Dinh, Sohl-Dickstein & Bengio, 2016).** Extends NICE in the directions that make it a real image model.
 
@@ -65,11 +61,9 @@ with inverse `x_a = y_a, x_b = y_b − m(y_a)`. Because `m` is only ever evaluat
 - **Masking.** Rather than a literal split, RealNVP uses binary masks in two patterns — a spatial **checkerboard** mask and a **channel** mask — and alternates them so every variable is eventually transformed.
 - **Squeeze.** A reshape that trades space for channels, `h × w × c → (h/2) × (w/2) × 4c`, so deeper layers have channels to apply channel-wise coupling to.
 - **Multi-scale architecture.** After several flow steps at a given resolution, **factor out** half of the dimensions as part of the latent `z` (modeled by a Gaussian) and continue transforming only the other half at the next, coarser scale. This produces a coarse-to-fine latent and reduces compute and memory at deep layers.
-- **Batch normalization** is used both inside the coupling networks and as a flow layer whose scaling contributes to the Jacobian, to make deep flows trainable.
+- **Batch normalization** is used both inside the coupling networks and as a flow layer whose scaling contributes to the Jacobian. To mix variables *between* coupling layers, RealNVP applies a **fixed permutation** — reversing the channel order, or the fixed alternation of checkerboard and channel masks.
 
-**Gaps RealNVP leaves open.** (1) The only mixing of variables *between* coupling layers is a **fixed permutation** — reversing the channel order, or the fixed alternation of checkerboard/channel masks. A fixed permutation is a hand-chosen, non-learned choice of which variables flow into the next coupling's conditioning half; it is unclear it is the best mixing. (2) Its normalization layer is **batch normalization**, whose noise grows as the per-PU batch shrinks — exactly the high-resolution, batch-size-1 regime. (3) Maintaining **two mask types** (checkerboard and channel) is architectural overhead.
-
-**Autoregressive and adversarial models, as foils.** PixelRNN/PixelCNN and WaveNet (van den Oord et al., 2016; 2016) give exact likelihoods and are also invertible in a sense, but sample one element at a time, so synthesis of a high-resolution image takes orders of magnitude longer and their hidden layers have no usable marginal latent space. Adversarial models (Goodfellow et al., 2014; Karras et al., 2017) synthesize striking images but have no encoder, no exact likelihood, often lack full support over the data (Grover et al., 2018), and are hard to assess for overfitting.
+**Autoregressive and adversarial models.** PixelRNN/PixelCNN and WaveNet (van den Oord et al., 2016; 2016) give exact likelihoods and sample one element at a time. Adversarial models (Goodfellow et al., 2014; Karras et al., 2017) synthesize striking images, have no encoder and no exact likelihood, and are trained by a minimax game (Grover et al., 2018).
 
 ## Evaluation settings
 
@@ -84,7 +78,7 @@ Preprocessing follows the RealNVP protocol; some studies use reduced-bit (5-bit)
 
 ## Code framework
 
-The existing pieces are a data pipeline that loads images and dequantizes them, a generic invertible-layer abstraction with forward/inverse and a running log-determinant accumulator, the change-of-variables objective in bits/dim, the squeeze/multi-scale plumbing inherited from prior flows, convolutional heads for conditional Gaussian priors, and the Adam training loop. The unresolved design slot is the content of one generic invertible step.
+The existing pieces are a data pipeline that loads images and dequantizes them, a generic invertible-layer abstraction with forward/inverse and a running log-determinant accumulator, the change-of-variables objective in bits/dim, the squeeze/multi-scale plumbing inherited from prior flows, convolutional heads for conditional Gaussian priors, and the Adam training loop. The content of one generic invertible step is left open.
 
 ```python
 import math

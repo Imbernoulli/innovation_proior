@@ -9,22 +9,10 @@ varied across the run. The prevailing schedule reaches a peak after a short warm
 the learning rate down over the rest of training, and the quality of the final model depends on
 this annealing being slow and reaching a low value by the end.
 
-This couples two things that practitioners would much rather keep separate. The schedule's *shape*
-is tied to the *total number of steps*: the annealing is stretched to span exactly the planned
-training length, so the schedule cannot be specified without first committing to how long training
-will run. That commitment is costly in two regimes. First, in research that needs the model's
-quality *at several different training lengths* — scaling-law fits, data-mixture comparisons,
-architecture ablations — a separate model must be trained from scratch for each length, because the
-loss read off partway through a long run is not the loss of a run that was *planned* to stop there.
-Second, for a production run, the stopping point must be fixed in advance, and continuing past it,
-or stopping early, both require either re-running or paying a penalty.
-
-The precise goal is a schedule that (1) matches the final-model quality of the standard annealing
-schedule under the same model, data, optimizer, and total step budget; (2) does *not* require the
-total number of steps to be known up front, so a single run can yield optimal models at many
-lengths and can be extended at will; and (3) is reliable across model sizes, so it can be trusted
-in scaling studies. Achieving (1)+(2)+(3) together would cut the cost of scaling research by
-roughly the number of lengths studied, and remove the need to predetermine a stopping point.
+The question is how to schedule the learning rate so that training is flexible and efficient across
+a range of scenarios — research scaling studies that need quality at multiple lengths, production
+runs where the final length may shift, and settings where a single training run should yield
+useful models at intermediate points.
 
 ## Background
 
@@ -48,37 +36,23 @@ where `T_cur` counts steps since the last restart and `T_i` is the cycle length;
 rate is `eta_max`, at `T_cur = T_i` it is `eta_min`. For language models, where data is effectively
 unbounded and training is a single pass, this was adopted as a *single* cosine cycle: warmup to the
 peak, then one smooth cosine decay over the whole run, conventionally ending at 10% of the peak.
-The defining property — and the source of the problem above — is that the shape is parameterized by
-the cycle length `T_i`, which must equal the total training length for the decay to be stretched
-correctly.
+The shape is parameterized by the cycle length `T_i`, which is set to match the total training
+length.
 
-**The diagnostic finding that pins down the pain.** Hoffmann et al. (2022) established that, for a
-fixed family of models, the best final loss at a given token count is obtained by a cosine cycle
-whose length *matches* that token count. The flip side, which they report explicitly, is the
-problem: for a cosine schedule planned to decay over (say) 130B tokens, the loss measured at an
-intermediate point `D' << 130B` is an *overestimate* of the loss a run *planned* to stop at `D'`
-would have reached — because the bulk of the loss improvement comes from the decay, which has not
-happened yet at the intermediate point. Reading scaling behavior off intermediate checkpoints of a
-single long cosine run therefore *underestimates* model quality at shorter lengths. The
-methodologically clean fix they used — train a separate model, with a length-matched cosine, for
-every length of interest — is exactly what makes scaling studies expensive: a family of model sizes
-times several lengths, each trained from scratch.
-
-**Continuation is brittle.** Because a cosine run is built to bottom out at its planned end, its
-final rate is too low to make large further progress, so naively extending it stalls; and re-warming
-the rate to continue causes loss spikes that training only slowly recovers from, and has been
-reported to hurt performance and induce forgetting in the continual-learning setting (Ibrahim et al.
-2024). So a finished cosine run is hard to either extend or read intermediate quality from.
+**The diagnostic finding of Hoffmann et al. (2022).** For a fixed family of models, the best final
+loss at a given token count is obtained by a cosine cycle whose length matches that token count. For
+a cosine schedule planned to decay over (say) 130B tokens, the loss measured at an intermediate
+point `D' << 130B` is an overestimate of the loss a run planned to stop at `D'` would have
+reached — because the bulk of the loss improvement comes from the decay, which has not happened yet
+at the intermediate point. The methodologically clean approach they used was to train a separate
+model, with a length-matched cosine, for every length of interest.
 
 **A known alternative shape from vision.** In the vision-transformer scaling work of Zhai et al.
-(2021), schedules were studied that — to train for several durations and evaluate from a *single*
-run — keep the rate roughly constant (or on a reciprocal-square-root path) for the main body of
-training and add a short final phase in which the rate is annealed down. They report that this kind
-of held-high-then-cool schedule allows "indefinite training and evaluating multiple training
-durations from just one run," and found a reciprocal-square-root main phase with such a final
-annealing to perform best in their setting. The decoupling of the main phase from a final annealing
-phase is the load-bearing idea this body of work rests on; what such a schedule does for
-*language-model* pretraining, and which annealing form and length are right there, was open.
+(2021), schedules were studied that keep the rate roughly constant (or on a reciprocal-square-root
+path) for the main body of training and add a short final phase in which the rate is annealed down.
+They report that this kind of held-high-then-cool schedule allows "indefinite training and
+evaluating multiple training durations from just one run," and found a reciprocal-square-root main
+phase with such a final annealing to perform best in their setting.
 
 **The optimization-theory view of the final phase.** For convex Lipschitz objectives there is a
 sharp result about the *last iterate* of SGD as a function of the step-size schedule. Defazio et al.
@@ -86,51 +60,35 @@ sharp result about the *last iterate* of SGD as a function of the step-size sche
 is a *linear* decay of the step size to zero: with `eta_t = (D / (G * sqrt(T))) * (1 - t/T)`, the
 last iterate satisfies `E[f(x_T) - f*] <= D*G/sqrt(T)`, achieving the optimal `O(1/sqrt(T))` rate
 *without* the extra `log T` factor that the last iterate of a constant-step SGD carries. Their
-reading is that a linear decay "emulates the effects of iterate averaging." This convex theory is a
-yardstick for what a final annealing phase should look like and why a constant rate alone leaves
-something on the table.
+reading is that a linear decay "emulates the effects of iterate averaging."
 
 **Weight averaging as a noise-reducer.** Polyak (1992) averaging of iterates, and its deep-learning
 form stochastic weight averaging (Izmailov et al. 2018), improve generalization by averaging out
 the noise that a high-LR iterate carries. Sandler et al. (2023) show an equivalence between weight
 averaging and learning-rate-decay schedules: averaging recent iterates produces an effect comparable
-to having decayed the rate. This is the relevant background for whether the explicit final-annealing
-phase could be replaced by averaging instead.
+to having decayed the rate.
 
 ## Baselines
 
 **Single-cycle cosine decay (Loshchilov & Hutter 2016, as used by Radford et al. 2018 onward).**
 The de-facto standard for LLM pretraining: linear warmup to `eta_max`, then one cosine cycle
 decaying to `eta_min` (typically `0.1 * eta_max`) over the whole run, per the equation above. Core
-idea: a smooth, slow anneal that spends a long tail at progressively lower rates. *Limitation:* the
-cosine cycle is parameterized by its length and must be set to the total training duration to be
-optimal (Hoffmann et al. 2022); a single run's intermediate checkpoints overestimate the loss of
-length-matched shorter runs, so it cannot serve as a one-run source of quality estimates across
-lengths, and it cannot be cleanly extended past its planned end (re-warming spikes the loss).
+idea: a smooth, slow anneal that spends a long tail at progressively lower rates.
 
 **Inverse-square-root schedule (as in T5, Raffel et al. 2019; PaLM, Chowdhery et al. 2023).**
 Warmup then `eta ∝ 1/sqrt(step)`, with no dependence on a planned total length. Core idea: a
-length-agnostic decay. *Limitation:* it has no distinct final phase that drives the rate to a low
-value matched to a chosen stopping point, so its end-of-run loss does not match a length-matched
-cosine, and stopping quality varies with where one happens to stop.
+length-agnostic decay.
 
 **Stepwise / restart schedules (cyclic SGDR; stepwise as in DeepSeek, Bi et al. 2024).** Drop the
 rate by a constant factor at fixed intervals, or restart it. Core idea: discrete annealing.
-*Limitation:* the step boundaries and factors are themselves a schedule that must be planned, and
-restarts re-introduce the re-warming loss spikes; quality between drops is not length-matched.
 
 **Linear decay to zero (Defazio et al. 2023).** Warmup then `eta_t ∝ (1 - t/T)` to zero. Core idea:
 the worst-case-optimal last-iterate schedule from convex theory, beating cosine on average in their
-large comparison. *Limitation:* the `1 - t/T` ramp begins immediately after warmup and is again
-parameterized by the total length `T`; the rate spends the whole run below the peak, and the run is
-no more extendable or one-run-reusable than cosine.
+large comparison.
 
 **Stochastic weight averaging (Izmailov et al. 2018; Sandler et al. 2023).** Keep a running average
 of the parameters along a constant-rate (or any) trajectory; the averaged model generalizes better
-and behaves like a decayed-rate model. Core idea: replace decay with averaging. *Limitation:* in
-the LLM setting the size of the resulting improvement relative to an explicit final annealing, and
-whether it fully closes the gap, was not established; averaging adds a copy of the parameters and
-its window is a hyperparameter.
+and behaves like a decayed-rate model. Core idea: replace decay with averaging.
 
 ## Evaluation settings
 

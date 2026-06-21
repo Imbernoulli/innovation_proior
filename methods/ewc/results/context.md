@@ -3,20 +3,15 @@
 A neural network with a fixed set of weights `theta` is shown a *sequence* of tasks — task A,
 then task B, then C, ... — and after it has moved on from a task it gets no further access to
 that task's data. The goal is a single network that keeps performing the earlier tasks while
-it learns the later ones. The obstruction is sharp and well documented: when standard
-stochastic gradient descent is trained on task B after task A, performance on A collapses,
-because the gradient on B freely overwrites the very weights that encoded A. This is
-*catastrophic forgetting*, and it makes naive sequential training useless for any agent meant
-to accumulate skills over a long lifetime.
+it learns the later ones. When standard stochastic gradient descent is trained on task B after
+task A, the gradient on B moves the weights that encoded A and performance on A drops — the
+phenomenon known as *catastrophic forgetting*.
 
-The constraints that make the problem hard are what rule out the easy escapes. The network has
-*fixed capacity* — we are not allowed to keep bolting on new parameters for each task. We may
-*not* keep all of the old data around and interleave it, because in the sequential setting the
-amount of stored-and-replayed data would grow with the number of tasks. And whatever we do has
-to be cheap: linear in the number of parameters and in the number of training examples, so it
-runs on the same large deep networks that work everywhere else. A solution therefore has to use
-only a compact record of each finished task while ordinary training continues — no old data, no
-growing network, no second-order matrices the size of `theta x theta`.
+The setting fixes the operating regime. The network has *fixed capacity*: no new parameters are
+added per task. The old data is not retained and interleaved during later training. And the
+training cost stays linear in the number of parameters and in the number of training examples,
+so the method runs on the same large deep networks used elsewhere. The question is how to carry
+a compact record of each finished task forward into ordinary training on the next one.
 
 ## Background
 
@@ -24,8 +19,7 @@ Catastrophic forgetting (also called catastrophic interference) is an old observ
 connectionist models: McCloskey & Cohen (1989) and Ratcliff (1990) showed that training a
 network on a second task in sequence rapidly destroys what it learned on the first, and French
 (1999) framed this as the *stability-plasticity dilemma* — a network plastic enough to learn B
-is, for that very reason, unstable enough to forget A. The mechanism is concrete: the weights
-that carried task A are not protected, so the B-gradient drags them to wherever B wants them.
+is, for that very reason, unstable enough to forget A.
 
 A diagnostic empirical study by Goodfellow, Mirza, Xiao, Courville & Bengio (2014) measured
 this directly across activation functions and training algorithms. They trained on a first
@@ -34,21 +28,17 @@ tasks that are functionally identical but presented in a different input format,
 similar, and tasks that are dissimilar. The "identical task, different input format" regime is
 constructed by taking a dataset and applying a *fixed random permutation to the input pixels* —
 each permutation is a new task of the same intrinsic difficulty but requiring different weights.
-Two of their findings matter here. First, the amount and character of forgetting depends
-strongly on task similarity, so any sequential learner must be tested across that axis, not on a single
-pair. Second, among the methods of the day, dropout was the most consistently effective at
-resisting forgetting — apparently in large part because the best dropout networks are *larger*,
-i.e. dropout buys forgetting-resistance by spending extra capacity. That is a telling diagnosis:
-the prior-art mitigations work by having spare room, not by protecting specific knowledge.
+Two of their findings: the amount and character of forgetting depends strongly on task
+similarity, so a sequential learner is tested across that axis rather than on a single pair; and
+among the methods of the day, dropout was the most consistently effective at resisting
+forgetting, with the best dropout networks being *larger*.
 
-There is also a biological parallel that frames the design target. In mammalian neocortex, when
-a skill is learned a fraction of excitatory synapses are strengthened (enlarged dendritic
-spines), and those particular spines *persist* through later learning, accounting for retained
-performance months later; selectively erasing them erases the skill. The reading is that the
-brain protects old knowledge not by walling off whole regions but by rendering *specific,
-important synapses* less plastic — task-specific synaptic consolidation. The computational
-question this poses is: which weights are "important", and how do you slow learning on exactly
-those?
+There is also a biological parallel. In mammalian neocortex, when a skill is learned a fraction
+of excitatory synapses are strengthened (enlarged dendritic spines), and those particular spines
+*persist* through later learning, accounting for retained performance months later; selectively
+erasing them erases the skill. The reading is that the brain protects old knowledge not by
+walling off whole regions but by rendering *specific* synapses less plastic — task-specific
+synaptic consolidation.
 
 Two further pieces of standard machinery are on the table. The **Laplace approximation**
 (MacKay 1992, in the Bayesian-backprop framework): training a network to a (local) optimum can
@@ -68,46 +58,33 @@ which may be indefinite.
 
 ## Baselines
 
-The prior approaches a sequential-learning method would be measured against and react to:
+The prior approaches a sequential-learning method is measured against:
 
 **Plain SGD (sequential fine-tuning).** Train on A to `theta*_A`, then continue training on B
-with the ordinary task-B loss. This is the thing that breaks: the B-gradient has no term
-discouraging movement of A-critical weights, so test accuracy on A drops steeply the moment
-training switches to B and degrades further with each new task. **Gap:** no memory of what
-mattered to A at all — every weight is equally free to move.
+with the ordinary task-B loss. The B-gradient has no term referring to task A; every weight is
+equally free to move.
 
 **Multitask / joint training, and replay-based system-level consolidation (McClelland et al.
-1995).** If all tasks' data are available at once, interleaving them removes forgetting outright,
-because the weights are jointly optimized for every task. When tasks arrive sequentially this
-requires an episodic memory that *stores and replays* old examples during later training.
-**Gap:** the stored-and-replayed data grows with the number of tasks, which is exactly the cost
-the setting forbids; it sidesteps forgetting by re-supplying the old data rather than by
-remembering anything compact about the network.
+1995).** If all tasks' data are available at once, interleaving them jointly optimizes the
+weights for every task. When tasks arrive sequentially this uses an episodic memory that *stores
+and replays* old examples during later training, so the stored-and-replayed data grows with the
+number of tasks.
 
 **Uniform quadratic anchoring (plain L2 to the old weights).** Add `sum_i (lambda/2)(theta_i -
 theta*_{A,i})^2` to the task-B loss — pull every weight back toward its task-A value with the
-*same* stiffness. **Gap:** the stiffness is parameter-independent. Cranked high enough to
-preserve A, it freezes the whole network and leaves no slack to fit B; cranked low enough to fit
-B, it fails to hold A. There is no single global constant that both protects A and admits B,
-because the weights that matter to A and the weights that B needs to move are not the same set,
-and a uniform penalty cannot tell them apart.
+*same* stiffness. The stiffness is parameter-independent, set by the single global constant
+`lambda`.
 
 **Dropout regularization (Goodfellow et al. 2014; Hinton et al. 2012).** The strongest of the
 standard regularizers at resisting forgetting in the diagnostic study, by training-with-dropout
-plus early stopping and cross-validated hyperparameters. **Gap:** its forgetting-resistance
-comes largely from enlarging the network's effective capacity rather than from protecting
-specific learned structure; it does not scale — it only gets reasonable results on up to about
-two sequential permutation tasks, and degrades as more tasks are added.
+plus early stopping and cross-validated hyperparameters.
 
 **Quadratic energy-surface penalties on small models (French & Chater 2002; Eaton & Ruvolo
-2013, ELLA).** These already had the idea of approximating the old-task loss surface by a
-quadratic penalty so that old data can be discarded. French & Chater used random inputs to build
-a quadratic approximation to the error surface; ELLA maintains a per-task model with a shared
-latent basis. **Gap:** they do not scale to deep networks. French & Chater's approach is slow
-because it recomputes the curvature at each sample; ELLA requires computing and inverting
-matrices whose dimensionality is the number of parameters, which confines it in practice to
-linear and logistic regression. The open gap is a compact old-task record whose time and memory
-cost remain linear in the parameters of a deep net.
+2013, ELLA).** These approximate the old-task loss surface by a quadratic penalty so that old
+data can be discarded. French & Chater used random inputs to build a quadratic approximation to
+the error surface, recomputing the curvature at each sample; ELLA maintains a per-task model with
+a shared latent basis, computing and inverting matrices whose dimensionality is the number of
+parameters, applied in practice to linear and logistic regression.
 
 ## Evaluation settings
 

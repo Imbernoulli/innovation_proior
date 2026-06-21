@@ -6,21 +6,15 @@ The core difficulty is distribution mismatch. The logged action frequencies come
 
 ## Available Baselines
 
-One route is to learn an outcome model. In a contextual bandit, this means estimating `q(x,a) = E[r | x,a]`; in an MDP, this means estimating a reward/value model such as `Q(s,a)`. The evaluator can then average model predictions under the target policy. This route has low sampling variance because it averages predictions, but it can be biased wherever the fitted model is wrong in target-policy regions.
+One route is to learn an outcome model. In a contextual bandit, this means estimating `q(x,a) = E[r | x,a]`; in an MDP, this means estimating a reward/value model such as `Q(s,a)`. The evaluator can then average model predictions under the target policy.
 
-Another route is inverse-probability or importance weighting. A one-step sample can be weighted by `pi_target(a|x) / pi_behavior(a|x)`. A trajectory can be weighted by products of per-step ratios. This route can be unbiased when the behavior probabilities are correct, but high weights create unstable estimates, especially when the target policy selects actions that the behavior policy rarely took.
+Another route is inverse-probability or importance weighting. A one-step sample can be weighted by `pi_target(a|x) / pi_behavior(a|x)`. A trajectory can be weighted by products of per-step ratios.
 
 ## Sequential Complication
 
 For finite-horizon trajectories, the mismatch correction compounds over time. If `rho_t = pi_target(a_t|s_t) / pi_behavior(a_t|s_t)`, trajectory-wise estimators use products such as `rho_1 * ... * rho_H`, and per-decision variants still carry cumulative products up to each reward. Even when each ratio has mean one under the behavior policy, products of random ratios can have very large variance.
 
-The sequential Bellman structure also suggests a second source of information: a fitted action-value estimate can predict the conditional return from a state-action pair. The open design problem is how to use such predictions without simply trusting their approximation error.
-
-## Evaluation Requirements
-
-The estimator should retain the distribution-correction guarantee when the behavior probabilities are known or well estimated. It should also benefit from a good reward/value model without becoming fully dependent on that model being exactly correct. The desired failure mode is therefore asymmetric: a misspecified model should not destroy validity if the propensities are right, and imperfect propensities should not destroy validity if the outcome model is right.
-
-A useful analysis must also explain variance, not only bias. It should identify which part of the importance-weighting instability is reducible by a good model and which part comes from irreducible transition or reward stochasticity in the environment.
+The sequential Bellman structure also suggests a second source of information: a fitted action-value estimate can predict the conditional return from a state-action pair.
 
 ## Implementation Surface
 

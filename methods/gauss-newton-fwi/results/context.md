@@ -17,13 +17,10 @@ predicted and observed traces,
 
     J(m) = ½ Σ_s ∫₀ᵀ ‖ S u_s(·,t) − d_s(t) ‖² dt,
 
-over m. To descend this misfit we need its gradient ∂J/∂m at every grid point. The hard requirement
-is that obtaining this gradient must stay affordable **even though m has millions of components** and
-each evaluation of J already costs a full wave-propagation simulation per shot. A method that costs
-one wave simulation *per model parameter* is hopeless — that is the wall. A second requirement is
-that the descent actually reach the right basin: the misfit over an oscillatory wavefield is
-violently non-convex, and a naive local optimizer can converge to a wrong model that fits a shifted
-copy of the data.
+over m. To descend this misfit one needs its gradient ∂J/∂m at every grid point, where m has
+millions of components and each evaluation of J already costs a full wave-propagation simulation per
+shot, with a survey holding thousands of shots. The question is how to compute that gradient and
+descend the misfit, which over an oscillatory wavefield is strongly non-convex.
 
 ## Background
 
@@ -34,92 +31,78 @@ slowness, a source f_s(x,t) at the shot location, and homogeneous initial condit
 
 solved by finite differences on a grid (an explicit leapfrog time march, second/fourth-order spatial
 Laplacian, absorbing/PML layers at the artificial boundaries). The predicted trace at receiver r is
-the wavefield sampled there, S_{s,r} u_s. By the time large surveys were being inverted, this forward
-solve was the established, well-understood unit of computation — but it *is* the unit: everything in
-a model-fitting loop is counted in multiples of one forward wave simulation per shot, and a survey
-has thousands of shots.
+the wavefield sampled there, S_{s,r} u_s. This forward solve is the established, well-understood unit
+of computation, and the cost of a model-fitting loop is counted in multiples of one forward wave
+simulation per shot.
 
-The dominant, load-bearing fact of the setting: a finite-difference gradient would perturb each of
-the M model parameters in turn and re-simulate the wavefield, costing M+1 forward solves per gradient.
-With M in the millions this is astronomically prohibitive — it is *the* obstacle. The same scaling
-defeats forward (tangent) differentiation: differentiating the wave-equation constraint gives a
-linear sensitivity equation that must be solved once per model parameter, again M solves. Whichever
-way one pushes perturbations *forward* through the simulation, the count of model parameters sits in
-the expensive part.
+A finite-difference gradient perturbs each of the M model parameters in turn and re-simulates the
+wavefield, costing M+1 forward solves per gradient. Forward (tangent) differentiation has the same
+character: differentiating the wave-equation constraint gives a linear sensitivity equation solved
+once per model parameter, again M solves. Pushing perturbations *forward* through the simulation
+places the count of model parameters in the expensive part.
 
-The misfit's non-convexity is the other load-bearing phenomenon, and it has a precise, knowable
-cause. Seismic signals are oscillatory — they are wave trains with a dominant period. When the
-predicted trace for a candidate model is shifted in time relative to the observed trace by more than
-**half a period**, the least-squares misfit prefers to line up the predicted wiggle with the
-*neighbouring* cycle of the observed wiggle rather than the correct one. The gradient then points
-toward matching the wrong cycle, and a local optimizer descends into a spurious minimum. This is
-**cycle skipping**, and the half-period criterion is sharp: matching the data at the receivers to
-within half a period is a necessary condition for the local optimization to head toward the true
-model. A direct consequence: the *lower* the frequency, the *longer* the period, so the wider the
-window of model error that stays within half a period — low-frequency data are far less prone to
-cycle skipping than high-frequency data. The misfit surface for the smooth, long-wavelength part of
-the model, probed by low frequencies, is comparatively benign; the high-frequency detail is what
-makes it a minefield.
+The misfit's non-convexity has a precise, knowable cause. Seismic signals are oscillatory — they are
+wave trains with a dominant period. When the predicted trace for a candidate model is shifted in time
+relative to the observed trace by more than **half a period**, the least-squares misfit prefers to
+line up the predicted wiggle with the *neighbouring* cycle of the observed wiggle rather than the
+correct one. The gradient then points toward matching the wrong cycle, and a local optimizer descends
+into a spurious minimum. This is **cycle skipping**, and the half-period criterion is sharp: matching
+the data at the receivers to within half a period is a necessary condition for the local optimization
+to head toward the true model. A direct consequence: the *lower* the frequency, the *longer* the
+period, so the wider the window of model error that stays within half a period — low-frequency data
+are far less prone to cycle skipping than high-frequency data. The misfit surface for the smooth,
+long-wavelength part of the model, probed by low frequencies, is comparatively benign.
 
 A third fact concerns conditioning. The waves spread geometrically as they propagate, so their
 amplitude — and hence the raw gradient's amplitude — decays with depth and distance from the
 sources; near-source grid points are illuminated far more strongly than deep ones. A raw
-steepest-descent step therefore over-updates the shallow model and barely touches the deep model, and
-nothing in a first-order gradient on its own rebalances the two — the step inherits the same depth
-imbalance as the illumination.
+steepest-descent step over-updates the shallow model and lightly touches the deep model, the step
+inheriting the same depth imbalance as the illumination.
 
 ## Baselines
 
 **Finite-difference / perturbational gradient.** Treat J(m) as a black box, perturb each model
 parameter, re-simulate, difference. Core idea: estimate ∂J/∂m_i ≈ (J(m+δ e_i) − J(m))/δ
-component-by-component. Exact in the limit, conceptually trivial, and the obvious thing to try. Its
-decisive limitation is cost: M+1 forward wave simulations per gradient, with M in the millions —
-unusable at field scale — and it inherits a step-size dilemma (too large contaminates with
-curvature, too small drowns in the solver's discretization noise).
+component-by-component. Exact in the limit, conceptually trivial, and the obvious thing to try. It
+costs M+1 forward wave simulations per gradient and carries a step-size choice (too large contaminates
+with curvature, too small drowns in the solver's discretization noise).
 
 **Forward (tangent) sensitivity.** Differentiate the converged forward constraint to propagate each
 model perturbation forward through the linearized wave equation, solving (∂F/∂u)(∂u/∂m_i) = −∂F/∂m_i
 once per parameter, then assembling ∂J/∂m_i. Core idea: exact directional derivatives without
-finite-difference noise. It removes the step-size problem but **keeps the M-solves scaling** — one
-linear wave solve per model parameter. It is on the right side of the trade only when outputs vastly
-outnumber inputs; here there is a single scalar misfit and millions of inputs, so it is on the wrong
-side.
+finite-difference noise — one linear wave solve per model parameter. It is suited to the regime where
+outputs vastly outnumber inputs.
 
 **Optimal control of PDEs (Lions 1971, *Optimal Control of Systems Governed by Partial Differential
 Equations*).** The abstract machinery for minimizing a functional under a PDE constraint: introduce
 an adjoint (costate) field as a Lagrange multiplier defined over the domain; stationarity in the
 state yields an adjoint PDE for the costate; the remaining variation gives the gradient of the
-functional with respect to the control, without perturbing each control separately. Provides the
-theory but stated abstractly — not tied to the hyperbolic wave equation, and giving no recipe for the
-adjoint's source and final/boundary conditions that a time-dependent wave problem needs.
+functional with respect to the control, without perturbing each control separately. The theory is
+stated abstractly, not tied to the hyperbolic wave equation.
 
 **Costate gradients in trajectory optimization (Bryson & Ho 1975, *Applied Optimal Control*).** For
 control of an ODE system, the gradient of a cost with respect to *all* controls is obtained by
 integrating a costate equation **backward in time** in a single sweep — one backward integration
-regardless of the number of controls. The concrete template of "one extra (backward) solve gives the
-whole gradient," but living in time-dependent ODE control, not in a spatial PDE field inversion.
+regardless of the number of controls. The setting is time-dependent ODE control.
 
 **Adjoint-state method in inverse problems (Chavent 1974; the migration interpretation, Lailly
-1983).** The adjoint-state idea carried into geophysical inverse problems: the gradient of the
-least-squares waveform misfit is obtained by **back-propagating the data residual** into the earth
-and correlating it with the forward (source) wavefield — the gradient *is* a migration / imaging
-operator. Core idea: the residual, injected at the receivers and propagated by the adjoint of the
-wave operator, plays the role of the costate field; its correlation with the incident wavefield gives
-the model update. This is the imaging principle (Claerbout) read as a gradient: the source wavefield
-and a receiver-side wavefield correlated at zero time lag light up the reflectors. As presented in the
-migration literature it remains a stand-alone imaging step rather than a complete iterative
-waveform-fitting procedure.
+1983).** The adjoint-state idea in geophysical inverse problems: the gradient of the least-squares
+waveform misfit is obtained by **back-propagating the data residual** into the earth and correlating
+it with the forward (source) wavefield — the gradient *is* a migration / imaging operator. Core idea:
+the residual, injected at the receivers and propagated by the adjoint of the wave operator, plays the
+role of the costate field; its correlation with the incident wavefield gives the model update. This is
+the imaging principle (Claerbout) read as a gradient: the source wavefield and a receiver-side
+wavefield correlated at zero time lag light up the reflectors. In the migration literature it is
+presented as a stand-alone imaging step.
 
 **Gauss–Newton / Newton in frequency-space inversion (Pratt, Shin & Hicks 1998, *Gauss–Newton and
 full Newton methods in frequency-space seismic waveform inversion*).** The least-squares structure
 J = ½‖r(m)‖² admits a Gauss–Newton model: linearize the residual r about the current model via its
 Fréchet (Born) derivative G = ∂r/∂m, approximate the Hessian by H_GN = Re(GᴴG), and take the step
 δm = −H_GN⁻¹ ∇J. Core idea: the Gauss–Newton Hessian deconvolves the gradient by the geometrical
-spreading and illumination, giving a far better-scaled update than steepest descent; its diagonal is
-the zero-lag autocorrelation of the partial-derivative wavefields. Its limitation at field scale is
-that H_GN is enormous and dense — with millions of model parameters it cannot be formed, stored, or
-inverted directly, and that cost is the bottleneck that has kept the full second-order step out of
-reach at survey scale.
+spreading and illumination, giving a better-scaled update than steepest descent; its diagonal is the
+zero-lag autocorrelation of the partial-derivative wavefields. At field scale with millions of model
+parameters, H_GN is enormous and dense.
 
 ## Evaluation settings
 

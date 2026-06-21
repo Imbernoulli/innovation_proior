@@ -8,8 +8,6 @@ A set $A$ of integers is *sum-free* if there is no solution to $x+y=z$ with $x,y
 
 2. **Enumerative.** How many sum-free subsets does $[N]=\{1,\dots,N\}$ have? There are obvious families of size about $2^{N/2}$: all subsets of the odd numbers, and all subsets of the strict upper half $\{\lfloor N/2\rfloor+1,\dots,N\}$. The question is whether these essentially account for the count, and how the parity-dependent constant appears.
 
-A solution to the extremal question has to keep a positive fraction of an arbitrary additive set without inspecting all triples one by one. A solution to the counting question has to turn the local prohibition $x+y=z$ into global structural control; otherwise the number of possible constrained subsets is too large to count directly.
-
 ## Background
 
 **Sum-free regions on the circle.** Work on $\mathbb{T}=\mathbb{R}/\mathbb{Z}$. A measurable region $B\subseteq\mathbb{T}$ is itself sum-free when $(B+B)\cap B=\emptyset$, where the sumset is taken modulo $1$; symmetric arcs $(\alpha,1-\alpha)$ around $1/2$ are the simplest candidates, and the half-open and open versions of an arc carry the same measure.
@@ -38,7 +36,7 @@ and large Fourier coefficients are sparse by Parseval.
 
 **Known counting scale.** Alon, Calkin, and Erdos-Granville independently proved $|\mathrm{SF}(N)|=2^{N/2+o(N)}$. This fixes the exponential scale but leaves a factor $2^{o(N)}$, much too large for the Cameron-Erdos constant.
 
-**Container line.** For related enumeration problems, Green's Fourier granularization and Sapozhenko's combinatorial container method are the standard tools for reducing a count over many constrained objects to a count over a smaller family of coarser supersets; whether and how they apply to the sum-free count is part of what is open.
+**Container line.** For related enumeration problems, Green's Fourier granularization and Sapozhenko's combinatorial container method are the standard tools for reducing a count over many constrained objects to a count over a smaller family of coarser supersets.
 
 ## Baselines
 
@@ -48,15 +46,11 @@ For every $\theta$, this set is sum-free because it is the preimage of a sum-fre
 $$\mathbb{E}_\theta |A_\theta|=\sum_{a\in A}\Pr[\{\theta a\}\in(1/3,2/3)]=\frac n3,$$
 so some $\theta$ has $|A_\theta|\ge n/3$. Using the half-open arc gives $|A_\theta|=n/3+f_A(\theta)$ exactly. The average is still $n/3$, while $\theta=0$ keeps no elements, so the integer-valued function $|A_\theta|$ is not constant and its maximum is strictly larger than $n/3$. Therefore
 $$s(A)\ge \lfloor n/3\rfloor+1=\left\lceil\frac{n+1}{3}\right\rceil\ge\frac{n+1}{3}.$$
-The gap is that this is a one-step integrality gain.
 
-**Where the averaging bound stalls.** The integrality argument above buys exactly one integer over $n/3$ and stops there: a second jump would require knowing how large the surplus $f_A(\theta)=|A_\theta|-n/3$ can actually be at its maximum, and the averaging itself only certifies that the average is $0$. For sets $A$ whose dilations spread out, the surplus is visibly positive, but highly structured, arithmetically rigid $A$ leave the maximum of $f_A$ close to the threshold, and the averaging argument gives no further leverage on them. Pushing past the one-step gain for arbitrary $A$ is open here.
-
-**Counting baselines.** Every subset of the odd numbers is sum-free, giving $2^{\lceil N/2\rceil}$ examples. Every subset of the strict upper half $\{\lfloor N/2\rfloor+1,\dots,N\}$ is also sum-free. Cameron-Erdos counted the sum-free subsets of $\{\lceil(N+1)/3\rceil,\dots,N\}$ as $\sim c(N)2^{N/2}$, with $c(N)$ depending on the parity of $N$. The upper-bound baseline $2^{N/2+o(N)}$ leaves the main enumerative gap.
+**Counting baselines.** Every subset of the odd numbers is sum-free, giving $2^{\lceil N/2\rceil}$ examples. Every subset of the strict upper half $\{\lfloor N/2\rfloor+1,\dots,N\}$ is also sum-free. Cameron-Erdos counted the sum-free subsets of $\{\lceil(N+1)/3\rceil,\dots,N\}$ as $\sim c(N)2^{N/2}$, with $c(N)$ depending on the parity of $N$.
 
 ## Evaluation settings
 
 For the extremal problem, the natural tests are worst-case sets $A$ of size $n$: intervals, residue classes, and structured sets such as $\{u,2u,v,2v,\dots\}$. The key metric is the integer value of $s(A)$, or equivalently the discrete surplus $m_A$ with $|A_x|=n/3+f_A(x)$. The residue of $n$ modulo $3$ matters, since the integer rounding in the averaging bound behaves differently across the three classes.
 
 For the counting problem, the yardstick is $|\mathrm{SF}(N)|$ compared with $2^{N/2}$, together with the parity of $N$: the target is to pin down the constant in front of $2^{N/2}$, not merely the exponent. Small-$N$ exhaustive enumeration is a useful code check.
-

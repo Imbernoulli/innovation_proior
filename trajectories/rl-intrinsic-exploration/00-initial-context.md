@@ -6,11 +6,11 @@ Sparse-reward, hard-exploration Atari: on games where positive reward can be hun
 
 The fixed base learner is PPO. The policy-optimization lineage that precedes it is:
 
-- **Deep Q-learning (DQN, Mnih et al. 2015).** Learns Q(s,a;θ) with experience replay and a target network, selecting actions by discrete argmax. Gap: the discrete-argmax design does not apply to continuous control, and performance is brittle to reward scale and hyperparameters.
-- **Vanilla policy gradients (REINFORCE, Williams 1992).** Ascends ∇_θ J = Ê_t[∇_θ log π_θ(a_t|s_t) Â_t] directly. Gap: each sample supports only one gradient step, and large steps can collapse the policy irrecoverably, so data cannot be safely reused.
-- **TRPO (Schulman et al. 2015b).** Maximizes a surrogate objective subject to an average-KL trust region solved with Fisher-vector products and conjugate gradients. Gap: the second-order machinery is heavy, allows essentially one step per batch, and the KL constraint interacts awkwardly with parameter sharing and stochastic units.
-- **Parallel actor-critic (A3C/A2C, Mnih et al. 2016).** Uses multiple parallel actors, a single shared network with policy and value heads, n-step bootstrapped advantages, and an entropy bonus. Gap: there is no trust region, so a shared-parameter update can still damage the policy.
-- **GAE (Schulman et al. 2015a).** Computes advantages as a λ-weighted average of n-step TD residuals, trading bias for variance. Gap: the bias-variance trade-off is controlled by a fixed hand-tuned λ.
+- **Deep Q-learning (DQN, Mnih et al. 2015).** Learns Q(s,a;θ) with experience replay and a target network, selecting actions by discrete argmax.
+- **Vanilla policy gradients (REINFORCE, Williams 1992).** Ascends ∇_θ J = Ê_t[∇_θ log π_θ(a_t|s_t) Â_t] directly.
+- **TRPO (Schulman et al. 2015b).** Maximizes a surrogate objective subject to an average-KL trust region solved with Fisher-vector products and conjugate gradients.
+- **Parallel actor-critic (A3C/A2C, Mnih et al. 2016).** Uses multiple parallel actors, a single shared network with policy and value heads, n-step bootstrapped advantages, and an entropy bonus.
+- **GAE (Schulman et al. 2015a).** Computes advantages as a λ-weighted average of n-step TD residuals, trading bias for variance.
 
 ## Fixed substrate / Code framework
 

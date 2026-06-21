@@ -4,11 +4,11 @@ Inverse reinforcement learning for continuous control. Given expert demonstratio
 
 ## Prior art / Background / Baselines
 
-Three standard ways to turn demonstrations into behavior, and the gap each leaves.
+Three standard ways to turn demonstrations into behavior.
 
-- **Behavioral cloning (Pomerleau, 1991).** Supervise $\pi(a\mid s)$ on expert $(s,a)$ pairs. Gap: it learns only under the expert's state distribution; deviations put the learner in states it never trained on, and errors compound over the horizon.
-- **Maximum-causal-entropy inverse RL (Ziebart et al., 2008/2010).** Fit a cost under which the expert trajectory is optimal, choosing the most randomized trajectory distribution that matches the expert's feature expectations. Gap: the likelihood gradient requires the partition function over all trajectories, so each update needs a full RL solve in an inner loop and remains expensive.
-- **Apprenticeship / feature-expectation matching (Abbeel & Ng, 2004).** Find a policy whose expected features match the expert's under a restricted class of costs. Gap: the recovered cost is only as expressive as the chosen class; a low-dimensional linear class usually cannot pin down the expert.
+- **Behavioral cloning (Pomerleau, 1991).** Supervise $\pi(a\mid s)$ on expert $(s,a)$ pairs. The policy is trained under the expert's state distribution.
+- **Maximum-causal-entropy inverse RL (Ziebart et al., 2008/2010).** Fit a cost under which the expert trajectory is optimal, choosing the most randomized trajectory distribution that matches the expert's feature expectations. The likelihood gradient involves the partition function over all trajectories, requiring a full RL solve in an inner loop per update.
+- **Apprenticeship / feature-expectation matching (Abbeel & Ng, 2004).** Find a policy whose expected features match the expert's under a restricted class of costs. The recovered cost lives within the chosen function class.
 
 ## Fixed substrate / Code framework
 

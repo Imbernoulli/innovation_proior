@@ -4,11 +4,11 @@ Structure-based virtual screening ranks a compound library against one protein t
 
 ## Prior art / Background / Baselines
 
-- **Molecular docking (Glide, AutoDock Vina, Gold).** Samples candidate ligand poses in the pocket and scores each pose with an empirical force field correlated with binding free energy. Gap: per-compound pose sampling takes roughly 10 s on a CPU core, so a $10^{10}$-compound library is thousands of years of compute — cost grows with the library, the wrong scaling for the "bigger is better" regime.
-- **Supervised affinity regression (DeepDTA, GraphDTA, OnionNet).** Maps a protein-molecule representation to a numeric affinity and ranks by that value. Gap: depends on scarce affinity labels (~$10^4$ labeled complexes), sees almost no true negatives, and at inference screens $(\#\text{targets}) \times (\#\text{library})$ full network evaluations, so it does not amortize.
-- **Supervised decoy classifiers (DrugVQA, AttentionSiteDTI).** Trains a binary classifier on actives versus rule-constructed decoys. Gap: the model latches onto the decoy-construction rule and fails to transfer to benchmarks built with different rules.
-- **Single-tower 3D scorers.** Feeds the joint protein-ligand complex, including cross-distances, into one network. Gap: the score depends on protein-ligand cross-distances, which are only known once the ligand is posed in the pocket, so a docking step is required and docking's cost is inherited.
-- **Dense retrieval and contrastive pretraining (DPR, InfoNCE, CLIP).** Embeds queries and documents independently and retrieves by dot-product similarity, training with a symmetric in-batch contrastive softmax. Gap: the softmax is dominated by easy negatives in large batches, and its global density-ratio optimum does not place the strongest binders at the very top of realistic, top-heavy benchmarks.
+- **Molecular docking (Glide, AutoDock Vina, Gold).** Samples candidate ligand poses in the pocket and scores each pose with an empirical force field correlated with binding free energy.
+- **Supervised affinity regression (DeepDTA, GraphDTA, OnionNet).** Maps a protein-molecule representation to a numeric affinity and ranks by that value.
+- **Supervised decoy classifiers (DrugVQA, AttentionSiteDTI).** Trains a binary classifier on actives versus rule-constructed decoys.
+- **Single-tower 3D scorers.** Feeds the joint protein-ligand complex, including cross-distances, into one network.
+- **Dense retrieval and contrastive pretraining (DPR, InfoNCE, CLIP).** Embeds queries and documents independently and retrieves by dot-product similarity, training with a symmetric in-batch contrastive softmax.
 
 ## Fixed substrate / Code framework
 

@@ -4,9 +4,8 @@
 
 Place `26` circles inside the unit square `[0,1]²`, pairwise non-overlapping, and maximize the
 **sum of their radii** `Σ rᵢ`. The constructor emits one packing — centers `(xᵢ, yᵢ)` and radii
-`rᵢ ≥ 0` — scored by `Σ rᵢ` alone. The radii are **free and unequal**, which is the whole
-character of the problem: a good packing mixes a few large circles with many small gap-fillers,
-and the optimum is irregular with no symmetry.
+`rᵢ ≥ 0` — scored by `Σ rᵢ` alone. The radii are **free and unequal**: each `rᵢ` is an
+independent decision variable, not fixed in advance.
 
 ## Constraints (feasibility)
 
@@ -15,9 +14,10 @@ and the optimum is irregular with no symmetry.
 - `rᵢ ≥ 0`. A packing is accepted when no constraint is violated by more than a small absolute
   tolerance.
 
-This is a nonconvex QCQP (the pairwise-distance constraints are nonconvex). A key structural fact:
+This is a nonconvex QCQP (the pairwise-distance constraints are nonconvex). A structural fact:
 for **fixed centers, the optimal radii are an LP** — maximize `Σ rᵢ` s.t. `rᵢ + rⱼ ≤ dᵢⱼ`,
-`rᵢ ≤ wallᵢ`. The hard part is *where to put the centers*.
+`rᵢ ≤ wallᵢ`, where `dᵢⱼ` is the center-to-center distance and `wallᵢ` is the distance to the
+nearest wall.
 
 ## Where this task sits
 
@@ -30,5 +30,5 @@ decimal.
 ## This method's role
 
 This is the **structured baseline**: a parameter-free, closed-form, guaranteed-feasible layout
-that puts a concrete floor on the board for the searched methods to beat. The single editable
-function is `construct_packing() -> (centers, radii)`.
+that puts a concrete floor on the board. The single editable function is
+`construct_packing() -> (centers, radii)`.

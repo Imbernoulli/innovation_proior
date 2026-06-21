@@ -12,12 +12,7 @@ stance phase, where the foot is planted and pushes the body forward), but each l
 fixed *phase offset* relative to the others. The gait is nothing but that pattern of relative
 phases. Different gaits are different offset patterns, and different speeds call for different
 gaits: at low speed an animal uses a statically stable walk; at high speed a dynamically stable
-trot or bound. A controller therefore has to (i) produce a clean periodic per-leg motion whose
-amplitude and frequency can be dialed smoothly, (ii) lock the four legs into a chosen relative
-phasing, (iii) let that phasing be changed to retrieve a different gait, and (iv) do all this
-robustly, so that a perturbation, a parameter change, or rough terrain does not destroy the
-coordination. A solution that meets this bar would reduce a high-dimensional, twelve-or-more
-joint trajectory problem to a handful of interpretable parameters.
+trot or bound.
 
 ## Background
 
@@ -59,8 +54,7 @@ the underlying parameters.
 **Coupled phase oscillators (synchrony).** The Kuramoto model studies how a population of phase
 oscillators synchronizes under coupling: φ̇_i = ω_i + Σ_j K_ij sin(φ_j − φ_i). The sinusoidal
 coupling pulls phase differences toward stable fixed points; with a phase-bias term
-sin(φ_j − φ_i − Φ_ij) the locked state sits at φ_j − φ_i = Φ_ij. Such models do not explain how
-rhythm arises; they take oscillators as given and characterize what their *couplings* do.
+sin(φ_j − φ_i − Φ_ij) the locked state sits at φ_j − φ_i = Φ_ij.
 Relatedly, the theory of *symmetric coupled cell networks* (Golubitsky and Stewart; Golubitsky,
 Stewart, Buono and Collins's modular network for legged locomotion, 1998) shows that the symmetry
 of a network of identical coupled cells forces the existence of symmetric periodic solutions —
@@ -68,45 +62,31 @@ and that the standard quadruped gaits correspond to the symmetry subgroups of a 
 The H/K theorem characterizes which spatio-temporal symmetry patterns (hence which gaits) a
 coupled network can support, independent of the individual cell's internal dynamics.
 
-**The brittleness of open-loop scripted gaits.** A direct alternative is to author each joint's
-trajectory as an explicit clocked function of time (e.g. sinusoids or splines played back from a
-phase clock) and hand-tune it per gait per speed. This is fragile in specific ways. The replayed
-trajectory has no internal notion of its own phase as a dynamical state, so it cannot restore
-phase after a disturbance — a leg knocked off schedule simply resumes its clock at the wrong
-place, and there is no force pulling the four legs back into their relative phasing. Re-tuning the
-frequency mid-stride, or splicing one gait into another, injects discontinuities. And every
-(gait, speed) pair must be re-authored by hand. These are the pain points a rhythmic dynamical
-controller is meant to remove.
+**Open-loop scripted gaits.** A direct alternative is to author each joint's trajectory as an
+explicit clocked function of time (e.g. sinusoids or splines played back from a phase clock)
+and hand-tune it per gait per speed.
 
 ## Baselines
 
 - **Hand-scripted / clocked open-loop trajectories.** Joint angles are explicit periodic
   functions of a time clock, tuned by hand. Core method: pick a waveform and a phase schedule
-  per leg; replay. Gap: no restoring dynamics (phase is not a state), so perturbations and
-  parameter changes break coordination; brittle re-tuning; one design per gait per speed.
+  per leg; replay.
 
 - **Half-centre / neural-network CPG models.** Biologically faithful networks of (spiking or
   leaky-integrator) neurons whose mutual inhibition yields anti-phase rhythms; coupled
   half-centres drive flexor/extensor pairs. Core math: reciprocal inhibition between neuron
-  populations producing oscillation. Gap for robotics: detailed spiking models are
-  computationally heavy for real-time control, and the mapping from neuron parameters to gait
-  parameters (frequency, amplitude, phase offsets) is indirect and hard to design or tune.
+  populations producing oscillation.
 
 - **Single-oscillator-per-joint with fixed sinusoidal coupling (Kuramoto-style).** Treat each
   actuated joint as a phase oscillator with constant natural frequency, coupled sinusoidally with
   fixed weights and phase biases. Core math: φ̇_i = ω_i + Σ_j K_ij sin(φ_j − φ_i − Φ_ij), output
   a sinusoid of the phase. Strength: robust phase-locking and synchrony, re-locks after
-  perturbation. Gap left open: a plain phase oscillator carries a single frequency and a bare
-  phase with no amplitude of its own, and the coupling weights are set by hand rather than tied
-  to which gait the network ought to settle into.
+  perturbation.
 
 - **Symmetric coupled-cell network gait design.** Use network symmetry (Golubitsky–Stewart) to
   guarantee that walk/trot/pace/bound exist as symmetric periodic solutions of a four-cell ring
   and to make one of them stable by choosing the coupling. Core result: the H/K theorem ties
-  admissible spatio-temporal symmetry patterns to subgroup pairs. Gap left open on its own: the
-  theory characterizes the coupling architecture and the abstract symmetric solution at the level
-  of identical cells, leaving open what each cell's internal dynamics is, what actually drives the
-  joints, and how the world enters the loop.
+  admissible spatio-temporal symmetry patterns to subgroup pairs.
 
 ## Evaluation settings
 

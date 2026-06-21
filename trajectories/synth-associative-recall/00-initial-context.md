@@ -4,13 +4,13 @@ Multi-Query Associative Recall (MQAR) tests whether a sequence model can perform
 
 ## Prior art / Background / Baselines
 
-- **Neural Turing Machine (Graves et al. 2014).** It augments a recurrent controller with an external content-addressable memory matrix and differentiable read/write heads. Gap: the addressing machinery is intricate and brittle to train, and the controller must learn to drive the heads, so the mechanism is not a single drop-in sequence mixer.
+- **Neural Turing Machine (Graves et al. 2014).** It augments a recurrent controller with an external content-addressable memory matrix and differentiable read/write heads.
 
-- **Recurrent nets with feedback memory (Elman 1990; trained by BPTT/RTRL).** They maintain a fixed-size hidden state and fold each input into it, giving constant per-step cost. Gap: gradients through the recurrence are products of per-step factors, so they vanish or explode exponentially with lag, and the fixed state must compress the whole prefix into one vector.
+- **Recurrent nets with feedback memory (Elman 1990; trained by BPTT/RTRL).** They maintain a fixed-size hidden state and fold each input into it, giving constant per-step cost.
 
-- **Softmax self-attention (Vaswani et al. 2017).** At each query position it reads a normalized exponential-weighted average over every earlier key-value pair, so a matching key far back can spike onto its value and be retrieved cleanly. Gap: it forms an `N×N` score matrix, so its compute and KV-cache grow with sequence length; it is not a sub-quadratic candidate.
+- **Softmax self-attention (Vaswani et al. 2017).** At each query position it reads a normalized exponential-weighted average over every earlier key-value pair, so a matching key far back can spike onto its value and be retrieved cleanly. It forms an `N×N` score matrix, so its compute and KV-cache grow with sequence length.
 
-The open question is how far a sub-quadratic mixer can push recall accuracy before it breaks as the context length and the number of key-value pairs grow.
+The open question is how far a sub-quadratic mixer can push recall accuracy as context length and the number of key-value pairs grow.
 
 ## Fixed substrate / Code framework
 

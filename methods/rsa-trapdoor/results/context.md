@@ -4,32 +4,13 @@
 
 Two people who have never met want to communicate privately over a channel that everyone can
 listen to — and, separately, one of them wants to "sign" a message so the other can prove to a
-third party who sent it. With every cipher known at the time, both goals collapse into one
-prerequisite: the two parties must *already* share a secret key, delivered ahead of time over some
-secure channel (a courier, registered mail, a trusted face-to-face meeting). This is the **key
-distribution problem**, and it is fatal for any large electronic network: if a system has N users
-and every pair might want to talk, the number of keys that must be pre-distributed by courier grows
-quadratically, and no business correspondent can be expected to arrange a courier before sending a
-first message.
-
-The precise goal is to remove the pre-shared secret entirely. We want a scheme in which each user
-publishes a piece of information (an *enciphering* key E) in a public directory, keeps a
-corresponding *deciphering* key D private, and where the following must all hold simultaneously:
-
-- (a) D inverts E: deciphering the enciphered form of any message M returns M.
-- (b) Both E and D are easy (computationally cheap) to compute *by the key's owner*.
-- (c) Publishing E reveals **no feasible way** to compute D. For a given ciphertext, an eavesdropper
-  who has only E can in principle invert it by brute force (try every message until one enciphers to
-  the ciphertext), and that search must be astronomically large.
-- (d) For signatures, additionally: enciphering the deciphered form of M also returns M (so D may be
-  applied first, to an unenciphered message). A function satisfying (a)–(c) is a *trap-door one-way
-  function*; if it also satisfies (d) it is a *trap-door one-way permutation*.
-
-A solution would let anyone encrypt to a recipient using only public information, while only the
-recipient decrypts; and would let a holder of D produce, for any specified message, a tag that anyone
-can verify with the public E but no one else can feasibly produce from public data. What is needed to
-make any of this real is a single concrete function with property (c): easy forward, infeasible to
-invert from public data alone, yet trivial to invert for whoever holds a secret "trap door."
+third party who sent it. With every cipher known at the time, both goals share one prerequisite:
+the two parties must *already* share a secret key, delivered ahead of time over some secure channel
+(a courier, registered mail, a trusted face-to-face meeting). The question is whether there exists
+a concrete mathematical function that is easy to evaluate in the forward direction, yet practically
+infeasible to invert for anyone who does not hold a secret piece of information used during its
+construction — a *trap-door one-way function* — so that public-key encryption and message signing
+become possible without pre-shared secrets.
 
 ## Background
 
@@ -40,8 +21,7 @@ difficulty, for a cryptanalyst lacking K, of recovering P from C. The one-time p
 provably unbreakable (Shannon's information-theoretic argument, a quarter-century later) but requires
 key material as long as the message, so it is impractical at scale. The U.S. National Bureau of
 Standards has just adopted the Data Encryption Standard (DES, 1975–77), developed at IBM; it is a
-strong symmetric block cipher, but it is symmetric — it does not, and cannot, have property (c), so
-it does nothing for key distribution.
+strong symmetric block cipher.
 
 The reframing that sets up everything: Diffie & Hellman (1976) argued that the security of most
 ciphers already rests not on information theory but on **computational difficulty** to the
@@ -103,41 +83,30 @@ The mathematical material that exists and is load-bearing for any number-theoret
 ## Baselines
 
 - **Symmetric ciphers in general (and DES in particular).** C = S_K(P), decrypt with the same K.
-  Strong and fast, but symmetric: the encrypting and decrypting capability are the same secret, so the
-  key must be shared in advance over a secure channel. No property (c); does nothing for key
-  distribution, and gives no public verifier for signatures. This is precisely the prior art a
-  public-key scheme must escape.
+  The encrypting and decrypting capability are the same secret, so the key must be shared in advance
+  over a secure channel.
 
 - **Diffie–Hellman exponential key exchange (1976).** Over GF(q) with primitive α, users publish
   Y = α^X mod q and combine to the shared α^{X_i X_j}; security rests on the hardness of discrete
-  logarithm mod q. Core gap: it produces a *shared key between two parties who interact*, not a
-  *published* enciphering procedure a stranger can use one-sidedly. There is no public E, hence no
-  public-key cryptosystem and no public signature verification — only key agreement. It is *not* built
-  on a trap-door one-way function.
+  logarithm mod q. It produces a shared key between two parties who interact.
 
 - **The Diffie–Hellman matrix public-key sketch (1976).** Encipher binary message m by an invertible
-  n×n matrix E (m ↦ Em); the legitimate decryptor knows D = E^{-1}; an attacker must invert E. The gap
-  is quantitative and fatal: inversion (~n³) is barely harder than the legitimate map (~n²), so the
-  security ratio is at most ~n — far below the 10^6 needed. Diffie and Hellman call it "useless."
-  It establishes the *shape* of a public-key construction (publish a forward map, hide an easy inverse)
-  while showing that a linear/algebraically-transparent forward map gives no real one-wayness.
+  n×n matrix E (m ↦ Em); the legitimate decryptor knows D = E^{-1}; an attacker must invert E.
+  Inversion costs ~n³ versus ~n² for the forward map; Diffie and Hellman call it "useless" as a
+  practical construction. It establishes the *shape* of a public-key construction: publish a forward
+  map, hide an easy inverse.
 
 - **Merkle's puzzles (≈1976).** A sender prepares a large number of "puzzles," each modestly hard;
   the receiver solves one at random and they use its contents as a shared key, forcing an eavesdropper
-  to solve about as many puzzles as were prepared. Gap: the cryptanalytic cost grows only
-  *polynomially* (≈ quadratically) in the legitimate users' effort, so the advantage is far too small,
-  and the protocol's transmission overhead is large. A partial solution to key distribution, not a
-  public-key cryptosystem.
+  to solve about as many puzzles as were prepared.
 
 - **Pohlig–Hellman exponentiation cipher (modulo a prime).** Encryption by m ↦ m^e mod p, decryption
-  by c ↦ c^d mod p over a *prime* modulus. Workable as a symmetric cipher, but over a prime the group
-  order p − 1 is public information, so anyone who learns e can compute the matching d directly — there
-  is no secret hidden in the modulus, hence no trap door usable for a public-key scheme.
+  by c ↦ c^d mod p over a *prime* modulus. Over a prime the group order p − 1 is public information.
 
 ## Evaluation settings
 
-The natural yardsticks are not benchmark datasets but the four defining properties (a)–(d) and the
-computational asymmetry they demand:
+The natural yardsticks are not benchmark datasets but the defining properties of a trap-door
+one-way function and the computational asymmetry they demand:
 
 - **Correctness.** Does deciphering invert enciphering for *every* admissible message M, with no
   message silently corrupted? (For a permutation, every ciphertext must be a valid message and vice
@@ -150,7 +119,7 @@ computational asymmetry they demand:
   whatever hard problem the construction ends up resting on. As a rough sense of the scale such
   estimates can reach, the best discrete-logarithm methods need on the order of q^{1/2} operations for
   a modulus of bit-length log₂ q. A meaningful target is a cryptanalytic-to-legitimate cost *ratio* of
-  10^6 or more — the ratio at which Diffie–Hellman's matrix example failed.
+  10^6 or more — a ratio Diffie and Hellman identified as necessary for practical security.
 - **Key generation cost.** Producing the keys — whatever they turn out to be — must itself be cheap,
   using only the available machinery (probabilistic primality testing, extended Euclid), so that
   setting up a user is fast even at ~100-digit sizes.

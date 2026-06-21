@@ -5,29 +5,22 @@ autoregressive decoding the key-value (KV) cache — the attention keys and valu
 from every past token so they are not recomputed — becomes the dominant cost. Its size is
 `b × (l_prompt + l_gen) × d` per layer (batch × sequence length × hidden size), so it grows
 linearly with both batch and context. For a 540B model at batch 512 and context 2048 the KV
-cache alone reaches several terabytes — multiple times the size of the model weights. Worse,
-decoding is memory-bound: to generate each single token the GPU must stream the *entire* KV
-cache from device memory (HBM) into on-chip SRAM, and while that load happens the compute
-cores sit idle. So the KV cache is the new bottleneck in both memory and speed.
+cache alone reaches several terabytes — multiple times the size of the model weights. Decoding
+is memory-bound: to generate each single token the GPU must stream the *entire* KV cache from
+device memory (HBM) into on-chip SRAM, and while that load happens the compute cores sit idle.
 
-The precise goal is to shrink the number of bytes per cached KV element — the natural lever
-is quantization, reducing each element from 16-bit float to a few-bit integer — while
-keeping generation quality essentially intact, and doing it under three hard constraints.
-First, **no training or calibration**: the method must be plug-and-play on an already-trained
-model. Second, it must respect the **streaming nature** of the cache: keys and values for new
-tokens arrive one at a time during decode and are appended, so any quantization scheme has to
-work incrementally on a cache whose length keeps growing, which rules out expensive
-optimization-based post-training quantization that would have to re-solve per step. Third, it
-must be **hardware-friendly** — the quantize/dequantize overhead has to be small enough that
-the memory savings translate into real throughput. Existing simple recipes hold quality at
-4-bit but fall apart at the extreme low-bit (2-bit) end; closing the gap to genuinely low bit
-width without retraining is the problem.
+The precise goal is to shrink the number of bytes per cached KV element via quantization,
+reducing each element from 16-bit float to a few-bit integer, while keeping generation quality
+essentially intact and remaining plug-and-play on an already-trained model. The cache is
+streaming: keys and values for new tokens arrive one at a time during decode and are appended,
+so any quantization scheme has to work incrementally on a cache whose length keeps growing.
+The quantize/dequantize overhead must also be small enough that the memory savings translate
+into real throughput.
 
 ## Background
 
 By this time stochastic LLM serving is built on a few well-understood pieces, and several
-prior attacks on KV cache size already exist, none of which simply reduce the bytes per
-element without side effects:
+prior attacks on KV cache size already exist:
 
 - **Reducing the number of KV heads** — multi-query attention (Shazeer 2019) and grouped-query
   attention (Ainslie et al. 2023) share one or a few KV heads across many query heads, cutting
@@ -57,20 +50,17 @@ Two empirical facts about LLM internals are load-bearing here. **(1) Activation 
 in a few fixed channels.** It is well documented (LLM.int8, Dettmers et al. 2022; SmoothQuant,
 Xiao et al. 2022) that a small number of fixed feature channels in transformer activations
 carry magnitudes on the order of 100× the rest, and that an outlier channel tends to be an
-outlier for every token. Any quantization group that spans many channels can therefore have
-its range dominated by a few large coordinates, which makes normal coordinates share a coarse
-step size. **(2) Attention is highly sparse.** A query attends strongly to only a handful of
-past tokens; the vast majority of attention weights are near zero (analyzed e.g. by Tian et
-al. 2023, exploited by H2O). Measured on a 13B model, attention sparsity is around 84%.
+outlier for every token. **(2) Attention is highly sparse.** A query attends strongly to only a
+handful of past tokens; the vast majority of attention weights are near zero (analyzed e.g. by
+Tian et al. 2023, exploited by H2O). Measured on a 13B model, attention sparsity is around 84%.
 
 A diagnostic study of plain group-wise RTN on the KV cache (Llama-2-13B, group size 32, CoQA
-and TruthfulQA, fake-quant: quantize then dequantize inside the attention layer) sets up the
-problem with three observations. First, the streaming-friendly per-token default is stable at
-4-bit but degrades sharply when pushed to 2-bit. Second, changing the grouping axis is not a
-minor implementation choice: some axis choices create catastrophic failures. Third, raw tensor
-reconstruction error can be misleading because cached tensors affect the model only through
-attention logits and weighted value mixtures. These facts do not yet prescribe a cache policy;
-they say the grouping axis and the downstream attention use are load-bearing.
+and TruthfulQA, fake-quant: quantize then dequantize inside the attention layer) surfaces three
+observations. First, the streaming-friendly per-token default is stable at 4-bit but degrades
+sharply when pushed to 2-bit. Second, changing the grouping axis is not a minor implementation
+choice: some axis choices create catastrophic failures. Third, raw tensor reconstruction error
+can be misleading because cached tensors affect the model only through attention logits and
+weighted value mixtures.
 
 ## Baselines
 
@@ -81,33 +71,25 @@ to.
 group-wise asymmetric RTN, group size 64, to both weights and KV cache, grouping the cache
 along the hidden dimension within each token — i.e. **per-token** quantization of both key and
 value. Dequantize to FP16 before each matmul; the goal is compression and reduced I/O, not
-integer matmul. This is the natural streaming-friendly choice because each new token is a
-complete per-token group appended along the token axis. **Limitation:** it is comfortable at
-4-bit but is not designed for the extreme low-bit regime; pushed to 2-bit, uniform per-token
-quantization of both caches loses substantial quality, and the scheme treats key and value
-identically despite their very different element distributions.
+integer matmul. Each new token is a complete per-token group appended along the token axis.
 
 **SmoothQuant (Xiao et al., ICML 2023).** A post-training quantization that migrates
 quantization difficulty from activations to weights via an equivalent per-channel scaling
 transform, so that activations (which carry the fixed-channel outliers) become easier to
-quantize. It can take the KV cache to 8-bit with minor loss. **Limitation:** it faces a
-significant accuracy drop when scaled to 4-bit or below, and the scaling-transform machinery
-is aimed at general activation/weight quantization rather than the streaming KV cache.
+quantize. It can take the KV cache to 8-bit with minor loss.
 
 **Weight-only quantization — GPTQ (Frantar et al. 2022), AWQ (Lin et al. 2023), SqueezeLLM
 (Kim et al. 2023).** GPTQ uses approximate second-order (Hessian) information to quantize
 weights to 3-4 bit accurately; AWQ scales weights in an activation-aware way to protect the
 channels that matter; SqueezeLLM uses sensitivity-based non-uniform quantization with a
-dense-and-sparse split. **Limitation (for this problem):** they quantize the *weights*, not the
-running KV cache, so they leave the KV-cache bottleneck untouched; they are orthogonal and
-combinable, not a solution to KV size. Their activation-aware results remain useful background
-for why quantization error can concentrate around a small subset of channels.
+dense-and-sparse split. These methods quantize the *weights*, not the running KV cache;
+their activation-aware results remain useful background for why quantization error can
+concentrate around a small subset of channels.
 
 **Token-eviction methods — H2O (Zhang et al. 2023), StreamingLLM (Xiao et al. 2023).** Keep
 only the high-attention "heavy hitter" tokens (H2O) or a few initial sink tokens plus a recent
-window (StreamingLLM), discarding the rest of the cache. **Limitation:** they reduce size by
-*dropping* tokens, so information in evicted tokens is gone — a different and lossier tradeoff
-than compressing every token's representation; again orthogonal to bit-width reduction.
+window (StreamingLLM), discarding the rest of the cache. These reduce cache size by *dropping*
+tokens.
 
 ## Evaluation settings
 

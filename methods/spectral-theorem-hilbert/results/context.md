@@ -8,7 +8,7 @@ and any reasonable function of the operator is obtained by applying the function
 
 `f(A) = sum_j f(lambda_j) P_j`.
 
-The functional-analytic question is what remains of this picture for a bounded operator on an infinite-dimensional Hilbert space. The problem is not only that there may be infinitely many eigenvalues. A bounded self-adjoint operator can have no eigenvectors at all while still having a large spectrum. The goal is therefore to replace eigenvectors by spectral subspaces, replace sums by integrals, and replace a diagonal matrix by a measure of orthogonal projections.
+The functional-analytic question is what remains of this picture for a bounded operator on an infinite-dimensional Hilbert space. A bounded self-adjoint operator can have no eigenvectors at all while still having a large spectrum. The goal is therefore to replace eigenvectors by spectral subspaces, replace sums by integrals, and replace a diagonal matrix by a measure of orthogonal projections.
 
 For a complex Hilbert space `H` and a bounded normal operator `N`, the desired object is a rule assigning to each Borel set `B` in the spectrum a projection `E(B)` onto the part of `H` whose spectral values lie in `B`. The operator should then be recovered as
 
@@ -24,7 +24,7 @@ The finite-dimensional theorem works because normal matrices are unitarily diago
 
 Compact self-adjoint operators on Hilbert space still behave much like matrices. Their nonzero spectrum consists of eigenvalues with finite-dimensional eigenspaces, accumulating only at zero, so an eigen-expansion remains meaningful after allowing a countable sum and a possible null space.
 
-The compactness hypothesis is the point where the matrix analogy breaks. On `L^2([0,1])`, the operator `(Mf)(t)=t f(t)` is bounded and self-adjoint. It has no nonzero eigenvector: `(t-lambda)f(t)=0` forces `f` to be supported on a single point, hence `f=0` in `L^2`. But the operator is completely transparent. For a Borel set `B subset [0,1]`, the projection is multiplication by `1_B`, and the operator is multiplication by the coordinate function. The missing eigenvectors have been replaced by a projection-valued resolution of intervals and Borel sets.
+On `L^2([0,1])`, the operator `(Mf)(t)=t f(t)` is bounded and self-adjoint. It has no nonzero eigenvector: `(t-lambda)f(t)=0` forces `f` to be supported on a single point, hence `f=0` in `L^2`. For a Borel set `B subset [0,1]`, the projection is multiplication by `1_B`, and the operator is multiplication by the coordinate function.
 
 This example points to the right abstraction. Hilbert space geometry turns each projection `E(B)` into scalar measures by
 
@@ -38,15 +38,15 @@ Normality is the algebraic hypothesis that makes the calculus commutative. A bou
 
 ## Baselines
 
-- **Eigenbasis diagonalization.** This is exact for finite-dimensional normal operators, but it fails as a general Hilbert-space method because continuous spectrum may provide no eigenvectors to list.
+- **Eigenbasis diagonalization.** Exact for finite-dimensional normal operators. The diagonal entries are eigenvalues and the eigenspaces give mutually orthogonal projections.
 
-- **Compact self-adjoint expansion.** This gives a countable projection sum for compact self-adjoint operators. It captures atomic spectrum but does not cover multiplication by a non-atomic variable, differential operators after Fourier transform, or general bounded normal operators.
+- **Compact self-adjoint expansion.** For compact self-adjoint operators, the nonzero spectrum consists of eigenvalues with finite-dimensional eigenspaces, and the operator is a countable sum of scalar multiples of the corresponding eigenspace projections.
 
-- **Resolvent-only spectral analysis.** The resolvent `(N-zI)^{-1}` detects spectrum and analytic structure, but by itself it is not yet the object needed to apply discontinuous spectral cuts or define arbitrary bounded Borel functions of the operator.
+- **Resolvent-only spectral analysis.** The resolvent `(N-zI)^{-1}` is defined for `z` outside the spectrum and detects analytic structure and spectral location.
 
-- **Continuous functional calculus.** The map `f -> f(N)` for `f in C(sigma(N))` is canonical and already contains polynomials, square roots of positive operators, and uniform limits. Its limitation is that exact spectral projections require characteristic functions of Borel sets, which are usually discontinuous.
+- **Continuous functional calculus.** The map `f -> f(N)` for `f in C(sigma(N))` is a canonical unital `*`-homomorphism. It contains polynomials, square roots of positive operators, and uniform limits.
 
-- **Multiplication-operator representation.** Representing an operator as multiplication by a measurable function gives an intuitive diagonal form. The representation may involve choices, while the projection-valued measure attached to the operator is canonical.
+- **Multiplication-operator representation.** An operator can be represented as multiplication by a measurable function on an appropriate `L^2` space, giving an intuitive diagonal form.
 
 ## Evaluation settings
 

@@ -20,14 +20,6 @@ Statistical estimation supplies a different tool. If the goal is to estimate the
 
 Sequential experimental design adds a constraint: the sampling locations are themselves decisions. A useful procedure should spend observations where they help locate the level, not merely describe the whole response curve.
 
-## Failure Modes
-
-A deterministic iteration is fragile under direct noisy substitution. If a single noisy response is used where the exact residual should have been used, a fixed gain keeps injecting fresh noise into the level. The expected motion may point toward the root, but the realized sequence keeps jittering.
-
-The opposite repair is also unsatisfactory. One can average many observations at each proposed level, estimate `M(x)` accurately there, and then take a deterministic root-finding step. But this pays a large sampling cost at levels that may later prove far from the target. Estimation and search are decoupled, so many observations only certify that the current point was not the one wanted.
-
-The core difficulty is to make one response serve both purposes: it should move the current level in the right average direction, while its random part should not remain permanently visible.
-
 ## Evaluation Setting
 
 The clean testing case is quantile estimation from binary responses. There is an unknown nondecreasing distribution function `F`, a target probability `alpha`, and an unknown quantile `theta` with `F(theta)=alpha`. At each chosen level `x_n`, the observation is
@@ -37,7 +29,7 @@ y_n = 1  with probability F(x_n),
 y_n = 0  otherwise.
 ```
 
-The rule should be distribution-free: it should not require knowing `F`, its derivative, or the noise law. It should work from an arbitrary starting value under natural monotonicity and local slope conditions. A related optimization setting asks for the maximizer of an unknown mean response when only noisy function values, not derivatives, can be observed.
+Natural monotonicity and local slope conditions on `F` are the structural assumptions that hold in this setting.
 
 ## Starting Code
 

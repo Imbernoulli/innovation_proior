@@ -10,93 +10,80 @@ min_theta  ell(theta) = (1/m) sum_{k in [m]} L_k(theta),
 L_k(theta) = E_{(x,y) ~ P_k}[ ell_k(theta; (x,y)) ],
 ```
 
-with each `P_k` an arbitrary device-indexed distribution. The structural constraints that make
-this hard, and that any method must respect, are:
+with each `P_k` an arbitrary device-indexed distribution. The setting has three structural
+features:
 
 1. **Communication is the bottleneck.** Each round, the server transmits `theta` to a subset of
    devices, each runs many *local* steps, and ships a message back. The resource to minimize is
    the number of communication *rounds* (and, secondarily, the bits per round).
 2. **Partial participation.** Only a subset `P_t subseteq [m]` of devices is active in round `t`,
-   sampled at random; stale (non-participating) devices keep their state unchanged.
+   sampled at random; non-participating devices keep their state unchanged.
 3. **Heterogeneity (non-IID data).** The `P_k` differ arbitrarily, so the device losses `L_k`
-   differ arbitrarily; the minimizer of any one `L_k` need not have anything to do with the
-   minimizer of `ell`.
+   differ arbitrarily; the minimizer of any one `L_k` need not relate to the minimizer of `ell`.
 
-The contribution sought is in *how the local objective is shaped and how the device updates are
-combined* — the aggregation rule and whatever per-device correction it exposes — not in the local
-optimizer or the simulation harness.
+The question is how to shape the local objective and how to combine the device updates into the
+next global model — the aggregation rule and whatever per-device correction it exposes — taking the
+local optimizer and the simulation harness as fixed.
 
 ## Background
 
-**The inconsistency at the heart of federated learning.** A global stationary point `theta^*`
-satisfies `grad ell(theta^*) = (1/m) sum_k grad L_k(theta^*) = 0`. But a *device's* stationary
-point `theta_k^*` satisfies `grad L_k(theta_k^*) = 0`, and under heterogeneity the per-device
-gradients `grad L_k(theta^*)` are individually non-zero at the global optimum — they merely sum to
-zero. So the dual goals of (i) driving the device models to a consensus `theta_k^t -> theta^t ->
-theta_*` and (ii) having each device optimize its *own* empirical loss are *inconsistent*: if every
-device exactly minimizes `L_k`, the consensus of their solutions is the average of the `theta_k^*`,
-which is not `theta^*`. This is the same client-drift that earlier local-averaging analyses had to
-contend with, here stated as a fixed-point mismatch: the place every device wants to go is not the
-place the federation needs to reach.
+**Local and global stationary points.** A global stationary point `theta^*` satisfies
+`grad ell(theta^*) = (1/m) sum_k grad L_k(theta^*) = 0`. A *device's* stationary point `theta_k^*`
+satisfies `grad L_k(theta_k^*) = 0`. Under heterogeneity the per-device gradients `grad L_k(theta^*)`
+are individually non-zero at the global optimum — they merely sum to zero. So if every device
+exactly minimizes `L_k`, the consensus of their solutions is the average of the `theta_k^*`, which
+is the place each device wants to go rather than the average over `m` devices of their gradients
+vanishing. This client-drift behaviour is the central phenomenon earlier local-averaging analyses
+contend with, stated as a fixed-point relationship between the device optima and the federation
+optimum.
 
-**Local-update averaging and its drift.** The dominant recipe (local SGD / FedAvg, McMahan et al.
-2017) takes `K` local steps then averages the returned models. Each active device copies the
-server model, runs local SGD on its own data, and ships back its model; the server averages. For
-identical devices this is parallel SGD. Under heterogeneity each device walks toward its own
-`theta_k^*`, so the average is pulled toward `(1/m) sum_k theta_k^*` rather than `theta^*`, and the
-bias grows with the number of local steps — the very lever that buys communication efficiency makes
-the drift worse. Variants soften this without removing the inconsistency: a *decreasing learning
+**Local-update averaging.** The dominant recipe (local SGD / FedAvg, McMahan et al. 2017) takes `K`
+local steps then averages the returned models. Each active device copies the server model, runs
+local SGD on its own data, and ships back its model; the server averages. For identical devices
+this is parallel SGD. Under heterogeneity each device walks toward its own `theta_k^*`, so the
+average is pulled toward `(1/m) sum_k theta_k^*`. Variants reshape this: a *decreasing learning
 rate* (Li et al. 2020b) damps the move, a *proximal penalty* (FedProx, Li et al. 2020a) anchors the
 local solution to the broadcast model, and *server-side modifications* (server momentum, Hsu et al.
-2019; FedOpt, Reddi et al. 2020) reshape the global step. All of these "recognize the incompatibility
-of local and global stationary points," but their fix is based on inexact minimization plus tuning,
-and to prove convergence under non-IID data they impose an additional *bounded-dissimilarity*
-assumption.
+2019; FedOpt, Reddi et al. 2020) reshape the global step. Convergence proofs under non-IID data for
+this family use a *bounded-dissimilarity* assumption on the device gradients.
 
-**Penalty-based anchoring (FedProx).** Closest in spirit to a regularizer fix: each device
-minimizes `L_k(w) + (mu/2)||w - theta^{t-1}||^2`, a static quadratic spring to the broadcast model.
-The added term penalizes updates far from the server model. But the regularizer is the *same*
-function every round — it does not depend on the device's own past gradients — so its minimizer
-does not align with the global stationary point; inexact minimization is *warranted* (solving it
-exactly would still leave the bias), and tuning `mu` requires knowledge of the heterogeneity.
+**Penalty-based anchoring (FedProx).** Each device minimizes `L_k(w) + (mu/2)||w - theta^{t-1}||^2`,
+a quadratic spring to the broadcast model. The added term penalizes updates far from the server
+model. The regularizer is the *same* function every round, depending only on the broadcast point
+and not on the device's past iterates, and `mu` is a tuned coefficient.
 
 **Gradient-augmented methods (SCAFFOLD, DANE/FedDANE).** Another line transmits extra per-device
 variables alongside the models to correct the local direction. SCAFFOLD (Karimireddy et al. 2019)
 keeps server and client *control variates* and corrects each local gradient by `(c - c_i)`, which
-provably removes the heterogeneity term from the rate. DANE (Shamir et al. 2014) and its
+removes the heterogeneity term from the convergence rate. DANE (Shamir et al. 2014) and its
 partial-participation version FedDANE (Li et al. 2019) add a linear gradient-correction term to the
-local subproblem. These prove convergence by adding device-dependent regularizers, but they *cost
-extra communication* — SCAFFOLD transmits both a model and a control variate every round, twice the
-bits — and FedDANE/FedSVRG/FedPD need gradient information from all devices each round, which fails
-under genuine partial participation.
+local subproblem. These methods transmit a model and an auxiliary control variate each round;
+DANE/FedSVRG/FedPD use gradient information from devices each round.
 
 **The variational / dual-variable viewpoint.** A regularizer added to a local loss can be read as a
-dual variable in an augmented-Lagrangian / proximal-point method: if the regularizer is allowed to
-*change every round* in response to the device's own iterates, its fixed point can be steered. The
-question is whether such a dynamic regularizer can be designed so that, *if* local models converge,
-they converge to a point that is a stationary point of the global loss — exactly aligning the two
-fixed points rather than merely damping their disagreement — while keeping the per-round message a
-single model (no extra control variate over the wire).
+dual variable in an augmented-Lagrangian / proximal-point method. This framing connects the local
+subproblem on each device to a Lagrangian whose multipliers encode the consensus constraint
+`theta_k = theta` across devices, and it is one lens through which the relationship between the
+device optima and the federation optimum can be analysed.
 
 ## Baselines
 
 **FedAvg (McMahan et al., AISTATS 2017).** Local SGD then sample-weighted (or plain) model average;
-no server- or client-side state. Communication-efficient but suffers client-drift under non-IID
-data: the aggregate is biased toward the average of device optima, and more local steps worsen it.
+no server- or client-side state. Communication-efficient. Under non-IID data the aggregate is the
+average of the returned device models, which is pulled toward the average of device optima.
 
 **FedProx (Li et al., MLSys 2020).** FedAvg's server average plus a *static* proximal penalty
 `(mu/2)||w - theta^{t-1}||^2` on each local objective. Anchors the local solution to the broadcast
-model, damping the magnitude of the drift, but the penalty is the same every round so its minimizer
-does not align with the global stationary point; the bias is throttled, not removed.
+model; the penalty is the same function every round and `mu` is a tuned coefficient.
 
 **SCAFFOLD (Karimireddy et al., ICML 2020).** Server and client control variates correcting each
-local gradient by `(c - c_i)`; removes the heterogeneity dependence from the rate. The cost: it
-transmits a control variate *in addition to* the model every round (2x the bits), and runs plain
-SGD with hyperparameters tuned for a target round budget.
+local gradient by `(c - c_i)`; removes the heterogeneity dependence from the rate. Transmits a
+control variate in addition to the model every round, and runs plain SGD with hyperparameters tuned
+for a target round budget.
 
 **Centralized / large-batch SGD.** The heterogeneity-free yardstick: treat each round as one large
-stochastic step. Sets the bar any local-averaging method must match under arbitrary heterogeneity
-and ideally beat when devices are similar.
+stochastic step. Sets the bar a local-averaging method is measured against under arbitrary
+heterogeneity and when devices are similar.
 
 ## Evaluation settings
 

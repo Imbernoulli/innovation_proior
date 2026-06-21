@@ -22,11 +22,9 @@ forces a particular reweighting. Different settings give AdaBoost, gradient boos
 statistical "additive logistic regression" reading of boosting, and they do not all behave the same
 across loss functions — some are tied to classification, some to squared-error regression, some need
 an extra one-dimensional optimization that has no closed form for a general loss. The problem is to
-find a *single* strategy for these three knobs that (a) works for both classification and regression
-under any reasonable differentiable loss, (b) sets each leaf of each tree as well as possible given
-the current ensemble, without a brittle per-leaf search, and (c) controls overfitting in a
-principled way rather than only by early stopping. The weak learner is fixed: a shallow regression
-tree (here depth 3). The contribution to find is the strategy, not the tree learner.
+find a strategy for these three knobs that works for both classification and regression under any
+reasonable differentiable loss. The weak learner is fixed: a shallow regression tree (here depth 3).
+The contribution to find is the strategy, not the tree learner.
 
 ## Background
 
@@ -57,8 +55,7 @@ the prediction. Friedman's function-space view treats `{F(x_i)}` as the paramete
 steepest-descent step in that space. This first-order quantity is the backbone of gradient boosting.
 A further fact, established in the statistical reading of boosting, is that the loss also has a
 *second* derivative `h_i = ∂²l/∂ŷ^{(t-1)²}` — its local curvature — and that for some losses this
-curvature varies strongly from instance to instance (it is constant only for squared error). Whether
-and how to use that second quantity is, in 2016, the unsettled question.
+curvature varies strongly from instance to instance (it is constant only for squared error).
 
 A third settled idea, observed and then explained: boosting overfits if left unchecked, and two
 cheap regularizers reliably help. Shrinkage (Friedman 2002) scales each newly added tree by a small
@@ -66,8 +63,7 @@ factor `η` before adding it, so no single tree dominates and later trees retain
 empirically `η ≈ 0.1` with many rounds beats `η = 1` with few. Column (feature) subsampling, borrowed
 from Random Forests (Breiman 2001), considers only a random subset of features per tree (or per
 split) and is reported to curb overfitting at least as well as row subsampling. Both are knobs on
-*how much* of each tree to trust, not on the per-round objective itself; whether overfitting can also
-be controlled *inside* the per-round objective is open.
+*how much* of each tree to trust, not on the per-round objective itself.
 
 ## Baselines
 
@@ -81,10 +77,7 @@ training instance (initially uniform). Each round, fit a weak classifier `h_t` t
 classified point, a misclassified point receives an `exp(2α_t)` multiplier. The final prediction is
 `sign(Σ_t α_t h_t)`. Friedman, Hastie & Tibshirani (2000) showed this is exactly stagewise fitting of
 an additive model under the exponential loss `Σ_i exp(-y_i F(x_i))`: `α_t` and the reweighting both
-fall out of minimizing that loss. **Gap:** it is tied to classification and to the exponential loss
-specifically; the original-label target and the multiplicative reweighting do not transfer to a
-regression task or to an arbitrary loss, and the exponential loss is known to be unforgiving of
-mislabeled / outlier points (it weights a badly-wrong example exponentially).
+fall out of minimizing that loss.
 
 **Gradient boosting (Friedman 2001).** Treat the predictions as parameters and do steepest descent
 in function space. Each round, compute the pseudo-residual `ỹ_i = -g_i = -∂l(y_i, F(x_i))/∂F(x_i)` at
@@ -95,13 +88,7 @@ regression tree Friedman refines this: rather than one shared `ρ`, re-optimize 
 separately, `γ_j = argmin_γ Σ_{i ∈ leaf j} l(y_i, F_{m-1}(x_i) + γ)`, because the leaves partition the
 instances and their updates are independent. Sample weights stay uniform; all the boosting signal is
 in the `ỹ_i`. This is general — any differentiable loss gives a pseudo-residual — and for squared
-error it reduces to the familiar "fit the residuals." **Gap:** the per-leaf optimum `γ_j` is a fresh
-one-dimensional optimization for every leaf of every tree, and for a general loss it has *no
-closed-form* solution — for least-absolute-deviation it is a median, for Huber a clipped median, for
-logistic loss a transcendental equation solved by an inner Newton iteration. The tree's structure is
-chosen by least-squares on `-g` (a first-order, curvature-blind criterion), and then the leaf values
-are patched up by a separate optimization that the structure search never saw. The objective that
-selects the split and the objective that sets the leaf are not the same object.
+error it reduces to the familiar "fit the residuals."
 
 **LogitBoost / the second-order statistical reading (Friedman, Hastie & Tibshirani 2000).** For the
 binomial log-likelihood, the same authors derived an *adaptive Newton* algorithm: at the current
@@ -110,12 +97,7 @@ and per-instance weights `u_i = p_i(1-p_i)`, fit the next function by *weighted*
 on `x`, and add half of it. This is a Newton step on the log-likelihood — it uses both the first
 derivative (through `y^*-p`) and the second derivative (through `p(1-p)`), and the weighted-least-
 squares fit is the data-version of `F ← F - H^{-1}s`. They also showed AdaBoost itself is the Newton
-step for the exponential loss. **Gap:** the derivation is carried out for *specific* losses (binomial,
-exponential), with the second-order information folded into per-instance `z_i`/`u_i` and approximated
-by re-fitting an unconstrained tree to `z` weighted by `u`; it is not stated as one loss-agnostic
-per-round objective whose optimum sets every leaf in closed form, and it carries no explicit
-complexity penalty on the leaf scores — overfitting is handled only outside the round, by shrinkage
-and stopping. The small-`p(1-p)` regions where the working response explodes need ad-hoc thresholds.
+step for the exponential loss.
 
 ## Evaluation settings
 

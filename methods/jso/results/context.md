@@ -9,11 +9,8 @@ evaluations, so every wasted evaluation is gone for good.
 The strongest off-the-shelf engine for this regime is the success-history adaptive DE family —
 SHADE and its linear-population-reduction extension L-SHADE, the CEC 2014 winner. L-SHADE already
 self-tunes `F` and `CR` from a memory of what has been working, mutates with current-to-pbest/1 plus
-an external archive, and shrinks the population linearly over the budget. So the question is not
-"how do I make DE self-adaptive" — that is solved — but where the L-SHADE family still spends
-evaluations awkwardly under the newer, harder benchmark regime. The visible pressure points are the
-early propagation of `CR`/`F`, the greediness of the pbest guide over time, and the fact that
-current-to-pbest/1 uses one scale factor on two different vector differences.
+an external archive, and shrinks the population linearly over the budget. The question is how to
+build on the L-SHADE family to compete on the newer, harder benchmark suites.
 
 ## Background
 
@@ -50,16 +47,12 @@ four distinct individuals.
 ## Baselines
 
 - **L-SHADE (Tanabe & Fukunaga, CEC 2014).** Success-history adaptive DE + linear population
-  reduction; CEC 2014 winner. **Gap:** memory starts neutral (`0.5`), so early generations spend
-  budget discovering that high `CR`/`F` help; a single `F` scales both the pbest-attraction term and
-  the random-difference term identically, even though the right balance differs between exploration
-  (early) and exploitation (late).
-- **iL-SHADE (Brest et al., 2016).** L-SHADE plus the four early-run refinements above. **Gap:** the
-  mutation is still plain current-to-pbest/1 — one `F` for both difference terms — so the phase
-  dependence of how hard to pull toward the elite vs. how hard to perturb randomly is not exploited.
+  reduction; CEC 2014 winner. Memory centers start at `0.5`; a single `F` scales both the
+  pbest-attraction term and the random-difference term.
+- **iL-SHADE (Brest et al., 2016).** L-SHADE plus the four early-run refinements above; mutation is
+  current-to-pbest/1 with one `F` for both difference terms.
 - **JADE (Zhang & Sanderson, 2009).** The ancestor: current-to-pbest/1, the archive, single-center
-  `(mu_F, mu_CR)` adaptation. **Gap:** one center is fragile to a single unlucky generation; no
-  population reduction.
+  `(mu_F, mu_CR)` adaptation; no population reduction.
 
 ## Evaluation settings
 

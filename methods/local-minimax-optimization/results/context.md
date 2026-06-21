@@ -11,18 +11,8 @@ reinforcement learning all have this shape, and in every one of them $f$ is *non
 $f(\cdot,\mathbf y)$ need not be convex and $f(\mathbf x,\cdot)$ need not be concave. In practice these
 problems are attacked with gradient descent ascent (GDA) — descend on $\mathbf x$, ascend on $\mathbf y$.
 
-The pain point is foundational rather than algorithmic: **there is no agreed-upon notion of what a
-*local* solution even is.** For ordinary nonconvex minimization the answer is settled — a local minimum,
-characterized by $\nabla f=0$ and $\nabla^2 f\succeq 0$ — and gradient descent provably finds it. For
-minimax no such clean object is in place. The classical global notions (a saddle point / Nash equilibrium)
-need not exist when $f$ is nonconvex–nonconcave, and the global sequential solution is NP-hard to find. A
-candidate local notion borrowed from simultaneous games (local Nash) exists in the literature, but it has
-visible defects: it can fail to exist on trivially simple functions, it ignores the *order* of play that
-$\min\max$ explicitly imposes, and — most tellingly — it does not match the points that GDA actually
-converges to. A satisfactory answer would be a definition of local optimality that (i) reflects the
-asymmetry between the two players that $\min\max$ imposes (unlike a symmetric notion), (ii) is *genuinely local* (determinable from $f$ in an
-infinitesimal neighborhood), (iii) comes with first- and second-order characterizations like local minima
-do, (iv) exists more often than local Nash, and (v) explains the asymptotic behavior of GDA.
+The open question is: what is the right notion of *local* optimality for the sequential minimax problem
+$\min_{\mathbf x}\max_{\mathbf y} f$ when $f$ is nonconvex–nonconcave?
 
 ## Background
 
@@ -55,9 +45,8 @@ solution.
 global: every stationary point has $\nabla^2_{xx}f=\nabla^2_{yy}f=\pm 1$ with the *same* sign, so it can
 never simultaneously be a local min in $x$ and a local max in $y$. By contrast the global sequential
 solution — the minimizer of $\phi(\mathbf x)=\max_{\mathbf y} f$ — always exists on a compact domain by the
-extreme-value theorem, so at the global level existence is not fragile. But computing it is NP-hard
-(it contains nonconvex minimization), and gradient methods are inherently local; the gap is that no local
-optimality notion is in place to say what such methods are entitled to reach.
+extreme-value theorem, so at the global level existence is not fragile. Computing it is NP-hard
+(it contains nonconvex minimization), and gradient methods are inherently local.
 
 **A subtle, load-bearing phenomenon: global $\ne$ local for minimax.** In ordinary nonconvex
 minimization a global minimum is automatically a local minimum, so local minima always exist and local
@@ -69,17 +58,14 @@ solutions are $(0,\pm\pi)$, where the gradient $(0.2y,\,0.2x+\sin y)$ equals $(\
 global solution sits at a non-stationary point. This says minimax is genuinely harder than nonconvex
 minimization and deserves its own local theory.
 
-**The asymptotics of GDA, and the gap it leaves.** Treating GDA as a discrete dynamical system
+**The asymptotics of GDA.** Treating GDA as a discrete dynamical system
 $\mathbf z_{t+1}=\mathbf w(\mathbf z_t)$, its Jacobian at a fixed point need not be symmetric (the update is
 not the gradient of any scalar), so the linearized dynamics can rotate and even cycle rather than converge.
 Daskalakis & Panageas (2018) analyzed the *limit* behavior: with random initialization GDA almost surely
 avoids *linearly unstable* fixed points (via the center–stable manifold theorem), so the relevant question
 is which *stable* fixed points it admits. They proved that the set of strict local Nash equilibria is
 *strictly contained* in the set of GDA-stable fixed points — GDA stably converges to points that are *not*
-local Nash. Mazumdar & Ratliff (2018) reached the same conclusion in a broader game setting. The stable
-points outside local Nash had no game-theoretic interpretation; their existence was treated as a defect of
-GDA. This is the diagnostic finding the field was sitting on: GDA's stable limit set is the *wrong* shape
-for local Nash, and nobody could name what the extra points were.
+local Nash. Mazumdar & Ratliff (2018) reached the same conclusion in a broader game setting.
 
 ## Baselines
 
@@ -90,13 +76,10 @@ $$f(\mathbf x^\star,\mathbf y)\le f(\mathbf x^\star,\mathbf y^\star)\le f(\mathb
 First order it requires $\nabla_{\mathbf x}f=\nabla_{\mathbf y}f=0$; second order, necessarily
 $\nabla^2_{\mathbf y\mathbf y}f\preceq 0$ and $\nabla^2_{\mathbf x\mathbf x}f\succeq 0$; a stationary point
 with $\nabla^2_{\mathbf y\mathbf y}f\prec 0$ and $\nabla^2_{\mathbf x\mathbf x}f\succ 0$ is a *strict* local
-Nash. *Gaps:* (1) It is a simultaneous-game concept — perfectly symmetric in the two players (block-diagonal
-Hessian conditions on $\mathbf x$ and $\mathbf y$ separately, no coupling term $\nabla^2_{\mathbf x\mathbf y}f$)
-— so it cannot reflect the leader/follower order that $\min\max$ imposes. (2) It can fail to exist
-($\sin(x+y)$). (3) It is *strictly smaller* than the GDA-stable set, so it does not characterize what GDA
-finds. Adolphs et al. (2018) and Mazumdar et al. (2019) instead modify the algorithm — Hessian/curvature-
-based updates whose stable points are exactly local Nash — but keep local Nash as the goal, inheriting (1)
-and (2).
+Nash. It is a simultaneous-game concept — symmetric in the two players with block-diagonal Hessian
+conditions on $\mathbf x$ and $\mathbf y$ separately (no coupling term $\nabla^2_{\mathbf x\mathbf y}f$).
+Adolphs et al. (2018) and Mazumdar et al. (2019) propose Hessian/curvature-based updates whose stable
+points are exactly local Nash.
 
 **Stable fixed points of GDA (Daskalakis & Panageas 2018; Mazumdar & Ratliff 2018).** Define the GDA
 dynamics $\mathbf x_{t+1}=\mathbf x_t-\alpha\nabla_{\mathbf x}f$, $\mathbf y_{t+1}=\mathbf y_t+\alpha\nabla_{\mathbf y}f$;
@@ -104,22 +87,17 @@ a fixed point is a stationary point of $f$; it is linearly stable iff the Jacobi
 $\mathbf I+\alpha\mathbf H$ with
 $\mathbf H=\begin{pmatrix}-\nabla^2_{xx}f & -\nabla^2_{xy}f\\ \nabla^2_{yx}f & \nabla^2_{yy}f\end{pmatrix}$
 has spectral radius $\le 1$, i.e. (as $\alpha\to0$) all eigenvalues of $\mathbf H$ have negative real part.
-They prove $\textsf{Local-Nash}\subsetneq\textsf{GDA-stable}\subsetneq\textsf{OGDA-stable}$. *Gap:* the
-middle and right sets contain points with *no known meaning* — the central open question is what those
-stable-but-not-Nash points are. This is the question a correct local notion must answer.
+They prove $\textsf{Local-Nash}\subsetneq\textsf{GDA-stable}\subsetneq\textsf{OGDA-stable}$.
 
 **Nonconvex-but-concave and variational-inequality relaxations.** Rafique et al. (2018) and
 Nouiehed et al. (2019) handle the easier case where $f(\mathbf x,\cdot)$ is concave for every $\mathbf x$,
 combining approximate inner maximization with proximal/gradient steps to reach stationary points of
 $\phi(\mathbf x)=\max_{\mathbf y} f$. Lin et al. (2018) assume a variational-inequality structure; Hsieh et
-al. (2018) target *mixed* (distributional) Nash. *Gap:* none of these defines local optimality for the
-fully nonconvex–nonconcave *pure-strategy* sequential problem, which is the regime of GANs.
+al. (2018) target *mixed* (distributional) Nash.
 
 **Evtushenko (1974) "local" minimax.** An older candidate: $(\mathbf x^\star,\mathbf y^\star)$ is a
 local solution if there is *some* neighborhood $\mathcal W$ in which it is the global sequential solution of
-$f|_{\mathcal W}$. *Gap:* this is not a *truly local* property — whether a point qualifies can depend on the
-values of $f$ far away (enlarging $\mathcal W$ can flip the verdict), so it does not satisfy first- or
-second-order necessary conditions and cannot be read off the local Hessian.
+$f|_{\mathcal W}$.
 
 ## Evaluation settings
 

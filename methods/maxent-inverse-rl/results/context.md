@@ -21,13 +21,6 @@ description of the task. A direct mapping memorizes the demonstrated states; the
 generalizes to states never demonstrated, to changed dynamics, to new goals. The whole
 enterprise of imitation/apprenticeship learning rests on this presupposition.
 
-The thing a solution must achieve: take noisy, possibly imperfect demonstrations and a
-known MDP structure, and produce a single, well-defined probabilistic model of behavior
-whose reward explains the demonstrations — with a learning procedure that is principled
-(not a heuristic tie-breaker), tractable on large planning spaces (hundreds of thousands
-of states), and that comes with a performance guarantee tying the learned behavior to the
-demonstrated behavior.
-
 ## Background
 
 **The MDP / reward-optimization frame.** An agent's behavior is a trajectory
@@ -61,28 +54,21 @@ at each step, so states with fewer outgoing branches concentrate mass regardless
 scores. Globally normalized models do not have this pathology. This is an established
 contrast in the design of probabilistic sequence models.
 
-**The diagnostic that motivates everything: recovering a reward is ill-posed.** The
-inverse problem is degenerate. The set of reward functions under which a given
-demonstrated policy is optimal is large; in particular the all-zero reward (and any
-constant reward) makes *every* policy optimal, so it always "explains" the
-demonstrations. Many distinct reward weights, and many distinct policies / mixtures of
-policies, reproduce the same demonstrated feature counts. There is no information in
-"make the demonstration optimal" or in "match feature counts" alone that selects one
-answer. This ambiguity is the wall a solution has to get through.
+**Ill-posedness of reward recovery.** The inverse problem is degenerate. The set of
+reward functions under which a given demonstrated policy is optimal is large; in
+particular the all-zero reward (and any constant reward) makes *every* policy optimal,
+so it always "explains" the demonstrations. Many distinct reward weights, and many
+distinct policies / mixtures of policies, reproduce the same demonstrated feature counts.
 
 ## Baselines
 
 **Inverse reinforcement learning, Ng & Russell 2000.** Frames the problem precisely:
 given an MDP and an observed optimal policy `π`, find rewards `R` making `π` optimal.
 Their characterization (their Theorem 3) gives the full solution set: `π ≡ a_1` is
-optimal iff `(P_{a_1} − P_a)(I − γ P_{a_1})^{-1} R ⪰ 0` for all actions `a`. The
-explicit value of this result is also its limitation: the set is huge and degenerate
-(`R = 0` is always in it). To pick one reward they add a **heuristic**: maximize the sum
-of margins `Σ_s (Q*(s, a_1) − max_{a ≠ a_1} Q*(s, a))` between the demonstrated action
-and the next-best action, optionally with an `ℓ_1` penalty, solved as a linear program.
-Gaps: the tie-break is an arbitrary margin objective with no probabilistic meaning; it
-needs the *full* optimal policy as input; and it has no graceful story for demonstrations
-that are themselves suboptimal or noisy.
+optimal iff `(P_{a_1} − P_a)(I − γ P_{a_1})^{-1} R ⪰ 0` for all actions `a`. To
+pick one reward they add a **heuristic**: maximize the sum of margins
+`Σ_s (Q*(s, a_1) − max_{a ≠ a_1} Q*(s, a))` between the demonstrated action and the
+next-best action, optionally with an `ℓ_1` penalty, solved as a linear program.
 
 **Apprenticeship learning via IRL, Abbeel & Ng 2004.** Sidesteps recovering the "true"
 reward and instead aims only to match performance. Using feature expectations `μ(π)` and
@@ -91,29 +77,17 @@ weight vector `w` on which the expert currently beats the candidate policies by 
 `t`) with an RL step (solve the MDP under that `w`). On termination it returns a **mixture
 of policies** whose feature expectations match the expert's, with a guarantee that the
 mixture's value is within `ε` of the expert's under the unknown reward, and a bound of
-`O(k/((1−γ)²ε²) · log(k/((1−γ)ε)))` iterations. Gaps: the output is a *mixture*, not a
-single coherent stochastic policy; feature matching is satisfied by *many* different
-policies and mixtures, so the procedure does not pin down a unique behavior and offers no
-principled way to choose among the matching distributions; and the max-margin step is
-again an arbitrary tie-break, fragile when the demonstrations are imperfect.
+`O(k/((1−γ)²ε²) · log(k/((1−γ)ε)))` iterations.
 
 **Locally normalized / action-based probabilistic IRL.** A line of probabilistic models
 assigns probability to each action locally, e.g. `P(action a | s) ∝ exp(Q*(s, a))`,
 normalizing per state. Core idea: make demonstrated actions likely under a softmax of
-action values. Gap: because normalization is *local* (per state / per branch), these
-models exhibit **label bias** — paths through low-branching-factor regions accrue
-probability for structural reasons unrelated to reward, so the highest-reward path need
-not be the most probable path, and behaviors with equal reward can receive unequal
-probability. They also tend to require solving the MDP to obtain `Q*` and inherit the
-ambiguity without resolving it.
+action values.
 
 **Maximum margin planning, Ratliff, Bagnell & Zinkevich 2006.** Casts reward recovery as
 structured maximum-margin prediction: learn reward weights so the demonstrated path beats
 alternatives by a margin under a structured-loss convex objective, needing only oracle
-access to an MDP solver. Gap: when no single reward makes the demonstrated behavior both
-optimal and clearly better than alternatives — which happens whenever the demonstrator is
-imperfect or the planner captures only part of the relevant state space — the
-margin-based objective has nothing clean to latch onto.
+access to an MDP solver.
 
 ## Evaluation settings
 

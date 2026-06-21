@@ -2,15 +2,15 @@
 
 A classifier trained on a private set leaks who was in that set. The attack is simple: the adversary feeds the trained model a sample and reads its confidence — here the max softmax probability — to decide whether that sample was in the training data. Training drives member confidences toward ~1 while non-member confidences stay lower and more scattered, so a threshold separates the two populations.
 
-The design target is the **training-time loss**, the scalar objective the fixed loop minimizes per minibatch. The loss should make member and non-member confidence distributions hard to distinguish (membership-inference AUC near 0.5) without giving up test accuracy. Architecture, optimizer, schedule, data split, and the attack itself are frozen.
+The design target is the **training-time loss**, the scalar objective the fixed loop minimizes per minibatch. Architecture, optimizer, schedule, data split, and the attack itself are frozen.
 
 ## Prior art / Background / Baselines
 
 These methods all try to keep the model's output distribution from revealing membership.
 
-- **Plain cross-entropy / ERM.** Minimizes `−log p(y)` against a one-hot target. The logit gradient only vanishes as `p → y`, so the optimizer pushes member losses to ~0 and member confidence to ~1. Gap: no pressure on the output distribution; member confidences cluster near 1 and remain cleanly separated from non-members.
-- **Label smoothing (Szegedy et al., 2016).** Replaces the one-hot target with `q(k) = (1−ε)δ_{k,y} + ε/K`, so an infinite logit gap becomes infinitely costly and member confidence is bounded below 1. Gap: it shifts the mean confidence of members and non-members by roughly the same amount, so the two distributions usually stay separable.
-- **Confidence penalty (Pereyra et al., 2017).** Subtracts the predictive entropy, `L = L_CE − β·H(p)`, penalizing the most confident predictions most strongly. Gap: it controls average confidence but does not reliably align the spread of member and non-member confidences; pushed too hard, training destabilizes.
+- **Plain cross-entropy / ERM.** Minimizes `−log p(y)` against a one-hot target. The logit gradient only vanishes as `p → y`, so the optimizer pushes member losses to ~0 and member confidence to ~1.
+- **Label smoothing (Szegedy et al., 2016).** Replaces the one-hot target with `q(k) = (1−ε)δ_{k,y} + ε/K`, so an infinite logit gap becomes infinitely costly and member confidence is bounded below 1.
+- **Confidence penalty (Pereyra et al., 2017).** Subtracts the predictive entropy, `L = L_CE − β·H(p)`, penalizing the most confident predictions most strongly.
 
 ## Fixed substrate / Code framework
 
@@ -59,5 +59,3 @@ Reported metrics:
 - `mia_auc`: the attack's AUC; 0.5 is ideal, higher is worse leakage
 - `privacy_gap`: mean member confidence minus mean non-member confidence; smaller is better
 - `privacy_score = test_acc − max(mia_auc − 0.5, 0)`: the primary composite; higher is better
-
-A defense is worth its accuracy cost only if it actually pushes the attack AUC toward 0.5.

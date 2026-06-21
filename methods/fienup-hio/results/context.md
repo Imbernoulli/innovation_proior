@@ -7,12 +7,11 @@ that is, physically, real and non-negative and of finite extent; in X-ray crysta
 structure-factor magnitudes are `|F|` with the phases lost. The task is to recover the missing
 Fourier phase — equivalently `f(x)` itself — from **one** modulus `|F(u)|` plus whatever is known
 a priori about the object: that it is real, that it is non-negative `f(x) ≥ 0`, and that it lives
-inside a bounded region (its support). This is harder than the two-modulus problem of electron
-microscopy or wavefront sensing, where a focused image supplies a *second* measured modulus
-`|f(x)|`: here the object plane has no measured amplitude at all, only inequality/support
-constraints standing in for it. A 128×128 field carries N² unknown phases, so brute search is
-hopeless; the problem needs an iteration that uses only `|F|`, an FFT, and the object constraints,
-and it must have a way to escape the long stalls produced by plain alternating projection.
+inside a bounded region (its support). This is the single-modulus setting; the two-modulus problem
+of electron microscopy or wavefront sensing instead supplies a *second* measured modulus `|f(x)|`
+from a focused image, whereas here the object plane carries only inequality/support constraints.
+A 128×128 field carries N² unknown phases, so the problem calls for an iteration that uses only
+`|F|`, an FFT, and the object constraints.
 
 ## Background
 
@@ -42,20 +41,17 @@ be real and non-negative — define a *convex* set (a subspace intersected with 
 cone), whose nearest point is found by zeroing the field outside the support and clipping negative
 values to zero inside. Alternating between the closest point of each set is the natural way to
 seek a field lying in both; for two convex sets this alternating-projection idea converges
-(von Neumann; Bregman 1965; Gubin–Polyak–Raik 1967), but here one of the two sets is non-convex,
-which is the source of the trouble below.
+(von Neumann; Bregman 1965; Gubin–Polyak–Raik 1967), while here one of the two sets is non-convex.
 
-**Diagnostic facts that frame the problem.** Two observed phenomena set the stage. (i) An
-iteration that only transforms back and forth, resetting the Fourier modulus and then projecting
-onto the object constraints, drives the modulus-mismatch error *down sharply for the first ~30
-iterations and then onto long plateaus*: in a representative single-intensity run the normalized
-RMS error falls fast, sticks near 0.16, much later eases to 0.02, then to 0.003, with thousands of
-iterations needed — unsatisfactory for this application. (ii) The same iteration frequently
-**stagnates at a local minimum marked by a low-contrast pattern of stripes** across the
-reconstruction (Fienup, "Fourier Modulus Image Construction," RADC-TR-81-63, 1981); this is a
-convergence problem — a local, not global, minimum — not a uniqueness problem. Plateaus and
-stripes are precisely what a better single-intensity algorithm must overcome, and neither is a
-defect of the *data*; they are pathologies of the *iteration* on a non-convex constraint set.
+**Observed behavior of the back-and-forth iteration.** Two phenomena are recorded for an iteration
+that transforms back and forth, resetting the Fourier modulus and then projecting onto the object
+constraints. (i) The modulus-mismatch error falls sharply over the first ~30 iterations and then
+moves onto long plateaus: in a representative single-intensity run the normalized RMS error falls
+fast, sticks near 0.16, much later eases to 0.02, then to 0.003, over thousands of iterations.
+(ii) The iteration sometimes settles at a low-contrast pattern of stripes across the
+reconstruction (Fienup, "Fourier Modulus Image Construction," RADC-TR-81-63, 1981) — a local
+rather than global minimum of the error, a feature of the iteration on the non-convex constraint
+set rather than of the data.
 
 ## Baselines
 
@@ -65,9 +61,9 @@ pattern gives `|F(u)|`). Four steps: Fourier transform the current object estima
 computed Fourier modulus by the measured `|F|`, keeping the computed phase; inverse transform;
 replace the computed object modulus by the measured `|f|`, keeping that phase. Core idea:
 alternately enforce each domain's measured modulus. Gerchberg and Saxton prove a defined error decreases
-monotonically each iteration. **Gap:** it presumes a *measured* object modulus `|f|`. In the
-single-intensity (astronomy/crystallography) problem there is no `|f|` — only the inequality
-constraints — so the fourth step has nothing to reset the modulus *to*.
+monotonically each iteration. The scheme presumes a *measured* object modulus `|f|`; the
+single-intensity (astronomy/crystallography) problem supplies instead the inequality constraints
+in the object domain.
 
 **Error-reduction (generalized Gerchberg–Saxton).** The four-step scheme above, generalized so
 that step four makes the *minimum change* needed to satisfy whatever object-domain constraints
@@ -83,21 +79,15 @@ modulus error chain `E_{F,k+1} ≤ E_{O,k} ≤ E_{F,k}` is monotone non-increasi
 provably never makes the Fourier-modulus mismatch worse. It is moreover equivalent to a
 double-length-step steepest descent on the Fourier squared error
 `B = N^{-2}Σ_u (|G(u)| − |F(u)|)²`, whose gradient
-`∂B/∂g(x) = 2[g(x) − g'(x)]` is computed for free by the same two transforms.
-**Gap:** monotone decrease on a *non-convex* landscape is not convergence to the global solution;
-the iteration plateaus at local minima (the stripe pattern), and for the single-intensity problem
-it is *painfully slow* — thousands of iterations. As a fixed step on a near-flat gradient it
-crawls, and it "constantly runs into the object-domain constraints," wasting its step against
-them.
+`∂B/∂g(x) = 2[g(x) − g'(x)]` is computed for free by the same two transforms. The step is a fixed
+double-length step along `−∇B`, followed each iteration by the projection onto the object
+constraints.
 
 **Gradient-search variants (steepest descent, conjugate gradient).** Since the gradient is so
-cheap, one can do honest line searches or conjugate-gradient directions instead of the fixed
-double-length step. Core idea: choose `h_k` to better minimize `B` along `−∇B`, or build conjugate
-directions `D_k(x) = g_k(x) − g'_k(x) + (B_k/B_{k-1}) D_{k-1}(x)`. **Gap:** every step must still be
-followed by a projection onto the object constraints, so the search keeps colliding with the
-constraint set; a fixed step size is suboptimal (the gradient is tiny on plateaus, so one needs a
-large `h` there but a small `h` elsewhere to stay stable), and adaptively tuning `h` is itself
-unsolved.
+cheap, one can do line searches or conjugate-gradient directions instead of the fixed
+double-length step. Core idea: choose `h_k` to minimize `B` along `−∇B`, or build conjugate
+directions `D_k(x) = g_k(x) − g'_k(x) + (B_k/B_{k-1}) D_{k-1}(x)`. Each step is followed by the
+projection onto the object constraints, and the step size `h_k` is a free parameter of the search.
 
 ## Evaluation settings
 

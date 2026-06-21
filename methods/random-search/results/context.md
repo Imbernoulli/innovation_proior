@@ -28,11 +28,7 @@ are sensitive, where the optimum sits, or how peaked it is. The configuration sp
 mixes continuous knobs that span orders of magnitude (learning rates, regularization
 strengths), integer knobs (number of hidden units, number of layers), and categorical choices
 (nonlinearity type, preprocessing). The precise goal is a strategy for choosing the set of
-trial points `{lambda^(1), ..., lambda^(S)}` at which to evaluate `Psi` — one that finds a
-good configuration within a small budget, scales to many hyper-parameters at once, is
-reproducible, parallelizes trivially, and survives the realities of running hundreds of long
-jobs on a shared cluster where individual jobs fail. Each existing approach below achieves
-only part of this.
+trial points `{lambda^(1), ..., lambda^(S)}` at which to evaluate `Psi`.
 
 ## Background
 
@@ -91,10 +87,7 @@ The prior strategies a new trial-set strategy is measured against and reacts to.
 scikit-learn).** Choose a finite set of values `L^(k)` for each of the `K` knobs and evaluate
 `Psi` at every element of the Cartesian product, `S = prod_k |L^(k)|` trials, returning the
 best. Core appeal: conceptually trivial, easy to implement, trivially parallel (all trials
-known up front), and reliable in 1-2 dimensions. **Gap:** the trial count is exponential in
-`K`, so a grid fine enough to resolve the important knobs is unaffordable beyond a handful of
-dimensions; and a grid tuned to be adequate across several data sets must be inefficient on
-each one, because the important dimensions differ between data sets.
+known up front), and reliable in 1-2 dimensions.
 
 **Manual search / expert sequential tuning (as in Larochelle et al. 2007).** A human
 alternates between fixing an architecture and hand-searching optimization knobs, coordinate-
@@ -103,33 +96,21 @@ combined with a coarse multi-resolution grid. Core appeal: it gives the research
 into `Psi`, has no infrastructure overhead, and because it is adaptive (later trials benefit
 from earlier ones) it can find good configurations in surprisingly few trials even in
 high-dimensional spaces — the DBN tuning above averaged about 41 trials per data set across a
-32-dimensional space. **Gap:** it is effectively impossible to reproduce, depends on operator
-skill and attention, does not scale to large studies, and cannot be analyzed or trusted as a
-controlled baseline because the human is in the loop.
+32-dimensional space.
 
 **Low-discrepancy / quasi-random point sets (Sobol — Antonov & Saleev 1979; Halton 1960;
 Niederreiter — Bratley et al. 1992; Latin hypercube — McKay et al. 1979).** Deterministic-ish
 constructions that place points to match the uniform distribution as closely as possible
 (minimize *discrepancy*: no clumps, no holes), often with the extra property that projections
 onto subspaces stay low-discrepancy. In quasi-Monte-Carlo integration they reduce the variance
-of finite-sample integral estimates faster than unstructured Monte Carlo. **Gap:** the points
-are constructed as a coupled design, so an experiment cannot be freely stopped, extended, or
-have failed trials dropped without disturbing the set's properties; and their integration-time
-advantage is established asymptotically, leaving open how they behave at the small sample sizes
-(tens to hundreds) that a hyper-parameter search can actually afford, especially when the
-number of dimensions is large relative to the budget.
+of finite-sample integral estimates faster than unstructured Monte Carlo.
 
 **General global-optimization and early automated HPO methods (Nelder & Mead 1965 simplex;
 Kirkpatrick et al. 1983 simulated annealing; Powell 1994 constrained optimization by linear
 approximation; evolutionary strategies, Rechenberg 1973, Hansen et al. 2003; and sequential
 model-based / Bayesian approaches, Hutter 2009; Hutter et al. 2011).** These are adaptive:
 they use results already in hand to decide where to evaluate next, and the model-based ones in
-particular can in principle weight dimensions by importance. **Gap:** despite decades of this
-work, manual-plus-grid remained the field default, because the adaptive methods demand
-substantial infrastructure — a master process tracking which trials have completed, are
-running, or failed; a shared database and inter-process communication; a scheduler that cannot
-simply queue all trials at once — which is awkward to build with the standard tooling and so
-was rarely adopted in practice.
+particular can in principle weight dimensions by importance.
 
 ## Evaluation settings
 
@@ -142,8 +123,8 @@ The natural yardsticks already in use for judging a trial-set strategy:
   `convex` tasks. A single-hidden-layer network with seven hyper-parameters (number of hidden
   units, nonlinearity, weight-init scheme and scale, learning rate, learning-rate annealing,
   `L2` penalty), with the option of two preprocessing choices adding two more. The reference
-  protocol that this would be compared against is the grid search of Larochelle et al. (2007),
-  which used on the order of 100 trials per data set.
+  protocol is the grid search of Larochelle et al. (2007), which used on the order of 100
+  trials per data set.
 - **Deep-belief-network tuning on the same suite** — 1-, 2-, and 3-layer DBNs with 8 global
   hyper-parameters plus 8 per layer, up to 32 hyper-parameters for the 3-layer model, against
   the expert manual-plus-grid tuning of Larochelle et al. (2007), which averaged about 41

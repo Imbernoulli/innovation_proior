@@ -6,8 +6,8 @@ The train set (50,000 images), test set (10,000 images), accuracy bar, and singl
 
 ## Prior art / Background / Baselines
 
-- **David Page / Myrtle "How to train your ResNet" (2019).** A carefully engineered ResNet-style training pipeline reaches 94% in ~10 A100-seconds. Gap: it relies on a deep residual network and a long schedule, leaving headroom for a faster single-GPU result.
-- **tysam-code/hlb-CIFAR10 (2023).** A compact from-scratch network reaches 94% in **6.3 A100-seconds**. Gap: its unwhitened variant falls back to **18.3 A100-seconds**, so the same network without the published extras is much slower.
+- **David Page / Myrtle "How to train your ResNet" (2019).** A carefully engineered ResNet-style training pipeline reaches 94% in ~10 A100-seconds, using a deep residual network with a multi-epoch schedule.
+- **tysam-code/hlb-CIFAR10 (2023).** A compact from-scratch network reaches 94% in **6.3 A100-seconds**.
 
 The starting point is the **unwhitened baseline**: the hlb-CIFAR10 network trained with Nesterov SGD, a triangular learning-rate schedule, label smoothing 0.2, and horizontal-flip plus random-translation augmentation. It reaches 94% mean accuracy in **45 epochs / 18.3 A100-seconds**.
 

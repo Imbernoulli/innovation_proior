@@ -36,69 +36,51 @@ depend on the ambient ground set, only on the abstract sets.
 A first, crude bound comes from double counting. Each $k$-set has exactly $k$ shadow-subsets, and each
 $(k-1)$-set is a subset of at most $n-(k-1)$ different $k$-sets over $[n]$, so
 $k|\mathcal{F}| \le (n-k+1)|\partial\mathcal{F}|$, giving $|\partial\mathcal{F}| \ge
-\frac{k}{n-k+1}|\mathcal{F}|$. This is linear in $|\mathcal{F}|$ and depends on $n$; it is far from
-tight and it does not even identify the extremal configuration. The real answer is sublinear and
-$n$-free, and the whole difficulty is getting it exactly.
+\frac{k}{n-k+1}|\mathcal{F}|$.
 
 A heuristic for the extremal shape is concentration: to keep the boundary small, one wants the sets to
 share their $(k-1)$-subsets as much as possible, which suggests packing them onto as few elements as
 possible. The cleanest packing is a **clique**: take all $k$-subsets of a small ground set $[a]$, i.e.
 $\mathcal{F} = [a]^{(k)}$ with $|\mathcal{F}| = \binom{a}{k}$. Its shadow is all of $[a]^{(k-1)}$, of
 size $\binom{a}{k-1}$ — every $(k-1)$-subset of $[a]$ is reused by many $k$-sets. But a clique only
-exists when $m$ is exactly a binomial coefficient $\binom{a}{k}$; for a general count $m$ there is no
-obvious canonical family, and even at round counts "the clique looks best" is not a proof.
+exists when $m$ is exactly a binomial coefficient $\binom{a}{k}$.
 
 Several standard objects from finite-set combinatorics are available as raw material. Numbers admit
 **binomial (cascade) representations** — "base-binomial" analogues of binary expansion writing a
 number as a sum of binomial coefficients with strictly decreasing top arguments and indices. And one
 can order $k$-sets in various ways; among them are the **lexicographic order** (by the smallest
 differing element) and the **colexicographic order**, $A < B \iff \max(A \triangle B) \in B$, in which
-sets containing larger elements come later. Whether any of these is the right language for the problem
-is not settled here. Both were familiar objects in the field.
+sets containing larger elements come later. Both were familiar objects in the field.
 
 The field around this question — extremal set theory of the early-to-mid 1960s — already had two of
 its central pillars in place. **Sperner's theorem** (1928) bounds the size of an antichain in $B_n$ by
 the middle binomial coefficient. The **Erdős–Ko–Rado theorem** (Erdős, Ko, Rado 1961) bounds an
-intersecting family of $r$-sets by $\binom{n-1}{r-1}$ for $n \ge 2r$. Both are statements about a
-single layer or about how layers interlock, and both are really statements about shadows and
-co-shadows in disguise — which is precisely why a sharp shadow inequality would subsume and refine
-them. The prevailing technique of the era was clever direct counting (the EKR original proof, the
-permutation/cycle method); the systematic "make the family more extremal without making it worse"
-machinery — shifting and compression — was only beginning to be articulated as a general tool.
+intersecting family of $r$-sets by $\binom{n-1}{r-1}$ for $n \ge 2r$. The prevailing technique of the
+era was clever direct counting (the EKR original proof, the permutation/cycle method); the systematic
+"make the family more extremal without making it worse" machinery — shifting and compression — was only
+beginning to be articulated as a general tool.
 
 ## Baselines
 
-These are the prior results and techniques a sharp shadow bound would have to beat or build on.
+These are the prior results and techniques relevant to the shadow problem.
 
-- **The double-counting / averaging bound.** As above, $|\partial\mathcal{F}| \ge
+- **The double-counting / averaging bound.** $|\partial\mathcal{F}| \ge
   \frac{k}{n-k+1}|\mathcal{F}|$. Core idea: count incidences between $k$-sets and their
-  $(k-1)$-subsets two ways. Gap: it is linear, it depends on $n$, and it is loose by a wide margin —
-  the true minimum is governed by binomial coefficients, not a linear ratio, and is attained on a
-  clique, which this bound does not see.
+  $(k-1)$-subsets two ways.
 
 - **The clique guess.** Conjecture that the minimiser is $[a]^{(k)}$ when $m = \binom{a}{k}$, giving
-  $|\partial\mathcal{F}| \ge \binom{a}{k-1}$. Core idea: maximal sharing of subsets. Gap: it only
-  covers the special counts $m = \binom{a}{k}$ and says nothing in between; and "it looks optimal" is
-  not a proof — extremal combinatorics is full of plausible guesses that fail, so the clique guess
-  needs both an exact extension to all $m$ and a proof that no cleverer family does better.
+  $|\partial\mathcal{F}| \ge \binom{a}{k-1}$. Core idea: maximal sharing of subsets.
 
 - **Sperner's theorem (1928).** An antichain in $B_n$ has size at most $\binom{n}{\lfloor n/2\rfloor}$.
-  Core idea: chain decomposition / the LYM inequality $\sum_A 1/\binom{n}{|A|} \le 1$. Gap for the
-  present purpose: it controls *how many* sets an antichain can have in total but says nothing about
-  the boundary between adjacent layers, i.e. nothing quantitative about shadows of fixed-size families.
+  Core idea: chain decomposition / the LYM inequality $\sum_A 1/\binom{n}{|A|} \le 1$.
 
 - **Erdős–Ko–Rado (Erdős, Ko, Rado 1961).** An intersecting family $\mathcal{A} \subseteq X^{(r)}$
   with $2 \le r < n/2$ has $|\mathcal{A}| \le \binom{n-1}{r-1}$, attained by the star of all $r$-sets
-  through a fixed point. Core idea: the cyclic-permutation counting argument. Gap: it is one specific
-  intersection statement; it does not provide the general layer-to-layer boundary inequality, although
-  (as becomes clear later) it is exactly the kind of result a sharp shadow bound should yield as a
-  corollary by passing to complements.
+  through a fixed point. Core idea: the cyclic-permutation counting argument.
 
 - **The shifting/compression heuristic (in embryo).** The operation "if a set uses a large element,
   swap it for a smaller unused one" preserves cardinality and intuitively makes a family more
-  concentrated. Core idea: monotone transformations toward a canonical extremal family. Gap at this
-  point: it was folklore-level rather than a packaged theorem — its effect on the shadow had not been
-  analysed, and it had not been turned into a proof of any extremal bound.
+  concentrated. Core idea: monotone transformations toward a canonical extremal family.
 
 ## Evaluation settings
 
@@ -115,9 +97,8 @@ measured against:
 - **Closed-form usability.** Ideally a version that is easy to compute with and to plug into other
   proofs, rather than only an exact-but-cumbersome arithmetic condition.
 
-- **Downstream corollaries.** Whether the bound recovers known landmark results — the Erdős–Ko–Rado
-  theorem and the characterisation of $f$-vectors of simplicial complexes — since a correct sharp
-  shadow inequality should imply them cleanly.
+- **Consistency with known results.** A correct shadow inequality should be compatible with and
+  informative for the landmark extremal results already in the literature.
 
 ## Code framework
 

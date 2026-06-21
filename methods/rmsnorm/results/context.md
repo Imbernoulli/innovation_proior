@@ -11,16 +11,9 @@ layer for sequence models and Transformers computes, within a single layer and a
 training example, the mean and standard deviation of that neuron-vector and standardizes by
 them. It accelerates convergence measured in number of steps.
 
-The precise problem: that normalization layer is not free. It runs once
-per layer — and in a recurrent network, once per layer *per timestep* — and each invocation
-requires gathering statistics over the whole neuron-vector and rewriting every element. For
-small shallow models this overhead is negligible, but as networks grow deep and wide, or
-unroll over long sequences, the per-step cost mounts until it eats much of the benefit:
-convergence is faster in *steps*, but each step is slower in *wall-clock time*, so the net
-speedup over an unnormalized baseline is far smaller than the step-count curve suggests. The
-goal is a normalization that keeps the stabilization benefit but costs less to compute — and,
-to know what can safely be removed, one first has to understand *which part* of the standard
-layer's mechanism is actually responsible for its success.
+The question is what a normalization layer's individual components each contribute to that
+stabilization, and how efficiently normalization can be carried out — particularly in deep and
+recurrent networks where the layer fires at every timestep.
 
 ## Background
 
@@ -34,8 +27,7 @@ of the summed inputs at each layer so downstream layers see a stable distributio
 account is the original motivation; an alternative line of analysis attributes the benefit
 instead to a smoother optimization landscape rather than to reduced shift — Santurkar et al.
 2018 — and a related observation is that without normalization the activations in very deep
-networks can grow uncontrollably. The mechanism behind the gain is thus not fully settled,
-which is itself a reason to probe exactly what a normalization layer's pieces each contribute.)
+networks can grow uncontrollably. The mechanism behind the gain is thus not fully settled.)
 
 **The summed-input setting.** Consider a feed-forward layer. For input vector x ∈ R^m it
 computes summed inputs aᵢ = Σⱼ wᵢⱼ xⱼ and outputs yᵢ = f(aᵢ + bᵢ), with wᵢ the weight vector
@@ -50,35 +42,27 @@ unchanged — this holds whenever the layer subtracts a mean. *Re-scaling*
 invariance: multiply the summed inputs (or the weights) by a positive constant and the output is
 unchanged — this holds whenever the layer divides by a quantity that scales linearly with the
 input, such as a standard deviation. A layer that both subtracts the mean and divides by the
-standard deviation has both invariances at once, and the prevailing wisdom credits *both* with
-the layer's stabilizing effect. Whether they are equally important — in particular whether the
-mean-subtraction (re-centering) is load-bearing or merely along for the ride — is an open
-question, and it bears directly on what computation can be removed without losing the benefit.
+standard deviation has both invariances at once.
 
 **An observation about the mean.** When one measures the running mean and standard deviation of
 hidden activations in an unnormalized recurrent network, both are unstable across timesteps. The
 two pieces of the standard layer's computation — the mean-subtraction and the division by the
-scale — are arithmetically distinct, and it is not established that they contribute equally to
-the observed stabilization.
+scale — are arithmetically distinct.
 
 ## Baselines
 
 **BatchNorm** (Ioffe & Szegedy 2015). Standardizes each activation using mean and variance
 estimated over the current mini-batch: x̂ = (x − μ_B)/√(σ²_B + ε), then a learned per-feature
 scale and shift. Re-scaling and re-centering invariant with respect to the dataset and to
-weight-matrix scaling. Its defining limitation: the statistics are pooled across training
-cases, so it depends on the batch — it cannot cleanly handle variable-length sequences in
-RNNs (each timestep would need its own statistics), it requires accumulating running averages
-to use at test time, and small or non-i.i.d. batches degrade it. Several works retrofit it to
-RNNs (Laurent et al. 2016; Cooijmans et al. 2016) or reduce its batch dependence (batch
-renormalization, Ioffe 2017), but the batch coupling remains structural.
+weight-matrix scaling. The statistics are pooled across training cases, so batch statistics are
+used at train time and running averages at test time. Several works retrofit it to RNNs
+(Laurent et al. 2016; Cooijmans et al. 2016) or reduce its batch dependence (batch
+renormalization, Ioffe 2017).
 
 **WeightNorm** (Salimans & Kingma 2016). Rather than normalize activations, reparameterize each
 weight vector as w = g · v/‖v‖, decoupling its length g from its direction v/‖v‖. Cheap and
-batch-independent. It is invariant to re-scaling of an individual weight *vector*, but — because
-it touches the parameters, not the activation distribution — it is *not* invariant to re-scaling
-of the inputs or the dataset, and on recognition tasks it has not matched BatchNorm's accuracy.
-It controls the weights; it does not directly control the activation distribution.
+batch-independent. It is invariant to re-scaling of an individual weight *vector*, and it
+touches the parameters rather than the activation distribution.
 
 **LayerNorm** (Ba et al. 2016). The direct predecessor for the regime of interest. Within a
 single layer and a single example, it standardizes the summed inputs using statistics computed
@@ -91,16 +75,11 @@ statistics are within-layer and per-example, LayerNorm has no batch dependence �
 variable-length sequences and is computed identically at train and test, which is why it
 became standard for RNNs and Transformers. It is invariant to weight-matrix and dataset
 re-scaling (the σ in the denominator scales along) and to weight-matrix re-centering (the μ
-subtraction absorbs shifts), but not to individual weight-vector re-scaling. Its gap: it pays
-for two statistics. Computing μ is one reduction over the n neurons; computing σ given μ is a
-second reduction (over the centered squares); and every element must then have μ subtracted
-before the division. In deep networks, and acutely in RNNs where the layer fires at every
-timestep, this per-step arithmetic is a real fraction of the runtime.
+subtraction absorbs shifts), but not to individual weight-vector re-scaling.
 
 **Plain L2 / Euclidean normalization.** Dividing the summed-input vector by its Euclidean norm
 ‖a‖ = √(Σ aᵢ²) has been explored for specific sub-layers (e.g. improving lexical selection,
-Nguyen & Chiang 2018). As a wholesale replacement for layer normalization it has not been shown
-to work.
+Nguyen & Chiang 2018).
 
 ## Evaluation settings
 
@@ -161,6 +140,4 @@ class FeatureNormalization(nn.Module):
 ```
 
 The open slot is the body of `FeatureNormalization.forward`: which statistic of the summed inputs
-to compute, and how to rescale `x` before applying the learned gain and optional offset. The
-existing layer-normalization recipe remains the cost target: two reductions, mean subtraction,
-and a learned affine transform.
+to compute, and how to rescale `x` before applying the learned gain and optional offset.

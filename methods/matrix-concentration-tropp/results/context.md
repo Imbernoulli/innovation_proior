@@ -12,7 +12,7 @@ and the event of interest is spectral:
 lambda_max(Y) >= t
 ```
 
-or, after the usual self-adjoint dilation, a bound on the spectral norm of a rectangular sum. The desired theorem should look like the scalar concentration inequalities that practitioners already use: simple hypotheses on each summand, a variance-like scale, explicit constants, and a large-deviation probability that can be inserted into an algorithmic proof. Asymptotic random-matrix theory is the wrong tool because the matrices are finite and often structured; entrywise estimates are also too crude because the output must control an eigenvalue, not a list of coordinates.
+or, after the usual self-adjoint dilation, a bound on the spectral norm of a rectangular sum. Asymptotic random-matrix theory is the wrong tool because the matrices are finite and often structured; entrywise estimates are also too crude because the output must control an eigenvalue, not a list of coordinates. The question is how to obtain tail bounds for such sums that parallel the scalar concentration inequalities practitioners already use.
 
 ## Scalar Baseline
 
@@ -50,7 +50,7 @@ The trace exponential has better behavior than the raw exponential. It is convex
 tr exp(A + B) <= tr exp(A) exp(B).
 ```
 
-But the analogous many-matrix splitting is not available in the form needed for arbitrary independent sums. The matrix logarithm, by contrast, is operator monotone and operator concave on positive definite matrices. The matrix-analysis toolbox also contains deeper trace-function convexity and concavity theorems from quantum statistical mechanics, but before the final method there is no evident reason that this part of the toolbox should solve a probability problem.
+But the analogous many-matrix splitting is not available in the form needed for arbitrary independent sums. The matrix logarithm, by contrast, is operator monotone and operator concave on positive definite matrices. The matrix-analysis toolbox also contains deeper trace-function convexity and concavity theorems from quantum statistical mechanics.
 
 ## Existing Matrix Routes
 
@@ -60,9 +60,7 @@ Ahlswede and Winter already transported the Bernstein trick into an operator-val
 d exp(sum_k lambda_max(log E exp(theta X_k))).
 ```
 
-For identically distributed positive semidefinite summands, this can be adequate. For heterogeneous sums, it leaves a serious scale problem: the exponent depends on a sum of individual top eigenvalues rather than the top eigenvalue of a summed variance matrix.
-
-The noncommutative Khintchine and Rudelson lines attack some random matrix sums through moment inequalities. They can identify a natural noncommutative sum-of-squares scale in important cases, but the technology is heavier, the constants are less direct, and the output is not a general Laplace-transform calculus. Oliveira's refinements of the Ahlswede-Winter method show that better scale parameters are possible in special settings, including matrix Freedman/Bernstein-type results, but the technique still looks tailored to particular inequalities.
+The noncommutative Khintchine and Rudelson lines attack some random matrix sums through moment inequalities and can identify a natural noncommutative sum-of-squares scale in important cases. Oliveira developed refinements of the Ahlswede-Winter method that yield matrix Freedman/Bernstein-type results in special settings.
 
 ## Benchmarks And Work Surface
 
@@ -89,5 +87,3 @@ Positive semidefinite bounded summands should yield Chernoff-type upper and lowe
 ```text
 ||sum_k E X_k^2||.
 ```
-
-A good method should also explain the ambient dimension factor. Some factor depending on dimension is unavoidable for diagonal Gaussian matrices, where the spectral norm is a maximum of scalar deviations, but a good bound should keep that factor outside the variance scale rather than burying an artificial dimension loss inside the exponent.

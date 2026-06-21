@@ -2,26 +2,21 @@
 
 ## Research question
 
-Softmax attention is the workhorse primitive of sequence modeling, but it is fundamentally
-expensive: computing `o_t = sum_{i<=t} softmax(k_i^T q_t) v_i` over a length-`L` sequence costs
-`O(L^2 d)` and, at inference, requires keeping every past key/value vector — a "KV cache" that
-grows linearly in `L`. For long contexts this is the binding constraint on both training cost
-and serving memory. A family of subquadratic alternatives replaces the recurrence so that the
-per-step state is a *fixed-size* object, giving `O(Ld^2)` training and constant-memory
-inference. The catch is quality: the cheapest such alternatives lose accuracy relative to
-softmax attention, and they lose it most on exactly the tasks that matter for retrieval-heavy
-downstream use — *associative recall*, where the model must fetch a value it stored earlier
-keyed on some token it has now seen again.
+Softmax attention is the workhorse primitive of sequence modeling. Computing
+`o_t = sum_{i<=t} softmax(k_i^T q_t) v_i` over a length-`L` sequence costs `O(L^2 d)` and, at
+inference, keeps every past key/value vector — a "KV cache" that grows linearly in `L`. A family
+of subquadratic alternatives replaces the recurrence so that the per-step state is a *fixed-size*
+object, giving `O(Ld^2)` training and constant-memory inference. These models are evaluated both
+on plain language modeling and on *associative recall*, where the model must fetch a value it
+stored earlier keyed on some token it has now seen again.
 
-So the precise problem is to design a sequence-mixing layer that (1) has a fixed-size state and
-runs in subquadratic time and constant inference memory; (2) closes the recall gap to softmax
-attention rather than merely being cheaper; and crucially (3) admits a *training* algorithm
-that is hardware-efficient on modern GPUs — rich in matrix multiplications so it can use tensor
-cores, parallelizable across the sequence dimension for high occupancy, and able to avoid
-writing a full state matrix to slow memory at every time step. A layer can be theoretically
-cheap in FLOPs and still untrainable at scale if its recurrence is forced to run one step at a
-time on the elementwise units. Meeting (1) and (2) without (3) is what has blocked the most
-promising recall-friendly variant from scaling.
+The question this work addresses is how to design a sequence-mixing layer with a fixed-size state
+that runs in subquadratic time and constant inference memory, performs well on associative
+recall, and admits a *training* algorithm that is hardware-efficient on modern GPUs — rich in
+matrix multiplications so it can use tensor cores, and parallelizable across the sequence
+dimension for high occupancy. A layer can be cheap in FLOPs and still run one step at a time on
+the elementwise units, so the form of the training algorithm is part of the design, not just the
+form of the recurrence.
 
 ## Background
 
@@ -36,23 +31,21 @@ o_t = sum_{i<=t} ( phi(q_t)^T phi(k_i) ) v_i / sum_{j<=t} ( phi(q_t)^T phi(k_j) 
 
 `S_t` is a `d x n` matrix-valued hidden state and `z_t` a normalizer vector. The model is now a
 linear RNN: `S_t = S_{t-1} + v_t phi(k_t)^T`, `z_t = z_{t-1} + phi(k_t)`, read out by
-`o_t = S_t phi(q_t)/(z_t^T phi(q_t))`. This obviates the KV cache (the whole past lives in the
-fixed-size `S_t`) and gives constant-memory inference. Katharopoulos used `phi = elu(.)+1`
-(positive, with nonzero gradient on the negatives, unlike ReLU). Their feature map preserves
-the key dimension, so the state size — and hence memory capacity — is unchanged from the input
-key dimension. The denominator `z_t^T phi(q_t)` can be numerically unstable and is often
-dropped in linear-attention variants, and the feature map is often taken to be the identity,
-leaving the bare recurrence `S_t = S_{t-1} + v_t k_t^T`, `o_t = S_t q_t`.
+`o_t = S_t phi(q_t)/(z_t^T phi(q_t))`. The whole past lives in the fixed-size `S_t`, giving
+constant-memory inference. Katharopoulos used `phi = elu(.)+1` (positive, with nonzero gradient
+on the negatives, unlike ReLU). Their feature map preserves the key dimension, so the state size
+— and hence memory capacity — is unchanged from the input key dimension. The denominator
+`z_t^T phi(q_t)` is often dropped in linear-attention variants, and the feature map is often taken
+to be the identity, leaving the bare recurrence `S_t = S_{t-1} + v_t k_t^T`, `o_t = S_t q_t`.
 
-**Two computational forms, and their trade-off.** With `Q, K, V in R^{L x d}` stacked, the
-identical output can be computed in a *parallel form*,
-`O = (Q K^T ⊙ M_L) V`, where `M_L` is the causal mask. The parallel form costs
-`O(L^2 d + L d^2)` FLOPs but runs in `O(1)` sequential steps and is pure matmul, so it
-saturates tensor cores and GPU occupancy. The *recurrent form* `S_t = S_{t-1}+v_t k_t^T`,
-`o_t = S_t q_t` costs only `O(L d^2)` FLOPs but is strictly sequential in `t` and its
-elementwise updates cannot use matmul accelerators. The *chunkwise parallel form* (Hua 2022;
-Sun et al. 2023; Yang et al. 2023) interpolates: split the sequence into `L/C` chunks of size
-`C`, carry a chunk-level state `S_[t]`, do intra-chunk work with the parallel form and
+**Two computational forms.** With `Q, K, V in R^{L x d}` stacked, the identical output can be
+computed in a *parallel form*, `O = (Q K^T ⊙ M_L) V`, where `M_L` is the causal mask. The
+parallel form costs `O(L^2 d + L d^2)` FLOPs but runs in `O(1)` sequential steps and is pure
+matmul, so it saturates tensor cores and GPU occupancy. The *recurrent form*
+`S_t = S_{t-1}+v_t k_t^T`, `o_t = S_t q_t` costs only `O(L d^2)` FLOPs but is strictly sequential
+in `t` and its elementwise updates do not use matmul accelerators. The *chunkwise parallel form*
+(Hua 2022; Sun et al. 2023; Yang et al. 2023) interpolates: split the sequence into `L/C` chunks
+of size `C`, carry a chunk-level state `S_[t]`, do intra-chunk work with the parallel form and
 inter-chunk propagation with the recurrence,
 
 ```
@@ -65,38 +58,28 @@ and `C=1` the recurrent form. With `C` a small constant (64 or 128), it is subqu
 matmul-rich, and the intra-chunk states need never be materialized. I/O-aware kernels in the
 FlashLinearAttention style make this fast in practice even at moderate sequence lengths.
 
-**The capacity limitation of additive memory.** The additive update `S_t = S_{t-1}+v_t k_t^T` is
-a Hebbian / outer-product associative memory — in the fast-weight-programmer view (Schmidhuber
-1992; Schlag et al. 2021), `S_t` is a "fast weight" matrix written by outer products and read by
-matrix-vector product. Such memories have bounded capacity (McEliece et al. 1987). Concretely,
-reading with a stored key `k_j` gives
-`S k_j = (sum_i v_i k_i^T) k_j = v_j (k_j^T k_j) + sum_{i != j} (k_i^T k_j) v_i`: the intended
-value plus cross-talk from every non-orthogonal key. In a `d`-dimensional space there are at
-most `d` mutually orthogonal keys, so once the sequence is longer than the key dimension the
-store is in an *overcapacity* regime and retrieval errors are unavoidable. This is a concrete,
-measured failure mode: additive linear-attention variants underperform softmax attention on
-language modeling and, more sharply, on recall-intensive synthetic and real tasks, precisely
-because the additive memory cannot stop accumulating interfering associations. A purely additive
-rule has no way to *deallocate* a stale key-value pair to make room for a new one; ideally the
-removal of an old association should depend on the interaction between the new key and the
-current memory contents.
+**Additive memory.** The additive update `S_t = S_{t-1}+v_t k_t^T` is a Hebbian / outer-product
+associative memory — in the fast-weight-programmer view (Schmidhuber 1992; Schlag et al. 2021),
+`S_t` is a "fast weight" matrix written by outer products and read by matrix-vector product. Such
+memories have bounded capacity (McEliece et al. 1987). Concretely, reading with a stored key `k_j`
+gives `S k_j = (sum_i v_i k_i^T) k_j = v_j (k_j^T k_j) + sum_{i != j} (k_i^T k_j) v_i`: the
+intended value plus cross-talk from every non-orthogonal key. In a `d`-dimensional space there
+are at most `d` mutually orthogonal keys. Additive linear-attention variants underperform softmax
+attention on language modeling and, more sharply, on recall-intensive synthetic and real tasks.
 
-**Gated linear variants and the general associative-RNN view.** Data-dependent *gating* is the
-mainstream response to the capacity/forgetting problem: multiply the state by an
-input-dependent decay before the additive write. Many recent models fall into a single template
-of an associative RNN with matrix-valued state, `S_t = S_{t-1} • M_t + v_t k_t^T`,
-`o_t = S_t q_t`, where `•` is an associative operator and `M_t`, `v_t`, `k_t`, `q_t` are
-functions of `x_t`. With `• = ⊙` (Hadamard) and various structured `M_t` this recovers, among
-others: Gated Linear Attention (`M_t = beta_t alpha_t^T`, Yang et al. 2023), HGRN2 (Qin et al.
-2024), RWKV-6 (Peng et al. 2024), RetNet (`M_t = gamma`, a fixed scalar decay, Sun et al. 2023),
-mLSTM (Beck et al. 2024), and Mamba/Mamba-2 (selective state-space models, Gu & Dao 2023; Dao &
-Gu 2024 — reparameterizable as a gated linear transformer). The Hadamard choice is *elementwise*
-and cheap (`O(dn)` per step) and supports parallel scan, but elementwise recurrence cannot use
-tensor cores and a genuinely matrix-valued `S_{t-1} M_t` with unstructured `M_t` would cost
-`O(dn^2)` per step — prohibitive. These gated variants are now competitive with strong
-transformer baselines on plain language modeling, yet they continue to underperform softmax
-attention on recall-intensive tasks: a scalar/diagonal decay forgets *globally* or *per
-channel*, not as a function of which specific stored association collides with the new key.
+**Gated linear variants and the general associative-RNN view.** Data-dependent *gating*
+multiplies the state by an input-dependent decay before the additive write. Many recent models
+fall into a single template of an associative RNN with matrix-valued state,
+`S_t = S_{t-1} • M_t + v_t k_t^T`, `o_t = S_t q_t`, where `•` is an associative operator and
+`M_t`, `v_t`, `k_t`, `q_t` are functions of `x_t`. With `• = ⊙` (Hadamard) and various structured
+`M_t` this recovers, among others: Gated Linear Attention (`M_t = beta_t alpha_t^T`, Yang et al.
+2023), HGRN2 (Qin et al. 2024), RWKV-6 (Peng et al. 2024), RetNet (`M_t = gamma`, a fixed scalar
+decay, Sun et al. 2023), mLSTM (Beck et al. 2024), and Mamba/Mamba-2 (selective state-space
+models, Gu & Dao 2023; Dao & Gu 2024 — reparameterizable as a gated linear transformer). The
+Hadamard choice is *elementwise* (`O(dn)` per step) and supports parallel scan; a genuinely
+matrix-valued `S_{t-1} M_t` with unstructured `M_t` would cost `O(dn^2)` per step. These gated
+variants are competitive with strong transformer baselines on plain language modeling. The
+elementwise decay forgets per channel.
 
 **The delta rule / Widrow-Hoff as an error-correcting write.** A classical alternative to the
 Hebbian write is the *delta rule* (Widrow & Hoff 1960), later known as the Least Mean Squares
@@ -109,61 +92,44 @@ L_t(S) = 1/2 || S k_t - v_t ||^2,    S_t = S_{t-1} - beta_t * grad_S L_t = S_{t-
 
 with `beta_t` a (here, dynamic) learning rate. Equivalently, retrieve the old value
 `v_t^old = S_{t-1} k_t`, form a new value `v_t^new = beta_t v_t + (1-beta_t) v_t^old`, and swap
-it in: `S_t = S_{t-1} - v_t^old k_t^T + v_t^new k_t^T`. Unlike the additive rule, the write is
-proportional to the *prediction error* `v_t - v_t^old`, so a key already well-represented in
-memory produces little change, and `beta_t` controls how strongly the current pair overwrites
-the colliding one. The delta-rule fast weight has been shown to have better memory capacity
-than the Hebbian one (Gardner 1988; Prados & Kak 1989) and, applied as a sequence-mixing layer
-(Schlag et al. 2021, with `beta_t = sigma(W_beta x_t)`), it improves associative recall and
-small-scale language modeling and machine translation over additive linear attention.
+it in: `S_t = S_{t-1} - v_t^old k_t^T + v_t^new k_t^T`. The write is proportional to the
+*prediction error* `v_t - v_t^old`, so a key already well-represented in memory produces little
+change, and `beta_t` controls how strongly the current pair overwrites the colliding one. The
+delta-rule fast weight has better memory capacity than the Hebbian one (Gardner 1988; Prados &
+Kak 1989) and, applied as a sequence-mixing layer (Schlag et al. 2021, with
+`beta_t = sigma(W_beta x_t)`), it improves associative recall and small-scale language modeling
+and machine translation over additive linear attention.
 
-**Rank-one state transitions and triangular solves.** Numerical linear algebra already contains
-tools for working with near-identity rank-one transformations without storing every dense
-intermediate matrix. A matrix of the form `I - beta k k^T` has eigenvalue `1` on the orthogonal
-complement of `k` and `1 - beta ||k||_2^2` along the span of `k`; if `k` is L2-normalized this
-non-unit eigenvalue becomes `1 - beta`. Products of such transformations can often be accumulated
-through compact reflector representations rather than by materializing all intermediate states.
-Separately, when a sequential recurrence can be written as a lower-triangular linear system,
-forward substitution turns the dependency into a triangular solve. These are available
-mathematical tools, but the open problem is still how to use them to make the state-dependent
-write run like the chunkwise linear-attention code path.
+**Rank-one state transitions.** A matrix of the form `I - beta k k^T` has eigenvalue `1` on the
+orthogonal complement of `k` and `1 - beta ||k||_2^2` along the span of `k`; if `k` is
+L2-normalized this non-unit eigenvalue becomes `1 - beta`. Numerical linear algebra has standard
+representations for working with near-identity rank-one transformations, and a sequential
+recurrence written as a lower-triangular linear system can be handled by forward substitution.
 
 ## Baselines
 
-A new layer for this problem would be measured against and react to the following.
+A new layer for this problem would be measured against the following.
 
 **Softmax-attention transformer (Vaswani et al. 2017; LLaMA-architecture "Transformer++",
 Touvron et al. 2023).** `o_t = sum_{i<=t} softmax_i(k_i^T q_t / sqrt(d)) v_i`, with RoPE,
-SwiGLU FFN, pre-norm. The quality bar and the recall bar. **Limitation:** `O(L^2 d)` compute and
-a KV cache that grows linearly with the sequence, so both training cost and inference memory
-scale poorly with context length.
+SwiGLU FFN, pre-norm. The quality bar and the recall bar; `O(L^2 d)` compute and a KV cache that
+grows linearly with the sequence.
 
 **Linear attention (Katharopoulos et al. 2020).** The matrix-valued linear RNN above with
-`phi = elu+1`. Linear-time training (in its chunkwise form), constant-memory inference.
-**Limitation:** the additive Hebbian write has bounded capacity; once `L` exceeds the key
-dimension the memory is overcapacity and cross-talk corrupts retrieval, so it underperforms
-softmax attention on language modeling and badly on recall-intensive tasks. It has no mechanism
-to remove a stale association as a function of the incoming key.
+`phi = elu+1`. Linear-time training (in its chunkwise form), constant-memory inference; the
+additive Hebbian write.
 
 **Gated linear attention / RetNet / Mamba / RWKV-6 / HGRN2 / mLSTM.** The
 `S_t = S_{t-1} ⊙ M_t + v_t k_t^T` family with data-dependent (or, for RetNet, fixed) decay,
-trained with chunkwise or scan algorithms; competitive with transformers on plain LM.
-**Limitation:** the decay is elementwise (scalar or diagonal), so forgetting is global or
-per-channel rather than targeted at the specific stored association that conflicts with the
-current key; these models still trail softmax attention on recall-intensive tasks. A truly
-state-dependent removal would need `S_{t-1}` to enter the *write*, not just a multiplicative
-decay, which the elementwise template does not provide.
+trained with chunkwise or scan algorithms; competitive with transformers on plain LM. The decay
+is elementwise (scalar or diagonal).
 
 **Delta-rule fast-weight layer (Widrow & Hoff 1960; Schlag et al. 2021).** The error-correcting
 write `S_t = S_{t-1} - beta_t(S_{t-1} k_t - v_t) k_t^T` with `beta_t = sigma(W_beta x_t)`,
-feature map `elu+1` and an L1-style key/query normalization; better recall than additive linear
-attention. **Limitation:** its training algorithm is the strictly *sequential*,
-memory-efficient recurrent procedure inherited from Katharopoulos (their §3.3.1) — because the
-value being written, `v_t^old = S_{t-1} k_t`, depends on the running state, the per-step writes
-cannot be precomputed in parallel the way the value matrix `V` can be for additive linear
-attention. The recurrence runs one step at a time on the elementwise units, makes no use of
-matmul accelerators, and so is hardware-inefficient; this is what has prevented the delta-rule
-layer from being trained at modern language-model scale.
+feature map `elu+1` and an L1-style key/query normalization. Its training algorithm is the
+sequential, memory-efficient recurrent procedure inherited from Katharopoulos (their §3.3.1):
+because the value being written, `v_t^old = S_{t-1} k_t`, depends on the running state, the
+per-step writes are computed one step at a time on the elementwise units.
 
 ## Evaluation settings
 
@@ -172,7 +138,7 @@ The natural yardsticks for subquadratic language-modeling layers:
 - **Associative-recall / in-context-learning synthetics**: Multi-Query Associative Recall
   (MQAR; Arora et al. "Zoology" 2023), the Mechanistic Architecture Design suite (MAD; Poli et
   al. 2024), and RegBench (Akyürek et al. 2024), which tests inferring a probabilistic
-  finite-automaton language in context. These directly probe the capacity/recall failure mode.
+  finite-automaton language in context.
 - **Language modeling**: WikiText perplexity, and zero-shot accuracy on common-sense reasoning
   — LAMBADA, PIQA, HellaSwag, WinoGrande, ARC-easy and ARC-challenge — via the standard LM
   evaluation harness.

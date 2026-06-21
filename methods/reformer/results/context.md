@@ -21,8 +21,7 @@ $64\text{K}$ sequence should fit comfortably on one device, and the entire BERT
 training corpus is only $17\text{GB}$ on disk. Yet such models cannot even be
 fine-tuned on a single machine. So the question is sharp: where does the memory
 actually go, and is the cost fundamental or merely an artifact of how the model
-is implemented and trained? A solution has to attack each source of blow-up
-without changing what the model computes enough to hurt its quality.
+is implemented and trained?
 
 ## Background
 
@@ -38,30 +37,24 @@ none of them present in the naive per-layer estimate above:
   position-wise feed-forward sublayer projects up to an intermediate width
   $d_{ff}$ that is typically several times the model width $d_{model}$ (a common
   setting is $d_{ff}=4096$ with $d_{model}=1024$). The intermediate activation
-  is $[b, L, d_{ff}]$, so the FFN, not the attention, is often the largest single
-  activation tensor.
+  is $[b, L, d_{ff}]$, so the FFN is often the largest single activation tensor.
 - **Attention is quadratic in length.** Scaled dot-product attention forms
   $QK^\top$ of shape $[b, L, L]$. At $L=64\text{K}$, even a single head at batch
   $1$ in $32$-bit floats is a $64\text{K}\times 64\text{K}$ matrix $= 16\text{GB}$.
-  This $O(L^2)$ term in both time and memory has been the main obstacle to using
-  attention on long sequences.
 
-Two pre-existing observations bear directly on the third factor. First, the
-output of attention is $\mathrm{softmax}(QK^\top)V$, and a softmax is dominated
-by its largest arguments: for a given query $q_i$, only the keys $k_j$ with the
-largest dot products $q_i\cdot k_j$ carry meaningful weight, and the rest
-contribute approximately nothing — so in practice only a small handful of the
-$L$ keys carry the bulk of the weight for any given query.
-Second, the full $QK^\top$ matrix need never be materialized: attention can be
-computed query-by-query, $\mathrm{softmax}(q_i K^\top/\sqrt{d_k})V$, holding only
-$O(L)$ memory and recomputing on the backward pass; this trades time for memory
-but leaves the $O(L^2)$ *time* untouched.
+Two standard observations about the attention computation: the output of
+attention is $\mathrm{softmax}(QK^\top)V$, and a softmax is dominated by its
+largest arguments — for a given query $q_i$, the keys $k_j$ with the largest dot
+products $q_i\cdot k_j$ carry most of the weight. Also, the full $QK^\top$ matrix
+need never be materialized: attention can be computed query-by-query,
+$\mathrm{softmax}(q_i K^\top/\sqrt{d_k})V$, holding only $O(L)$ memory and
+recomputing on the backward pass.
 
 Two further pieces of standard background. **Locality-sensitive hashing
 (LSH)** is the standard tool for finding near neighbors quickly in
 high-dimensional spaces: a hash $h(x)$ is locality-sensitive if nearby vectors
 collide (get the same hash) with high probability and distant ones do not.
-**Reversible residual networks** are the standard tool for training deep nets
+**Reversible residual networks** are a technique for training deep nets
 without storing per-layer activations, by making each layer analytically
 invertible so its inputs can be recomputed from its outputs during backprop.
 
@@ -75,22 +68,15 @@ of the inputs to dimension $d_k, d_k, d_v$, concatenates, and projects out. In a
 self-attention layer all three of $Q, K, V$ are separate linear projections of
 the same activation tensor $A\in\mathbb{R}^{[b,L,d_{model}]}$. The decoder uses a
 causal mask so position $i$ attends only to $j\le i$; standard implementations
-allow a position to attend to itself. Gap: the $QK^\top$ term is $O(L^2)$ in time
-and memory and is computed densely, ignoring that the attention weights it
-produces are almost always concentrated on a few entries.
+allow a position to attend to itself.
 
 **Memory-efficient attention.** The same function, but $QK^\top$ is never stored:
 each query's row $\mathrm{softmax}(q_i K^\top/\sqrt{d_k})V$ is computed in turn and
-recomputed during the backward pass. Memory drops to $O(L)$. Gap: the *time* is
-still $O(L^2)$ — every query is still compared to every key. This is the natural
-yardstick for "full attention without running out of memory."
+recomputed during the backward pass. Memory drops to $O(L)$.
 
 **Sparse / fixed-pattern attention (Child et al. 2019).** Replaces the dense
 $L\times L$ pattern with a hand-designed factorized sparse pattern (e.g.
-strided / local blocks), cutting the $O(L^2)$ cost. Gap: the sparsity pattern is
-fixed in advance and content-independent, so it cannot route attention to an
-arbitrary far-away position whose relevance depends on the data; tasks that need
-non-local, content-determined lookups are not served.
+strided / local blocks), reducing the $O(L^2)$ cost.
 
 **Angular locality-sensitive hashing (Andoni et al. 2015).** A practical, near
 optimal LSH family for angular (cosine) distance. Project a vector through a
@@ -98,8 +84,6 @@ random rotation and read off a bucket from the geometry of the rotated point;
 near-in-angle vectors collide with high probability. Concretely, with a random
 matrix $R$ of shape $[d_k, b/2]$, defining $h(x)=\arg\max([xR;\,-xR])$ (the
 $\arg\max$ over the $b$ signed projected axes) is a known angular-LSH scheme.
-Gap as used elsewhere: LSH near-neighbor lookup had been applied to *external
-memory* modules, not inside the attention computation of a Transformer.
 
 **Reversible residual networks (Gomez et al. 2017).** A normal residual layer
 computes $y=x+F(x)$ and must cache $x$ for the backward pass. A reversible block
@@ -110,9 +94,7 @@ $$x_2=y_2-G(y_1),\qquad x_1=y_1-F(x_2).$$
 Because inputs are recoverable from outputs using only the layer's own functions,
 no intermediate activations need to be stored: during backprop, each layer is
 inverted on the fly as the gradient flows from output to input. Demonstrated as a
-drop-in replacement for ResNet on image classification. Gap: it had been used for
-convolutional image classifiers, not for attention-plus-feed-forward sequence
-stacks, and the feed-forward width problem is orthogonal to it.
+drop-in replacement for ResNet on image classification.
 
 **Adafactor (Shazeer & Stern 2018).** An Adam-like optimizer that factorizes the
 second-moment accumulator to use sublinear memory in the parameter dimensions —
@@ -128,8 +110,8 @@ flattened into sequences of $\approx 12\text{K}$ tokens, also in bits per dim.
 **WMT 2014 English-to-German** translation (encoder-decoder), reported in BLEU
 and detokenized sacreBLEU, following standard base/big hyperparameters. A
 controlled **synthetic duplication task** — inputs of the form $0w0w$ with
-$w\in\{1,\dots,N\}^*$, predicting the second copy — is the natural probe for
-whether an attention approximation can still perform the non-local lookups that a
+$w\in\{1,\dots,N\}^*$, predicting the second copy — is a probe for
+whether an attention approximation can still perform non-local lookups that a
 limited-span sparse pattern cannot. Diagnostic measurements at the time: the
 $QK^\top$ memory at $L=64\text{K}$ ($16\text{GB}$ for one head), and the FFN
 intermediate memory at $d_{ff}=4\text{K}, n_l=16, L=64\text{K}$ (again
@@ -143,7 +125,7 @@ model in PyTorch: a token embedding, a stack of residual blocks each wrapping an
 attention sublayer and a feed-forward sublayer, a final norm and output
 projection, trained by autograd. The pieces that already exist — the embedding,
 the feed-forward module, the optimizer, the loss, the residual/normalization
-wrappers — are kept; the slots the new method will fill are left as stubs.
+wrappers — are kept; the attention sublayer and residual block are left as stubs.
 
 ```python
 import torch
@@ -166,7 +148,7 @@ class FeedForward(nn.Module):
         return self.w2(self.dropout(self.act(self.w1(x))))
 
 class SelfAttention(nn.Module):
-    # the attention sublayer; the L x L cost lives here.
+    # the attention sublayer
     # TODO: implement.
     def __init__(self, dim, heads=8, causal=False):
         super().__init__()
@@ -178,7 +160,7 @@ class SelfAttention(nn.Module):
         pass
 
 class ResidualBlock(nn.Module):
-    # standard residual wrapping of a sublayer; stores its input for backprop.
+    # residual wrapping of a sublayer
     # TODO: implement.
     def __init__(self, dim, f, g):
         super().__init__()

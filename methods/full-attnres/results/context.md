@@ -10,16 +10,15 @@ h_l = h_{l-1} + f_{l-1}(h_{l-1}),     h_1 = embedding(token).
 ```
 
 Unrolling gives `h_l = h_1 + sum_{i=1}^{l-1} f_i(h_i)`: the input at depth `l` is the token
-embedding plus every previous transformation output with coefficient one. This recurrence is
-valuable because it provides direct gradient routes through depth, but it also fixes the
-forward aggregation rule. The problem is to make depth-wise information flow more expressive
-while preserving trainability, keeping the hidden width fixed, and fitting into the ordinary
-pre-LN GPT training harness.
+embedding plus every previous transformation output with coefficient one. This recurrence
+provides direct gradient routes through depth and fixes the forward aggregation rule. The
+question is how to form each block's input from what came before it across depth, with the
+hidden width held fixed and within the ordinary pre-LN GPT training harness.
 
 ## Background
 
 Residual learning separates a hard optimization problem into an identity path plus a learned
-correction. The backward identity is the central benefit. For the recurrence above,
+correction. For the recurrence above,
 
 ```text
 dL/dh_l = (dL/dh_L) * prod_{j=l}^{L-1} (I + df_j/dh_j),
@@ -29,33 +28,28 @@ under the usual row-vector convention for gradients. Expanding the product expos
 which every Jacobian factor is replaced by `I`, so gradients can reach lower layers without
 being forced through a long chain of learned transformations.
 
-The same recurrence has a forward-side cost. In pre-LN Transformers the normalization sits
-before each sublayer, so sublayer outputs are added to an unnormalized running stream. Existing
-diagnostics of pre-LN models show hidden-state magnitudes increasing with depth, and layer
-pruning studies show that many deep layers can be removed with little immediate damage. These
-observations point to dilution: a new normalized sublayer output is added to an already large
-accumulated stream, so its relative contribution can become small.
+In pre-LN Transformers the normalization sits before each sublayer, so sublayer outputs are
+added to an unnormalized running stream. Diagnostics of pre-LN models report hidden-state
+magnitudes increasing with depth, and layer-pruning studies report that many deep layers can be
+removed with little immediate damage.
 
-Several tools for learned mixing already exist. Self-attention, expert routing, and residual
-gates all show different ways to make information flow depend on learned scores or gates.
-Linear-attention analyses show how some score forms can be rewritten as recurrent state
-updates. Normalization methods such as RMSNorm compare vectors by scale-normalized direction
-without recentring them. Structured-matrix language, especially semiseparable rank, gives a
-way to compare depth aggregation rules by the effective matrix `M` in
-`h_l = sum_i M_{i->l} v_i`.
+Several tools for learned mixing exist. Self-attention, expert routing, and residual gates show
+different ways to make information flow depend on learned scores or gates. Linear-attention
+analyses show how some score forms can be rewritten as recurrent state updates. Normalization
+methods such as RMSNorm compare vectors by scale-normalized direction without recentring them.
+Structured-matrix language, especially semiseparable rank, gives a way to compare depth
+aggregation rules by the effective matrix `M` in `h_l = sum_i M_{i->l} v_i`.
 
 ## Baselines
 
 **Standard additive residual.** The update `h_l = h_{l-1} + f_{l-1}(h_{l-1})` makes the
 effective valid lower-triangular entries `M_{i->l}` all equal to one. In the semiseparable
-view this is a rank-1 all-ones kernel over the valid causal entries. It trains well, but all
-earlier outputs are compressed into the single predecessor state before the next layer reads
-them.
+view this is a rank-1 all-ones kernel over the valid causal entries. Each layer reads the
+single accumulated predecessor state.
 
 **ReZero and LayerScale.** These multiply sublayer outputs by learned scalar or diagonal
-coefficients before addition. They improve optimization control and let a model reduce the
-strength of particular updates, but the coefficients are fixed after training and the
-architecture still presents each layer with one accumulated predecessor state.
+coefficients before addition. The coefficients are set during training and fixed afterward, and
+each layer is presented with one accumulated predecessor state.
 
 **Highway Networks.** Highway layers use input-dependent gates:
 
@@ -64,18 +58,17 @@ h_l = (1 - g_l) * h_{l-1} + g_l * f_{l-1}(h_{l-1}).
 ```
 
 With scalar gates, unrolling gives carry products through depth, so the effective kernel is
-still semiseparable rank 1. The gates can change with the input, but they operate on the
-compressed predecessor rather than exposing each earlier transformation output separately.
+semiseparable rank 1. The gates change with the input and operate on the compressed predecessor.
 
 **DenseNet.** DenseNet gives each layer direct cross-layer access by concatenating preceding
-feature maps and projecting them back to a usable width. This avoids relying on a single
-accumulated predecessor, but concatenation grows the channel dimension with depth and the
-projection is not the fixed-width residual-stream operation used by a decoder-only GPT.
+feature maps and projecting them back to a usable width. Concatenation grows the channel
+dimension with depth, and the projection differs from the fixed-width residual-stream operation
+used by a decoder-only GPT.
 
 **DenseFormer / depth-weighted averaging.** DenseFormer inserts learned scalar averages over
-current and past block representations. It supplies cheap cross-layer access with learned
-coefficients, but those coefficients are static for a trained model: the same source weights
-are used for every token and context.
+current and past block representations, supplying cheap cross-layer access with learned
+coefficients. The coefficients are static for a trained model: the same source weights are used
+for every token and context.
 
 **Hyper-Connections / mHC.** Hyper-Connections widen the residual stream into `m` parallel
 streams and update them with learned transitions:
@@ -85,19 +78,18 @@ H_l = H_{l-1} A_l + f_{l-1}(H_{l-1} alpha_{l-1}) beta_{l-1}^T.
 ```
 
 Unrolling yields `M_{i->l} = beta_i^T A^x_{i+1->l} alpha_l`, an `m`-semiseparable depth
-kernel. This increases the state rank beyond a single stream, but it also increases residual
-stream traffic and remains a recurrence through an `m`-wide predecessor state.
+kernel. This raises the state rank beyond a single stream and is a recurrence through an
+`m`-wide predecessor state.
 
 **Dynamic dense connections / MUDDFormer.** Dynamic dense connections generate cross-layer
 weights from the current hidden state, with separate streams for query, key, value, and
-residual inputs. This gives content-conditioned depth access, but it uses extra MLP-generated
-weights and multiple decoupled streams, making the depth-routing machinery comparatively
-heavy.
+residual inputs. This gives content-conditioned depth access using extra MLP-generated weights
+and multiple decoupled streams.
 
 **Layer attention / MRLA.** Layer-attention variants gate previous-layer information with
 projected query-key products and sigmoid-style gates. They provide input-conditioned
-cross-layer paths, but the separable score form can be represented as a recurrent state update,
-and independently gated sources can saturate because each source is controlled separately.
+cross-layer paths; the separable score form can be represented as a recurrent state update, and
+each source is gated separately.
 
 ## Evaluation settings
 

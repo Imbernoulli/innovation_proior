@@ -13,18 +13,12 @@ ion solvation). The physically correct treatment of a periodic charged system
 is the Ewald lattice sum, which converges absolutely and respects the periodic
 boundary conditions exactly. But the textbook Ewald sum, applied naively, costs
 O(N²) operations per step (a sum over all pairs of charges); even with the
-splitting parameter tuned optimally it is only O(N^{3/2}). For N ≳ 10⁴ this is
-prohibitive — a single energy/force evaluation dominates the entire simulation
-budget.
+splitting parameter tuned optimally it is only O(N^{3/2}).
 
-The problem to solve: **evaluate the exact Ewald electrostatic energy and the
-forces on all N atoms of a large periodic unit cell at a cost that grows much
-more slowly than N², with accuracy that can be dialed arbitrarily high, and
-with energy/forces that are smooth (continuous) functions of the atomic
-positions** (a discontinuity would corrupt the numerical integration of the
-equations of motion). A solution must work for general, non-orthogonal unit
-cells, and slot into existing MD codes that already maintain a short-range
-neighbor (Verlet) list.
+The problem to solve: how to evaluate the Ewald electrostatic energy and forces
+on all N atoms of a large periodic unit cell efficiently, for general
+non-orthogonal unit cells, in a way that slots into existing MD codes that
+already maintain a short-range neighbor (Verlet) list.
 
 ## Background
 
@@ -61,7 +55,7 @@ the two sums. The **reciprocal sum**, written as a sum over charge pairs,
 ½ Σ_{i,j} q_i q_j Φ_rec(r_j − r_i;β), is the part that scales as O(N²):
 naively one evaluates Φ_rec for every pair, every step. With β tuned to balance
 direct and reciprocal cost the optimum is O(N^{3/2}) (Karasawa and Goddard,
-1989), still too steep for macromolecules.
+1989).
 
 **The structure factor.** The reciprocal sum can be written using the
 electrostatic *structure factor* S(m) = Σ_{j=1}^N q_j exp(2πi m·r_j), as
@@ -76,12 +70,7 @@ cloud-in-cell, triangular-shaped-cloud, …), solve the discrete Poisson equatio
 for the long-range part *on the grid* with the fast Fourier transform — an
 FFT on a grid of M points costs O(M log M) — then interpolate the resulting
 field back to the particles. This achieves O(N log N) for the long-range part
-in plasma and gravitational simulations, where moderate accuracy suffices and
-the particles are reasonably uniform. The gap: with low-order
-(NGP/CIC/TSC) assignment and grid-based finite-difference Poisson solvers,
-**high accuracy is hard to obtain efficiently, especially for the highly
-nonuniform charge distributions of biomolecules**, and the assignment functions
-in common use give energies/forces with limited smoothness.
+in plasma and gravitational simulations.
 
 **Diagnostic facts about the regime (knowable before any new method):**
 - The Gaussian screening makes erfc(βr)/r drop below ~10⁻⁸ within ~9 Å for
@@ -95,9 +84,7 @@ in common use give energies/forces with limited smoothness.
   polynomial interpolation, however, is ill-conditioned (Runge's phenomenon —
   the interpolant oscillates wildly near the ends of the interval).
 - Cell-multipole / fast-multipole expansions (Greengard–Rokhlin, 1987, and
-  several MD adaptations) also reach near-linear scaling, but produce
-  energies/forces that are *discontinuous* across the cell boundaries of the
-  multipole hierarchy, which complicates stable time integration.
+  several MD adaptations) also reach near-linear scaling.
 
 ## Baselines
 
@@ -105,41 +92,26 @@ in common use give energies/forces with limited smoothness.
 cutoff (O(N)), the self and surface terms (O(N)), and the reciprocal sum
 directly as ½ Σ_{i,j} q_i q_j Φ_rec(r_j−r_i) or equivalently via the structure
 factor Σ_{m≠0} (kernel) |S(m)|². Exact (to the chosen number of m-vectors and
-real-space cutoff) and the gold standard for correctness. Limitation: the
-reciprocal part is O(N²) at fixed β and O(N^{3/2}) with β optimized; for N ≳ 10⁴
-it dominates the run and makes long simulations of solvated macromolecules
-impractical.
+real-space cutoff) and the gold standard for correctness. The reciprocal part is
+O(N²) at fixed β and O(N^{3/2}) with β optimized.
 
 **Plain cutoff truncation (Verlet-list Coulomb).** Sum 1/r interactions only
-within a cutoff using a neighbor list; O(N). Cheap and trivial to implement,
-but physically wrong for long-range electrostatics — it produces well-documented
-artifacts (structural drift, spurious solvent ordering, bad ion behavior). It is
-the *speed* target every accurate method is compared against, not an accuracy
-baseline.
+within a cutoff using a neighbor list; O(N). Cheap and trivial to implement.
+It is the *speed* target every accurate method is compared against.
 
 **Hockney–Eastwood particle–mesh (P³M).** Assign charges to a grid with a
 low-order smooth window, solve Poisson on the grid by FFT, interpolate back;
 O(N log N). The structural template for grid-based long-range solvers.
-Limitation: as implemented with low-order assignment and finite-difference /
-unoptimized grid Green's functions it has been criticized for not reaching high
-accuracy efficiently, particularly for the nonuniform charge distributions of
-macromolecules, and its assignment windows give forces of limited smoothness.
 
 **Cell-multipole / fast-multipole methods.** Hierarchically group distant
 charges and approximate their field by truncated multipole expansions;
 near-linear scaling (Greengard–Rokhlin and MD adaptations by Brooks et al.,
-Ding–Karasawa–Goddard, Board et al., Schmidt–Lee, Lee–Warshel). Limitation:
-the energy and forces are discontinuous functions of position (an atom crossing
-a hierarchy boundary jumps between expansion centres), complicating energy
-conservation in MD; and reaching high accuracy requires high multipole order
-with growing cost.
+Ding–Karasawa–Goddard, Board et al., Schmidt–Lee, Lee–Warshel).
 
 **Other long-range accelerations.** Cubic-polynomial expansion of the Ewald pair
 potential (Adams–Dubey), table lookup of the pair potential (Smith–Pettitt),
 Wigner potentials (Cichocki et al.), and twin-range / multiple-time-step
-splitting (Berendsen). Each reduces a constant factor or defers the long-range
-update, but none changes the O(N²)/O(N^{3/2}) scaling of the exact reciprocal
-sum itself.
+splitting (Berendsen).
 
 ## Evaluation settings
 
@@ -196,8 +168,7 @@ def surface_term(positions, charges, cell):
 
 class ReciprocalSpaceEvaluator:
     """The expensive O(N^2) reciprocal Ewald sum lives here.
-    Goal: produce E_rec and the force on every atom much faster than O(N^2),
-    to arbitrary accuracy, with E_rec and forces smooth in the positions."""
+    Goal: produce E_rec and the force on every atom much faster than O(N^2)."""
 
     def __init__(self, cell, beta, **params):
         self.cell = cell

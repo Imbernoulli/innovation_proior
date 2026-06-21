@@ -2,13 +2,7 @@
 
 ## Research question
 
-Network depth is one of the strongest levers on the expressiveness of a convolutional network — both in theory and in the empirical record (AlexNet's 5 conv layers, VGG's 19, GoogLeNet's 22, ResNet's 152). But pushing depth up brings three coupled problems that make very deep networks hard to use:
-
-- **Vanishing gradients.** As error is backpropagated through many layers, repeated multiplication by small weights shrinks the gradient signal, so the earliest layers barely learn.
-- **Diminishing feature reuse (forward information loss).** The forward analog: features of the input, or of early layers, are progressively "washed out" by repeated multiplication with (randomly initialized) weight matrices, so later layers struggle to recover meaningful directions.
-- **Long training time.** Forward and backward passes scale linearly with depth; a 152-layer ResNet takes weeks to converge on ImageNet.
-
-This sets up a dilemma. Short networks flow information well forward and backward and train quickly, but lack the capacity for complex vision concepts. Deep networks have the capacity but are slow and difficult to train. The precise question: is there a training procedure that gives the optimization behavior of a *short* network — fast, with strong gradient flow — while still producing a *deep*, high-capacity model to deploy? A solution would have to reconcile "short during training" with "deep at test time" within a single set of shared weights, and ideally do so cheaply, with minimal change to an existing deep architecture.
+Network depth is one of the strongest levers on the expressiveness of a convolutional network — both in theory and in the empirical record (AlexNet's 5 conv layers, VGG's 19, GoogLeNet's 22, ResNet's 152). Pushing depth increases capacity and performance, but forward and backward passes scale linearly with depth, and training very deep networks is computationally expensive. The question is how to train very deep residual networks more effectively, in both optimization quality and wall-clock time.
 
 ## Background
 
@@ -20,19 +14,17 @@ The relevant prior work is the lineage of methods for training very deep nets an
 
 **Stochastic regularization.** Dropout (Srivastava et al. 2014) multiplies each hidden activation by an independent Bernoulli variable during training, reducing co-adaptation of units and acting like training an ensemble of exponentially many thinned subnetworks; in the original test-time rule, the retained outgoing weights are scaled by the keep probability, equivalently matching the expected contribution of each unit. Follow-ups include DropConnect (Wan et al. 2013, which drops weights instead of activations), Maxout, and DropIn.
 
-Two diagnostic facts about existing systems that frame the work:
-- Dropout's regularizing benefit is known to weaken when combined with Batch Normalization; experiments on 110-layer ResNets with BN show essentially no improvement from Dropout at various rates. So a different stochastic mechanism is needed for deep BN-ResNets.
-- He et al.'s record-setting results came partly from an *ensemble* of ResNets of varying depth.
+He et al.'s record-setting results on ImageNet came partly from an ensemble of ResNets of varying depth.
 
 A structural fact about the CIFAR/SVHN architecture: the input to a residual block is always non-negative, because it is the output of a preceding ReLU (or, for the first block, of an initial Conv-BN-ReLU stem). Same-shape identity shortcuts and average-pool/zero-pad transition shortcuts preserve non-negativity; learned projection shortcuts need to be treated as the shortcut branch, not as a literal identity.
 
 ## Baselines
 
-**Constant-depth ResNet.** The network as built: L residual blocks, each H_ℓ = ReLU(f_ℓ(H_{ℓ-1}) + s_ℓ(H_{ℓ-1})), all blocks active every iteration. Strong, but its training cost scales with the full depth L, and very deep variants (1000+ layers) suffer vanishing gradients / diminishing feature reuse and overfit. Gap: every layer is paid for in full on every iteration, so training cost and the gradient/forward chain length are locked to the deployed depth.
+**Constant-depth ResNet.** The network as built: L residual blocks, each H_ℓ = ReLU(f_ℓ(H_{ℓ-1}) + s_ℓ(H_{ℓ-1})), all blocks active every iteration. Strong baseline for image classification, with training cost scaling with the full depth L.
 
-**Dropout on a deep ResNet.** Add Dropout inside or around the blocks for regularization. Gap: it masks individual activations, leaving the depth of the gradient/forward chains untouched, and its benefit largely vanishes in the presence of Batch Normalization.
+**Dropout on a deep ResNet.** Dropout applied inside or around the blocks for regularization. It multiplies individual activations by Bernoulli masks, leaving the overall network depth unchanged.
 
-**Highway Networks.** Gated skip connections that can route around layers. Gap: the gates are learned and parameterized (extra parameters, fixed in a learned way at test time), and ResNet already showed the simpler identity skip trains better.
+**Highway Networks.** Gated skip connections that can route signal around layers. The gates are learned and parameterized, adding extra parameters that are fixed in a learned way at test time; ResNets showed that the simpler identity skip is competitive.
 
 ## Evaluation settings
 

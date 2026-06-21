@@ -4,9 +4,9 @@ On the modular-addition task `y = (a + b) mod p`, can the *grokking* delay — t
 
 ## Prior art / Background / Baselines
 
-- **Power et al. (2022).** Train a small decoder-only transformer on held-out algorithmic operation tables; it first memorizes, then after a long plateau suddenly generalizes. Their intervention sweep finds AdamW weight decay is the strongest known knob for reducing the delay. Gap: generalization still takes a long time, and no cheap intervention reliably forces it inside a fixed step budget.
-- **Nanda et al. (2023).** Reverse-engineer a one-layer transformer on modular addition and identify the grokked solution as a discrete-Fourier circuit; they fix a minimal canonical architecture (`d_model = 128`, 4 heads, `d_mlp = 512`, an explicit `=` token, full-batch AdamW with warmup). Gap: the analysis describes the final circuit but does not remove the long training delay.
-- **Gromov (2023).** Shows a two-layer MLP with no biases, quadratic activation, and one-hot inputs also groks on modular addition, and its learned weights encode the same Fourier structure. Gap: this is an architectural existence result, not a recipe for fast, reliable generalization under a fixed budget.
+- **Power et al. (2022).** Train a small decoder-only transformer on held-out algorithmic operation tables; it first memorizes, then after a long plateau suddenly generalizes. Their intervention sweep finds AdamW weight decay is the strongest known knob for reducing the delay.
+- **Nanda et al. (2023).** Reverse-engineer a one-layer transformer on modular addition and identify the grokked solution as a discrete-Fourier circuit; they fix a minimal canonical architecture (`d_model = 128`, 4 heads, `d_mlp = 512`, an explicit `=` token, full-batch AdamW with warmup).
+- **Gromov (2023).** Shows a two-layer MLP with no biases, quadratic activation, and one-hot inputs also groks on modular addition, and its learned weights encode the same Fourier structure.
 
 ## Fixed substrate / Code framework
 

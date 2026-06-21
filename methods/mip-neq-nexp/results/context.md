@@ -8,14 +8,7 @@ ordinary verification are exponentially large?
 For NP, the verifier receives one polynomial-size certificate and checks it directly. For NEXP, the
 witness may have exponential length, and the deterministic check may inspect an exponential computation
 tableau. A polynomial-time verifier cannot even read the object it is meant to verify. The question
-behind **MIP = NEXP** is whether interaction with several all-powerful provers changes that limit.
-
-The distinctive move is to make the provers **unable to communicate after receiving the verifier's
-questions**. Isolation turns their answers into constraints on a single hidden global proof: the verifier
-can ask one prover for a local view of a huge object and ask another prover for a randomly selected
-overlap. If their stories agree under many unpredictable overlaps, the verifier can treat the answers as
-coming from one committed exponential proof. That is the bridge from NP-style certificate checking to
-probabilistic checking of exponential computations.
+is whether interaction with several all-powerful provers changes that limit.
 
 ## Background
 
@@ -38,26 +31,18 @@ random locations of a proof if the proof is encoded so local inconsistency is sp
 locations. MIP combines both ideas: use algebraic encodings for the exponential proof, then use isolated
 provers to enforce local consistency without reading the proof.
 
-**The BFL theorem.** Babai, Fortnow, and Lund proved that the class of languages with two-prover
-interactive proofs is exactly nondeterministic exponential time. The lower bound, `NEXP ⊆ MIP`, is the
-surprising direction: the verifier checks an exponentially large computation by asking polynomially
-describable random questions and cross-checking the separated provers' overlapping answers.
-
 ## Baselines
 
-- **NP certificates.** A single static witness works only when the witness is polynomial length and the
-  verifier can inspect enough of it directly. This cannot express a general NEXP computation without
-  handing the verifier an exponential object.
+- **NP certificates.** A single static witness works when the witness is polynomial length and the
+  verifier can inspect enough of it directly.
 - **Single-prover IP.** Arithmetization and sum-check let one prover convince a polynomial-time verifier
-  of PSPACE statements, but a single prover can adapt all later answers to the transcript. It does not
-  give the verifier independent witnesses for "this local answer came from the same global table."
-- **Naive spot-checking.** Sampling a few cells of an exponentially large tableau is unsound if the
-  prover can tailor each answer independently. A false proof can look locally plausible at every isolated
-  question unless there is a mechanism tying all local views together.
+  of PSPACE statements, but a single prover can adapt all later answers to the transcript.
+- **Naive spot-checking.** Sampling a few cells of an exponentially large tableau is one approach when
+  local views are taken independently.
 - **Multi-prover cross-checking.** The verifier can ask one prover for a structured local object, such as
   values on a line, plane, or small neighborhood, and ask another prover for one hidden overlap. Because
-  neither prover knows exactly how the other will be checked, high agreement forces a global consistency
-  condition.
+  neither prover knows exactly how the other will be checked, the protocol places constraints on a
+  global consistency condition.
 
 ## Evaluation settings
 
@@ -74,4 +59,3 @@ The theorem is evaluated in terms of proof-system power, not experiments.
   as a low-degree extension over a finite field.
 - **Soundness tools:** low-degree testing, multilinearity testing, Schwartz-Zippel style random
   evaluation bounds, and consistency tests between overlapping prover answers.
-

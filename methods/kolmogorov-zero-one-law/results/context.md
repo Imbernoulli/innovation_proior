@@ -32,15 +32,13 @@ Why it matters: such a theorem would convert a recurring nuisance ("is this limi
 
 ## Baselines
 
-The prior results a unifying theorem would be measured against, and the specific gap each leaves:
+- **Borel's strong law / normal numbers (Borel 1909).** Core idea: the binary digits of a uniform point are independent fair bits; their running average converges to `1/2` a.s. Math: `{ (1/n)∑_{k≤n} d_k → 1/2 }` has measure `1`.
 
-- **Borel's strong law / normal numbers (Borel 1909).** Core idea: the binary digits of a uniform point are independent fair bits; their running average converges to `1/2` a.s. Math: `{ (1/n)∑_{k≤n} d_k → 1/2 }` has measure `1`. Gap: a *single computed instance* of a probability equal to `1`, obtained by a frequency argument special to that event; it neither isolates what makes the probability extremal nor reaches other limiting events, and Borel's avoidance of countable additivity leaves the infinitary step on shaky ground.
+- **Borel–Cantelli lemmas (Borel 1909, Cantelli 1916/17).** Core idea: control `P(Aₙ i.o.)` by `∑ P(Aₙ)`. Math: `∑ P(Aₙ) < ∞ ⇒ P(limsup Aₙ) = 0`; `∑ P(Aₙ) = ∞` with independence `⇒ P(limsup Aₙ) = 1`.
 
-- **Borel–Cantelli lemmas (Borel 1909, Cantelli 1916/17).** Core idea: control `P(Aₙ i.o.)` by `∑ P(Aₙ)`. Math: `∑ P(Aₙ) < ∞ ⇒ P(limsup Aₙ) = 0`; `∑ P(Aₙ) = ∞` with independence `⇒ P(limsup Aₙ) = 1`. Gap: it dichotomizes only the one event `{Aₙ i.o.}`, and only by a convergence/divergence test of a particular series; it says nothing about `{∑ Xₙ converges}`, about the *value* of `lim Sₙ/n`, or about the radius of convergence of a random power series, and it is a sufficient condition keyed to a series rather than a description of the events subject to the dichotomy.
+- **Lévy's special `0`-`1` results (Lévy 1931).** Core idea: in several settings tied to sums of independent variables, the relevant probability can only be `0` or `1`.
 
-- **Lévy's special `0`-`1` results (Lévy 1931).** Core idea: in several settings tied to sums of independent variables, the relevant probability can only be `0` or `1`. Gap: separate theorems, each with its own proof; no single hypothesis is identified that *all* such events satisfy, so the phenomenon stays a pattern.
-
-- **The finitely-additive viewpoint (Borel's reluctance).** Core idea: exhibit probability as a limit of finite-trial probabilities without committing to countable additivity. Gap: without countable additivity there is no unique transport of a probability from finitely-described events to a limiting event, so equalities that hold for all finite-dimensional events need not survive to the asymptotic event — and the class of "limiting" events one wants to reason about is not cleanly pinned down.
+- **The finitely-additive viewpoint (Borel's reluctance).** Core idea: exhibit probability as a limit of finite-trial probabilities without committing to countable additivity.
 
 ## Evaluation settings
 

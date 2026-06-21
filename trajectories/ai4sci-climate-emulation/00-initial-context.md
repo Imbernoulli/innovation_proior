@@ -6,9 +6,9 @@ A global climate model divides the atmosphere into grid cells, but heat, water, 
 
 Three standard approaches set the starting point.
 
-- **Flat deep MLP emulator.** Stack the full column state into one vector and regress the tendency vector through several wide fully-connected layers under MSE. Gap: it treats the inputs as an unordered bag and ignores the fact that the multi-level variables form ordered vertical profiles, so it must relearn the same local vertical interaction separately at every height.
-- **Principal-component / linear reduced models.** Project the state onto a few leading variance directions and regress linearly on those. Gap: the convection response is strongly nonlinear, so a linear projection discards most of the predictable signal and underfits.
-- **Deterministic point regression under squared error.** Train the architecture to output a single point estimate and penalize squared error. Gap: where the target is genuinely stochastic, the conditional mean suppresses variance and a single global error bar misrepresents regions with state-dependent noise.
+- **Flat deep MLP emulator.** Stack the full column state into one vector and regress the tendency vector through several wide fully-connected layers under MSE. The multi-level variables form ordered vertical profiles across 60 levels.
+- **Principal-component / linear reduced models.** Project the state onto a few leading variance directions and regress linearly on those.
+- **Deterministic point regression under squared error.** Train the architecture to output a single point estimate and penalize squared error.
 
 ## Fixed substrate / Code framework
 

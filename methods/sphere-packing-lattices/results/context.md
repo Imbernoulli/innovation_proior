@@ -8,9 +8,7 @@ $$\Delta_{\mathcal{P}}=\limsup_{r\to\infty}\frac{\mathrm{Vol}(\mathcal{P}\cap B_
 
 The sphere packing constant is $\Delta_d=\sup_{\mathcal{P}}\Delta_{\mathcal{P}}$. The goal is not merely to exhibit a dense packing — good lattices have been known for over a century — but to **prove it optimal**: to produce an upper bound on $\Delta_d$ that exactly equals the density of a known packing.
 
-The pain is entirely on the upper-bound side. A construction gives a lower bound for free. But to certify "nothing is denser" one must reason about *every conceivable* arrangement at once, including wildly irregular non-lattice packings. Exact values are known only in dimensions $1$ ($\Delta_1=1$), $2$ (the hexagonal lattice, $\Delta_2=\pi/\sqrt{12}\approx0.9069$, proved by Thue and rigorously by Fejes Tóth), and $3$ (the Kepler conjecture, $\Delta_3=\pi/\sqrt{18}\approx0.7405$, proved by Hales by a massive computer-assisted exhaustion). The dimension-3 proof does not generalize: it is a finite case analysis of local configurations, and the combinatorics explode with $d$. What is wanted is a *clean analytic certificate* that could in principle be sharp in some dimension, the way the hexagonal-lattice argument is sharp in the plane.
-
-Two dimensions stand out empirically. In $\mathbb{R}^8$ the $E_8$ root lattice and in $\mathbb{R}^{24}$ the Leech lattice are conjectured optimal, and they are extraordinarily symmetric and rigid. A method that could *prove* their optimality is the target.
+Exact values are known only in dimensions $1$ ($\Delta_1=1$), $2$ (the hexagonal lattice, $\Delta_2=\pi/\sqrt{12}\approx0.9069$, proved by Thue and rigorously by Fejes Tóth), and $3$ (the Kepler conjecture, $\Delta_3=\pi/\sqrt{18}\approx0.7405$, proved by Hales by a massive computer-assisted exhaustion). Two dimensions stand out empirically: in $\mathbb{R}^8$ the $E_8$ root lattice and in $\mathbb{R}^{24}$ the Leech lattice are conjectured optimal, and they are extraordinarily symmetric and rigid.
 
 ## Background
 
@@ -39,15 +37,13 @@ The Jacobi thetanull functions $\theta_{00}=\sum_n e^{\pi i n^2 z}$, $\theta_{01
 
 ## Baselines
 
-**Delsarte's linear programming bound for codes (Delsarte 1972; Delsarte–Goethals–Seidel 1977).** For error-correcting codes on the Hamming scheme one bounds the maximum code size by choosing an auxiliary function that is a nonnegative combination of the Krawtchouk (zonal) polynomials and is nonpositive at the allowed distances; positivity in the "dual" (transform) domain plus nonpositivity in the "primal" domain yields a single linear functional bounding the code. It is a genuine linear program over the cone of admissible functions, and in exceptional, highly symmetric cases it is sharp. Its limitation here: it is built for finite/compact spaces (the Hamming cube, the sphere), not for packings in $\mathbb{R}^d$.
+**Delsarte's linear programming bound for codes (Delsarte 1972; Delsarte–Goethals–Seidel 1977).** For error-correcting codes on the Hamming scheme one bounds the maximum code size by choosing an auxiliary function that is a nonnegative combination of the Krawtchouk (zonal) polynomials and is nonpositive at the allowed distances; positivity in the "dual" (transform) domain plus nonpositivity in the "primal" domain yields a single linear functional bounding the code. It is a genuine linear program over the cone of admissible functions, and in exceptional, highly symmetric cases it is sharp.
 
-**Kabatiansky–Levenshtein (1978).** They transported the spherical-code LP bound to Euclidean packings by relating packing density to codes on spheres of growing radius. This gives the best known asymptotic exponents, but the reduction is indirect and loses sharpness — it cannot pin down a specific dimension's constant or certify a particular lattice.
+**Kabatiansky–Levenshtein (1978).** They transported the spherical-code LP bound to Euclidean packings by relating packing density to codes on spheres of growing radius. This gives the best known asymptotic exponents.
 
-**The Cohn–Kumar universal-optimality line (2007) and the theta/modular bound (Mallows–Odlyzko–Sloane-style arguments).** Theta-series/modular bounds (e.g. for the minimal norm of unimodular lattices) show modular forms can bound lattice invariants, and Cohn–Kumar's work on universally optimal point configurations shows that for some exceptional configurations LP-type bounds become *exactly* sharp. But these address points on spheres or specific lattice functionals, not the full Euclidean packing constant.
+**The Cohn–Kumar universal-optimality line (2007) and the theta/modular bound (Mallows–Odlyzko–Sloane-style arguments).** Theta-series/modular bounds (e.g. for the minimal norm of unimodular lattices) show modular forms can bound lattice invariants, and Cohn–Kumar's work on universally optimal point configurations shows that for some exceptional configurations LP-type bounds become *exactly* sharp.
 
-**Direct geometric exhaustion (Hales, $d=3$).** Sharp in dimension $3$ but a finite case analysis of local clusters; the number of cases is astronomical and grows uncontrollably with $d$. It is sharp but not analytic and not portable.
-
-The gap each baseline leaves: none produces, for a *fixed* dimension $>3$, an analytic upper bound on $\Delta_d$ that could match a known lattice exactly.
+**Direct geometric exhaustion (Hales, $d=3$).** Sharp in dimension $3$: a finite case analysis of local clusters that produces an exact certificate for the Kepler conjecture.
 
 ## Evaluation settings
 
@@ -55,7 +51,7 @@ The yardstick is the comparison, in a fixed dimension $d$, between an upper boun
 
 ## Code framework
 
-Two computational tools exist beforehand. The first is a numerical optimizer for the auxiliary-function bound: parametrize a radial function, impose its sign conditions at sample radii, and solve the resulting finite linear program to see how close the bound gets to a target lattice. The second is a modular-forms toolkit (PARI/GP, SageMath, or `mpmath`) that can build $E_4,E_6,E_2,\Delta,j$, the thetanulls, and their $q$-expansions, and integrate them. The certificate, once discovered, will be filled into the stubs below.
+Two computational tools exist beforehand. The first is a numerical optimizer for the auxiliary-function bound: parametrize a radial function, impose its sign conditions at sample radii, and solve the resulting finite linear program to see how close the bound gets to a target lattice. The second is a modular-forms toolkit (PARI/GP, SageMath, or `mpmath`) that can build $E_4,E_6,E_2,\Delta,j$, the thetanulls, and their $q$-expansions, and integrate them. The certificate, once found, will be filled into the stubs below.
 
 ```python
 import numpy as np

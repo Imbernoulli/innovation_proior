@@ -17,15 +17,9 @@ are notoriously hard to solve.
 
 The most mature theory handles the easy case. When `g(x, .)` is *strongly convex* and
 unconstrained, `S(x)` is a single point `y*(x)`, the problem collapses to minimizing the implicit
-single-level objective `f(x, y*(x))`, and its gradient is available in closed form. Outside that
-case, existing routes give up something important: they may require a Hessian inverse, a long
-differentiated lower trajectory, asymptotic-only convergence, or additional KKT/constraint
-qualifications. The precise goal is an algorithm that (1) solves bilevel problems whose lower
-level is non-convex (no strong convexity, possibly a non-singleton `S(x)`) and possibly
-constrained; (2) uses only *first-order* information — no Hessians, no Hessian-inverse-vector
-products, no differentiation through a long optimization trajectory; (3) comes with a
-*non-asymptotic* convergence rate; and (4) is cheap enough in memory and time to run on real
-models. No existing method achieves all four; closing that gap is the problem.
+single-level objective `f(x, y*(x))`, and its gradient is available in closed form. The question
+is how to handle bilevel problems when the lower level is non-convex and possibly constrained,
+using only first-order information.
 
 ## Background
 
@@ -42,11 +36,7 @@ d/dx [ f(x, y*(x)) ] = grad_x f - grad_xy g(x, y*) [grad_yy g(x, y*)]^{-1} grad_
 ```
 
 This is exact and well understood, with finite-time complexity results once strong convexity is
-in place. But it leans on the lower level in two structural ways: it needs `grad_yy g` to be
-*invertible* (strong convexity), and it needs *second-order* information — at minimum a
-Hessian-inverse-vector product. The moment `g(x, .)` loses strong convexity, the Hessian can be
-singular and the formula is undefined; the moment `S(x)` is a set, there is no single `y*(x)` to
-differentiate.
+in place.
 
 **A diagnostic phenomenon: naive penalization gets stuck.** A tempting escape is to convert the
 bilevel constraint into a penalty. Lower-level optimality `y in S(x)` is equivalent to some
@@ -103,41 +93,28 @@ faithfully represent the bilevel problem.
 Chen et al. 2021).** Use the hypergradient formula above, approximating the
 Hessian-inverse-vector product (e.g. by a truncated Neumann series or conjugate gradient). Under
 lower-level strong convexity this gives finite-time convergence, eventually almost matching plain
-SGD. *Limitation:* requires `grad_yy g` invertible (strong convexity) and second-order oracle
-access; it is undefined when `g(x, .)` is non-strongly-convex or when `S(x)` is not a singleton —
-precisely the regime of interest.
+SGD.
 
 **Iterative differentiation / reverse-hypergradient (RHG; Franceschi et al. 2017; truncated
 T-RHG, Shaban et al. 2019).** Replace `S(x)` by the output of `T` steps of (projected) inner
 gradient descent, `y_T(x)`, and differentiate the validation loss through the entire unrolled
 trajectory — reverse-mode backprop through the optimizer iterates (or forward-mode). No explicit
-Hessian inverse. *Limitation:* the unroll must be differentiable, so a projection step in the
-inner loop is hard to handle, restricting it largely to the unconstrained lower level; memory and
-compute grow with the number of inner steps `T` (the whole trajectory must be stored for the
-reverse pass); and the method lacks a finite-time guarantee unless restrictive conditions are
-imposed on the iterate map. It still needs the Jacobians of the inner update.
+Hessian inverse.
 
 **Gradient-norm penalty (Mehra & Hamm 2021).** Penalize `p(x, y) = ||grad_y g(x, y)||^2` and
 descend the single-level objective `f + gamma * p`. The penalty is exactly differentiable.
-*Limitation:* its gradient `grad p = 2 grad_yy g * grad_y g` pulls *second-order* information
-back into a method that was supposed to be first-order; and, as the diagnostic example shows, its
-stationarity only controls `grad_yy g * grad_y g`. If the Hessian factor degenerates, descent can
-settle at a point with nonzero lower-level gradient and nonzero lower-level gap. Convergence is
-established only asymptotically.
+Its gradient is `grad p = 2 grad_yy g * grad_y g`, which requires second-order information.
 
 **Log-barrier value-function method (Liu et al. 2021, BVFSM).** Reformulate via the
 value-function constraint `g(x, y) - v(x) <= 0` and handle it with a log-barrier plus
-regularization, yielding a sequence of single-level problems. *Limitation:* convergence is
-asymptotic only, and the barrier/regularization schedule needs careful tuning.
+regularization, yielding a sequence of single-level problems.
 
 **Dynamic-barrier first-order method (BOME; Ye et al. 2022).** Also work from the value gap
 `q(x, y) = g(x, y) - g*(x)`, estimating `g*(x)` by running inner gradient descent and taking the
 last iterate, and combine `grad f` with `grad q` through a dynamic-barrier rule — a genuinely
-first-order update with a *non-asymptotic* rate to a KKT point. *Limitation:* the analysis
-assumes the constant-rank constraint qualification (CRCQ) plus uniform boundedness of
-`||grad g||, ||grad f||, |f|, |g|`; it is unclear when CRCQ holds, and under lower-level
-non-convexity a KKT point of the reformulation is not obviously a solution of the bilevel
-problem.
+first-order update with a *non-asymptotic* rate to a KKT point. The analysis assumes the
+constant-rank constraint qualification (CRCQ) plus uniform boundedness of
+`||grad g||, ||grad f||, |f|, |g|`.
 
 ## Evaluation settings
 
@@ -169,10 +146,7 @@ The natural yardsticks already in use:
 The method plugs into a generic bilevel training harness that already exists. The pieces present
 *before* the method are: a way to evaluate the upper and lower objectives and their gradients,
 an inner optimizer that can take steps on `g(x, .)`, an outer optimizer that updates `x` (and
-`y`) with a projection onto `C`, and an outer loop that schedules everything. What is *not*
-settled is the central question — how to turn the bilevel constraint `y in S(x)` into a
-first-order update direction for `(x, y)` that is faithful even when `g(x, .)` is non-convex.
-That single update rule is the empty slot.
+`y`) with a projection onto `C`, and an outer loop that schedules everything.
 
 ```python
 import torch
@@ -187,11 +161,10 @@ def project_C(z):
 
 def solve_bilevel(f, g, init_xy, alpha, K):
     """Generic outer loop. f, g expose values and gradients of the upper/lower objectives.
-    The job is to drive (x, y) toward the bilevel solution using first-order info only.
-    Nothing about how the lower-level constraint y in S(x) becomes an update is fixed yet."""
+    The job is to drive (x, y) toward the bilevel solution using first-order info only."""
     x, y = init_xy
     for k in range(K):
-        # --- the one empty slot: form a first-order update direction for (x, y)
+        # --- form a first-order update direction for (x, y)
         #     that respects y in argmin_y g(x, y), without second-order oracles.
         #     The scaffold only fixes where the direction is consumed:
         #       x = project_C(x - alpha * dx); y = y - alpha * dy
@@ -208,5 +181,5 @@ def run_hyperclean(net, net_inner, x, data_tr, data_val, opt_x, opt_y, opt_inner
         pass
 ```
 
-The outer loop hands over the objectives, the inner optimizer, and the projection; the single
-slot is the first-order update direction that encodes `y in S(x)`.
+The outer loop hands over the objectives, the inner optimizer, and the projection; the update
+direction encodes the bilevel constraint `y in S(x)`.

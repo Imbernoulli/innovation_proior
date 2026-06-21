@@ -2,13 +2,13 @@
 
 ## Research Question
 
-Semantic segmentation asks for a class label at every pixel. A strong starting point is an ImageNet-pretrained classification backbone, because its late features recognize objects well. The difficulty is that classification backbones are built to become invariant to position, while dense prediction needs both object identity and spatially precise responses.
+Semantic segmentation asks for a class label at every pixel. A common starting point is an ImageNet-pretrained classification backbone, whose late features recognize objects. Classification backbones are built to become invariant to position; dense prediction reads out object identity per location.
 
-Two constraints have to be satisfied at the same time. First, the late feature map cannot be too coarse: a stride-32 map is cheap, but it makes boundaries and small objects hard to recover. Second, the classifier cannot use only one fixed field of view: the same class can occupy a few pixels or most of the image. The open design problem is to keep the pretrained backbone useful while computing dense features and adding multi-scale context in one forward pass.
+Objects of the same class appear at many scales: a class can occupy a few pixels or most of the image. The design question is how to take a pretrained classification backbone and produce per-pixel class scores, including how to compute features at a chosen spatial density and how to incorporate context across scales.
 
 ## Background
 
-Fully convolutional networks showed how to convert classification networks into dense predictors: replace fully connected layers with convolutions, predict a coarse score map, and upsample it to the image grid. This keeps whole-image computation efficient, but the coarse score map remains a bottleneck.
+Fully convolutional networks showed how to convert classification networks into dense predictors: replace fully connected layers with convolutions, predict a coarse score map, and upsample it to the image grid. This keeps whole-image computation efficient.
 
 Atrous, or dilated, convolution is the main resolution tool already available. For a two-dimensional signal, output location **i**, filter **w**, input **x**, and atrous rate `r`, it computes
 
@@ -24,13 +24,13 @@ Spatial pyramid pooling and related global-context methods show that a classifie
 
 ## Baselines
 
-**FCN with upsampling.** A fully convolutionalized classifier predicts on a coarse grid and then uses bilinear or learned transposed-convolution upsampling. Skip connections can fuse shallower detail with deeper semantics. The gap is that much fine spatial information has already been discarded by the time the deepest score map is formed.
+**FCN with upsampling.** A fully convolutionalized classifier predicts on a coarse grid and then uses bilinear or learned transposed-convolution upsampling. Skip connections fuse shallower detail with deeper semantics.
 
-**Encoder-decoder networks.** SegNet and U-Net use a downsampling encoder for context and a learned decoder, often with pooling indices or skip connections, to recover spatial detail. The gap is extra decoder complexity and the need to reconstruct detail after aggressive downsampling.
+**Encoder-decoder networks.** SegNet and U-Net use a downsampling encoder for context and a learned decoder, often with pooling indices or skip connections, to recover spatial detail.
 
-**Earlier atrous segmentation systems.** Earlier systems in this line use atrous convolution to compute denser features, and the second version adds atrous spatial pyramid pooling with several parallel rates. They still rely on a separate DenseCRF post-process for boundary refinement, and their pyramid module does not train batch-normalization layers inside the added context head.
+**Earlier atrous segmentation systems.** Earlier systems in this line use atrous convolution to compute denser features, and the second version adds atrous spatial pyramid pooling with several parallel rates. They use a separate DenseCRF post-process for boundary refinement.
 
-**Image pyramids and cascaded context modules.** Running the same network on resized inputs handles object scale but is expensive, especially for deep backbones. Cascading extra convolutional modules can enlarge context, but if those modules keep striding, they quickly decimate the feature map.
+**Image pyramids and cascaded context modules.** Running the same network on resized inputs handles object scale. Cascading extra convolutional modules enlarges context; striding modules reduce the feature-map resolution further.
 
 ## Evaluation Setting
 

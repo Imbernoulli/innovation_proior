@@ -9,20 +9,15 @@ representation and improve generalisation on the task one actually cares about. 
 train such a model is to add up the per-task losses into one scalar and backpropagate it:
 `L_total = Σ_i w_i L_i`.
 
-The trouble is the weights `w_i`. The per-task losses are not commensurable: a depth regression loss
-is measured in (squared) meters or millimeters, a classification loss is a dimensionless
-cross-entropy in nats, an instance-vector loss is in pixels. Their raw magnitudes can differ by
-orders of magnitude, and the "right" relative weighting depends on those arbitrary measurement
-scales *and* on how noisy each task's labels are. Empirically, final model quality is acutely
-sensitive to the choice of `w_i`: there is a narrow band of weightings in which the joint model
-beats every single-task model, and just outside it one of the tasks collapses while the other does
-fine. Finding that band by grid search costs a full training run per grid point — days each — and the
-search space grows combinatorially with the number of tasks, so for three or more tasks hand-tuning
-becomes impractical. The precise problem: combine `K` heterogeneous task losses into a single
+The weights `w_i` must be chosen somehow. The per-task losses are not commensurable: a depth
+regression loss is measured in (squared) meters or millimeters, a classification loss is a
+dimensionless cross-entropy in nats, an instance-vector loss is in pixels. Their raw magnitudes can
+differ by orders of magnitude, and the appropriate relative weighting depends on those measurement
+scales and on how noisy each task's labels are. Empirically, final model quality is sensitive to the
+choice of `w_i`: there is a narrow band of weightings in which the joint model beats every
+single-task model. The question is how to combine `K` heterogeneous task losses into a single
 training objective whose *relative task weighting* is set automatically and adapts to the data,
-rather than fixed by an expensive manual search — and do so in a way that is principled (derived from
-a model, not a heuristic), numerically stable, and that does not collapse to the trivial solution of
-turning every task off.
+rather than fixed by a manual search.
 
 ## Background
 
@@ -64,14 +59,6 @@ heteroscedastic noise, where the scale depends on the input and may be predicted
 and constant observation-noise scales, which single-task training usually treats as fixed nuisance
 constants and absorbs into the overall loss scale.
 
-**The diagnostic that frames the problem.** Sweeping the loss weight of a two-task model across its
-whole range produces a characteristic picture: each task's metric is best somewhere in the interior,
-not at the single-task extreme, and the two interiors do not coincide — there is a compromise region
-where both tasks improve over their single-task baselines, flanked by regions where pushing the
-weight further wrecks one task. The location of that region shifts with the tasks' units and noise.
-That grid-search landscape is exactly what makes a fixed hand-chosen weighting both necessary and
-hard to get right.
-
 ## Baselines
 
 **Naive uniform / hand-tuned weighted sum.** The dominant approach in essentially all prior
@@ -80,34 +67,21 @@ Used by OverFeat (Sermanet et al. 2014, classification + localisation + detectio
 (2015, depth + surface normals + semantic labels under a shared multi-scale architecture), UberNet
 (Kokkinos 2016, many low/mid/high-level vision tasks in one network), MultiNet (Teichmann et al.
 2016, detection + classification + segmentation), and Uhrig et al. (2016, semantic + instance under
-a classification framing). **Gap:** the weights are static and chosen by an expensive, low-resolution
-grid search; nothing ties them to the tasks' differing units or noise levels, and the search cost
-explodes with the number of tasks, so in practice the weighting is left uniform or crudely tuned and
-the model runs well below what the right weighting would give.
+a classification framing).
 
 **PoseNet-style fixed scalar between heterogeneous units (Kendall, Grimes & Cipolla, ICCV 2015).**
 For camera relocalisation the loss combines a rotation error (in quaternion units) and a translation
 error (in meters) as `L_pos + β L_rot` with a single hand-tuned scalar `β` balancing the two
-incommensurable quantities. **Gap:** `β` has to be re-tuned per scene/dataset by grid search because
-the right trade-off between meters and quaternion-distance is scene-dependent; it is exactly the
-manual-weighting pain point in miniature, with the added difficulty that the two terms live in
-different physical units so there is no natural common scale to fall back on.
+incommensurable quantities.
 
 **Learning the weights directly as free parameters.** An obvious idea is to make the `w_i` in
-`Σ_i w_i L_i` themselves trainable and let gradient descent set them. **Gap:** this objective has a
-trivial degenerate optimum — driving every `w_i → 0` sends the total loss to zero without learning
-anything. There is nothing in `Σ_i w_i L_i` that penalises shrinking the weights, so a plain
-learnable weight collapses. Any workable scheme that *learns* the weights has to include something
-that resists that collapse.
+`Σ_i w_i L_i` themselves trainable and let gradient descent set them.
 
 **Heteroscedastic aleatoric regression (Nix & Weigend 1994; Le et al. 2005).** Learn an
 input-dependent noise `σ(x)` jointly with the mean by maximising the Gaussian likelihood, giving the
 loss `||y - μ(x)||²/(2σ(x)²) + (1/2)log σ(x)²`. This shows that a noise scale can be recovered from
 residuals alone, with the logarithmic term keeping it finite, and that noisy observations can be
-attenuated inside a single regression problem. **Gap relative to the multi-task problem:** the
-machinery acts *within* one task — `σ(x)` is a per-example network output — while the shared
-multi-task objective still has to decide how several already-reduced task losses of different units
-should enter one scalar.
+attenuated inside a single regression problem.
 
 ## Evaluation settings
 

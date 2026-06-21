@@ -9,15 +9,9 @@ while leaving the unimportant ones free. Two design choices fully specify such a
 estimator* (how much each parameter mattered to each past context, computed once a context finishes) and the
 *penalty form* (how those importances are turned into a per-step penalty during later training).
 
-The hard constraint that sharpens the problem is **lifelong scale at fixed model capacity**. A method meant
-for a genuine lifelong setting must have a per-step cost and a memory footprint that do **not** grow with the
-number of contexts seen so far — an agent that lives through hundreds or thousands of contexts cannot store a
-per-context anchor and a per-context importance map, nor pay an O(number-of-contexts) cost on every gradient
-step. At the same time the model has a *fixed* number of parameters, so the protective constraints
-accumulated from old contexts compete for the same finite capacity that new contexts need. A solution has to
-retain old contexts, still leave room to learn new ones, and do both with memory and compute that stay constant
-in the number of contexts. The prior art below achieves retention but trades away scalability and long-run
-plasticity; closing that gap is the problem.
+The setting considered here is **lifelong scale at fixed model capacity**: how to design the importance
+estimator and penalty form so that both memory footprint and per-step cost remain manageable as the number
+of contexts grows, while retaining performance on earlier contexts and leaving room for new ones.
 
 ## Background
 
@@ -60,12 +54,6 @@ stiffness `F` and an anchor point `a`; both have to be chosen and stored for a p
 Quadratic algebra can sometimes combine penalty terms, but whether such a combination is meaningful depends
 on which posterior object the quadratic is supposed to approximate.
 
-It is also a documented phenomenon that on **fixed capacity** the accumulation of protective constraints
-eventually backfires: once enough contexts have pinned down enough weights, the network is so constrained
-that new contexts can no longer be learned — the regularisers "over-constrain" the parameters. So
-indefinitely piling up undamped constraints is not only a memory problem; past a point it is a *learning*
-problem.
-
 ## Baselines
 
 These are the prior methods a new continual-regularisation method would be measured against and would react to.
@@ -82,32 +70,23 @@ L(theta) = L_new(theta) + Σ_t (lambda/2) Σ_i F_{t,i} (theta_i - theta*_{t,i})^
 Each term is "a spring anchoring the weights to the old solution", stiff exactly where that context was
 sensitive. It is derived as a diagonal-Laplace approximation of the sequential posterior, and it works:
 important weights are slowed, unimportant ones stay free, and shared structure across contexts is reused.
-**Gap:** the implementation keeps **a separate penalty term, with its own anchor
-`theta*_t` and its own Fisher `F_t`, for every past context**, so both the storage and the per-step cost of
-evaluating the penalty grow *linearly* in the number of contexts. In a long-lived setting that linear growth
-is the binding constraint, and on fixed capacity the growing stack of springs also over-constrains the net so
-later contexts learn poorly.
+The implementation keeps a separate penalty term, with its own anchor `theta*_t` and its own Fisher `F_t`,
+for every past context.
 
 **The quadratic-penalty / recursive-Laplace analysis — Huszár 2017.** A close reading of EWC's own
 derivation. It shows that the literal multi-context extension of EWC's two-context Laplace argument
 has a consistency problem: later optima are already found under earlier penalties, so treating every stored
 anchor as an independent constraint changes the effective weighting of old data and can bias learning toward
-earlier contexts. **Gap:** this is a diagnosis of EWC's multi-anchor bookkeeping, not a complete lifelong
-regulariser. It identifies that the existing stack is not the only Bayesian-looking object available and that
-early-context weighting must be handled carefully, but it does not by itself decide how a fixed-capacity
-learner should trade old constraints against new ones, nor how to revise a previous context's contribution
-when contexts **recur** without keeping task-specific factors.
+earlier contexts. It identifies that the existing stack is not the only Bayesian-looking object available and
+that early-context weighting must be handled carefully.
 
 **Synaptic Intelligence (SI) — Zenke, Poole & Ganguli 2017.** A different importance estimator that
 sidesteps the post-hoc Fisher computation. It accumulates importance *online along the training trajectory*:
 as the weights move during a context, each parameter's running contribution to reducing the loss is tracked,
 `omega_i ≈ Σ (-grad_i · Δtheta_i)`, then normalised by that parameter's total drift over the context,
 `(theta_i - theta*_i)^2 + xi`, and used as the stiffness in the *same* quadratic-penalty form as EWC. SI
-already maintains a **single** accumulated importance per parameter (so its penalty cost is constant in the
-number of contexts) and a single anchor at the latest optimum. **Gap:** its importance
-is a path integral that depends on the optimiser's actual trajectory and step sizes rather than on a local
-curvature of the loss, so it lacks EWC's clean Bayesian-posterior interpretation; and on a capacity-limited
-network its accumulated importance only ever grows, so old constraints can dominate later learning.
+maintains a single accumulated importance per parameter (so its penalty cost is constant in the number of
+contexts) and a single anchor at the latest optimum.
 
 **Background tool — stochastic expectation propagation (Li, Hernández-Lobato & Turner, NeurIPS 2015).**
 Expectation propagation maintains one approximating factor per data factor and, to update one, divides it out

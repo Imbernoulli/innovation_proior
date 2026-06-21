@@ -4,14 +4,14 @@ Meta-reinforcement learning: I am given a distribution `p(T)` over related MDPs 
 
 ## Prior art / Background / Baselines
 
-These are the methods the design reacts to; each is here for the gap it leaves.
+The following methods are the relevant prior art in this setting.
 
-- **RL² / learning-to-RL (Duan et al. 2016; Wang et al. 2016).** Make the policy a recurrent net, feed it each observation together with the previous action, reward, and done flag, and carry the hidden state across the episode; ordinary RL trains the whole recurrence to maximize trial return. *Gap:* it is on-policy and sample-hungry (~1e8 steps), and the hidden state is an opaque vector with no explicit task representation or notion of uncertainty.
-- **MAML / ProMP (Finn et al. 2017; Rothfuss et al. 2018).** Meta-learn an initialization such that a few policy-gradient steps adapt the policy to a new task. *Gap:* both inner and outer loops are on-policy, and the exploration data is collected under the un-adapted policy and therefore separated from exploitation by construction — the adaptation data is never optimized for online return.
-- **Soft Actor-Critic (Haarnoja et al. 2018).** An off-policy, maximum-entropy actor-critic for single-task continuous control that uses twin Q-networks, a target value network, a reparameterized squashed-Gaussian actor, and a replay buffer. *Gap:* it has no task variable and no mechanism to adapt across a family of tasks; it serves as the control backbone that will be conditioned on `z`.
-- **Prototypical networks (Snell et al. 2017).** Few-shot classification by embedding support examples with a shared network, representing each class as the mean of its embeddings, and classifying by distance. *Gap:* it is a supervised-classification method with labeled support sets and discrete classes, not a sequential decision-making algorithm that must infer tasks from reward sequences.
+- **RL² / learning-to-RL (Duan et al. 2016; Wang et al. 2016).** Make the policy a recurrent net, feed it each observation together with the previous action, reward, and done flag, and carry the hidden state across the episode; ordinary RL trains the whole recurrence to maximize trial return.
+- **MAML / ProMP (Finn et al. 2017; Rothfuss et al. 2018).** Meta-learn an initialization such that a few policy-gradient steps adapt the policy to a new task; both inner and outer loops operate on-policy.
+- **Soft Actor-Critic (Haarnoja et al. 2018).** An off-policy, maximum-entropy actor-critic for single-task continuous control that uses twin Q-networks, a target value network, a reparameterized squashed-Gaussian actor, and a replay buffer.
+- **Prototypical networks (Snell et al. 2017).** Few-shot classification by embedding support examples with a shared network, representing each class as the mean of its embeddings, and classifying by distance.
 
-The fixed substrate below is an off-policy SAC actor-critic conditioned on a task variable `z`, with a context encoder and a meta-gradient step left open to design.
+The fixed substrate is an off-policy SAC actor-critic conditioned on a task variable `z`, with a context encoder.
 
 ## Fixed substrate / Code framework
 

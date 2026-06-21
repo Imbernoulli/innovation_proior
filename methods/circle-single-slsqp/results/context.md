@@ -4,8 +4,8 @@
 
 Place `26` circles inside the unit square `[0,1]²`, pairwise non-overlapping, and maximize the
 **sum of their radii** `Σ rᵢ`. The constructor emits one packing — centers `(xᵢ, yᵢ)` and radii
-`rᵢ ≥ 0` — scored by `Σ rᵢ` alone. The radii are **free and unequal**: a good packing mixes a few
-large circles with many small gap-fillers, and the optimum is irregular with no symmetry.
+`rᵢ ≥ 0` — scored by `Σ rᵢ` alone. The radii are **free and unequal**: a packing may mix a few
+large circles with many small gap-fillers, and the optimum carries no imposed symmetry.
 
 ## Constraints (feasibility)
 
@@ -13,9 +13,9 @@ large circles with many small gap-fillers, and the optimum is irregular with no 
 - Pairwise disjoint: `√((xᵢ−xⱼ)² + (yᵢ−yⱼ)²) ≥ rᵢ + rⱼ` for `i ≠ j`.
 - `rᵢ ≥ 0`. Accepted when no constraint is violated beyond a small absolute tolerance.
 
-This is a nonconvex QCQP (the pairwise-distance constraints are nonconvex). Key structural fact:
+This is a nonconvex QCQP (the pairwise-distance constraints are nonconvex). Structural fact:
 for **fixed centers, the optimal radii are an LP** — maximize `Σ rᵢ` s.t. `rᵢ + rⱼ ≤ dᵢⱼ`,
-`rᵢ ≤ wallᵢ`. The hard, nonconvex part is *where to put the centers*.
+`rᵢ ≤ wallᵢ`.
 
 ## Where this task sits
 
@@ -26,9 +26,8 @@ Published frontier for `n = 26`: AlphaEvolve `2.63586276` (arXiv:2506.13131), Sh
 
 ## This method's role
 
-This is the **single-start nonlinear-optimization** method: formulate the full `78`-variable
-problem (centers + radii) and run one SLSQP refinement from a single random initialization, with
-the radii re-tightened to their LP optimum. It establishes what one local descent on the true
-constrained problem reaches — beating the rigid grid by making radii unequal and using the
-corners/edges — and exposes that the bottleneck is the lone initialization, not the solver. The
-single editable function is `construct_packing() -> (centers, radii)`.
+The task is to produce a feasible packing for `n = 26` that improves on the rigid grid baseline by
+treating placement as a continuous optimization over the `78` decision variables (`26` centers plus
+`26` radii) subject to the wall and pairwise-distance constraints above. The single editable
+function is `construct_packing() -> (centers, radii)`, returning the `26` centers and radii of one
+packing.

@@ -6,15 +6,9 @@ We are fine-tuning a large language model with online reinforcement learning on 
 task (math reasoning). For each prompt we sample one or more responses, score each response with a
 (usually sparse, end-of-sequence) reward, and then update the policy with a PPO/GRPO-style clipped
 actor loss. The single object that decides *how much each response and each token pushes the policy*
-is the **advantage estimate**. The pain point is concrete: the cleanest way to get accurate advantages
-in PPO is a learned value function (critic), but the critic is a second network of comparable size to
-the policy, doubling memory and compute and adding its own training instability. The critic-free
-alternatives that replace it estimate the advantage from the rewards of a small group of responses to
-the *same* prompt — and that small-group estimate is exactly where instability creeps in. We want an
-advantage estimator that (a) needs no critic, (b) gives a *stable* per-token advantage even when a
-prompt's few sampled rewards are nearly identical, and (c) does not push the policy to merely "beat
-its own group" at the expense of generalization. The estimator must consume per-token rewards, a
-response mask, and group identifiers, and emit per-token advantages and returns for the actor loss.
+is the **advantage estimate**. How should we design an advantage estimator for this setting that
+operates without a learned critic and uses only per-token rewards, a response mask, and group
+identifiers?
 
 ## Background
 
@@ -60,37 +54,7 @@ somewhere. The family of methods that emerged estimates it from multiple respons
 dividing by the standard deviation over a minibatch (whitening) before they enter the policy loss — is
 a long-standing PPO implementation detail. The large-scale empirical study of Andrychowicz et al.
 (2020) catalogs per-minibatch advantage normalization among its >50 design choices and finds it a
-common, broadly-used standardization step. The useful prior fact is that centering and scaling
-advantages over a pool is already an established PPO implementation choice; what remains open is how
-to choose that pool when the critic is gone.
-
-**Diagnostic observations about local group statistics.** Three facts about the small-group estimators
-matter.
-
-*First, the local-std estimator is statistically biased.* Take the GRPO estimator and write the group
-rewards as `r_i = θ + ε_i` with `ε_i ~ N(0, σ²)` i.i.d., `i = 1..N`. With `ε̄ = (1/N)Σ ε_j`,
-`D = sqrt((1/N) Σ (ε_j - ε̄)²)`, and `A_i = (ε_i - ε̄)/D`, the conditional numerator is
-`E[ε_i - ε̄ | ε_i] = (1 - 1/N) ε_i`, but the denominator `D` is itself a function of `ε_i`:
-`E[D² | ε_i] = ((N-1)²/N²) σ² + ((N-1)/N²) ε_i²`, which grows with `ε_i²`. Because the centered reward
-in the numerator and the standard deviation in the denominator are computed from the *same small
-sample*, they are not independent. The Taylor expansion of `f(x)=x^{-1/2}` around
-`μ=E[D²|ε_i]` is
-`f(x)=μ^{-1/2}-(1/2)μ^{-3/2}(x-μ)+(3/8)μ^{-5/2}(x-μ)²+O((x-μ)³)`, so the leading denominator scale
-already depends on `ε_i²`. A rigorous quick check is boundedness: for any realized centered residuals,
-`|A_i| ≤ sqrt(N-1)` under this `1/N` variance convention, while the Gaussian `ε_i` is unbounded; hence
-`E[A_i | ε_i]` cannot equal `ε_i` as a function for any finite `N ≥ 2`. The coupling weakens as `N`
-grows, but prompt-level groups in this setting are deliberately small.
-
-*Second, the local std is a brittle small-sample scale.* In practice the group size `k` is small (4 or
-8). If all sampled responses to a prompt receive exactly the same reward, the centered numerator is
-also zero, so the exact standardized residual is not literally unbounded. The problem is instead that a
-few rewards determine the whole prompt's scale: a single discrete reward flip can make an order-one
-standardized residual, exact ties give no ranking signal, and every token from that prompt inherits a
-scale set by only those few samples.
-
-*Third, optimizing relative to a prompt's own group rewards a response only for being "better than its
-siblings," not for being globally good*, which encourages overfitting to whichever prompts produce
-diverse within-group rewards.
+common, broadly-used standardization step.
 
 **The KL estimators as a separate loss.** With `ℓ(y) = log π_θ(y) - log π_ref(y)` and
 `δ(y) = π_ref(y)/π_θ(y) = exp(-ℓ)`, three sample forms are in use:
@@ -107,25 +71,17 @@ tiny.
 ## Baselines
 
 **PPO with a critic (Schulman et al. 2017).** Clipped surrogate with GAE advantages from a learned
-value function `V`. Accurate when `V` is good, but the critic is a second model the size of the policy:
-heavy memory/compute, and hard to fit accurately when reward is only at EOS. *Gap:* the critic is
-expensive and, in the sparse-reward LLM regime, an unreliable source of per-token advantages.
+value function `V`.
 
 **RLOO (Ahmadian et al. 2024).** Full-sequence REINFORCE with a leave-one-out baseline,
 `A_i = r(o^(i)) - (1/(k-1)) Σ_{j≠i} r(o^(j))`. Critic-free and the baseline is genuinely independent of
-the scored response. *Gap:* the baseline is built from only the `k-1` other responses to the *same
-prompt*; with small `k` it is a high-variance estimate, and the advantages across different prompts are
-never put on a common scale.
+the scored response.
 
 **GRPO (Shao et al. 2024).** Critic-free; standardizes within the group,
 `A_i = (r(o^(i)) - mean(r)) / (std(r) + ε)`, broadcast to all tokens; KL added to the loss via the `k3`
-estimator. *Gap:* the within-group standardization couples a centered numerator to a denominator
-computed from the same few samples (biased for finite `k`), the local std is a noisy scale set by only
-one prompt's rewards, and the relative objective rewards beating one's own group rather than global
-quality.
+estimator.
 
-**ReMax (Li et al. 2023).** Greedy-response baseline, `A = r(o) - r(ô)`. *Gap:* a single greedy sample
-is a noisy baseline and requires an extra greedy decode per update.
+**ReMax (Li et al. 2023).** Greedy-response baseline, `A = r(o) - r(ô)`.
 
 ## Evaluation settings
 

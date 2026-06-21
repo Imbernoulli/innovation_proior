@@ -1,14 +1,14 @@
 # Context
 
-The aim is to design an image-classification network that gains accuracy *without* increasing computational complexity or parameter count — building on the repeat-the-same-block simplicity of VGG/ResNet while borrowing the efficiency of Inception's multi-branch processing, using the architectures, grouped-convolution primitives, and training code available in late 2016. The target is ImageNet-1K.
+The aim is to design an image-classification network for ImageNet-1K, working with the architectures, grouped-convolution primitives, and training code available in late 2016. The setting holds computational complexity (FLOPs) and parameter count fixed, comparing architectures at matched cost.
 
 ## Research question
 
-Visual recognition has shifted from feature engineering to *network* engineering: features learned by neural nets from large data need little human involvement and transfer across recognition tasks, but the human effort has moved into designing the architectures. And designing architectures gets harder as the number of hyper-parameters grows — width (channels per layer), filter sizes, strides — especially with many layers.
+Visual recognition has shifted from feature engineering to *network* engineering: features learned by neural nets from large data need little human involvement and transfer across recognition tasks, with the human effort now in designing the architectures. The number of architectural hyper-parameters grows with the number of layers — width (channels per layer), filter sizes, strides.
 
-Two design philosophies are on the table, each with a cost. One stacks building blocks of the *same shape* (VGG, inherited by ResNet): this rule sharply reduces the free hyper-parameter choices, exposes depth as an essential dimension, and — being simple — is less likely to over-adapt to a specific dataset, which is why these nets are robust across many vision and even speech/language tasks. The other (Inception) shows that *carefully designed* multi-branch topologies achieve compelling accuracy at low theoretical complexity, via a split-transform-merge pattern — but its modules are hand-customized stage by stage (filter numbers and sizes tailored per transformation), so it is unclear how to adapt it to a new dataset or task without re-doing that design work.
+Two design philosophies are on the table. One stacks building blocks of the *same shape* (VGG, inherited by ResNet): this rule reduces the free hyper-parameter choices, exposes depth as an essential dimension, and these nets are robust across many vision and even speech/language tasks. The other (Inception) uses *carefully designed* multi-branch topologies that achieve compelling accuracy at low theoretical complexity, via a split-transform-merge pattern; its modules are customized stage by stage, with filter numbers and sizes tailored per transformation.
 
-The sharp question: can a network keep the repeat-the-same-block simplicity of VGG/ResNet *and* exploit split-transform-merge in an easy, extensible way — and in doing so, gain accuracy under the *restricted condition of maintaining (or reducing) complexity and model size*? That last clause is what makes the question hard and rare: it is easy to raise accuracy by adding capacity (going deeper or wider), but methods that raise accuracy at fixed FLOPs and fixed parameter count are uncommon. And is there a *dimension* of the design space, besides depth and width, that is worth turning?
+The question: how to build an image-classification block that raises accuracy at *fixed FLOPs and fixed parameter count* — that is, without going deeper or wider — for ImageNet-1K.
 
 ## Background
 
@@ -21,19 +21,18 @@ By late 2016 the field has converged on a few load-bearing ideas, and the releva
 - **Batch Normalization** after convolutions, and He initialization for ReLU nets — the standard training-stabilization tools.
 - **An interpretive observation about ResNets** (Veit et al. 2016): because ResNet's behavior is additive (`y = x + F`), a single ResNet can be interpreted as an *ensemble* of many shallower networks — paths of different lengths through the skip connections. This is a diagnostic reading of existing residual nets, not yet a design principle.
 
-A recurring empirical pressure motivates a new design axis: for existing models, *depth and width start to give diminishing returns* — pushing either further yields ever-smaller accuracy gains for ever-larger compute. So a different axis of the design space, if one exists, could be more compute-efficient.
 
 ## Baselines
 
-**VGG (Simonyan & Zisserman 2015).** Build very deep nets by stacking blocks of the *same shape* (3×3 conv stacks). *Core idea:* one simple rule (repeat the block; double width when halving the map) collapses the hyper-parameter space and makes depth the dimension to turn. *Gap:* heavy, and offers only depth/width as the knobs to scale.
+**VGG (Simonyan & Zisserman 2015).** Build very deep nets by stacking blocks of the *same shape* (3×3 conv stacks). *Core idea:* one simple rule (repeat the block; double width when halving the map) collapses the hyper-parameter space and makes depth the dimension to turn.
 
-**ResNet (He et al. 2016).** Stack modules of the same topology, each a residual block `y = x + F(x)` with a bottleneck `1×1 → 3×3 → 1×1`; identity shortcuts (projections only when dimensions change). *Core math:* residual reformulation conditions optimization for great depth; the bottleneck makes deep nets affordable. *Gap (the one this attacks):* it inherits VGG's two scaling knobs — depth and width — and these are exactly where returns are diminishing. A 256→64→64(3×3)→256 bottleneck block has ≈ `256·64 + 3·3·64·64 + 64·256 ≈ 70k` parameters; scaling it means making it deeper or wider.
+**ResNet (He et al. 2016).** Stack modules of the same topology, each a residual block `y = x + F(x)` with a bottleneck `1×1 → 3×3 → 1×1`; identity shortcuts (projections only when dimensions change). *Core math:* residual reformulation conditions optimization for great depth; the bottleneck makes deep nets affordable. A 256→64→64(3×3)→256 bottleneck block has ≈ `256·64 + 3·3·64·64 + 64·256 ≈ 70k` parameters.
 
-**Inception / Inception-ResNet (Szegedy et al. 2015/2016).** Multi-branch split-transform-merge modules; Inception-ResNet adds residual connections with branching-and-concatenating inside the residual function. *Core idea:* carefully customized branches give high accuracy at low theoretical complexity. *Gap:* every branch's filter count and size is hand-tailored and the modules differ stage-by-stage, so the number of branches cannot be cleanly isolated as a single factor, and the design does not transfer to new datasets/tasks without redesign.
+**Inception / Inception-ResNet (Szegedy et al. 2015/2016).** Multi-branch split-transform-merge modules; Inception-ResNet adds residual connections with branching-and-concatenating inside the residual function. *Core idea:* carefully customized branches give high accuracy at low theoretical complexity.
 
-**Network compression by decomposition (Denton et al. 2014; Jaderberg et al. 2014; Kim et al. 2016; Ioannou et al. 2016).** Reduce redundancy by decomposing convolutions at the spatial and/or channel level; Ioannou et al. use a "root"-patterned network whose branches are realized by grouped convolutions. *Gap:* these trade accuracy *down* for lower complexity (compression), rather than offering an architecture with stronger representational power at the same complexity.
+**Network compression by decomposition (Denton et al. 2014; Jaderberg et al. 2014; Kim et al. 2016; Ioannou et al. 2016).** Reduce redundancy by decomposing convolutions at the spatial and/or channel level; Ioannou et al. use a "root"-patterned network whose branches are realized by grouped convolutions.
 
-**Ensembling (averaging independently trained nets).** A reliable accuracy boost, widely used in competitions. *Gap / contrast:* an ensemble's members are trained *independently*; a building block that aggregates several jointly-trained transformations is not the same thing, and should not be conflated with ensembling.
+**Ensembling (averaging independently trained nets).** A reliable accuracy boost, widely used in competitions. An ensemble's members are trained *independently*; a building block that aggregates several jointly-trained transformations is not the same thing, and should not be conflated with ensembling.
 
 ## Evaluation settings
 

@@ -15,19 +15,12 @@ representation of that equivalence class — a partially directed graph in which
 present exactly when the two variables are directly causally connected, and an arrowhead is
 oriented exactly when *every* DAG in the class agrees on its direction.
 
-Two pressures make this nontrivial. Statistically, the only window onto the structure is a
-battery of conditional-independence (CI) tests, and CI tests on real samples are unreliable
-exactly when they involve large conditioning sets: in the discrete case a test of two
-variables given a set `C` partitions the data into a contingency table whose number of cells
-grows multiplicatively with the cardinalities of the variables in `C`, so high-order tests
-have almost no data per cell and are nearly useless. Computationally, the space of subsets to
-condition on is exponential, and the space of DAGs on `p` variables is super-exponential, so
-any procedure that even implicitly enumerates them becomes infeasible for `p` beyond a
-handful. A usable method has to (1) need no prior variable ordering, (2) keep the conditioning
-sets — and hence the statistical tests — as small as possible, (3) stay computationally feasible
-on sparse graphs with tens or hundreds of variables, and (4) come with a correctness guarantee: given
-the true independence facts, it must return the right equivalence class. Each method below
-gets some of this; none gets all of it at once.
+The only window onto the structure is a battery of conditional-independence (CI) tests.
+In the discrete case a test of two variables given a set `C` partitions the data into a
+contingency table whose number of cells grows multiplicatively with the cardinalities of the
+variables in `C`. The space of subsets to condition on is exponential, and the space of DAGs
+on `p` variables is super-exponential. The question is how to search for the right equivalence
+class using CI tests.
 
 ## Background
 
@@ -67,19 +60,14 @@ beyond that is unidentifiable from observational independences.
 A structural fact about adjacency is load-bearing and known before any algorithm. Under
 faithfulness, `X` and `Y` are adjacent in `G` **iff** they are dependent conditional on *every*
 subset of the other vertices. Contrapositive — if `X` and `Y` are non-adjacent, then there
-*exists* a set that d-separates (hence renders independent) them. That fact makes edge removal
-possible in principle, but it does not by itself say how to find the right set without an enormous
-search.
+*exists* a set that d-separates (hence renders independent) them.
 
-Empirically, the pain is concrete. A network like ALARM (37 discrete variables, ~3 values
-each) was already a standard stress test; a test of conditional independence of two of its
-variables on *all* the remaining ones implicitly involves on the order of `3^35` cell
-configurations, only a vanishing fraction of which is ever instantiated even in large samples
-— so such a test is statistically empty. And the Bayesian score-based search of the time
-(Cooper & Herskovits's K2), while fast with Dirichlet priors, was reported to need about 15
-minutes on a Macintosh II for ALARM and, more fundamentally, *required a prior total ordering
-of the variables* to cut the combinatorics — an ordering that in most applied settings is
-exactly what one does not know.
+A network like ALARM (37 discrete variables, ~3 values each) is a standard stress test.
+Conditional independence tests on discrete data with large conditioning sets implicitly require
+many cell configurations, only a fraction of which are instantiated even in large samples.
+The Bayesian score-based search of the time (Cooper & Herskovits's K2), while fast with
+Dirichlet priors, was reported to need about 15 minutes on a Macintosh II for ALARM and
+required a prior total ordering of the variables to cut the combinatorics.
 
 ## Baselines
 
@@ -88,10 +76,7 @@ each `V_k`, draw an edge `V_i → V_k` (with `V_i` earlier than `V_k`) iff `V_i`
 dependent conditional on the set of *all* other variables earlier than `V_k`. Walk the
 variables in order and apply this test. Given a faithful distribution (and, in the discrete
 case, strictly positive cell probabilities) this provably recovers the true DAG from the
-ordering plus the independence facts — in that sense the discovery problem "is solved." **Gap:**
-it presupposes a known total ordering, which is usually unavailable; and each test conditions
-on *all* earlier variables, so it is a high-order CI test — statistically unreliable and
-combinatorially explosive — feasible only for very small variable sets.
+ordering plus the independence facts.
 
 **SGS algorithm (Spirtes, Glymour & Scheines 1990).** Drop the ordering requirement entirely
 and work straight from CI facts. (A) Start from the complete undirected graph on the
@@ -101,33 +86,19 @@ variables; if any `S` d-separates `A` and `B`, delete the edge. (C) For each uns
 for `A`, `C` that contains `B` d-separates them. (D) Propagate orientations with two local rules:
 if `A → B`, `B` adjacent to `C`, `A`/`C` non-adjacent, and `B` has no incoming arrowhead yet,
 orient `B → C`; and if there is a directed path `A ⇝ B` together with an edge `A — B`, orient
-`A → B`. **Gap:** step B is an exponential search *per pair* — `2^{p-2}` subsets — and the
-worst case is the *expected* case for edges that truly exist, since a present edge is never
-removed and so its full subset search always runs. Two variables can be dependent given a set
-`U` yet independent given a sub- or super-set of `U`, so no shortcut that skips subsets is
-safe in the worst case. The result is that even sparse graphs become infeasible as `p` grows,
-and the procedure routinely runs the very high-order tests that finite samples cannot support.
+`A → B`.
 
 **Verma–Pearl independence-graph variant (IG, 1990).** First build the undirected
 independence graph `N`: connect `A`, `B` iff they are dependent given *all* other variables. In
 a faithful distribution the parents of any node form a clique in `N`, so afterwards one only
 has to test, for each adjacent pair in `N`, separating sets drawn from the cliques of `N`
-containing `A` or `B`; complexity is governed by the largest clique. **Gap:** the first step is
-itself the full set of highest-order CI tests (each conditions on all `p-2` other variables) —
-the same statistically empty, finite-sample-fragile tests that sink Wermuth–Lauritzen — used
-just to bootstrap the neighborhoods.
+containing `A` or `B`; complexity is governed by the largest clique.
 
 **Cooper–Herskovits Bayesian search (K2, 1991).** Score-based rather than constraint-based:
 with Dirichlet priors the marginal likelihood of a candidate structure has a closed form, so a
-greedy search over parent sets is fast. **Gap:** it requires a prior variable ordering (to make
-the combinatorics tractable) and returns a single high-scoring DAG rather than the identifiable
-equivalence class; it is suggested mainly as a *repair* step for a constraint-based skeleton
-that has been damaged by sampling error.
-
-A common limitation runs through all four: either an ordering must be supplied, or the
-algorithm leans on conditional-independence tests with very large conditioning sets — the
-regime where contingency-table tests have no data per cell and where the subset search is
-exponential. Where these methods stall is in needing those high-order tests at all.
+greedy search over parent sets is fast. It requires a prior variable ordering and returns a
+single high-scoring DAG rather than the identifiable equivalence class; it is suggested mainly
+as a *repair* step for a constraint-based skeleton damaged by sampling error.
 
 ## Evaluation settings
 

@@ -14,25 +14,10 @@ tau*(x) = E[Y(1) - Y(0) | X = x].
 The data are observational, not randomized, so treatment assignment depends on the
 covariates. We assume unconfoundedness — `{Y(0), Y(1)} ⫫ W | X` — which makes `tau*`
 identified, and overlap — `eta < e*(x) < 1 - eta` for the propensity `e*(x) = P(W=1|X=x)` —
-so that both arms are represented everywhere in covariate space. Two distinct difficulties
-have to be paid for simultaneously. First, **confounding**: because `W` correlates with `X`,
-any comparison of treated and control outcomes mixes the causal effect with differences in
-the covariate distributions of the two groups; a method that does not control for this
-estimates a biased effect. Second, **heterogeneity with flexible models**: `tau*(.)` can be
-an arbitrary nonlinear function of `X`, so we want to bring modern, high-capacity machine
-learning — boosting, neural networks, penalized regression — to bear on estimating it, yet
-those methods regularize, and naive uses of them inject systematic bias into the effect
-estimate (made precise below).
-
-What a satisfactory solution would have to achieve, beyond just "low error on a benchmark":
-(1) be usable with *any* off-the-shelf machine-learning method framed as loss minimization,
-not a bespoke algorithm per learner; (2) be *robust* to the inevitable inaccuracy in the
-estimated treatment-assignment and outcome models — small errors there should not blow up the
-effect estimate; (3) come with a *formal guarantee* tying the accuracy of the effect estimate
-to the complexity of `tau*(.)` itself rather than to the (possibly much harder) complexity of
-the confounding structure; and (4) let practitioners tune the effect model by ordinary
-cross-validation. Existing methods each hit a subset of these; none hits all four. Closing
-that gap is the problem.
+so that both arms are represented everywhere in covariate space. The challenge is to
+bring modern, high-capacity machine learning — boosting, neural networks, penalized
+regression — to bear on estimating the possibly nonlinear `tau*(.)` from observational
+data where treatment and covariates are confounded.
 
 ## Background
 
@@ -40,10 +25,7 @@ The field state at this time. There is a burst of activity on adapting machine l
 treatment-effect estimation: lasso-based methods (Imai & Ratkovic 2013), recursive
 partitioning and causal trees (Athey & Imbens 2015; Su et al. 2009), Bayesian additive
 regression trees (Hill 2011; Chipman et al. 2010), random forests (Wager & Athey 2017), boosting
-(Powers et al. 2018), and neural networks (Shalit et al. 2017). The literature has not settled
-on how machine learning *should* be adapted: most of these methods are bespoke structural
-modifications of one particular learner, justified mainly by simulation, and with no error
-bound proving they isolate the causal signal better than a plain regression would.
+(Powers et al. 2018), and neural networks (Shalit et al. 2017).
 
 The load-bearing concepts in the field are these.
 
@@ -80,10 +62,7 @@ overfitting bias and lets one dispense with empirical-process (Donsker) restrict
 nuisance class, which is exactly what one needs when the nuisance is fit by an arbitrary
 high-capacity learner. The canonical worked example of this whole program *is* the partially
 linear model — Robinson's residual-on-residual recast as an orthogonal moment with cross-fit
-nuisances. The diagnostic fact established by this literature: naively plugging an ML estimate
-of `eta0` into an estimating equation for `theta0` is *not* `sqrt(n)`-consistent, because
-regularization bias and overfitting in `eta0` leak into `theta0`; the orthogonal-plus-cross-fit
-construction is what removes that leak.
+nuisances.
 
 **A diagnostic about regularization bias in effect estimation.** Consider the
 high-dimensional linear model `Y_i(w) = X_i' beta*_(w) + eps_i(w)`. Fit two separate lassos,
@@ -91,9 +70,7 @@ one per arm, and difference the coefficients to get the effect. Because each `be
 independently shrunk toward zero, their difference `beta_(1) - beta_(0)` can be regularized
 *away from zero even when the true effect is zero everywhere* — the two shrinkages do not
 cancel, and the problem is acute when the arms have very different sample sizes. This is an
-observed pathology of arm-wise modeling in meta-learner examples, and it is
-why "model each arm and subtract" is fragile: the regularization meant to help prediction in
-each arm actively corrupts the difference.
+observed pathology of arm-wise modeling in meta-learner examples.
 
 ## Baselines
 
@@ -102,30 +79,17 @@ a generic predictor into an effect estimator.
 
 **S-learner.** Fit a single regression `f-hat(x, w) = E[Y | X=x, W=w]` that takes the treatment
 as just another input feature, then set `tau-hat(x) = f-hat(x, 1) - f-hat(x, 0)`. Core appeal:
-one model, trivially uses any learner. *Limitation:* because `W` is one feature among many, a
-regularized learner can shrink its influence or split on it rarely, so the fitted `f-hat`
-barely depends on `w`; the estimated effect is then biased toward zero, and the learner gives
-no special status to the quantity we actually care about.
+one model, trivially uses any learner.
 
 **T-learner.** Fit the two arm response surfaces separately,
 `mu-hat_(w)(x) = E[Y | X=x, W=w]` for `w in {0,1}` on the treated and control subsamples, and
 set `tau-hat(x) = mu-hat_(1)(x) - mu-hat_(0)(x)`. Core idea: let each arm have its own model.
-*Limitation:* the two models are trained independently and separately regularized, so their
-difference is unstable and inherits the spurious-structure pathology above; with the lasso it
-can regularize the effect away from zero even when the truth is null, and the instability is
-worst under arm imbalance. It also models the full response surface in each arm — including all
-the confounding structure — even when the effect itself is simple.
 
 **X-learner.** A two-stage repair of the T-learner from the meta-learner line. Fit `mu-hat_(w)`;
 then on the treated units form imputed effects `D_i = Y_i - mu-hat_(0)^{(-i)}(X_i)` and regress
 them on `X` to get `tau-hat_(1)`; symmetrically get `tau-hat_(0)` from controls; combine
 `tau-hat(x) = (1 - e-hat(x)) tau-hat_(1)(x) + e-hat(x) tau-hat_(0)(x)`. Core idea: regress on
-imputed individual effects, weighting the two estimates by the propensity. *Limitation:* the
-effect estimate inherits the errors of `mu-hat_(0), mu-hat_(1)` to *first order* — a small
-perturbation of those arm models of size `o(n^{-1/4})` shifts `tau-hat` by the same order — so
-its accuracy is tied to how well the (possibly complex) arm surfaces are estimated, not to the
-complexity of the effect alone. It is robust only in the extreme regime where one arm vastly
-outnumbers the other.
+imputed individual effects, weighting the two estimates by the propensity.
 
 **U-learner / transformed-outcome regression.** Use the algebraic identity that, with the
 marginal mean `m*(x) = E[Y|X=x]` and propensity `e*(x)`,
@@ -133,18 +97,12 @@ marginal mean `m*(x) = E[Y|X=x]` and propensity `e*(x)`,
 `U_i = (Y_i - m-hat(X_i)) / (W_i - e-hat(X_i))` on `X` with any learner. Related propensity-
 weighting transforms (Athey & Imbens 2015; Tian et al. 2014) regress
 `Y_i (W_i - e*) / (e*(1-e*))` on `X`. Core idea: one off-the-shelf regression of a constructed
-target. *Limitation:* the divisor `W_i - e*(X_i)` is near zero wherever the propensity
-approaches 0 or 1, so the transformed outcome has enormous variance there; the estimator is
-unstable and, empirically, pays a large error for it.
+target.
 
 **Causal-structure learners (causal forest, causal boosting, BART-style outcome modeling).** Bespoke
 modifications of a specific learner — splitting criteria that target effect heterogeneity
 (Wager & Athey 2017; Powers et al. 2018), or Bayesian regression trees used for the response
-surface (Hill 2011). Core idea: rebuild the learner internals to chase the
-effect. *Limitation:* each is tied to one learner and must accomplish *both* jobs at once —
-controlling confounding and expressing the effect — inside its own machinery, so it cannot be
-swapped for a different learner, cannot be tuned by ordinary cross-validation, and comes (with
-exceptions) without an error bound certifying it isolates the causal component.
+surface (Hill 2011). Core idea: rebuild the learner internals to chase the effect.
 
 ## Evaluation settings
 

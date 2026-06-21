@@ -4,14 +4,12 @@ Train a humanoid to stand, walk, and run — continuous actions clipped to `[-1,
 
 ## Prior art / Background / Baselines
 
-The relevant baselines and the gap each leaves:
-
-- **REINFORCE / vanilla policy gradient (Williams 1992).** Estimates the policy gradient from Monte-Carlo returns and takes one gradient step per sample. Gap: high variance and no data reuse make it sample-inefficient.
-- **TRPO (Schulman et al. 2015).** Optimizes within a KL-divergence trust region using Fisher-vector products. Gap: each update is expensive and second-order, so data reuse is limited and wall-clock cost is high.
-- **DDPG (Lillicrap et al. 2016).** Uses a deterministic actor and a Q-critic with a replay buffer and target networks. Gap: brittle in practice due to critic overestimation and exploration collapse.
-- **TD3 (Fujimoto et al. 2018).** Extends DDPG with clipped twin critics, target-policy smoothing, and delayed actor updates. Gap: still relies on narrow additive action noise, so exploration can be slow on hard locomotion tasks.
-- **SAC (Haarnoja et al. 2018).** Trains a stochastic actor with a maximum-entropy objective and automatic temperature tuning. Gap: entropy maximization over a high-dimensional action space is difficult, and the stochastic policy can underperform a well-explored deterministic one at this scale.
-- **Distributional value estimation (C51, Bellemare et al. 2017).** Models the full return distribution rather than a scalar value. Gap: a richer critic target still leaves open how to pair it with exploration and actor-architecture choices. The substrate's critic is distributional.
+- **REINFORCE / vanilla policy gradient (Williams 1992).** Estimates the policy gradient from Monte-Carlo returns and takes one gradient step per sample.
+- **TRPO (Schulman et al. 2015).** Optimizes within a KL-divergence trust region using Fisher-vector products.
+- **DDPG (Lillicrap et al. 2016).** Uses a deterministic actor and a Q-critic with a replay buffer and target networks.
+- **TD3 (Fujimoto et al. 2018).** Extends DDPG with clipped twin critics, target-policy smoothing, and delayed actor updates.
+- **SAC (Haarnoja et al. 2018).** Trains a stochastic actor with a maximum-entropy objective and automatic temperature tuning.
+- **Distributional value estimation (C51, Bellemare et al. 2017).** Models the full return distribution rather than a scalar value. The substrate's critic is distributional.
 
 ## Fixed substrate / Code framework
 

@@ -22,13 +22,7 @@ a saddle point. More generally `F` need not be a gradient of any single scalar; 
 **monotone operator**, and we are solving the **variational inequality** "find `z*` with
 `⟨F(z*), z - z*⟩ ≥ 0` for all `z`," of which `F(z*) = 0` is the unconstrained special case.
 
-The pain point is sharp and concrete: the obvious method — descend in `x`, ascend in `y`
-simultaneously — *fails*, and it fails on the simplest possible instance. The goal is a method
-that (1) drives `‖F(z)‖ → 0` (or the iterate to `z*`) on convex-concave / monotone problems
-where plain descent-ascent does not even stay bounded; (2) uses only first-order information
-(operator/gradient evaluations), with no matrix inverse or solve per step; (3) is cheap enough to
-run as an explicit iteration; and (4) degrades gracefully when each update is corrupted by noise.
-A practical solver must clear all four; the prior art below clears at most a subset.
+The question is how to design a first-order iteration — using only explicit operator/gradient evaluations — that drives `‖F(z)‖ → 0` on convex-concave / monotone problems.
 
 ## Background
 
@@ -83,37 +77,19 @@ field,
 z_{t+1} = z_t - τ F(z_t).
 ```
 
-For minimization (`F = ∇φ`, `φ` convex) this is just gradient descent and works. **Gap:** on the
-rotational bilinear field it diverges for *every* step size. The update operator is `I - τJ`;
-since `J` has eigenvalues `±i`, `I - τJ` has eigenvalues `1 ∓ iτ` of modulus `√(1 + τ²) > 1`, so
-`‖z_t - z*‖` grows like `(1 + τ²)^{t/2}` — geometric divergence, the iterates spiraling outward.
-Shrinking `τ` only slows the blow-up; it never stops it. The single forward evaluation at `z_t`
-carries no information about the rotation it is about to undergo, so it always overshoots away
-from the equilibrium.
+For minimization (`F = ∇φ`, `φ` convex) this is just gradient descent. The update operator is `I - τJ`; on the bilinear field where `J` has eigenvalues `±i`, `I - τJ` has eigenvalues `1 ∓ iτ` of modulus `√(1 + τ²) > 1`, so `‖z_t - z*‖` grows like `(1 + τ²)^{t/2}` — the iterates spiral outward geometrically.
 
 **Alternating gradient descent-ascent (Alt-GDA).** Update `x` then immediately use the new `x`
-when updating `y`. The sequential coupling shifts the Jacobian's spectrum and keeps the iterates
-bounded (they cycle rather than blow up). **Gap:** for the unconstrained bilinear game it
-produces bounded oscillation / cycling, not convergence to `z*` in general — it does not drive
-the field to zero. It also breaks the clean joint-operator view, complicating analysis.
+when updating `y`. The sequential coupling shifts the Jacobian's spectrum and keeps the iterates bounded (they cycle rather than blow up).
 
 **Proximal point method / backward step (Martinet 1970; Rockafellar 1976).** The implicit update
 `z_{t+1} = z_t - τ F(z_{t+1}) = (I + τ F)^{-1}(z_t)`. On a monotone operator it is firmly
 nonexpansive for any `τ > 0`; on the bilinear game Rockafellar's saddle-point analysis gives
-`r_{k+1} ≤ r_k / (1 + τ² λ_min(B^T B))`, unconditional linear contraction. It is, in a precise
-sense, the *ideal* method — maximally stable, step size unrestricted. **Gap:** it is implicit.
-Each step requires solving the nonlinear system `(I + τ F)(z_{t+1}) = z_t`; for a general `f` this
-inner solve is itself a hard problem, so the method is not directly runnable. It sets the target
-to *imitate*, not a usable algorithm.
+`r_{k+1} ≤ r_k / (1 + τ² λ_min(B^T B))`, unconditional linear contraction. It is, in a precise sense, the *ideal* method — maximally stable, step size unrestricted. Each step requires solving the nonlinear system `(I + τ F)(z_{t+1}) = z_t`, making it implicit.
 
 **Stochastic mirror-prox variants (Nemirovski 2004; Juditsky et al. 2011).** The stochastic VI
 literature also studies projection/mirror steps when only noisy samples of the operator are
-available. One common model draws fresh randomness inside the iteration, so consecutive operator
-calls can correspond to different sampled fields. **Gap:** when the variance is not tiny, that
-fresh-randomness convention can make the update behave as though it is mixing incompatible local
-models of the game; on stochastic bilinear instances it is reported to perform poorly and can
-diverge. The open question is how to retain the stability of implicit monotone-operator methods
-without paying for an implicit solve and without letting update noise dominate the dynamics.
+available. One common model draws fresh randomness inside the iteration, so consecutive operator calls can correspond to different sampled fields.
 
 ## Evaluation settings
 

@@ -2,21 +2,21 @@
 
 Offline goal-conditioned RL trains a single policy `pi(a | s, g)` to reach arbitrary goals from arbitrary states using only a fixed, reward-free trajectory dataset. The goal is usually fed to the value and actor as the raw observation. That raw observation is a sensing format, not a task format: it contains walls, textures, distractor objects, sensor jitter, and coordinates irrelevant to whether `g` is reachable. Two observations can encode the same reachable task while looking different; two that look similar can require a long detour.
 
-The design object is the **goal-representation module**: a learned map `phi(g)` that replaces the raw goal everywhere the agent sees it — in `V(s, phi(g))`, `pi(a | s, phi(g))`, and the target networks. Everything else in the learner, training loop, evaluation, and data loading is fixed. A good `phi(g)` keeps only the information needed for reaching and learns it purely offline.
+The design object is the **goal-representation module**: a learned map `phi(g)` that replaces the raw goal everywhere the agent sees it — in `V(s, phi(g))`, `pi(a | s, phi(g))`, and the target networks. Everything else in the learner, training loop, evaluation, and data loading is fixed.
 
 ## Prior art / Background / Baselines
 
-Existing designs and their observed limitations:
+Existing designs:
 
-- **Identity / raw-state goals.** Use `phi(g) = g`, concatenating `[s, g]` into value and actor. Convenient and assumption-free, but the networks must learn the full reachability geometry of the environment from scratch while also ignoring exogenous sensing noise. Gap: no structure is handed to the agent.
+- **Identity / raw-state goals.** Use `phi(g) = g`, concatenating `[s, g]` into value and actor. Convenient and assumption-free.
 
-- **Variational information-bottleneck goal codes.** Compress `g` through a stochastic bottleneck with a KL penalty toward a prior. Gap: the bottleneck shrinks codes generically; it has no way to know that robot pose matters and a texture patch does not.
+- **Variational information-bottleneck goal codes.** Compress `g` through a stochastic bottleneck with a KL penalty toward a prior.
 
-- **Temporal metric embeddings.** Learn `phi` so that an embedding distance tracks temporal distance, then use `phi` as a frozen feature extractor. Gap: the metric is symmetric and the features are frozen, so the module does not directly yield an actionable goal-conditioned code.
+- **Temporal metric embeddings.** Learn `phi` so that an embedding distance tracks temporal distance, then use `phi` as a frozen feature extractor.
 
-- **Behavioral contrastive representations.** Use a flexible inner-product contrastive objective built from dataset behavior. Gap: the objective describes how the behavior policy moves, not how an optimal reaching policy would move.
+- **Behavioral contrastive representations.** Use a flexible inner-product contrastive objective built from dataset behavior.
 
-- **Temporal self-prediction.** Train `phi` with self-predictive temporal structure. Gap: it predicts the dataset's dynamics rather than optimal reaching.
+- **Temporal self-prediction.** Train `phi` with self-predictive temporal structure.
 
 ## Fixed substrate / Code framework
 

@@ -3,26 +3,9 @@
 ## Research question
 
 The concrete goal is an unconditional generative model of natural images — think 32×32 CIFAR10
-samples — that hits four targets at once which, as of mid-2020, no single model family delivers
-together:
-
-1. **Sample quality** on par with the best adversarial models: sharp, globally coherent images,
-   measured by Inception Score and Fréchet Inception Distance against the training set.
-2. **Stable, non-adversarial training** — a single scalar objective that ordinary stochastic
-   gradient descent minimizes, with no min-max game, no discriminator to balance, no mode
-   collapse to nurse.
-3. **Likelihood-based** — the model optimizes a proper bound on negative log-likelihood, giving
-   a principled training signal and a measurable codelength in bits per dimension, not only an
-   implicit sample-quality proxy.
-4. **A simple, parameter-light definition** — easy to specify and scale, ideally with an
-   inference path that carries no parameters to overfit or collapse.
-
-The pain is that the mature families each purchase one or two of these at the cost of another.
-Adversarial models reach (1) but sacrifice (2) and (3). Autoregressive and flow-based models
-secure (3) but pay in sampling cost or expressiveness. Latent-variable models with learned
-inference networks secure (2) and (3) but historically not (1) — they produce blurry samples.
-A solution would have to deliver high-fidelity samples from a likelihood-based, non-adversarial
-model that is cheap to define and train.
+samples — that achieves high sample quality on standard benchmarks while being trained by a
+principled, stable objective. The question is: what family of latent-variable models, what
+parameterization, and what training objective can deliver this?
 
 ## Background
 
@@ -55,15 +38,6 @@ The field, mid-2020, has several mature toolkits whose pieces are individually w
   dequantization noise. After mapping the integer values 0 through 255 to [−1,1], adjacent values
   are spaced 2/255 apart, so each interior bin has half-width 1/255.
 
-The prevailing wisdom is that high-fidelity image synthesis requires either adversarial training
-or expensive autoregressive decoding, and that likelihood-based latent-variable models are doomed
-to blurry samples. A diagnostic fact about the score-based road sharpens the picture: a perturbed
-process that adds noise *without* rescaling the signal lets the variance of the perturbed data
-grow with the noise scale, so a single network sees inputs at wildly inconsistent scales across
-noise levels; and when the largest perturbation does not drive the data all the way to a fixed,
-known endpoint distribution, the sampler is started from a distribution that the network was never
-trained to expect.
-
 ## Baselines
 
 The prior methods an image generator would be measured against, and react to.
@@ -84,24 +58,12 @@ Algorithm/math: a forward chain q(x_t|x_{t-1}) of Gaussian noising steps, a lear
 p_θ(x_{t-1}|x_t) of Gaussian denoising steps, and a tractable variational bound obtained by
 comparing the two chains term by term.
 
-Gap: as instantiated, this framework was not a high-fidelity image generator — on CIFAR10 its
-codelength reached only about 5.40 bits per dimension and its samples were visually weak. Many of
-the choices that would turn the abstract framework into a competitive image model are left
-unspecified: the parameterization of the reverse mean, the reverse variances, the noise schedule,
-the network architecture, and the weighting of the objective terms.
-
 ### The variational autoencoder (Kingma & Welling, 2013)
 
 Core idea: a latent-variable generative model p_θ(x|z)p(z) trained with an amortized inference
 network q_φ(z|x) by maximizing the ELBO log p(x) ≥ E_q[log p_θ(x|z)] − KL(q_φ(z|x)‖p(z)). The
 reparameterization trick z=μ_φ(x)+σ_φ(x)⊙ε makes the bound differentiable end to end and supplies
 the low-variance gradients that make training practical.
-
-Gap: a single-step amortized posterior tends to **collapse** — the decoder learns to ignore the
-latent — and the samples come out **blurry**, because one Gaussian latent layer is a short bridge
-between a complex data distribution and a simple prior. A deep stack of latent layers helps but is
-hard to train. What this contributes is the machinery — the ELBO and reparameterization — not a
-strong image model.
 
 ### Noise-conditional score networks with annealed Langevin sampling (Song & Ermon, 2019)
 
@@ -114,15 +76,6 @@ chain flows from noise toward data. Sample quality approaches the adversarial mo
 Algorithm/math: per-scale denoising regression for training; a hand-set sequence of Langevin step
 sizes and per-scale noise injections for sampling.
 
-Gaps: (1) the noise schedule and the **sampler coefficients** — step sizes, per-scale noise
-amounts — are tuned **by hand, after the fact**; the training objective does not directly optimize
-the sampler. (2) The perturbation does **not rescale** the data, so the variance of the noised
-data grows with σ and presents inconsistently scaled inputs to the network. (3) The largest-σ
-perturbation does **not** drive the data to a fixed known endpoint, so the sampler's start
-distribution does not match the trained noise levels. (4) It is **not** a likelihood-based
-latent-variable model — no variational bound, no codelength, and no guarantee the sampler
-optimizes a quality metric of the model.
-
 ### The denoising ↔ score-matching identity (Vincent, 2011)
 
 Core idea: for a Gaussian corruption q_σ(x̃|x)=N(x̃; x, σ²I), minimizing the denoising
@@ -130,9 +83,6 @@ score-matching objective E‖s_θ(x̃) − ∇_{x̃} log q_σ(x̃|x)‖² equals
 the perturbed density, up to a constant. The gradient ∇_{x̃} log N(x̃; x, σ²I) = (x − x̃)/σ² is
 proportional to the negative of the noise that was added, so **regressing onto the added noise is
 regressing onto the score**, up to a positive scale.
-
-Gap: this is an identity, not a model. It relates a denoising regression to score estimation at a
-single fixed corruption scale; it says nothing about chaining noise levels into a generator.
 
 ### Langevin dynamics (the background sampler)
 

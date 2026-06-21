@@ -9,27 +9,20 @@ the conditioning operator. The metric is FID against the CIFAR-10 train set (low
 ## Prior art / Background / Baselines
 
 These are the conditioning mechanisms currently available for feeding side information into a
-convolutional feature stream. Each has a known core idea and a concrete limitation:
+convolutional feature stream.
 
 - **Additive / concatenated conditioning** (Conditional DCGAN, Conditional PixelCNN, WaveNet).
   Broadcast the conditioning vector into constant feature maps and concatenate before a conv, or add
-  a conditioning-dependent bias. Limitation: it can shift features but cannot rescale, amplify, gate,
-  or negate them.
+  a conditioning-dependent bias.
 - **Feature-wise gates** (LSTM gates, Squeeze-and-Excitation). Multiply features by a bounded factor
-  $\sigma(g) \in (0,1)$. Limitation: scale-only and bounded; it cannot amplify, shift a threshold, or
-  negate features.
+  $\sigma(g) \in (0,1)$.
 - **Conditional / adaptive normalization** (Conditional BatchNorm, Conditional Instance Norm, AdaIN).
   Make the per-channel $\gamma$ and $\beta$ of a normalization layer depend on the conditioning instead
-  of being learned constants. Limitation: tied to a specific normalization layer and demonstrated on
-  recognition or style-transfer backbones, not on a diffusion denoiser that also carries a timestep
-  signal.
+  of being learned constants. Demonstrated on recognition or style-transfer backbones.
 - **FiLM**. A conditioning input regresses a per-channel affine $\gamma(z)\cdot F + \beta(z)$. It
-  contains additive-bias and gating as special cases. Limitation: the affine is spatially uniform and
-  content-blind — the same scale and shift at every position, derived from the label alone.
+  contains additive-bias and gating as special cases.
 - **Adaptive Group Norm (ADM)**. FiLM inserted into a diffusion residual block: the combined
-  timestep-and-class embedding linearly produces the GroupNorm scale and shift. Limitation: the
-  original system needed an auxiliary classifier at sampling time to obtain strong class adherence;
-  the in-network affine has limited bandwidth for enforcing the class.
+  timestep-and-class embedding linearly produces the GroupNorm scale and shift.
 
 ## Fixed substrate / Code framework
 

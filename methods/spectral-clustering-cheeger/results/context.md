@@ -17,11 +17,8 @@ $\phi_G = \min_{\varnothing\ne S\subsetneq V} \phi(S)$, while the vertex-count v
 $\theta_G=\min_{|S|\le n/2}\theta(S)$. A small value means there is a genuine bottleneck; a large
 value means the graph is an expander with no good cut.
 
-The pain point: $\phi_G$ is a minimum over all $2^{|V|}$ subsets, and finding the sparsest cut /
-minimum-conductance set is NP-hard. We cannot search the subsets directly. We need a *tractable
-proxy* for $\phi_G$ — one that can be computed in polynomial time and that comes with a
-*provable* relationship to the true combinatorial optimum, so that a cut we extract from the proxy
-is guaranteed to be near-optimal rather than merely a heuristic guess.
+The question is how to find a cut with small conductance in polynomial time, given that
+$\phi_G$ is a minimum over all $2^{|V|}$ subsets.
 
 ## Background
 
@@ -71,44 +68,29 @@ isoperimetric constant* is $h(M)=\inf_E \frac{S(E)}{\min(V(A),V(B))}$, the infim
 hypersurfaces $E$ cutting $M$ into pieces $A,B$, of cut area over the smaller volume — a continuous
 "sparsest cut." Cheeger proved a lower bound on the first nonzero eigenvalue $\lambda_1$ of the
 Laplace–Beltrami operator in terms of it, $\lambda_1(M)\ge h(M)^2/4$: a small spectral gap forces a
-geometric bottleneck. Buser (1982) proved a reverse inequality. So in the continuous world the
-spectrum already bounds isoperimetry — and a graph Laplacian is the discrete analogue of the
-Laplace–Beltrami operator, $\theta_G$/$\phi_G$ the discrete analogue of $h(M)$, which is exactly the
-correspondence that invites a discrete version of the bound.
-
-**Prevailing wisdom and the gap.** By the early 1970s connectivity was understood combinatorially
-(menger-style vertex/edge cuts) and spectrally (Fiedler's $a(G)$), and people had begun proposing
-eigenvectors for partitioning. What was missing was a *two-sided, quantitative* guarantee: a small
-$\lambda_2$ should not merely signal "a bottleneck exists somewhere" but should certify that a
-*specific, efficiently extractable* cut has small conductance, with the gap between the relaxation
-and the true optimum controlled.
+geometric bottleneck. Buser (1982) proved a reverse inequality. The graph Laplacian is the discrete
+analogue of the Laplace–Beltrami operator, and $\theta_G$/$\phi_G$ are the discrete analogues of
+$h(M)$, which invites a discrete version of these bounds.
 
 ## Baselines
 
 **Brute-force / combinatorial sparsest cut.** Directly minimizing $\phi(S)$ over subsets is exact
 but exponential; the decision problem is NP-hard. Local-search and max-flow/min-cut heuristics
-(Kernighan–Lin–style swaps, flow-based balanced cuts) give cuts but with no certificate that they
-are close to $\phi_G$, and flow-based balanced separators are expensive. The open need is a
-polynomial-time method with an *approximation guarantee* tying its output to $\phi_G$.
+(Kernighan–Lin–style swaps, flow-based balanced cuts) give cuts but without a certificate that they
+are close to $\phi_G$, and flow-based balanced separators are expensive.
 
 **Spectral bounds for partitioning (Donath–Hoffman 1973).** Donath and Hoffman derived lower bounds
 on the weight of a balanced partition in terms of the eigenvalues of the connectivity matrix, the
-first use of eigenvalues to *bound* partition quality (for unit edge weights). This gives a number
-to compare a partition against but not, by itself, a rounding that achieves the bound, nor a
-two-sided relation to conductance.
+first use of eigenvalues to *bound* partition quality (for unit edge weights).
 
-**Algebraic connectivity as a one-sided proxy (Fiedler 1973).** Fiedler's $a(G)=\lambda_2$ gives
+**Algebraic connectivity as a proxy (Fiedler 1973).** Fiedler's $a(G)=\lambda_2$ gives
 $a(G)=0\iff$ disconnected and $a(G)\le v(G)$, so a small $\lambda_2$ is *necessary* for a sparse
-vertex cut. But $a(G)\le v(G)$ is one direction only and is stated against vertex connectivity, not
-conductance; it does not say that small $\lambda_2$ *suffices* for a good cut, and it does not hand
-you the cut. Fiedler-vector bisection supplies useful intuition, but without a proof that
-thresholding it yields a cut whose conductance is bounded by a function of $\lambda_2$.
+vertex cut. Fiedler-vector bisection partitions the graph by the sign or a threshold of the Fiedler
+vector.
 
-**Continuous Cheeger inequality (Cheeger 1970, Buser 1982).** $\lambda_1(M)\ge h(M)^2/4$ is exactly
-the lower-bound direction we want, but for manifolds and the Laplace–Beltrami operator, not for the
-combinatorial graph Laplacian. It tells us a discrete analogue is plausible, but the manifold proof
-(a co-area / level-set argument on smooth functions) does not transfer verbatim, and it says nothing
-about extracting a discrete cut.
+**Continuous Cheeger inequality (Cheeger 1970, Buser 1982).** $\lambda_1(M)\ge h(M)^2/4$ is the
+lower-bound direction for manifolds and the Laplace–Beltrami operator, with Buser proving the
+complementary upper bound in the smooth setting.
 
 ## Evaluation settings
 
@@ -131,7 +113,7 @@ and the available spectral certificate.
 ## Code framework
 
 The pieces that already exist: build the Laplacian, score a cut, and compute a few extreme
-eigenpairs of a symmetric matrix. The one slot left empty is the map from a graph to a cut.
+eigenpairs of a symmetric matrix.
 
 ```python
 import numpy as np

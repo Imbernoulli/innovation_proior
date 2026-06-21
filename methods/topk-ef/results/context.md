@@ -5,14 +5,10 @@ local minibatch, and before the optimizer can take a step the workers must agree
 aggregate gradient — typically an all-reduce that sums each worker's `g` into the global
 gradient. That gradient is a single dense vector the size of the whole model: for modern
 networks, millions of 32-bit floats, exchanged *every iteration*. As clusters and models grow,
-this synchronization — not the floating-point arithmetic — becomes the wall-clock bottleneck;
-the impressive compute of a data center sits idle waiting on the network. The precise goal is
-to drive down the number of bits each worker must send per iteration — by one, two, even three
-orders of magnitude — while preserving the convergence behavior and final model quality that
-full-gradient training is valued for. The tension is sharp: any lossy reduction of the
-gradient perturbs the descent direction, and a perturbed direction can slow convergence, bias
-the solution, or stop it converging at all. A solution must compress aggressively *and* come
-with a reason to believe the optimizer still reaches the same place.
+this synchronization — not the floating-point arithmetic — becomes the wall-clock bottleneck.
+The goal is to drive down the number of bits each worker must send per iteration — by one,
+two, even three orders of magnitude — while preserving the convergence behavior and final model
+quality that full-gradient training delivers.
 
 ## Background
 
@@ -23,8 +19,7 @@ stochastic gradients that must be communicated and aggregated each step. Standar
 assumptions are `L`-smoothness of `f` (the gradient is `L`-Lipschitz) and a bounded second
 moment `E‖g_t‖² ≤ σ²`; under these, SGD with `γ = O(1/√T)` reaches
 `min_t E‖∇f(x_t)‖² = O(1/√T)` on non-convex objectives, and `O(1/√T)` suboptimality on
-convex ones. Any communication-reduction scheme is measured against *this* rate: matching it
-means compression cost nothing asymptotically.
+convex ones. Any communication-reduction scheme is measured against this rate.
 
 **A structural fact about gradients that invites compression.** Gradient updates in deep
 networks are strongly *positively skewed* — the overwhelming majority of coordinates carry
@@ -43,10 +38,8 @@ global threshold to work).
 applied to the gradient is *unbiased* if `E[C(g)] = g`; then `C(g)` is still a valid
 stochastic gradient and the entire SGD analysis goes through unchanged except that the
 gradient's variance is inflated by `C`. It is *biased* if `E[C(g)] ≠ g`; then `C(g)` is not a
-stochastic gradient of `f` at all, and none of the standard guarantees apply. This split is
-the central organizing fact of the field at the time: unbiased schemes are theoretically
-clean but limited in how far they can compress; the most aggressive schemes used in practice
-are biased, work strikingly well empirically, and have essentially no convergence theory.
+stochastic gradient of `f` at all, and the standard guarantees do not directly apply. This
+split is the central organizing fact of the field at the time.
 
 **The empirical pull of aggressive, biased compression.** Practitioners had already found
 that extreme, biased compression — sending only the sign of each coordinate (1-bit SGD,
@@ -55,35 +48,25 @@ dropping, Aji & Heafield 2017; Dryden et al. 2016; Lin et al. 2018) — could cu
 by 1-3 orders of magnitude with little or no loss in final accuracy. A recurring, load-bearing
 empirical detail across all of these practical schemes: a coordinate that gets suppressed is
 *not* simply discarded. 1-bit SGD used local error accumulation, and gradient dropping kept
-local dropped values after observing that "small gradients can accumulate over time" and that
-zeroing them damages convergence. These engineering choices were effective, but their
-mathematical role was not settled: the field had strong empirical recipes and only partial
-theory for why biased compressors with local bookkeeping should behave like SGD.
+local dropped values after observing that "small gradients can accumulate over time." These
+engineering choices were effective in practice.
 
 ## Baselines
 
-The prior compression schemes a new method would be measured against and reacts to.
+The prior compression schemes in use at the time.
 
 **Unbiased stochastic quantization — QSGD (Alistarh, Grubic, Li, Tomioka, Vojnovic, NeurIPS
 2017) and TernGrad (Wen et al. 2017).** Quantize each coordinate by *randomized* rounding to
 one of `s` discrete levels, scaled so the result is unbiased: `E[Q(g)] = g`. Because it is
 unbiased, `Q(g)` plugs directly into standard SGD analysis; the only price is a variance
 blow-up, `E‖Q(g)‖² ≤ κ‖g‖²` with `κ` growing as the levels coarsen (up to a `√d` factor at the
-most aggressive setting), and the convergence slows by exactly that factor `κ`. **Gap:** the
-unbiased construction has a bits floor — even at the coarsest level QSGD must transmit the
-sign and index of order `√d` coordinates, so it cannot reach the constant-coordinates-per-step
-regime that sparsification reaches, and pushing toward extreme compression directly inflates
-the variance and the iteration count.
+most aggressive setting), and the convergence slows by exactly that factor `κ`.
 
 **Sign compression — 1-bit SGD (Seide et al. 2014), signSGD / Signum (Bernstein et al. 2018).**
 Send only the sign of each coordinate: `x_{t+1} = x_t − γ sign(g_t)`, one bit per coordinate.
 Extremely cheap, and close kin to adaptive methods (sign of a momentum-smoothed gradient is
 the `Signum` variant, which mirrors Adam's behavior). Existing guarantees require benign
 conditions, such as Gaussian gradient noise or batch sizes that grow with the iteration count.
-**Gap:** the sign operator is biased, `E[sign(g)] ≠ ∇f`, and it discards both magnitude and
-fine directional information. That makes it difficult to interpret the communicated vector as
-a descent direction under the standard SGD assumptions; the practical win is clear, but a
-general convergence explanation is missing.
 
 **Magnitude sparsification / gradient dropping — top-k (Aji & Heafield 2017; Dryden et al.
 2016; Strom 2015).** Of the `d` coordinates of `g`, keep only the `k` with the largest
@@ -91,22 +74,13 @@ absolute value (transmit their values and their indices) and zero the rest; `k` 
 fraction of `d` (drop ratios of 99% or 99.9% are typical). Because gradients are positively
 skewed, the kept coordinates hold most of the energy, and empirically the final accuracy is
 nearly untouched at very high drop rates. The communicated payload is `k` floats plus `k`
-indices (`k log d` bits). **Gap:** top-k is biased, `E[top_k(g)] ≠ g`, so the clean unbiased
-analysis does not apply and no convergence guarantee was known for it. A naive implementation
-has a concrete failure mode: a coordinate whose magnitude is *persistently* small never enters
-the top-k, so its gradient signal is never transmitted and that direction is permanently
-starved — the optimizer is driven by only a biased subset of the gradient. Practical gradient
-dropping avoided simply zeroing small coordinates, but the convergence mechanism and the exact
-rate remained open.
+indices (`k log d` bits). Practical gradient dropping implementations kept local dropped
+values rather than simply discarding them.
 
-**Mem-SGD (Stich, Cordonnier, Jaggi, NeurIPS 2018).** The first attempt to put sparsified SGD
-with the local-stash mechanism (which they call "memory") on a theoretical footing in the
-strongly convex case. It formalizes a class of compressors by a *contraction* property and
-analyzes SGD that compresses the stepped, memory-augmented gradient and carries the
-uncompressed remainder forward in a memory vector `m`. **Gap:** the analysis is restricted to
-the *smooth, strongly convex* setting; the non-convex objectives of deep learning, and the
-non-smooth case, are not covered, and the precise sense in which a *general* biased compressor
-(sign, top-k, low-rank, …) can be made to match SGD's rate is left open.
+**Mem-SGD (Stich, Cordonnier, Jaggi, NeurIPS 2018).** Formalizes a class of compressors by a
+*contraction* property and analyzes SGD that compresses the stepped, memory-augmented gradient
+and carries the uncompressed remainder forward in a memory vector `m`. Provides convergence
+results for the smooth, strongly convex setting.
 
 ## Evaluation settings
 

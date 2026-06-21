@@ -9,11 +9,7 @@ layers must re-read the entire memory of what came before. The precise question 
 accelerators, where arithmetic throughput is roughly two orders of magnitude higher than memory
 bandwidth, what is actually limiting the speed of incremental (one-token-at-a-time) attention
 decoding, and can the attention layer be restructured so that the same amount of arithmetic is done
-against far less memory traffic — *without* paying a large quality cost? A solution would have to
-identify the dominant cost term in incremental decoding, shrink it by a large factor (ideally
-proportional to the number of attention heads), and preserve the representational power that makes
-multi-head attention work, all while keeping training speed and final model quality close to an
-unmodified baseline.
+against far less memory traffic?
 
 ## Background
 
@@ -56,21 +52,14 @@ standard architecture:
   projection matrices. The ratio is now `Θ(n/d + 1/b)`. When `n ≈ d` or the batch is small `b ≈ 1`,
   the ratio is close to 1 — incremental decoding is memory-bandwidth bound.
 - **The two terms behave very differently.** The `1/b` term is easy to push down: just use a larger
-  batch (memory permitting). The `n/d` term is the hard one. It traces directly to the cached
-  keys/values that must be reloaded each step. At full length, one of `K` or `V` has size
+  batch (memory permitting). The `n/d` term traces directly to the cached keys/values that must be
+  reloaded each step. At full length, one of `K` or `V` has size
   `b · h · m · k = b · n · d` under `m = n`, `k = d/h`; summed over the `n` incremental calls, that
-  becomes the cumulative reload term `Θ(b n² d)`. The removable multiplicity is the `h` separate
-  `d_head`-wide key/value slices: replacing `h · d_head` with one `d_head` cuts the K/V reload term by
-  `h`.
+  becomes the cumulative reload term `Θ(b n² d)`.
 - **KV-cache footprint scales with the number of KV heads.** The bytes the decoder must store and
   reload per generated token are `2 · (#layers) · n_kv_heads · d_head · bytes_per_element` — two for
   K and V, times one `[n_kv_heads, d_head]` matrix per layer. Standard multi-head attention has
-  `n_kv_heads = h`; a design with one shared K/V head has `n_kv_heads = 1`, so the per-token cache and
-  the per-step reload bandwidth drop by exactly `h`.
-
-The pain point is sharp and quantitative: incremental decoding stalls on memory bandwidth, and the
-offending cost is dominated by reloading separate per-head keys and values; replacing those `h` KV heads
-with one KV head is the direct h-fold lever.
+  `n_kv_heads = h`.
 
 ## Baselines
 
@@ -78,35 +67,25 @@ These are the structures a faster attention layer would be measured against.
 
 **Single-head dot-product attention (Bahdanau et al., 2014; the scaled form, Vaswani et al., 2017).**
 One query projection, one key projection, one value projection. `y = softmax(q · Kᵀ / √d_k) · V`.
-Simple and the cheapest K/V state, but a single head can only express one read pattern at a time;
-empirically it is weaker than running several heads in parallel at the same total width. **Gap:** it
-lacks the parallel read patterns that give multi-head models their quality; it is the low-quality end
-of the design space, not a usable target.
+Simple and the cheapest K/V state.
 
 **Multi-head attention (Vaswani et al., 2017).** Run `h` heads in parallel, each with its own
 query/key/value projection of width `d/h`, then project and sum the head outputs. Concretely, with
 `P_q, P_k, P_v` of shape `[h, d, ·]` and `P_o` of shape `[h, d, v]`:
 `Q = X·P_q`, `K = M·P_k`, `V = M·P_v`, `logits = Q·Kᵀ`, `weights = softmax(logits)`,
-`O = weights·V`, `Y = O·P_o`. This is the quality baseline. **Gap:** every head materializes and
-caches its own `K` and `V`. In incremental decoding this is exactly what makes the cached state — and
-hence the per-step memory traffic — scale with `h`, leaving the decode step memory-bandwidth bound
-(the `n/d` term above). The full per-head key/value state is reloaded at every generation step.
+`O = weights·V`, `Y = O·P_o`. This is the quality baseline. Every head materializes and caches its
+own `K` and `V`; in incremental decoding the cached state and hence the per-step memory traffic scale
+with `h`.
 
 **Reducing the number of heads or the per-head dimension.** A direct way to shrink the cached K/V is
 to use fewer heads `h`, or smaller key/value dimensions `d_k, d_v` (widening the feed-forward layers
-to keep the total parameter count fixed). This does cut the K/V footprint. **Gap (diagnostic):**
-across translation and language-modeling benchmarks, these reduced-`h` / reduced-`d_k` multi-head
-variants degrade quality markedly relative to the full multi-head baseline — substantially more than
-they shrink the state — because cutting heads or per-head width directly removes representational
-capacity. So the obvious knobs for shrinking K/V trade away the very quality the baseline was prized
-for.
+to keep the total parameter count fixed).
 
 **Limiting or compressing the attended positions.** An orthogonal family reduces `n` itself: restrict
 each position to attend only to a local neighborhood (e.g. the previous 31 positions), or otherwise
 compress the number of memory positions attended to (Liu et al., 2018; Zhang, Xiong & Su, 2018;
-Povey et al., 2018). **Gap:** these change *which* and *how many* positions are attended to (and so
-can alter the model's reach), and they attack the `n` factor; they do not address the per-head
-multiplicity of the keys and values, so the heads factor in the cached state remains.
+Povey et al., 2018). These change which and how many positions are attended to, and they address the
+`n` factor in the cached-state cost.
 
 ## Evaluation settings
 

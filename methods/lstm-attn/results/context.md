@@ -6,16 +6,9 @@ We want a single neural network that reads a source sentence and emits its trans
 trained end to end to maximize the probability of the correct target, replacing the
 many separately tuned sub-components of a phrase-based statistical system. The recently
 established way to do this maps the whole variable-length source into one fixed-length vector
-and then generates the target from that vector alone. The precise problem is that a sentence
-of any length — five words or fifty — must be compressed into the *same-size* vector before a
-single word of the translation is produced, and the decoder never again sees the source except
-through that one vector. The pressing question is whether that single fixed-length
-representation is enough: can a fixed-size vector hold everything relevant about an arbitrarily
-long sentence, and if not, what is the cost, and where exactly does it show up? A solution
-would have to let the model produce good translations regardless of source length — in
-particular it must not degrade on sentences longer than those seen in training — while staying
-a single, jointly trainable network with a tractable training objective and a usable decoding
-procedure.
+and then generates the target from that vector alone. The question is what architectural
+choices govern translation quality — in particular across sentences of different lengths —
+within this single, jointly trainable encoder-decoder framework.
 
 ## Background
 
@@ -46,70 +39,51 @@ the vocabulary, the sequence ends with a special end-of-sentence symbol so the m
 lengths, and at decode time one runs a left-to-right beam search keeping the `B` best partial
 hypotheses (Graves 2012; Boulanger-Lewandowski et al. 2013).
 
-The motivating empirical fact is about *length*. A basic encoder-decoder's BLEU was observed
-to fall sharply as the source sentence grows, and the drop is worst for sentences longer than
-those in the training corpus (Cho et al. 2014b; Pouget-Abadie et al. 2014). The reading is
-that the fixed-length vector is an information bottleneck: there is only so much "room" in a
-constant-size representation, and a long sentence overflows it. A second, suggestive
-observation comes from sequence-to-sequence training: reversing the order of the source words
-(so the first source words sit near the first target words) markedly improved results,
-dropping test perplexity from 5.8 to 4.7 and raising BLEU from 25.9 to 30.6 (Sutskever,
-Vinyals & Le 2014) — evidence that *how far* relevant source information has to travel through
-the recurrence, and through the single summary vector, materially affects translation quality.
+An empirical observation about *length*: a basic encoder-decoder's BLEU falls as the source
+sentence grows, with the drop most pronounced for sentences longer than those in the training
+corpus (Cho et al. 2014b; Pouget-Abadie et al. 2014). A second observation comes from
+sequence-to-sequence training: reversing the order of the source words (so the first source
+words sit near the first target words) markedly improved results, dropping test perplexity from
+5.8 to 4.7 and raising BLEU from 25.9 to 30.6 (Sutskever, Vinyals & Le 2014).
 
 A related strand is differentiable, soft selection over an input sequence. In handwriting
 synthesis, Graves (2013) let a generator consult a character string through a soft window
 `w_t = Σ_{u=1}^U φ(t,u) c_u`, with `φ(t,u) = Σ_{k=1}^K α_t^k exp(−β_t^k (κ_t^k − u)²)` a
 mixture of `K` Gaussians whose location `κ_t = κ_{t-1} + exp(κ̂_t)` advances by a positive,
-learned offset at each step. This made the window differentiable and trainable jointly with
-the generator. Two properties matter for what follows: the window is placed by *location*
-(a coordinate `κ` slid along the input) rather than by matching content, and `κ` only ever
-increases, so the alignment is strictly monotonic and one-directional.
+learned offset at each step. The window is differentiable and trainable jointly with the
+generator. The window is placed by *location* (a coordinate `κ` slid along the input) rather
+than by matching content, and `κ` only ever increases, so the alignment is strictly monotonic
+and one-directional.
 
 ## Baselines
 
-These are the prior systems a new translation model would be measured against and would react
-to.
+These are the prior systems a new translation model would be measured against.
 
 **Phrase-based statistical machine translation (Koehn, Och & Marcu 2003; Koehn 2010, "Moses").**
 A log-linear model `log p(f | e) = Σ_n w_n f_n(f, e) + log Z(e)` combining a translation model
 (phrase-pair probabilities) and a target language model, with weights tuned to maximize BLEU
 on a development set. Strong and mature, and able to exploit large monolingual data for its
-language model. **Gap:** many separately engineered and separately tuned sub-components rather
-than one jointly optimized system; alignment is handled by a discrete latent process, and
-mapping phrases of different lengths needs counter-intuitive devices such as aligning words to
-or from a `[NULL]` token.
+language model.
 
 **RNN encoder-decoder for SMT rescoring (Cho et al. 2014a).** The encoder-decoder with gated
-units, but used as a feature: it scores phrase pairs that re-rank or augment an existing
+units, used as a feature: it scores phrase pairs that re-rank or augment an existing
 phrase-based system, `log p(f|e) = g(h_t, y_{t-1}, c)` entering the log-linear model as one
-more term. **Gap:** the neural network is a component bolted onto the statistical system, not a
-translator in its own right; and it still funnels the source through a single fixed `c`.
+more term.
 
 **Sequence-to-sequence with deep LSTMs (Sutskever, Vinyals & Le 2014).** A standalone neural
 translator: an LSTM encoder reads the source and its *final hidden state* `v = h_{T_x}` is the
 fixed representation; a deep LSTM decoder is a language model whose initial state is `v`,
 `p(y_1..y_{T_y} | x) = Π_t p(y_t | v, y_<t)`, trained by maximizing `(1/|S|) Σ log p(T|S)` and
-decoded by beam search. It reached strong BLEU on English-to-French and, with source reversal,
-reported little trouble on long sentences. **Gap:** the entire source, no matter how long,
-lives in one fixed-dimensional `v`; the decoder sees the source only through `v` and never
-revisits the individual source positions. The reversal trick reduces the distance relevant
-information must travel but does not enlarge the bottleneck — it rearranges what is squeezed
-through it.
+decoded by beam search. It reached strong BLEU on English-to-French, and with source reversal
+reported strong performance on longer sentences.
 
 **Standalone RNN encoder-decoder translation (Cho et al. 2014a, used directly).** The same
 gated encoder-decoder trained and used on its own as a translator (the natural same-family
-comparison for any successor). **Gap:** identical fixed-`c` bottleneck; its BLEU is what
-degrades steeply with source length in the diagnostic above, and it is the system whose
-length curve a successor must flatten.
+comparison for any successor).
 
 **Soft-window sequence generation (Graves 2013), as an alignment mechanism.** The Gaussian-mixture
-soft window above is the one prior *differentiable* way to let a generator focus on parts of an
-input sequence while training end to end. **Gap for translation:** the window is location-based
-and monotonic — its center only moves forward — so it cannot represent the long-distance
-reordering that translation routinely needs (adjective-noun order differs between English and
-French/German), and the window weights are not normalized into a distribution over input
-positions.
+soft window above provides a differentiable way to let a generator focus on parts of an
+input sequence while training end to end.
 
 ## Evaluation settings
 

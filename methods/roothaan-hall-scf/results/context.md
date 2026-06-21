@@ -8,22 +8,13 @@ to useful accuracy, **for an arbitrary molecule** — not just an atom. We want 
 and ideally a computing machine, can actually carry out: it must turn into a finite, well-posed numerical
 task with a definite recipe, rather than an open-ended search over arbitrary functions of three dimensions.
 
-The pain is sharp and specific. The best available *ab initio* theory of many-electron systems — the
-self-consistent field with exchange — is, for a molecule, a set of coupled three-dimensional nonlinear
-integro-differential equations. For a single atom these collapse (by spherical symmetry) to one-dimensional
-radial equations that can be integrated on a grid by hand or by a desk calculator; this is how atomic
-structure was being computed. A molecule has no such symmetry: each orbital is a genuinely
-three-dimensional function with no privileged coordinate system, and the equations contain a *nonlocal*
-operator (an integral kernel), and they must be re-solved every cycle because the effective potential
-depends on the very orbitals being sought. Direct numerical solution of that object for a polyatomic
-molecule was, in practice, impossible. As a result, rigorous electronic-structure theory was effectively
-an atoms-only enterprise; molecules were handled with crude semi-empirical recipes or valence-bond
-constructions whose working equations had no firm variational footing.
-
-A solution would have to: (i) be applicable to molecules of arbitrary geometry, (ii) reduce the problem to
-something a linear-algebra-capable computer can solve, (iii) respect the antisymmetry of the
-many-electron wavefunction (the Pauli principle), and (iv) retain the variational guarantee that the
-computed energy is an upper bound to the true ground-state energy.
+The best available *ab initio* theory of many-electron systems — the self-consistent field with exchange —
+is, for a molecule, a set of coupled three-dimensional nonlinear integro-differential equations. For a
+single atom these collapse (by spherical symmetry) to one-dimensional radial equations that can be
+integrated on a grid by hand or by a desk calculator; this is how atomic structure was being computed. A
+molecule has no such symmetry: each orbital is a genuinely three-dimensional function with no privileged
+coordinate system, and the equations contain a *nonlocal* operator (an integral kernel), and they must be
+re-solved every cycle because the effective potential depends on the very orbitals being sought.
 
 ## Background
 
@@ -61,13 +52,11 @@ for N = 2n electrons (a closed-shell singlet). Carrying out the spin sums in the
 determinant leaves a purely spatial expression in which each orbital appears with occupancy two and the
 two-electron part is a combination of Coulomb and exchange contributions over the occupied orbitals.
 
-**The atoms-only bottleneck (the diagnostic fact that frames everything).** It is an established, practical
-observation of the time that F φ_i = ε_i φ_i is *tractable for atoms and intractable for molecules*, and the
-reason is structural, not incidental: for an atom the central field lets the angular variables separate
-analytically and leaves a one-dimensional radial equation for grid integration; a molecule offers no
-coordinate system in which the three-dimensional nonlinear integro-differential eigenproblem separates,
-so it cannot be put on a grid and integrated in the same way. This is *why* rigorous molecular calculations
-did not exist, and it is the wall any molecular method has to get around.
+**The atoms-only situation.** It is an established, practical observation of the time that F φ_i = ε_i φ_i is
+tractable for atoms: the central field lets the angular variables separate analytically and leaves a
+one-dimensional radial equation for grid integration. A molecule offers no coordinate system in which the
+three-dimensional nonlinear integro-differential eigenproblem separates, so it cannot be put on a grid and
+integrated in the same way.
 
 **The chemist's orbital picture (Hund–Mulliken MO; LCAO heuristic).** In the molecular-orbital view each
 electron occupies a one-electron function spread over the whole molecule. Empirically, near any nucleus a
@@ -87,24 +76,20 @@ orthogonal** — two orbitals on neighboring atoms have a nonzero overlap integr
 
 **Numerical (grid) Hartree–Fock for atoms.** Solve F φ = ε φ by finite-difference / numerical integration
 of the radial equation, iterating to self-consistency. Core idea: discretize the orbital on a radial grid
-and integrate the differential equation directly. Gap: it leans entirely on spherical symmetry to reduce a
-three-dimensional problem to one dimension; with no central field, a molecule's orbital is an irreducibly
-three-dimensional function and the nonlocal exchange kernel makes direct grid solution of the molecular
-eigenproblem impractical. The method does not carry over to molecules.
+and integrate the differential equation directly. This approach relies on spherical symmetry to reduce a
+three-dimensional problem to one dimension.
 
-**Hartree's product SCF.** Average-field iteration with a product (non-antisymmetric) wavefunction. Core
-idea and math: each electron sees the mean Coulomb field of the others; iterate to self-consistency. Gap: it
-omits antisymmetry, so it has no exchange term and violates the Pauli principle at the wavefunction level;
-the energy it minimizes is not that of an admissible fermionic state.
+**Hartree's product SCF.** Average-field iteration with a product (non-antisymmetric) wavefunction. Each
+electron sees the mean Coulomb field of the others; iterate to self-consistency. The wavefunction used is
+a product rather than a determinant, so the energy minimized is not that of an antisymmetric fermionic
+state and there is no exchange term.
 
 **Semi-empirical LCAO / valence-bond secular methods.** Write the molecular state in terms of
 atom-centered functions and diagonalize a small "secular" matrix whose entries are parameters fit to
-experiment (ionization potentials, spectra). Core idea: capture chemistry cheaply with a few
-atom-based functions and empirical integrals. Gap: the working equations were posited by analogy, and the
-matrix entries were empirical parameters with no stated connection to the molecular Hamiltonian; the
-treatment of the atom-centered functions as if they formed a clean orthonormal set glosses over the fact
-that functions on different centers overlap. These schemes deliver fitted numbers but not a controlled,
-parameter-free *ab initio* energy with the variational guarantee.
+experiment (ionization potentials, spectra). These schemes capture chemistry cheaply with a few
+atom-based functions and empirical integrals. The matrix entries are empirical parameters rather than
+quantities derived from the molecular Hamiltonian, and the atom-centered functions are treated as if they
+formed a clean orthonormal set.
 
 ## Evaluation settings
 

@@ -6,24 +6,12 @@ Deep image classifiers are extremely fragile to adversarial examples: for a corr
 classified natural image `x` with label `y`, there exists a tiny perturbation `delta` with
 `||delta||_inf <= eps` (eps small enough that the image looks unchanged to a human) such that
 the network's prediction flips off `y`. The most reliable known defense is adversarial
-training — train the network on perturbed inputs rather than clean ones — but even the best
-adversarially trained models leave a large gap between **natural accuracy** (test accuracy on
-clean images) and **robust accuracy** (test accuracy under a strong white-box attack), even on
-a dataset as simple as CIFAR-10. The goal is a training procedure that meaningfully closes
-that gap: higher robust accuracy under strong white-box `L_inf` attacks at acceptable clean
-accuracy, using the same compute budget as standard adversarial training (one inner attack +
-one outer SGD step per minibatch), and tunable by a single scalar that trades off the natural
-and robust objectives.
-
-A solution has to confront a structural subtlety that the prevailing formulation glosses over.
-An adversarial example is, by its textbook definition, only defined relative to a *correctly
-classified* natural example — it is a perturbation that turns a right answer into a wrong one.
-But during training, at any given epoch, some natural training examples are already
-misclassified by the current model, with no perturbation at all. The dominant training recipe
-treats every example identically: it perturbs all of them and applies the same loss to all of
-them, ignoring whether the underlying natural example was correctly classified in the first
-place. Whether that distinction matters for the final robustness — and if so, how to exploit
-it — was an open and largely unexamined question.
+training — train the network on perturbed inputs rather than clean ones. Even adversarially
+trained models show a sizable gap between **natural accuracy** (test accuracy on clean images)
+and **robust accuracy** (test accuracy under a strong white-box attack), even on a dataset as
+simple as CIFAR-10. The broad question is how to design a training objective that improves
+robust accuracy under strong white-box `L_inf` attacks while operating within the same compute
+budget as standard adversarial training (one inner attack + one outer SGD step per minibatch).
 
 ## Background
 
@@ -52,16 +40,15 @@ R(h_theta) = (1/n) sum_i  max_{x' in B_eps(x_i)}  1( h_theta(x') != y_i ),
 
 with `h_theta(x) = argmax_k p_k(x, theta)` and `p_k` the softmax probability of class `k`.
 
-**Known difficulties of robust training, established before any new method.** Training a robust
-network is genuinely harder than training a clean one. A robust decision boundary is provably
-more complex than a boundary that merely separates the clean data, and a model needs *larger
-capacity* to be robust — a small network that is highly accurate on clean data tends to fail to
-become robust at all (Madry et al. 2018; Nakkiran 2019). The sample complexity of robust
-generalization is higher than clean generalization, so robust training tends to need more data,
-labeled or unlabeled (Schmidt et al. 2018; Carmon et al. 2019; Uesato et al. 2019). And there
-is evidence that robustness and clean accuracy are in tension, so a useful method must let a
-practitioner *trade them off* with a knob rather than maximize one blindly (Tsipras et al. 2019;
-Zhang et al. 2019).
+**Known properties of robust training.** Training a robust network is genuinely harder than
+training a clean one. A robust decision boundary is provably more complex than a boundary that
+merely separates the clean data, and a model needs *larger capacity* to be robust — a small
+network that is highly accurate on clean data tends to fail to become robust at all (Madry et al.
+2018; Nakkiran 2019). The sample complexity of robust generalization is higher than clean
+generalization, so robust training tends to need more data, labeled or unlabeled (Schmidt et al.
+2018; Carmon et al. 2019; Uesato et al. 2019). There is also evidence that robustness and clean
+accuracy are in tension, so a useful method lets a practitioner *trade them off* with a knob
+(Tsipras et al. 2019; Zhang et al. 2019).
 
 **A diagnostic about which training examples drive robustness.** A proof-of-concept measurement
 on CIFAR-10 (`L_inf`, `eps = 8/255`) isolates the role of misclassified natural examples. Train
@@ -102,10 +89,7 @@ share the inner CE-PGD attack unless noted.
 generate `x'` by random-start PGD that maximizes `CE(p(x'), y)` inside the `eps`-ball, then take
 an SGD step minimizing `CE(p(x'), y)` on the perturbed input. PGD is treated as the strongest
 practical first-order attack, and this remains the only method shown to train moderately robust
-nets without being fully broken. **Gap (observed):** a single cross-entropy loss is applied to
-the perturbed input for *every* example, identically, with no distinction between examples whose
-clean version the model already gets wrong and those it gets right; the robust-vs-natural
-accuracy gap stays large.
+nets without being fully broken.
 
 **Adversarial / clean logit pairing, ALP/CLP (Kannan et al. 2018).** Add an `L2` regularizer
 that pulls the perturbed-input output toward the clean-input output:
@@ -114,9 +98,6 @@ that pulls the perturbed-input output toward the clean-input output:
 CE(p(x'), y)  +  lambda * || p(x') - p(x) ||_2^2      (ALP)
 CE(p(x),  y)  +  lambda * || p(x') - p(x) ||_2^2      (CLP)
 ```
-
-**Gap (observed):** an `L2` pairing of outputs with a single global weight applied uniformly to
-all examples, and without an accuracy/robustness decomposition behind it.
 
 **TRADES (Zhang et al. 2019).** Decompose the robust error into a *natural* error plus a
 *boundary* error and minimize a surrogate for that decomposition:
@@ -129,17 +110,11 @@ The first term fits the clean label; the second pushes the decision boundary awa
 example by minimizing the worst-case clean-vs-perturbed output mismatch (a KL divergence). Here
 the inner maximization maximizes the *KL* term rather than CE, and `1/lambda` is the single
 natural-vs-robust trade-off knob (a typical setting puts the robustness weight around 6).
-**Gap (observed):** the KL regularizer is applied with the *same weight to every example*,
-whether the model already classifies its clean version correctly or not; nothing in the loss
-treats an already-misclassified example differently from a confidently-correct one.
 
 **Max-margin adversarial training, MMA (Ding et al. 2018).** Use a per-example perturbation
 budget and a *hard* split: for examples it deems correctly classified, apply margin
 maximization with an example-dependent `eps`; for examples it deems misclassified, apply
-cross-entropy on the *clean* input. **Gap (observed):** the correctly-classified-vs-misclassified
-decision is a *hard* threshold that is not itself optimized and cannot be learned jointly with
-the network, and the two branches use different perturbation limits and different losses chosen
-by hand.
+cross-entropy on the *clean* input.
 
 ## Evaluation settings
 

@@ -10,19 +10,13 @@ pretrained backbone encoders that are fine-tuned jointly — a 3D structure enco
 512-dim pocket feature and a 512-dim ligand feature, and a protein-sequence language model
 producing a 480-dim feature — the open question is the *scoring module*: how to project those
 features into a shared space, what **geometry** that space should have, and what **training
-loss** should shape it so that active binders are pushed to the very top of the ranked list.
+loss** should shape it so that active binders are ranked at the top.
 
-Two things make this hard beyond ordinary contrastive retrieval. First, within a single assay
-the ligands are not just "binder vs non-binder" — they carry *graded* affinity (a pIC50 value),
-and the practical payoff is concentrated in the earliest fraction of the ranked list (the
-top ~1%), so the objective must be sensitive to fine-grained ordering, not just binary
-membership. Second, and most stubbornly, there are **activity cliffs**: pairs of ligands that
-are almost identical in chemical structure yet differ by one or two orders of magnitude in
-binding strength. A representation that respects chemical similarity will place such a pair
-close together — exactly where the screen needs them far apart. A solution has to keep
-structurally similar molecules from collapsing onto each other *whenever their affinities
-diverge*, without distorting the genuine structural similarity it relies on elsewhere, and
-without giving up the matmul-only inference that makes billion-scale screening feasible.
+The setting has two features beyond ordinary contrastive retrieval. Within a single assay the
+ligands carry *graded* affinity (a pIC50 value), not just a binder/non-binder label, and the
+practical payoff is concentrated in the earliest fraction of the ranked list (the top ~1%).
+The library also contains **activity cliffs**: pairs of ligands that are almost identical in
+chemical structure yet differ by one or two orders of magnitude in binding strength.
 
 ## Background
 
@@ -36,10 +30,10 @@ ligands. On the sequence side, ESM-2 (Lin et al., Science 2023) is a protein lan
 trained on evolutionary-scale sequence data; its per-residue hidden states (here a 480-dim
 model) give a complementary, structure-free view of a target.
 
-The geometric prior in play is **hyperbolic geometry**. A space of constant negative curvature
+One geometric tool available is **hyperbolic geometry**. A space of constant negative curvature
 has volume that grows *exponentially* with radius, rather than polynomially as in Euclidean
-space; this is why it embeds tree-like and hierarchical data with far lower distortion than a
-flat space (Nickel & Kiela 2017, 2018). The Lorentz (hyperboloid) model realizes an
+space, and it embeds tree-like and hierarchical data with low distortion (Nickel & Kiela 2017,
+2018). The Lorentz (hyperboloid) model realizes an
 n-dimensional hyperbolic space as the upper sheet of a two-sheeted hyperboloid in R^{n+1},
 equipped with the Lorentzian inner product
 
@@ -52,11 +46,11 @@ with points constrained to ⟨x, x⟩_L = −1/κ (curvature −κ, κ > 0), equ
 `d_L(x, y) = (1/√κ)·arccosh(−κ⟨x, y⟩_L)`. To turn a Euclidean encoder output into a point on
 this manifold, one uses the exponential map at the origin: treat the encoder output as a
 tangent vector at the hyperboloid vertex and "fold" it onto the surface. Nickel & Kiela 2018
-established the Lorentz model as the numerically stable choice (the Poincaré ball, while
-equivalent, is prone to instability near the boundary), and the closed forms of its distance
-and exponential map are simple.
+use the Lorentz model for its numerical stability (the Poincaré ball is isometric but prone to
+instability near the boundary), and the closed forms of its distance and exponential map are
+simple.
 
-A second, sharper piece of hyperbolic machinery is the **entailment cone** (Ganea, Bécigneul &
+A related piece of hyperbolic machinery is the **entailment cone** (Ganea, Bécigneul &
 Hofmann, ICML 2018). To encode a partial order — "this entails that," "this is a special case
 of that" — Ganea et al. attach to each point a nested, geodesically-convex cone opening away
 from the origin; a point lies "below" another in the order iff it sits inside that other's
@@ -72,17 +66,9 @@ fact: the aperture *shrinks* as ||x_b|| grows — a point farther from the origi
 "specific," more certain) projects a narrower cone. The Poincaré-ball and Lorentz models are
 isometric, so this aperture transfers to the hyperboloid.
 
-Two empirical facts about *Euclidean* retrieval set up the problem. (1) In a flat embedding
-space, distance grows linearly, so two ligands that a structure encoder maps close together
-*stay* close — there is no geometric room to separate an activity-cliff pair without bending
-the metric, which degrades the smoothness the encoder relies on. Documented activity-cliff
-cases bear this out: for instance, a known pair on PDB 5EHR (a ligand and its derivative with
-one amino substituent removed) has an ~80-fold experimental affinity gap while a strong
-Euclidean pocket–ligand model assigns the two nearly identical scores — the score difference is
-often below 0.05, i.e. the model cannot tell them apart. (2) The same Euclidean models'
-pairwise affinity-discrimination accuracy *degrades* precisely as candidate ligands become more
-chemically similar, while their accuracy on dissimilar pairs is fine — the failure is specific
-to the near-identical regime, which is where cliffs live.
+Documented activity-cliff cases exist in the data: for instance, a known pair on PDB 5EHR (a
+ligand and its derivative with one amino substituent removed) carries an ~80-fold experimental
+affinity gap while sharing near-identical chemical structure.
 
 ## Baselines
 
@@ -100,10 +86,8 @@ L^p_k = − (1/N) · log [ exp(s(x^p_k, x^m_k)/τ) / Σ_i exp(s(x^p_k, x^m_i)/τ
 and the symmetric Mol-to-Pocket loss `L^m_k` swaps roles; the batch loss is
 `L = (1/2) Σ_k (L^p_k + L^m_k)`. Inference is offline: cache all molecule embeddings, encode a
 query pocket once, and the only online cost is a dot product against the cache — this is what
-makes screening over billions of molecules tractable. **Gap:** the embedding space is flat, so
-it cannot geometrically separate activity cliffs (see Background); each query has exactly one
-positive per batch, so there is no notion of *graded* affinity; and the objective is purely
-binary membership, with no within-assay ranking signal.
+makes screening over billions of molecules tractable. The embedding space is Euclidean, each
+query has one positive per batch, and the objective is binary membership.
 
 **Listwise ranking on top of contrastive (LigUnity, Feng et al. 2025; Plackett–Luce / ListNet,
 Cao et al. 2007).** To add fine-grained ordering, a listwise ranking term sorts each assay's
@@ -117,9 +101,7 @@ p_{i,k}(v_{i,k}) = exp(s_{i,k}) / Σ_{j ∈ R_{i,k}} exp(s_{i,j}),     s_{i,k} =
 
 and the per-assay loss is a position-decayed sum `L_rank = − Σ_k μ_k log p_{i,k}(v_{i,k})` with
 a decay `μ_k = 1/(√B · log(k+1))` that weights the head of the list more. This recovers
-within-assay affinity order. **Gap:** it remains a Euclidean objective; it orders ligands but
-adds no geometric structure that *separates* near-identical structures by affinity, and gives
-no explicit handle on the graded radial/angular structure a curved space could offer.
+within-assay affinity order. It is a Euclidean objective applied on top of the contrastive core.
 
 **Hyperbolic contrastive vision–language (MERU, Desai et al., ICML 2023).** Showed how to do
 CLIP-style contrastive learning on the Lorentz hyperboloid: encode to Euclidean, scale by a
@@ -143,10 +125,8 @@ ext(x, y) = arccos( (y_time + x_time·c⟨x,y⟩_L) / (||x_space|| · sqrt((c⟨
 ```
 
 The entailment loss `max(0, ext(x,y) − aper(x))` is zero when y already sits inside x's cone and
-otherwise pulls it in, enforcing a partial order. **Gap:** MERU is built for image/text with a
-*binary* "text entails image" relation; it has no notion of a continuous, graded order (affinity
-tiers), no within-assay listwise ranking, and is a two-tower model, not a target-as-pocket-and-
-sequence screening setup. Its cone is a single on/off constraint, not a tiered hierarchy.
+otherwise pulls it in, enforcing a partial order. MERU is a two-tower image/text model with a
+binary "text entails image" relation, and its cone is a single on/off constraint.
 
 ## Evaluation settings
 

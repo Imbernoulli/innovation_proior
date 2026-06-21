@@ -10,23 +10,17 @@ vectors. This is $\mathcal{O}(N^2)$ in both time and memory — and the memory
 cost is not incidental, because the full similarity matrix has to be retained
 in order to backpropagate through it.
 
-Two distinct problems follow. First, training and full-sequence inference are
-quadratic, so in practice the usable context length is capped: long-range
-dependencies are clipped simply because longer sequences do not fit. Second,
-and more painfully, autoregressive generation is sequential by nature — each
-new token is produced from all the tokens before it — and under softmax
+Training and full-sequence inference are quadratic, so in practice the usable
+context length is bounded: long-range dependencies spanning very long sequences
+are harder to exploit. Autoregressive generation is sequential by nature —
+each new token is produced from all the tokens before it — and under softmax
 attention the per-step cost grows with the number of tokens already generated,
 because the new query must be compared against every past key. Producing a
-sequence of length $N$ this way costs $\mathcal{O}(N^2)$ overall and the
-per-step cost is never constant. Generating long sequences — for instance an
-image one pixel at a time, where a single CIFAR-10 image is over three thousand
-positions — is prohibitively slow.
+sequence of length $N$ this way costs $\mathcal{O}(N^2)$ overall.
 
-The goal is an attention mechanism whose time and memory both scale as
-$\mathcal{O}(N)$ rather than $\mathcal{O}(N^2)$; that still supports causal
-masking (so it can be trained autoregressively) at linear cost; and that — the
-real prize — costs a *constant* amount of time and memory per step during
-generation, independent of how much has already been generated.
+The question is how to design an attention mechanism whose computational cost
+scales more favourably with sequence length, while preserving the quality of
+the softmax baseline and supporting causal masking for autoregressive training.
 
 ## Background
 
@@ -83,45 +77,35 @@ normalization can be sampled efficiently.
 RNN or LSTM (Hochreiter & Schmidhuber, 1997) carries a fixed-size hidden state,
 updates it from the current input in constant time per step, and reads its
 prediction off that state. Their per-step cost is constant and their memory is
-independent of how much sequence has been seen — exactly the property
-autoregressive softmax attention lacks — but they are sequential to train and
-were largely displaced by attention on quality grounds.
+independent of how much sequence has been seen. Recurrent networks were largely
+displaced by attention on quality grounds.
 
 ## Baselines
 
 **Full softmax attention (Vaswani et al., 2017).** The reference mechanism,
 $V' = \text{softmax}(QK^T/\sqrt{D})V$. Strong quality, fully parallel training,
-but $\mathcal{O}(N^2)$ time and memory, and $\mathcal{O}(N^2)$ to generate a
-full sequence autoregressively with no constant-per-step form. This is the
-quality bar and the cost target to beat.
+$\mathcal{O}(N^2)$ time and memory, and $\mathcal{O}(N^2)$ to generate a
+full sequence autoregressively. This is the quality bar.
 
 **Sparse Transformer (Child et al., 2019).** Replaces the dense attention
 matrix with sparse factorizations — each position attends to a structured
 subset of others — reducing complexity to $\mathcal{O}(N\sqrt{N})$ and enabling
-generative modelling of long sequences. Limitation: it reduces but does not
-linearize the cost, the sparsity pattern is hand-designed, and it gives no
-constant-per-step autoregressive inference.
+generative modelling of long sequences.
 
 **Reformer (Kitaev et al., 2020).** Uses locality-sensitive hashing to bucket
 queries and keys that are likely to have high similarity, computing dot
-products only within buckets, for $\mathcal{O}(N\log N)$ complexity. Two
-limitations matter. To hash queries and keys into the same buckets it forces
-the keys to be identical to the queries, which rules out tasks where keys must
-differ from queries. And, like the above, it accelerates training on long
-sequences but does not speed up autoregressive inference per step; the hashing
-also injects noise into the attention.
+products only within buckets, for $\mathcal{O}(N\log N)$ complexity. To hash
+queries and keys into the same buckets it forces the keys to be identical to
+the queries.
 
 **Context-extension methods.** Transformer-XL (Dai et al., 2019) caches and
 attends to representations from previous segments to learn dependencies past a
 fixed window, and adaptive-span attention (Sukhbaatar et al., 2019) learns a
-per-head attention span. Both extend usable context but keep the same
-asymptotic complexity as the vanilla model; maintaining previous contexts adds
-its own computational cost.
+per-head attention span.
 
 **Recurrent baselines (LSTM).** Constant per-step cost and bounded memory at
-generation time, but lower quality on these tasks than attention and sequential
-to train. The standing tension is that recurrent models have the inference cost
-profile we want while attention has the quality.
+generation time, lower quality on these tasks than attention and sequential
+to train.
 
 ## Evaluation settings
 

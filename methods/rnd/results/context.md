@@ -9,39 +9,25 @@ states. The desired extra signal is an intrinsic reward: high when the agent rea
 its past experience, low when the state is familiar.
 
 The mechanism has to work from high-dimensional image observations and scale with modern RL
-training: many parallel actors, long rollouts, and billions of frames. A practical bonus therefore
-cannot require a dense state table, expensive posterior inference, or per-transition retraining
-measurements. It should be computed by batched neural-network inference and should plug into an
-ordinary policy-gradient optimizer.
-
-The central difficulty is that novelty is not the same as unpredictability. Some parts of an
-environment remain hard to predict forever because they are stochastic, partially observed, or
-irrelevant noise. A curiosity bonus that rewards that irreducible error can become an attractor
-instead of an exploration guide.
+training: many parallel actors, long rollouts, and billions of frames.
 
 ## Prior Mechanisms
 
 Tabular count bonuses assign larger reward to states with smaller visit counts, often using
 functions such as \(1/N(s)\) or \(1/\sqrt{N(s)}\). In image-based environments almost every raw
 observation is unique, so count methods need generalization. Pseudo-count methods get that
-generalization from learned density models over observations, but the density model is a substantial
-extra system and is awkward to scale across many actors.
+generalization from learned density models over observations.
 
 Prediction-error curiosity replaces density estimation with a supervised prediction problem. A
 forward model predicts the next observation or its features from the current observation and action;
 large error marks a transition as novel because a model trained on past experience has not yet fit
-that region. This is cheap and neural-network-friendly, but it is vulnerable to the "noisy-TV"
-failure: if the target is intrinsically random, the prediction error never decays.
+that region.
 
-Learning-progress methods try to fix that by rewarding improvement in the predictor rather than raw
-error. That suppresses permanent stochastic error, but measuring improvement is more expensive and
-less clean in a large distributed rollout system.
+Learning-progress methods reward improvement in the predictor rather than raw error.
 
 Random features and randomized prior functions provide another nearby ingredient. A randomly
 initialized network can define a rich feature map, and a random prior function can make supervised
-uncertainty estimates behave more like posterior samples. The open question is whether a random
-prediction problem can be made into a simple novelty signal without importing the noisy target
-failure.
+uncertainty estimates behave more like posterior samples.
 
 ## Error Sources
 
@@ -50,11 +36,6 @@ nearby data; this is the useful epistemic part and is the intended novelty signa
 function is stochastic; this is the aleatoric part that creates noisy-TV traps. Third, the prediction
 problem is misspecified: the necessary inputs are missing, or the function class cannot fit the
 target. Fourth, optimization and learning dynamics may fail even when the target is representable.
-
-Only the first source should drive exploration. The target prediction problem should therefore avoid
-stochastic labels and avoid missing-input structure. It should also be simple enough that fitting
-visited observations is plausible, while still leaving generalization to unseen regions dependent on
-data rather than on a perfect global shortcut.
 
 Episode boundaries create a separate design constraint. Novelty is useful even across game-over
 boundaries: dying after a risky attempt should not make all future novelty disappear from the

@@ -40,7 +40,7 @@ The natural yardsticks are standard LLL applications where the task is to constr
 
 ## Code framework
 
-The available pieces are a random source, a representation of CNF clauses, the trivial "is this clause violated" check, and an outer loop that searches for a good assignment. The body that decides how to move from a violated state toward a good one is still open.
+The available pieces are a random source, a representation of CNF clauses, the trivial "is this clause violated" check, and an outer loop that searches for a good assignment. The body of that loop is left open.
 
 ```python
 import random

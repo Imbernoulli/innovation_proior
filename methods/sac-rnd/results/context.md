@@ -7,18 +7,14 @@ collected by an unknown behavior policy `π_β`, with no further environment int
 hazard is **out-of-distribution (OOD) action overestimation**: a bootstrapped critic, asked to value
 an action the policy proposes but the dataset never contained, extrapolates — almost always upward —
 and the policy, trained to maximize the critic, is pulled toward those inflated values and degrades,
-with no fresh data to ever correct the mistake.
+with no fresh data to correct the mistake.
 
-A natural way to express the cure is *uncertainty*: if the agent had a reliable estimate of how
+A natural way to express the remedy is *uncertainty*: if the agent had a reliable estimate of how
 unfamiliar a given `(s, a)` is, it could penalize the value (and the policy) in proportion to that
 unfamiliarity — the exact mirror image of the *intrinsic-exploration* bonus used online, where novelty
 is rewarded. Online RL has a cheap, ensemble-free novelty estimator that works at scale: Random
-Network Distillation. The precise question here: **can RND's distillation error be used as an
-anti-exploration penalty for offline RL — a single, ensemble-free OOD-action detector that suppresses
-overestimation — and if a naive version fails, what is the actual cause and the fix?** The constraint
-that makes this interesting is that ensemble methods (which keep many critics and use their disagreement
-as the uncertainty) are strong but expensive; an RND-based penalty would get ensemble-quality
-pessimism from one extra small network.
+Network Distillation. The question is whether RND's distillation error can serve as an anti-exploration
+penalty for offline RL — a single, ensemble-free OOD-action detector that suppresses overestimation.
 
 ## Background
 
@@ -31,8 +27,7 @@ uncertainty penalty: the better the OOD detector `b`, the better the conservatis
 network `g(x)` and train a *predictor* `ĝ(x)` to match it by regression on observed inputs. On inputs
 seen often the predictor matches the target (low error); on rarely- or never-seen inputs it has not
 been trained and the error is large. The squared error `‖ĝ(x) − g(x)‖²` is therefore a cheap,
-ensemble-free novelty signal. Online it drives exploration; the offline question is whether it can
-drive *anti*-exploration over `(s, a)` inputs.
+ensemble-free novelty signal. Online it drives exploration.
 
 **Soft Actor-Critic (Haarnoja et al. 2018).** The off-policy continuous-control base: a Tanh-Gaussian
 stochastic actor, twin critics with a `min` target (clipped double-Q, Fujimoto et al. 2018), and an
@@ -47,34 +42,26 @@ one input into another's computation than plain concatenation.
 
 **Overestimation control baselines.** Clipped double-Q and Polyak target networks are carried in from
 TD3/SAC. The alternative high-performance offline family is *ensembles* — SAC-N and EDAC (An et al.
-2021) keep `N` critics (often 10–50) and use their spread as the uncertainty; very strong on D4RL but
-costly in parameters and compute.
+2021) keep `N` critics (often 10–50) and use their spread as the uncertainty; very strong on D4RL.
 
 ## Baselines
 
 **Policy-constraint methods — BCQ, BEAR, BRAC, TD3+BC, ReBRAC.** Keep the policy near `π_β` via
 generative models, MMD/KL penalties, or behavior-cloning terms (Fujimoto et al. 2019; Kumar et al.
 2019; Wu et al. 2019; Fujimoto & Gu 2021; Tarasov et al. 2023). ReBRAC is the strongest *ensemble-free*
-member, a decoupled, LayerNorm-regularized TD3+BC. Gap: behavior cloning is a *fixed* notion of "near
-the data" — it pulls toward dataset actions uniformly, with no per-`(s,a)` sense of how OOD a proposed
-action actually is.
+member, a decoupled, LayerNorm-regularized TD3+BC.
 
 **Value-regularization methods — CQL, Fisher-BRC.** Push `Q` down on OOD actions and up on dataset
-actions (Kumar et al. 2020; Kostrikov et al. 2021). Gap: must explicitly sample and query OOD actions
-to push them down; a tuned temperature; comparatively slow.
+actions (Kumar et al. 2020; Kostrikov et al. 2021).
 
 **Expectile / one-step — IQL.** In-sample expectile value learning that never queries an OOD action
-(Kostrikov et al. 2022). Gap: conservative; on tasks needing aggressive exploitation it leaves value
-on the table.
+(Kostrikov et al. 2022).
 
 **Ensemble pessimism — SAC-N, EDAC.** Many critics; disagreement = uncertainty (An et al. 2021).
-State-of-the-art on D4RL locomotion, but the uncertainty signal *is* the ensemble, so the cost scales
-with `N`. Gap: expensive; the open question is whether one RND network can match this.
+State-of-the-art on D4RL locomotion; the cost of the uncertainty signal scales with `N`.
 
-**Naive offline RND.** RND error fed directly as an anti-exploration penalty was reported *not
-discriminative enough* (Rezaeifar et al. 2022): with concatenated `[s, a]` conditioning the predictor's
-error can be minimized even on OOD actions, so the actor escapes the penalty without staying in-data.
-Gap: this is the failure this method must explain and repair.
+**Naive offline RND.** RND error can be fed directly as an anti-exploration penalty (Rezaeifar et al.
+2022), with concatenated `[s, a]` conditioning.
 
 ## Evaluation settings
 
@@ -126,7 +113,6 @@ class RND(nn.Module):
     def __init__(self, obs_dim, act_dim, embedding_dim=32):
         super().__init__()
         # TODO: predictor and target; condition the prior on the action
-        #       (concat is reported insufficient -- the choice is the method)
         pass
     def bonus(self, s, a):
         # TODO: ||predictor - target||^2, normalized by a running std

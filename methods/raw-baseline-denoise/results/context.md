@@ -3,11 +3,10 @@
 ## Research question
 
 A single-cell RNA-seq experiment returns a UMI count matrix `X` (cells × genes): `X[c,g]` is the
-number of unique mRNA molecules from gene `g` captured in cell `c`. Droplet capture is brutally
-undersampled, so most expressed genes read as zero (dropout). A denoiser maps `X` to a smoother
-non-negative `X̂` approximating the underlying expression rate. The question this file addresses is
-narrow: what is the score of doing *nothing* — returning `X` unchanged — and why is that the right
-zero point to calibrate every later method against?
+number of unique mRNA molecules from gene `g` captured in cell `c`. Droplet capture is undersampled,
+so most expressed genes read as zero (dropout). A denoiser maps `X` to a smoother non-negative `X̂`
+approximating the underlying expression rate. The question is: what score does a denoiser achieve
+when given access to the raw training counts?
 
 ## Evaluation
 
@@ -24,6 +23,4 @@ sizes), draws `X ~ Poisson(Λ)`, and scores on a synthetic dataset (900 cells ×
 
 ## Method interface
 
-Edit one function `denoise(X) → X̂`, same shape, non-negative. The raw baseline returns the input
-unchanged, which by construction scores exactly 0 on both normalized terms — the honest floor that
-exposes whether the normalization brackets correctly and the metric has no sign error.
+Edit one function `denoise(X) → X̂`, same shape, non-negative.

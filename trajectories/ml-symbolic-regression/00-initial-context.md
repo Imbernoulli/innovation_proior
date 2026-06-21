@@ -1,12 +1,12 @@
 ## Research question
 
-Symbolic regression searches the space of mathematical expressions for one that fits observed `(X, y)` data — not a black-box predictor, but an explicit, readable formula like `log(x+1) + log(x²+1)` or `2·sin(x)·cos(y)`. The object being designed is the **search strategy itself**: the fitness it selects on, how parents are chosen, how crossover and mutation build offspring, elitism, parsimony pressure, and diversity maintenance. The surrounding substrate — the tree representation, the protected operators, the benchmark data, and the outer evolution loop — is fixed. The central tensions are exploration versus exploitation, controlling expression complexity (bloat), and avoiding premature convergence onto a local optimum that fits the sample but not the underlying function.
+Symbolic regression searches the space of mathematical expressions for one that fits observed `(X, y)` data — not a black-box predictor, but an explicit, readable formula like `log(x+1) + log(x²+1)` or `2·sin(x)·cos(y)`. The object being designed is the **search strategy itself**: the fitness it selects on, how parents are chosen, how crossover and mutation build offspring, elitism, parsimony pressure, and diversity maintenance. The surrounding substrate — the tree representation, the protected operators, the benchmark data, and the outer evolution loop — is fixed.
 
 ## Prior art / Background / Baselines
 
-- **Polynomial / least-squares regression.** Fit a fixed template `y = a₀ + a₁x + a₂x² + …` by minimizing `Σ(y − ŷ)²` in closed form. Gap: the functional form must be supplied in advance; if the true relationship is logarithmic or trigonometric, no polynomial can recover it.
-- **Genetic algorithm on fixed-length strings.** Maintain a population of fixed-length chromosomes and evolve them by fitness-proportional selection, one-point crossover, and mutation. Gap: the fixed length pins the solution size in advance, and random crossover cuts through nested subexpressions, producing invalid or nonsensical offspring.
-- **Evolving variable-size structures.** Apply evolutionary operators to program-like objects rather than flat strings, allowing representational complexity to grow. Gap: no generally usable recipe exists yet for evolving symbolic formulas while keeping enough syntactic validity for search to keep running.
+- **Polynomial / least-squares regression.** Fit a fixed template `y = a₀ + a₁x + a₂x² + …` by minimizing `Σ(y − ŷ)²` in closed form.
+- **Genetic algorithm on fixed-length strings.** Maintain a population of fixed-length chromosomes and evolve them by fitness-proportional selection, one-point crossover, and mutation.
+- **Evolving variable-size structures.** Apply evolutionary operators to program-like objects rather than flat strings, allowing representational complexity to grow.
 
 ## Fixed substrate / Code framework
 
@@ -28,7 +28,7 @@ Exactly one region of `gplearn/custom_sr.py` is editable — five functions that
 
 The signature carries no persistent per-individual state across generations — `evolve_one_generation` sees only the current trees and their fitnesses, and `Node`'s `__slots__` blocks attaching extra fields — so any strategy must recompute everything it needs from the population each generation.
 
-The starting point is the scaffold **default**, which is deliberately broken as a search: uniform random parent selection (no fitness pressure), crossover that just returns a copy of `parent1`, and mutation that returns a copy of the parent. The loop's elitism keeps generation 0's lucky best, but nothing improves it. Each method on the ladder replaces exactly these definitions.
+The starting point is the scaffold **default**: uniform random parent selection, crossover that returns a copy of `parent1`, and mutation that returns a copy of the parent. Each method on the ladder replaces exactly these definitions.
 
 ```python
 # EDITABLE region of gplearn/custom_sr.py — default fill (no real search)

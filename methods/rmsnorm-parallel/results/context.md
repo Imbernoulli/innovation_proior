@@ -8,20 +8,15 @@ block there are two computational regions whose form is not fixed by anything fu
 **normalization rule** (how activations are rescaled before each sublayer) and the **block
 structure** (how the attention sublayer, the feed-forward sublayer, and the residual connection
 are wired together). The default is LayerNorm with a learned scale and bias, placed in a
-pre-normalization arrangement: `x + Attn(LN(x))`, then `x + MLP(LN(x))`. That default was chosen
-when models were small enough that the block's micro-structure barely mattered for wall-clock
-time. At the current scale it matters a great deal: the block is executed billions of times over
-a training run and is the unit replicated across accelerators, so any per-block inefficiency —
-an extra reduction, an extra synchronization point, an unnecessary sequential dependency — is
-multiplied by the layer count and by the device count and shows up directly in cost.
+pre-normalization arrangement: `x + Attn(LN(x))`, then `x + MLP(LN(x))`. At the current scale,
+the block is executed billions of times over a training run and is the unit replicated across
+accelerators, so any per-block cost — an extra reduction, an extra synchronization point, a
+sequential dependency between sublayers — is multiplied by the layer count and by the device
+count and shows up directly in wall-clock training cost.
 
-The goal is a block whose normalization and wiring reduce the loss reached for a fixed compute
-budget, or equivalently reach a given loss faster — without touching the dataset, tokenizer,
-optimizer, schedule, or the attention and feed-forward computations themselves. Two questions
-sit underneath: which part of the standard normalization is actually responsible for its
-stabilizing effect (so the rest can be removed), and whether the strict left-to-right ordering
-of the two sublayers inside a block is necessary or merely conventional. A good answer would
-make each block cheaper to run and cheaper to shard while leaving model quality intact.
+The question is how to redesign the normalization and wiring of the block — without touching
+the dataset, tokenizer, optimizer, schedule, or the attention and feed-forward computations
+themselves — in a way that reduces per-block cost under large-scale, multi-device training.
 
 ## Background
 
@@ -37,9 +32,8 @@ invariances it confers: **re-centering** invariance (the output is unchanged if 
 weights are shifted by a constant) from the mean-subtraction, and **re-scaling** invariance (the
 output is unchanged if inputs or weights are scaled) from the division by `σ`. Santurkar et al.
 (2018) argue the gain is less about input stability per se and more about smoothing the
-optimization landscape. What matters for the cost accounting is that each LayerNorm call does
-**two reductions over the channel dimension** (one for the mean, one for the variance) plus an
-elementwise subtraction.
+optimization landscape. Each LayerNorm call does **two reductions over the channel dimension**
+(one for the mean, one for the variance) plus an elementwise subtraction.
 
 **Pre-LN vs Post-LN — where the norm sits.** The original transformer placed normalization
 *after* the residual addition (Post-LN). Xiong et al. (2020) showed that in Post-LN the expected
@@ -47,8 +41,7 @@ gradients of the parameters near the output layer are large at initialization, w
 learning-rate warmup stage and makes training delicate; placing the norm *inside* the residual
 branch (Pre-LN), so the residual stream itself is never normalized, gives well-behaved gradients
 at initialization and trains stably without warmup. Pre-LN is therefore the prevailing choice
-for large language models, at a usually-small cost in final loss relative to a successfully
-trained Post-LN model. The pre-normalized block has the shape `x ← x + Sublayer(LN(x))`: the
+for large language models. The pre-normalized block has the shape `x ← x + Sublayer(LN(x))`: the
 residual path is an identity highway, and each sublayer reads a freshly normalized copy of it.
 
 **The cost of a block at scale, and where it is paid.** A model too large for one accelerator is
@@ -70,14 +63,9 @@ depends on attention's output. This ordering is inherited from the original desi
 derived from a requirement; both sublayers are, by construction, perturbations added to the same
 residual highway.
 
-**An efficiency observation about the standard normalization.** A diagnostic finding on the
-standard layer: its stabilizing effect is usually credited to its invariances, but
-mean-subtraction does not reduce the variance of the hidden states or of the gradients — it only
-shifts them. This raises the possibility that the **re-scaling** invariance is doing the work and
-the **re-centering** invariance is dispensable, which, if true, would let one of the two
-reductions and the subtraction be removed at no quality cost. The Euclidean norm (without the
-`1/n` factor) had been used for weight normalization (Salimans & Kingma 2016) but had not been
-made to work as a layer-activation normalizer.
+**Weight normalization as a precedent.** The Euclidean norm (without the `1/n` factor) had been
+used for weight normalization (Salimans & Kingma 2016) to decouple the length of weight vectors
+from their direction, offering re-scaling invariance for weight vectors during optimization.
 
 ## Baselines
 
@@ -91,14 +79,8 @@ x ← x + MLP(LN2(x))
 
 Each `LN` does two channel-wise reductions (mean and variance) plus a subtraction; the residual
 adds are sequential, so the MLP cannot begin until attention's contribution is in the stream.
-**Limitation:** per block this pays for two normalization layers and, under op-sharding, two
-forward and two backward all-reduce synchronization points, and the MLP is data-dependent on the
-attention output so the two heavy matmul stages run one after the other. At the scale where a
-block runs on many devices and is stacked deeply, these per-block costs dominate, yet none of
-them is obviously required for the block to compute what it computes.
 
-**RMSNorm (Zhang & Sennrich 2019).** Tests the hypothesis that re-centering is dispensable by
-dropping the mean entirely and normalizing by the root-mean-square alone:
+**RMSNorm (Zhang & Sennrich 2019).** Drops the mean entirely and normalizes by the root-mean-square alone:
 
 ```
 ā_i = a_i / RMS(a) · g_i,   RMS(a) = sqrt( (1/n) Σ_{i=1}^n a_i^2 )
@@ -111,18 +93,13 @@ invariant to re-scaling of the inputs and of the weight matrix (the positive sca
 is **not** invariant to shifts and **not** to per-weight-vector re-scaling.
 It does one reduction (sum of squares) and no subtraction, versus LayerNorm's two reductions and
 a subtraction. Its gradient with respect to the weight matrix carries a factor inversely
-correlated with weight scale, acting as an implicit per-layer learning-rate adaptor. **Where it
-leaves off:** it is a drop-in replacement for the *normalization op only*; it says nothing about
-how the two sublayers and the residual are wired, and on its own changes the block's
-synchronization and sequential structure not at all. It is an ingredient, not a block design.
+correlated with weight scale, acting as an implicit per-layer learning-rate adaptor.
 
 **Multi-query attention / SwiGLU / rotary embeddings (Shazeer 2019; Shazeer 2020; Su et al.
 2021).** Other knobs in the block's design space at the time — sharing key/value heads for
 cheaper decoding, a gated feed-forward activation, and a relative position scheme inside
-attention. They modify the attention or the feed-forward internals. **Limitation for this
-problem:** they leave the *block-level* wiring — the two-norm, two-residual, strictly-serial
-arrangement and its two synchronization points — untouched, which is the structure whose cost
-scales with layers and devices.
+attention. They modify the attention or the feed-forward internals while leaving the block-level
+normalization and residual wiring arrangement unchanged.
 
 ## Evaluation settings
 

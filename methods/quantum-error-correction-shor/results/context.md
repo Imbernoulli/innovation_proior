@@ -2,18 +2,14 @@
 
 A quantum memory cell can store an unknown superposition, not just a classical bit value. The useful information is carried by amplitudes and relative phases, so a repair procedure cannot freely inspect the stored value. A measurement that distinguishes the alternatives carrying the information changes the state being protected.
 
-## Decoherence Is The Immediate Failure Mode
+## Decoherence And Coherence Time
 
-Large quantum computations require coherence to survive while many alternatives evolve and later interfere. Coupling to an environment threatens that coherence by entangling memory cells with degrees of freedom outside the computer. Before an error-correcting construction, the practical question is whether stored quantum information can be protected for longer than the raw physical memory would allow.
+Large quantum computations require coherence to survive while many alternatives evolve and later interfere. Coupling to an environment entangles memory cells with degrees of freedom outside the computer. The practical question is whether stored quantum information can be protected for longer than the raw physical memory would allow.
 
-## Classical Redundancy Suggests A Blocked Strategy
+## Classical Redundancy And Quantum Constraints
 
-The classical instinct is to make several copies, compare them, and overwrite the minority value. That cannot be used directly for an unknown quantum state. Linearity rules out a universal machine that clones arbitrary quantum states, and measuring several would-be copies would expose the state rather than merely diagnose damage.
+The classical approach makes several copies, compares them, and overwrites the minority value. For quantum states, linearity rules out a universal machine that clones arbitrary quantum states, and measuring would-be copies exposes the stored state. Any protection scheme therefore needs to diagnose what happened without revealing what was stored.
 
-## Error Correction Must Ask A Different Question
+## The Research Question
 
-The repair operation must not ask, "what state was stored?" It must ask, "what disturbance happened?" This requires a larger physical system whose extra degrees of freedom can carry a recoverable record of the error while the logical amplitudes remain inaccessible to the diagnostic measurement.
-
-## Success Criteria Before The Construction
-
-A satisfactory quantum memory code must encode one logical qubit into a subspace of several physical qubits, tolerate a specified local error model, extract only an error syndrome, and apply a recovery that works for every unknown superposition. It must also state its limits: how many local faults are allowed, what independence assumptions are made, and how much overhead the protection introduces.
+Given these constraints, the open question is how to build a quantum memory that encodes a logical qubit into several physical qubits, extracts only an error syndrome, and applies a recovery operation that works for every unknown superposition.

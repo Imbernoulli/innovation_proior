@@ -2,17 +2,7 @@
 
 Convolutional networks have just taken over large-scale image classification. The open question is
 narrow but important: **how much of recognition accuracy is governed by network depth alone, and can
-depth be pushed far beyond what current architectures use without the network becoming impractical to
-parameterize and train?**
-
-The difficulty is that "make it deeper" is not a free knob in the architectures of the day. The winning
-networks build their early layers from large convolution filters with large strides; stacking many such
-layers explodes the parameter count and collapses spatial resolution within a few layers. So the question
-"is depth beneficial?" is entangled with "what layer design lets you add depth cleanly, holding the rest
-of the recipe fixed?" A satisfying answer would (a) vary depth as a single controlled variable across a
-family of networks built on identical principles, (b) keep parameter count and compute from blowing up as
-depth grows, (c) remain trainable despite the gradient-instability that deep nets are prone to, and
-(d) still reach state-of-the-art accuracy on the standard large-scale benchmark.
+depth be pushed far beyond what current architectures use?**
 
 ## Background
 
@@ -62,23 +52,18 @@ These are the prior networks a new architecture would be measured against and re
   second is 5×5; the rest are 3×3. Max pooling follows some conv layers; Local Response Normalization (LRN)
   follows others. ReLU throughout. Dropout 0.5 on the fully-connected layers, L2 weight decay 5×10⁻⁴.
   Trained with SGD + momentum 0.9, batch ~128, learning rate stepped down on plateau, with crop, flip and
-  PCA-based color-jitter augmentation on 224×224 inputs. **Gap:** the stride-4 first layer discards spatial
-  detail in the first operation, and the large filters are parameter-heavy; this architecture is not a
-  clean substrate onto which one can simply add more layers to study depth.
+  PCA-based color-jitter augmentation on 224×224 inputs.
 - **Zeiler & Fergus (2013).** A retuned version of the above with a 7×7 stride-2 first layer; better
-  accuracy, and a deconv-based diagnosis of what the layers learn. **Gap:** a one-layer retune, not a study
-  of depth; still uses comparatively large early filters.
+  accuracy, and a deconv-based diagnosis of what the layers learn.
 - **OverFeat (Sermanet et al., 2014).** 7×7 stride-2 first layer; its key contribution is **dense
   evaluation** — at test time the fully-connected layers are re-expressed as convolutions (the first FC
   becomes a conv whose spatial size equals the last feature map, the rest become 1×1 convs), turning the
   net fully convolutional so it can be applied to an arbitrarily sized image in a single pass, yielding a
-  spatial grid of class scores; plus multi-scale processing. **Gap:** again improvements orthogonal to
-  depth; the network itself is shallow by the standard of the question being asked.
+  spatial grid of class scores; plus multi-scale processing.
 - **Network in Network (Lin et al., 2014).** Introduced the 1×1-convolution / mlpconv idea to add
-  per-location nonlinearity, and global average pooling instead of fully-connected layers. **Gap:** the
-  contribution is a local micro-architecture, not a controlled study of overall network depth.
-- **Ciresan et al. (2011); Goodfellow et al. (2014).** Small-filter and/or deeper nets, but on small
-  datasets or a narrow task — leaving open whether depth pays off at ILSVRC scale.
+  per-location nonlinearity, and global average pooling instead of fully-connected layers.
+- **Ciresan et al. (2011); Goodfellow et al. (2014).** Small-filter and/or deeper nets on small
+  datasets or a narrow task.
 
 ## Evaluation settings
 

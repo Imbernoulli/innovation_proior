@@ -18,21 +18,13 @@ R_n(w) = (1/n) sum_{i=1}^{n} Q(z_i, w)
 ```
 
 is expensive to differentiate when `n` is large, because one gradient of `R_n` costs `n`
-per-example gradients. So we are in a regime with two pressures at once. First, every quantity
-we want — the value of the objective, its gradient — is only ever available *through noise*:
-the best we can cheaply form is a gradient on a random handful of examples (or a single one),
-which is a noisy, unbiased draw of the true gradient. Second, `n` is so large that we cannot
-afford to touch all `n` examples per update; the binding resource is computing time, not the
-number of examples on disk.
+per-example gradients. Every quantity we want — the value of the objective, its gradient — is
+only ever available *through noise*: the best we can cheaply form is a gradient on a random
+handful of examples (or a single one), which is a noisy, unbiased draw of the true gradient.
 
-The precise goal is a method that drives `w` toward a minimizer of the *expected* risk `F`
-while (1) paying only a small, `n`-independent cost per update; (2) using only first-order
-information (no Hessian, no matrix the size of `w`-by-`w`); (3) tolerating gradients that are
-genuinely noisy single samples rather than exact averages; and (4) coming with a guarantee
-that the iterates actually approach the optimum despite that noise, and a principled rule for
-how to set whatever step-size knob it exposes. The tension is that the cheapest possible
-gradient — one example — is also the noisiest, so the open problem is whether descent can be
-made to work at all when each step is taken along a direction we only trust *in expectation*.
+The question is how to choose `w` to minimize the *expected* risk `F` when the gradient can
+only be observed through per-example noise and the sample size `n` is large enough that
+touching all examples per update is costly.
 
 ## Background
 
@@ -49,16 +41,15 @@ F(w') <= F(w) + grad F(w)^T (w' - w) + (L/2) ||w' - w||^2,
 
 so a small enough step strictly decreases `F`, and for strongly convex `F` (curvature bounded
 below by `c > 0`) the error contracts geometrically — *linear* convergence, residual `~
-exp(-t)`. The catch in the data setting: each step needs the full-batch gradient `(1/n) sum_i
-grad Q(z_i, w)`, which costs `n` per-example gradients.
+exp(-t)`. Each step needs the full-batch gradient `(1/n) sum_i grad Q(z_i, w)`, which costs
+`n` per-example gradients.
 
 **Least squares and regression (Gauss, Legendre).** The oldest fitting principle: given pairs
 `(x_i, y_i)`, choose parameters minimizing `sum_i (y_i - [beta_0 + beta_1 x_i])^2`. This both
 assumes a *form* for how the response depends on `x` (here, linear) and processes the whole
 sample at once. More abstractly, for a random response `Y` associated with an input `x`, the
 conditional expectation `M(x) = E[Y | x]` is the *regression of Y on x*; least squares is the
-special case where `M` is assumed linear and fit in closed form. The limitation that matters
-later: it presumes a known functional form for `M` and is a batch computation.
+special case where `M` is assumed linear and fit in closed form.
 
 **Stochastic approximation: root-finding from noisy measurements (Robbins; Kiefer &
 Wolfowitz).** A different tradition starts from a function `M(x)` that is *unknown* and can
@@ -100,10 +91,10 @@ stepping, which scales the per-step noise variance by `1/r`; and a sibling const
 + c_n) - Y(x - c_n)) / (2 c_n)` and feeding that into the same kind of recursion, at the cost
 of a bias that must be driven to zero as `c_n -> 0`.
 
-The prevailing wisdom this sets up: descent and curvature theory is for *exact* gradients;
+The prevailing framing at this point: descent and curvature theory is for *exact* gradients;
 fitting is *batch* and assumes a model form; and noisy root-finding has step-size conditions
-but had been developed for one-dimensional estimation problems, not framed as a way to
-*optimize* a high-dimensional learning objective.
+developed for one-dimensional estimation problems, not framed as a way to *optimize* a
+high-dimensional learning objective.
 
 ## Baselines
 
@@ -111,32 +102,25 @@ but had been developed for one-dimensional estimation problems, not framed as a 
 Q(z_i, w_t)`. Core idea: follow the exact average gradient downhill; for strongly convex,
 Lipschitz-smooth `F` it converges *linearly* (residual `~ rho^t`, `rho < 1`), and a
 second-order variant scaling by an approximate inverse Hessian converges quadratically near
-the optimum. **Gap:** the cost is `n` per-example gradients *per step*, and the iteration count
-to a target accuracy is essentially independent of `n`; so the total work scales with `n`, and
-when `n` is enormous the method spends an entire pass over the data to take a single step. It
-optimizes the *empirical* risk `R_n`, not directly the expected risk `F`, so once `n` examples
-are fixed it cannot benefit from more data without re-paying the per-step cost.
+the optimum. Cost is `n` per-example gradients per step; the iteration count to a target
+accuracy is essentially independent of `n`.
 
 **Second-order / Newton-type steps.** Replace the scalar `gamma` by a matrix `Gamma_t`
 approaching the inverse Hessian: `w_{t+1} = w_t - Gamma_t (1/n) sum_i grad Q`. Core idea: warp
 the step by curvature for very fast (quadratic) local convergence — one iteration solves an
-exact quadratic. **Gap:** still batch (cost `n` per step plus the curvature estimate), and it
-forms/uses a `w`-by-`w` matrix, which is infeasible to store or invert when `w` is high
-dimensional.
+exact quadratic. Still batch (cost `n` per step plus the curvature estimate), and it forms and
+uses a `w`-by-`w` matrix.
 
 **Batch least-squares / closed-form fitting.** Solve `min_w sum_i (y_i - <w, x_i>)^2` (or its
-regularized form) directly. Core idea: exact minimizer of a fixed empirical objective. **Gap:**
-needs the whole sample at once, assumes a specific (here linear) model form, and yields a
-single estimate rather than a procedure that improves online as data streams in.
+regularized form) directly. Core idea: exact minimizer of a fixed empirical objective, computed
+in closed form from the whole sample assuming a linear model form.
 
 **One-dimensional noisy root-finding recursions (the stochastic-approximation prior art).**
 Recursions `theta_n = theta_{n-1} - gamma_n[h(theta_{n-1}) + noise_n]` with decaying `gamma_n`
 were known to converge for scalar estimation under step-size conditions, and the
-mean-estimation instance reduces to a running average. **Gap:** these were posed and analyzed
-as *estimation* procedures for a scalar quantity from noisy scalar measurements; what they
-delivered was a convergence theory and a feel for which step-size schedules work, not a
-high-dimensional optimization method, and the conditions were stated for the abstract recursion
-rather than connected to minimizing a learning objective.
+mean-estimation instance reduces to a running average. These were posed and analyzed as
+*estimation* procedures for a scalar quantity from noisy scalar measurements; they deliver a
+convergence theory and a feel for which step-size schedules work.
 
 ## Evaluation settings
 

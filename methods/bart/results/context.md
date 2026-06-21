@@ -2,93 +2,76 @@
 
 ## Research question
 
-Self-supervised pretraining has transformed NLP, but the most successful recipes
-split along a fault line. The masked-language-model family is excellent at
-*understanding* tasks (classification, span extraction) because it builds
-representations conditioned on context from both sides — but it predicts masked
-tokens independently and non-autoregressively, so it does not naturally *generate*
-text. The left-to-right language-model family generates fluently but conditions
-each token only on its left context, so it is weaker at understanding tasks that
-need the whole sentence. Each recent variant — better mask distributions, new
-prediction orders, extra context windows — tends to improve one family of end
-tasks while remaining awkward for the other. The precise question is whether a
-single self-supervised pretraining scheme can be strong across the *full* range of
-end tasks at once: classification, span extraction, summarization, dialogue,
-abstractive question answering, and even machine translation — without giving up
-the understanding quality of masked models or the generation quality of
-autoregressive ones.
+Self-supervised pretraining has transformed NLP, and the most successful recipes
+fall into two families. The masked-language-model family builds representations
+conditioned on context from both sides and is used for *understanding* tasks
+(classification, span extraction); it predicts masked tokens independently and
+non-autoregressively. The left-to-right language-model family predicts each token
+from its left context and is used to *generate* text. Recent variants adjust the
+mask distribution, the prediction order, or the available context. The question is
+whether a single self-supervised pretraining scheme can serve the *full* range of
+end tasks — classification, span extraction, summarization, dialogue, abstractive
+question answering, and machine translation.
 
 ## Background
 
 **Self-supervised denoising.** The dominant pretraining objective is a denoising
-autoencoder in disguise: corrupt text by masking a random subset of words, then
-reconstruct the originals. Recent gains came from refining the *corruption* — which
-tokens to mask and how they cluster (SpanBERT, Joshi et al. 2019, masks contiguous
-spans), the *order* in which masked tokens are predicted (XLNet, Yang et al. 2019,
-predicts in a permuted order so each prediction sees both sides), and the
-*context* available when predicting (UniLM, Dong et al. 2019, mixes attention masks
-so some predictions are left-only). All share a structural constraint: the
-corruption is applied *in place*, so the model's input and output are token-aligned
-and the same length. That alignment limits the kinds of corruption that are even
-expressible.
+autoencoder: corrupt text by masking a random subset of words, then reconstruct the
+originals. Recent variants refine the *corruption* — which tokens to mask and how
+they cluster (SpanBERT, Joshi et al. 2019, masks contiguous spans), the *order* in
+which masked tokens are predicted (XLNet, Yang et al. 2019, predicts in a permuted
+order so each prediction sees both sides), and the *context* available when
+predicting (UniLM, Dong et al. 2019, mixes attention masks so some predictions are
+left-only). In these schemes the corruption is applied *in place*: the model's
+input and output are token-aligned and the same length.
 
 **The encoder/decoder split.** A bidirectional Transformer encoder (BERT, Devlin
-et al. 2018) sees both sides at every layer — ideal for understanding — but its
-masked-token predictions are conditionally independent given the input, so it
-cannot roll out text. A left-to-right Transformer decoder (GPT, Radford et al.
-2018; Radford et al. 2019) predicts autoregressively and generates naturally, but
-each position is blind to its right context. ELMo (Peters et al. 2018) glued a
-left-only and a right-only language model together but never trained interactions
-between the two directions.
+et al. 2018) sees both sides at every layer, and its masked-token predictions are
+conditionally independent given the input. A left-to-right Transformer decoder
+(GPT, Radford et al. 2018; Radford et al. 2019) predicts autoregressively. ELMo
+(Peters et al. 2018) concatenates a left-only and a right-only language model
+trained separately.
 
 **Seq2seq Transformers.** The original encoder-decoder Transformer (Vaswani et al.
 2017) was built for machine translation: a bidirectional encoder reads the source,
 and an autoregressive decoder writes the target, attending back to the encoder via
 cross-attention at every decoder layer. The source and target need not be the same
-string or even the same length.
+string or the same length.
 
 **Diagnostic findings already on the table.** Several observations frame the
-design. Left-only decoders do poorly on span-extraction tasks because future
-context is needed for the classification decision — bidirectionality matters for
-understanding. Conversely, objectives lacking any left-to-right autoregressive
-component are weaker at generation. Fixed-width masked spans still expose the
-number of hidden tokens, so they do not test whether a model can infer missing
-length from context. And it is established that data scale, batch size, and
-optimization details matter as much as the objective itself, so comparisons must
-control for them (Liu et al. 2019). For machine translation, pretraining the
-*encoder* with learned representations helps, but gains from putting a pretrained
+design. Left-only decoders condition each position only on its left context;
+bidirectionality is used for the classification decision in span-extraction tasks.
+Objectives with a left-to-right autoregressive component are used for generation.
+Fixed-width masked spans expose the number of hidden tokens. Data scale, batch
+size, and optimization details affect results as much as the objective, so
+comparisons control for them (Liu et al. 2019). For machine translation, pretraining
+the *encoder* with learned representations helps; gains from putting a pretrained
 language model in the *decoder* have been limited (Edunov et al. 2019), and the
-biggest MT gains have required pretraining on both source and target languages
-(MASS, Song et al. 2019; XLM, Lample & Conneau 2019), which needs monolingual data
+largest MT gains have come from pretraining on both source and target languages
+(MASS, Song et al. 2019; XLM, Lample & Conneau 2019), which uses monolingual data
 for every language of interest.
 
 ## Baselines
 
 **BERT (masked language model).** Bidirectional encoder, 15% of tokens replaced
-with `[MASK]`, predicted independently. Strong on understanding; cannot generate
-autoregressively. Gap: no decoder, so generation tasks require bolting on extra
-machinery.
+with `[MASK]`, predicted independently given the input.
 
-**GPT (left-to-right language model).** Autoregressive decoder, generates fluently.
-Gap: left-only context hurts understanding tasks like span extraction.
+**GPT (left-to-right language model).** Autoregressive decoder; each position
+conditions on its left context.
 
 **UniLM (multitask masked LM).** A single masked model trained with a mixture of
-attention masks — some bidirectional, some left-only, some prefix — so it can serve
-both understanding and generation. Gap: its predictions are still conditionally
-independent, and pretraining still mismatches generation because the model is not
-trained to decode an uncorrupted target autoregressively.
+attention masks — some bidirectional, some left-only, some prefix — so it serves
+both understanding and generation. Predictions are conditionally independent given
+the input.
 
 **MASS (masked seq2seq).** An encoder-decoder where a contiguous span (≈50% of
 tokens) is masked in the source and the decoder predicts exactly those masked
-tokens. Closest in shape to a denoising seq2seq. Gap: encoder and decoder see
-*disjoint* token sets (encoder gets the unmasked tokens, decoder produces the
-masked ones), which weakens it for discriminative tasks where the decoder should
-also see the whole input.
+tokens. The encoder gets the unmasked tokens and the decoder produces the masked
+ones, so the two see disjoint token sets.
 
 **XLNet (permuted LM).** Predicts tokens autoregressively in a permuted order so
-each prediction can condition on both sides. Gap: the decoding order at
-pretraining time is permuted, not the simple left-to-right order used at generation
-time, so it does not cleanly match the generation setting.
+each prediction can condition on both sides; the pretraining decoding order is the
+permutation rather than left-to-right.
 
 ## Evaluation settings
 
@@ -108,9 +91,9 @@ objectives directly.
 
 The substrate is a standard seq2seq Transformer (encoder + decoder with
 cross-attention), an Adam optimizer with warmup/decay, and a cross-entropy /
-label-smoothed loss. What is *not* fixed is how to corrupt the input document
-before the encoder sees it, and how to read out a representation for discriminative
-finetuning from a model that has a decoder. The scaffold leaves those slots.
+label-smoothed loss. The open slots are how to corrupt the input document before
+the encoder sees it, and how to read out a representation for discriminative
+finetuning from a model that has a decoder.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F

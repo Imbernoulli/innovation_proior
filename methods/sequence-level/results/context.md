@@ -10,22 +10,12 @@ and take several gradient steps on the current policy using an importance-sampli
 between the current and old policies to correct for the fact that the data was generated
 off-policy. To use a big rollout batch efficiently it is partitioned into mini-batches, so the
 update is genuinely off-policy: the responses come from `π_old`, not from the `π_θ` being
-optimized, and the IS ratio together with clipping is what is supposed to keep that mismatch
-controlled.
+optimized, and the IS ratio together with clipping is what keeps that mismatch controlled.
 
-The problem is that this recipe becomes **unstable at scale**. When the model is large, when
-it is a sparsely activated Mixture-of-Experts (MoE), and when responses get long, training
-that ran fine on smaller settings starts to diverge: the reward curve degrades and the model
-suffers a catastrophic, *irreversible* collapse. Once it happens, reverting to an earlier
-checkpoint, retuning the clipping ranges, lengthening the generation budget, or swapping the
-RL query set does not bring it back. The precise goal is to find a policy-optimization
-objective for LLM RL that is stable through long, large-scale training — low gradient
-variance, no collapse — while keeping the off-policy correction that makes mini-batched
-rollouts usable, and ideally simplifying the surrounding infrastructure rather than piling on
-more stabilization hacks. The single design axis under study is **how the old-policy and
-current-policy token log-probabilities are turned into importance ratios, clipped, and
-aggregated into the loss** — everything else (advantage estimator, reward, rollout, KL
-configuration) is held fixed.
+The open question is how to construct the policy-optimization objective — specifically, how
+the old-policy and current-policy token log-probabilities are turned into importance ratios,
+clipped, and aggregated into the loss — so that training is reliable across large dense
+and sparsely activated Mixture-of-Experts (MoE) models with long responses.
 
 ## Background
 
@@ -60,20 +50,20 @@ the unresolved question is how to turn those tensors into a low-variance clipped
 generation (Zheng et al., 2023, "Click") shows that losses can act directly on
 `log π_θ(y|x)` for a generated response; a max-margin contrastive objective can shift model
 probability mass over complete outputs. That establishes whole-output likelihood as an
-available primitive, without deciding how a clipped off-policy RL loss should use it.
+available primitive.
 
-**Diagnostic phenomenon — instability accumulates with length and is amplified by clipping.**
-It is observed that the high-variance noise in these updates grows with response length and is
-made worse by the clipping mechanism, and that the resulting collapse is irreversible.
+**Observed phenomenon — instability in large-scale training.** High-variance noise in these
+updates grows with response length and is amplified by the clipping mechanism, and the
+resulting collapse is observed to be irreversible under commonly tried recovery strategies
+(checkpoint reverts, clipping range tuning, longer generation budgets, new query sets).
 
-**Diagnostic phenomenon — expert-activation volatility in MoE.** For sparsely activated MoE
-models there is a further, measured pathology: after a single gradient update, the set of
-experts activated for the *same* response changes substantially. On a 48-layer
-Qwen3-30B-A3B-Base model, roughly 10% of the experts activated under the new policy `π_θ`
-differ from those under `π_old` for the same rollout sample, and the effect grows with depth.
-Because each token's likelihood depends on which experts fire, per-token quantities computed
-across a gradient update can swing drastically in MoE training, where they are far more stable
-in dense models.
+**Observed phenomenon — expert-activation volatility in MoE.** For sparsely activated MoE
+models, after a single gradient update, the set of experts activated for the *same* response
+changes substantially. On a 48-layer Qwen3-30B-A3B-Base model, roughly 10% of the experts
+activated under the new policy `π_θ` differ from those under `π_old` for the same rollout
+sample, and the effect grows with depth. Because each token's likelihood depends on which
+experts fire, per-token quantities computed across a gradient update can swing in MoE
+training in ways that are more stable in dense models.
 
 ## Baselines
 
@@ -89,8 +79,7 @@ The clip term zeroes the gradient when moving the ratio further out of `[1−ε,
 improve the objective, so the update stays near `π_old`; taking the min makes the clipped
 objective a lower bound on the unclipped one. PPO needs a learned value model (critic) to
 produce `Â_t`; that critic is typically about the size of the policy, doubling memory and
-compute, and its reliability is hard to guarantee — and harder still to scale to long
-responses and complex tasks. **Limitation:** the value model is a heavy, fragile dependency.
+compute.
 
 **GRPO (Shao et al., 2024, DeepSeekMath).** Remove the critic by computing a *group-relative*
 advantage: sample a group of `G` responses `{y_i}` to the same query, score each, and set
@@ -109,37 +98,22 @@ J_GRPO(θ) = E[ (1/G) Σ_i (1/|y_i|) Σ_t (
               − β D_KL[π_θ ‖ π_ref] ) ].
 ```
 
-This is the workhorse for LLM reasoning RL and is much cheaper than PPO. **Limitation:** the
-importance ratio is formed and clipped *per token*. Each `w_{i,t}` is computed from a single
-realized token `y_{i,t}` drawn from that position's old next-token distribution. A one-sample
-IS term is formally unbiased for that local expectation, but without any averaging over the
-next-token distribution it cannot realize the distribution-correction role that motivates IS;
-in the clipped GRPO objective it acts as a high-variance per-token gradient weight. Those
-weights vary unequally across positions and feed straight into the gradient. The cost it pays
-is high-variance training noise that grows with response length, is amplified by the
-per-token clipping, and on large/MoE/long-response training escalates into irreversible
-collapse.
+This is the workhorse for LLM reasoning RL and is much cheaper than PPO.
 
 **Decoupled / asymmetric clipping (DAPO-style, Yu et al., 2025).** A family of refinements to
 the same token-level objective: separate the lower and upper clip thresholds
 `clip_ratio_low` / `clip_ratio_high` (so the band around 1 is asymmetric), add dual-clip lower
 bounds for negative-advantage tokens, and use dynamic sampling and length-decoupled clipping.
-**Limitation:** these tune *where* the per-token ratio is clipped but keep the ratio itself at
-the token level, so the underlying per-token-IS variance is unaddressed.
 
 **Clipped IS with stop-gradient (CISPO-style, MiniMax, 2025).** Instead of zeroing a token's
 gradient when its ratio leaves the clip band, clip the IS weight *inside* a stop-gradient and
 let the gradient flow through `log π_θ` scaled by that bounded weight, so no token's gradient
-contribution is dropped entirely. **Limitation:** still a per-token weighting scheme; it
-changes how the token weight enters the gradient but not the granularity at which IS is
-applied.
+contribution is dropped entirely.
 
 **MoE stabilization by routing replay.** To make token-level objectives converge on MoE
 models, one caches the experts activated under `π_old` and forces `π_θ` to replay the same
 routing when recomputing the token ratios, so numerator and denominator use the same activated
-sub-network. **Limitation:** it works but adds memory and communication overhead, constrains
-the model's usable capacity, and is a workaround layered on top of the token-level ratio
-rather than a fix to the token-level instability itself.
+sub-network.
 
 ## Evaluation settings
 

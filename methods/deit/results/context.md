@@ -1,24 +1,19 @@
 ## Research question
 
 A pure-attention image classifier — a Transformer that ingests an image as a sequence of patch tokens
-with no convolutions at all — had just been shown to match or beat strong convolutional networks on
-ImageNet. But the demonstration came with a heavy caveat: it required pre-training on a giant private
-dataset of hundreds of millions of labeled images and large compute, and its authors concluded that
-such transformers "do not generalize well when trained on insufficient amounts of data." The precise
-question is whether a convolution-free image Transformer can be trained to be competitive with
-convnets of similar size and speed using *only* a mid-sized public dataset (ImageNet-1k, ~1.2M images),
-on a single machine in a few days — i.e. whether the data-hunger is intrinsic to the architecture or an
-artifact of the training recipe. A second, related question: once such a transformer can be trained,
-how should it be *distilled* from a strong teacher, given that the transformer's token-based structure
-differs fundamentally from a convnet's?
+with no convolutions at all — has been shown to match or beat strong convolutional networks on
+ImageNet, after pre-training on a giant private dataset of hundreds of millions of labeled images with
+large compute. The question is whether a convolution-free image Transformer can be trained to be
+competitive with convnets of similar size and speed using *only* a mid-sized public dataset
+(ImageNet-1k, ~1.2M images), on a single machine in a few days. A related question: how to train such a
+transformer with the help of a strong teacher classifier.
 
 ## Background
 
-**Why convnets were data-efficient and transformers were not.** Convolutions bake in strong priors —
-locality and translation equivariance — that match natural images, so a convnet needs comparatively
-little data to generalize. A Transformer's self-attention has almost no such built-in spatial prior;
-it must learn the structure of images from data, which is why, with a mid-sized dataset, it tended to
-underperform. The open question is whether this gap can be closed without adding convolutions back.
+**Inductive priors in convnets and transformers.** Convolutions bake in strong priors — locality and
+translation equivariance — that match natural images, so a convnet needs comparatively little data to
+generalize. A Transformer's self-attention has almost no such built-in spatial prior; it learns the
+structure of images from data.
 
 **The Transformer block.** Self-attention computes, for queries Q, keys K, values V (all linear
 projections of the same input sequence X, so K = N queries attend over all N inputs),
@@ -66,17 +61,13 @@ exponential moving averages of weights. Learning rate is commonly scaled with ba
 
 **The large-scale-pretrained image Transformer (ViT; Dosovitskiy et al.).** The architecture this work
 adopts: patches → linear embedding → class token + positional embedding → stack of Transformer blocks →
-class-token classifier. It reached strong ImageNet accuracy but *only* after pre-training on ~300M
-private images, with a training recipe (e.g. weight decay 0.3, gradient clipping, dropout, no strong
-augmentation) tuned for that large-scale regime. The gap it leaves: trained on ImageNet-1k alone with
-that recipe, it underperforms convnets — its authors' stated conclusion was that such transformers need
-very large training sets. Whether a *different recipe* closes this gap on public data is exactly the
-open question.
+class-token classifier. It reached strong ImageNet accuracy after pre-training on ~300M private images,
+with a training recipe (e.g. weight decay 0.3, gradient clipping, dropout, no strong augmentation)
+tuned for that large-scale regime.
 
 **Convolutional networks (EfficientNet, RegNet, ResNet).** The accuracy/throughput yardstick on
 ImageNet-1k. They are data-efficient (strong priors), train well with SGD, and define the
-accuracy-vs-speed frontier a convolution-free model must reach. A strong convnet is also the natural
-candidate *teacher* for distillation.
+accuracy-vs-speed frontier on ImageNet-1k.
 
 ## Evaluation settings
 

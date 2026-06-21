@@ -1,18 +1,18 @@
 ## Research question
 
-Can one classification component — a temporal encoder, a way of relating the channels, and a padding-aware way of collapsing the time axis into a fixed-width feature — generalize across heterogeneous multivariate time series when training and evaluation are pinned to a fixed protocol? The three datasets deliberately stress different structure: **EthanolConcentration** is spectral chemistry (4 classes, long smooth absorbance traces), **FaceDetection** is MEG brain imaging (binary, ~144 noisy channels, the signal lives in cross-channel covariation), and **Handwriting** is tri-axial accelerometer character recognition (26 classes). The only designed piece is the `Model` that maps a padded window plus its padding mask to class logits. Everything around it — the data loader, the per-dataset padding length, the optimizer, the loss, and early stopping — is frozen.
+Can one classification component generalize across heterogeneous multivariate time series when training and evaluation are pinned to a fixed protocol? The three datasets deliberately stress different structure: **EthanolConcentration** is spectral chemistry (4 classes, long smooth absorbance traces), **FaceDetection** is MEG brain imaging (binary, ~144 noisy channels), and **Handwriting** is tri-axial accelerometer character recognition (26 classes). The only designed piece is the `Model` that maps a padded window plus its padding mask to class logits. Everything around it — the data loader, the per-dataset padding length, the optimizer, the loss, and early stopping — is frozen.
 
 ## Prior art / Background / Baselines
 
-Current sequence-classification baselines each make a different representational choice, and each leaves a concrete gap.
+Current sequence-classification baselines each make a different representational choice.
 
-- **Distance-based classifiers (DTW-1NN; Bagnall et al. 2018).** They align a test series to every training series with dynamic time warping and predict the nearest neighbor's label. The result is lazy, stores the whole training set, scales poorly at test time, and warps channels independently, so there is no shared learned representation and no cross-channel modeling.
+- **Distance-based classifiers (DTW-1NN; Bagnall et al. 2018).** They align a test series to every training series with dynamic time warping and predict the nearest neighbor's label. The method is non-parametric and warps channels independently.
 
-- **Recurrent encoders (LSTM/GRU classifiers).** They carry a hidden state through time and read the final state into a classifier. Long-range cues must survive every recurrent transition, which is fragile, and the sequential scan makes training slow.
+- **Recurrent encoders (LSTM/GRU classifiers).** They carry a hidden state through time and read the final state into a classifier.
 
-- **Temporal convolution (TCN / InceptionTime; Fawaz et al. 2020).** They slide 1-D kernels along time and widen the receptive field with dilation or parallel kernel sizes. A finite kernel only relates points inside a local time window, so structure between points farther apart than the receptive field is hard to reach.
+- **Temporal convolution (TCN / InceptionTime; Fawaz et al. 2020).** They slide 1-D kernels along time and widen the receptive field with dilation or parallel kernel sizes.
 
-- **Per-step Transformer encoders.** They embed the full channel vector at each timestep as one token and run self-attention over the sequence. A raw timestep vector is not a semantically coherent unit, and attending over all timesteps costs quadratically in sequence length.
+- **Per-step Transformer encoders.** They embed the full channel vector at each timestep as one token and run self-attention over the sequence.
 
 ## Fixed substrate / Code framework
 

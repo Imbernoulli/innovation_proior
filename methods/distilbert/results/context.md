@@ -1,18 +1,12 @@
 ## Research question
 
-Large pre-trained Transformer language models have become the default tool in NLP,
-but they carry hundreds of millions of parameters. That creates two concrete pains.
-First, environmental and monetary cost: pre-training these models from scratch
-consumes enormous compute, and the prevailing trend is that *bigger* keeps winning, so
-the cost is escalating. Second, deployment: running a several-hundred-million-parameter
-model under tight latency or memory budgets — on a phone, in a real-time service —
-is impractical. Can we produce a *general-purpose* pre-trained language representation
-model that is substantially smaller and faster at inference, cheap enough to pre-train
-once, yet retains almost all of the language-understanding ability of the large model
-and can still be fine-tuned across the full range of downstream tasks like its larger
-counterpart? The crux is generality: not a small model distilled for one task, but a
-small model that keeps the broad, transferable representation the large model learned
-during pre-training.
+Large pre-trained Transformer language models are the default tool in NLP, carrying
+hundreds of millions of parameters. Pre-training such a model from scratch consumes
+large amounts of compute, and running a several-hundred-million-parameter model under
+tight latency or memory budgets — on a phone, in a real-time service — is demanding.
+How can one obtain a *general-purpose* pre-trained language representation model that is
+substantially smaller and faster at inference and can be fine-tuned across the full
+range of downstream tasks like its larger counterpart?
 
 ## Background
 
@@ -58,29 +52,22 @@ parameter budget, than varying the number of layers.
 **The large MLM-pretrained Transformer encoder (the teacher).** 12 layers, hidden 768,
 12 heads, ~110M parameters; MLM (+ NSP) pre-training on Wikipedia + BookCorpus; fine-tuned
 per task. Core idea: a single general-purpose representation that transfers everywhere.
-Gap: too large and slow for constrained inference, and expensive to pre-train.
 
 **Task-specific distillation (Tang et al. 2019; Chatterjee et al. 2019; Turc et al.
 2019).** Distill a *fine-tuned* large model into a small task-specific model — e.g.
 into a BiLSTM classifier, or into a small Transformer initialized from the large one,
 once a target task is fixed. Core idea: transfer the teacher's behavior on one task.
-Gap: the result is not general-purpose — you pay a fresh distillation for every task,
-and you lose the broad representation that makes the large model reusable. Turc et al.
-pre-train a small model with the original objective and then distill at fine-tuning
-time; the question of distilling *during* pre-training to get a reusable small model is
-left open.
+Turc et al. pre-train a small model with the original objective and then distill at
+fine-tuning time.
 
 **Multi-teacher / multilingual distillation (Yang et al. 2019; Tsai et al. 2019).**
 Combine an ensemble of teachers, or pre-train a small multilingual model purely from a
-teacher's signal. Core idea: richer or broader supervision. Gap: training a small model
-*from scratch* on the distillation signal alone, without good initialization or the
-self-supervised objective, leaves performance on the table.
+teacher's signal. Core idea: richer or broader supervision.
 
 **Other compression: pruning and quantization (Michel et al. 2019; Gupta et al.
 2015).** Remove attention heads or reduce numerical precision of an existing model.
-Core idea: shrink a trained model post hoc. Gap: orthogonal to producing a smaller
-*pre-trained* model — they compress a fixed architecture rather than train a compact
-general-purpose one, and can be applied on top of a compact pre-trained encoder.
+Core idea: shrink a trained model post hoc; these can be applied on top of a compact
+pre-trained encoder.
 
 ## Evaluation settings
 

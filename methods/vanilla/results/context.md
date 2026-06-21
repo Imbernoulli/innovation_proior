@@ -2,7 +2,7 @@
 
 A Transformer is a deep stack of layers, and each layer is built from two sub-layers: multi-head self-attention and a position-wise feed-forward network. Around those sub-layers sit a residual connection and layer normalization. The residual stream is the running state that every sub-layer reads from and writes back into, so the way the stream is updated controls both the forward signal scale and the gradient scale seen by the optimizer.
 
-The optimization problem is practical and sharp. Deep Transformers trained from scratch are unusually dependent on learning-rate warm-up: instead of starting from a large learning rate and decaying it, the schedule starts near zero and ramps to a chosen maximum over a chosen number of iterations. That adds two sensitive knobs, slows the early part of training, and is expensive to tune for large models. The goal is to understand why the residual stream and layer normalization make warm-up necessary, then find a layer arrangement whose initial hidden-state and gradient scales are stable enough to train with a plain large initial learning rate and a normal decay schedule.
+The optimization problem is practical and sharp. Deep Transformers trained from scratch are unusually dependent on learning-rate warm-up: instead of starting from a large learning rate and decaying it, the schedule starts near zero and ramps to a chosen maximum over a chosen number of iterations. That adds two sensitive knobs, slows the early part of training, and is expensive to tune for large models. The question is how the arrangement of residual connections and layer normalization within each Transformer layer affects initial hidden-state norms and gradient scales, and how that relates to the warm-up dependence observed in practice.
 
 ## Background
 
@@ -61,13 +61,13 @@ These ingredients are enough to compute expected hidden-state norms and last-lay
 x <- LayerNorm(x + Sublayer(x)).
 ```
 
-The residual addition is immediately followed by layer normalization. This architecture works well when paired with warm-up, but from-scratch training is brittle without the ramp, and the sensitivity persists under both Adam and plain SGD. The relevant limitation is not merely optimizer bookkeeping: the architecture itself places a nonidentity operation on the repeated stream between layers, so any explanation has to account for how that operation changes hidden-state norms and backpropagated gradients across depth.
+The residual addition is immediately followed by layer normalization. This architecture works well when paired with warm-up, and the sensitivity persists under both Adam and plain SGD.
 
-**Residual-branch scaling or gating.** A cheap way to calm a residual stack is to scale a branch contribution, as in `x <- x + a F(x)`, sometimes with `a` initialized small. That can damp how much a branch writes. The limitation is that it does not by itself explain a normalization-induced gradient scale, and putting the multiplier on the skip path, `x <- lambda x + F(x)`, reintroduces the `prod lambda` depth factor that clean identity shortcuts avoid.
+**Residual-branch scaling or gating.** A cheap way to calm a residual stack is to scale a branch contribution, as in `x <- x + a F(x)`, sometimes with `a` initialized small. That can damp how much a branch writes. Putting the multiplier on the skip path, `x <- lambda x + F(x)`, introduces the `prod lambda` depth factor discussed in the identity-mapping analysis.
 
-**Optimizer-side warm-up remedies.** Another baseline explanation attributes warm-up to large early variance in adaptive optimizers. Rectifying the adaptive step can help in settings where Adam is the sole issue. The limitation is that the same warm-up dependence appears with non-adaptive SGD, so the residual stream's initial gradient scale remains a separate architectural problem.
+**Optimizer-side warm-up remedies.** Another baseline explanation attributes warm-up to large early variance in adaptive optimizers. Rectifying the adaptive step can help in settings where Adam is the primary issue. The same warm-up dependence appears with non-adaptive SGD.
 
-**Simply deepening the same stack.** Increasing depth under the same residual/normalization arrangement gives a stronger model class but also makes the optimization path longer and the gradient path more sensitive to the per-layer Jacobians. The limitation is that added depth does not remove the warm-up dependence; it makes the scale accounting more important.
+**Simply deepening the same stack.** Increasing depth under the same residual/normalization arrangement gives a stronger model class and also makes the optimization path longer and the gradient path more sensitive to the per-layer Jacobians.
 
 ## Evaluation settings
 

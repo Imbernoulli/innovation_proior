@@ -15,17 +15,10 @@ p^(l)_0(x_0 | y)  =  p_0(x_0) · exp(-l_y(x_0)) / Z,        Z = ∫ p_0(x_0) exp
 
 This is "plug-and-play": the prior and the loss are decoupled, `y` is known only at test time, and the
 loss can be anything differentiable — not just a linear least-squares term, and not something the prior
-was trained to know about. The pain point is that nothing about a vanilla diffusion sampler conditions
-on `y`. A diffusion sampler integrates a reverse process driven by the *score* of `p_t(x_t)` at every
-noise level `t`; to bend it toward the posterior we need the corresponding conditional score at every
-noise level. By Bayes' rule that splits into the unconditional score (which the pretrained model gives
-us) plus a *guidance term* `∇_{x_t} log p_t(y | x_t)` — and this guidance term is the whole difficulty.
-A usable solution must (1) produce that guidance term at *all* noise levels from a *single* query of
-the diffusion network (so the cost per step stays close to unconditional sampling and fast samplers
-still apply), (2) work for a *general* differentiable loss defined only on clean `x_0`, (3) require no
-extra training and no paired `(x_0, y)` data, and (4) get the *scale* of the guidance approximately
-right across the whole noise schedule, not just its direction. The methods below each achieve some of
-these; none achieves all four at once for a general loss.
+was trained to know about. A diffusion sampler integrates a reverse process driven by the *score* of
+`p_t(x_t)` at every noise level `t`; to bend it toward the posterior we need the corresponding
+conditional score at every noise level. By Bayes' rule that splits into the unconditional score (which
+the pretrained model gives us) plus a *guidance term* `∇_{x_t} log p_t(y | x_t)`.
 
 ## Background
 
@@ -52,8 +45,7 @@ motion, and scientific signals. The load-bearing concepts a guidance method rest
   `dx = [ (ṡ/s) x - s^2 σ̇ σ ∇_x log p(x/s; σ) ] dt` (+ noise for the SDE). The variance-preserving (VP)
   choice uses `σ(t) = sqrt(exp(½ β_d t^2 + β_min t) - 1)` and `s(t) = 1/sqrt(exp(½ β_d t^2 + β_min t))`
   with `β_d = 19.9`, `β_min = 0.1`. A wave of fast first-order ODE/SDE solvers (DDIM and successors)
-  cut the number of network evaluations from ~1000 to ~10-100, which is *why* the per-step cost of any
-  guidance method matters: a method that needs many network calls per step throws those gains away.
+  cut the number of network evaluations from ~1000 to ~10-100.
 
 - **The guidance term is an expectation over an intractable posterior.** The condition `y` is a
   function of the *clean* signal: in the graphical model `x_0 → x_t` and `x_0 → y`, with `y` and `x_t`
@@ -64,24 +56,13 @@ motion, and scientific signals. The load-bearing concepts a guidance method rest
   ```
 
   an expectation of the clean-data likelihood `p_0(y | x_0) ∝ exp(-l_y(x_0))` over the *denoising
-  posterior* `p(x_0 | x_t)`. That posterior is exactly what is hard: evaluating or sampling it
-  accurately needs many diffusion steps, so the integral is intractable if we insist on one network
-  call. This is the structural fact every guidance method has to confront.
+  posterior* `p(x_0 | x_t)`. That posterior is exact: evaluating or sampling it accurately needs many
+  diffusion steps, so the integral is not directly tractable from a single network call.
 
-- **A diagnostic about the existing point-estimate fix.** On a tractable one-dimensional toy — `p_0`
-  a mixture of two well-separated Gaussians, `y` the mixture label, so `p_t(x_t)` is itself a Gaussian
-  mixture and the true `∇_{x_t} log p_t(y | x_t)` is computable in closed form at any noise level — one
-  can directly compare the closed-form guidance to the point-estimate approximation (below). The
-  observed phenomenon: the point estimate is *too large at high noise* and *too small at low noise*.
-  The reason is geometric. The clean-data guidance gradient is large near the decision boundary
-  (`x_0 ≈ 0`) and ~zero far from it. At high noise the MMSE estimate `x_hat_t` sits near zero (the
-  posterior mean of a symmetric mixture), landing it on the steep part — large gradient — whereas the
-  *true* expectation averages over a posterior spread across both modes and is small. At low noise
-  `x_hat_t` has committed to a mode (flat region) — small gradient — whereas the true expectation, over
-  a tight posterior, is large. So the single-point evaluation systematically mis-scales the guidance at
-  both ends of the schedule. A partial patch is to divide the point-estimate guidance by the
-  denoiser's negative log-likelihood times a constant — an acknowledgement that the *scale* is the
-  problem, applied as a heuristic rather than a fix.
+- **A tractable one-dimensional diagnostic.** On a tractable one-dimensional toy — `p_0` a mixture of
+  two well-separated Gaussians, `y` the mixture label, so `p_t(x_t)` is itself a Gaussian mixture and
+  the true `∇_{x_t} log p_t(y | x_t)` is computable in closed form at any noise level — one can directly
+  compare the closed-form guidance to any approximation.
 
 ## Baselines
 
@@ -104,35 +85,24 @@ empirically stabilizing rule
 `ζ_i = ζ' / ‖y - A(x_hat(x_i))‖` with `ζ'` a constant — i.e. it normalizes the squared-residual
 gradient by the residual norm, which is the gradient of the *root* loss `‖y - A(x_hat)‖` since
 `∇‖·‖ = ∇‖·‖^2 / (2‖·‖)`. DPS works on nonlinear inverse problems and noisy measurements, where it is
-analyzed via a Jensen gap that shrinks with measurement noise. **Limitation:** the delta approximation
-is the source of the diagnostic phenomenon above — the guidance scale is wrong at both ends of the
-noise schedule (too large at high `σ_t`, too small at low `σ_t`), the residual-norm heuristic and the
-NLL-division heuristic are patches around it, and the hyperparameters are tuned per task and per
-1000-step schedule and transfer poorly to other tasks or to fewer timesteps.
+analyzed via a Jensen gap that shrinks with measurement noise.
 
 **Classifier guidance (CG) — Dhariwal & Nichol, NeurIPS 2021.** Obtain the conditional score by Bayes'
 rule, `∇_{x_t} log p_t(x_t | y) = ∇_{x_t} log p_t(x_t) + ∇_{x_t} log p_t(y | x_t)`, and supply the
 second term from a *separately trained* classifier `p_φ(y | x_t)` that operates on *noisy* images at
 every level. An optional gradient scale `s` multiplies the guidance; since
 `s · ∇_x log p(y | x) = ∇_x log (p(y | x)^s / Z)`, raising `s` sharpens the conditional toward the
-classifier's modes, trading diversity for fidelity. **Limitation:** it requires paired `(x_0, y)`
-training data to fit the noisy classifier, and a new classifier for each family of conditions — it is
-not plug-and-play and is restricted to conditions for which such a noisy classifier can be trained; an
-arbitrary test-time differentiable loss is out of reach.
+classifier's modes, trading diversity for fidelity. It requires paired `(x_0, y)` training data to fit
+the noisy classifier, and a new classifier for each family of conditions.
 
 **Diffusion models as plug-and-play priors (D-PnP) — Graikos et al., NeurIPS 2022.** Use the diffusion
 model as a learned prior inside a stochastic-optimization objective and *optimize* for an `x_0` that is
-consistent with both the prior and the loss, finding a point estimate. **Limitation:** it converges to
-a single point (not a sample from the posterior), it can stall at a local minimum, and it is slow —
-many optimization iterations per result (e.g. on the order of thousands to tens of thousands) — because
-it cannot inherit fast diffusion samplers; it also gives no principled handle on the per-noise-level
-guidance term.
+consistent with both the prior and the loss, finding a point estimate.
 
 **Reconstruction guidance / linear plug-and-play solvers.** A family of methods handles *linear*
 inverse problems with least-squares losses in closed form by exploiting the Gaussianity of
-`p(x_0 | x_t)` (e.g. pseudo-inverse-based and least-squares-guidance schemes). **Limitation:** they are
-specialized to linear operators and Gaussian/least-squares losses; for a general nonlinear or
-non-least-squares differentiable loss the closed form does not exist.
+`p(x_0 | x_t)` (e.g. pseudo-inverse-based and least-squares-guidance schemes). They are specialized
+to linear operators and Gaussian/least-squares losses.
 
 ## Evaluation settings
 

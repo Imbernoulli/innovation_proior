@@ -1,6 +1,6 @@
 ## Fragile Perfect-Randomness Assumption
 
-Randomized algorithms and cryptographic protocols are usually proved under an ideal input model: the random bits are uniform, independent, and hidden from any party that should not know them. This is a strong modeling assumption. Physical sources can be biased or correlated, and cryptographic secrets can be partly exposed before they are used.
+Randomized algorithms and cryptographic protocols are usually proved under an ideal input model: the random bits are uniform, independent, and hidden from any party that should not know them. Physical sources can be biased or correlated, and cryptographic secrets can be partly exposed before they are used.
 
 The operational need is not merely to assign a large entropy number to the source. The output must be close enough to uniform that replacing ideal random bits by the processed source changes every downstream event by only a small amount.
 
@@ -8,22 +8,26 @@ The operational need is not merely to assign a large entropy number to the sourc
 
 The source model should allow only partial knowledge of the distribution. A realistic procedure cannot be tuned to the exact probabilities of every possible source value; it should work from a lower bound on worst-case uncertainty.
 
-Min-entropy captures that worst case. If no value occurs with probability above `2^-k`, then no single guess succeeds too often. This is stricter than Shannon entropy, which can remain large even when one value carries a large mass and the source is useless most of the time.
+Min-entropy captures that worst case. If no value occurs with probability above `2^-k`, then no single guess succeeds too often. This is stricter than Shannon entropy, which can remain large even when one value carries a large mass.
 
-## Why Fixed Processing Is Insufficient
+## Deterministic Extractors
 
-A single deterministic function cannot turn every high-min-entropy source into a nearly uniform output. For any fixed output bit, one of its preimages is large. A source uniform on that preimage can still have substantial min-entropy while making the output constant.
+A fundamental result shows that a single deterministic function cannot turn every high-min-entropy source into a nearly uniform output. For any fixed output bit, one of its preimages is large. A source uniform on that preimage can still have substantial min-entropy while making the output constant. This impossibility is a known theorem in the randomness extraction literature.
 
-This forces a public random choice into the design. The goal becomes to choose a processing rule from a family and require the final output to look uniform even when the chosen rule is known.
+One avenue is to allow a short public seed that selects among a family of processing functions. The combined output—seed and processed value—should then look close to uniform even when the seed is known.
 
-## Public Random Choices
+## Public Randomness in Extraction
 
-The public choice has to be much weaker than selecting a fully random function, because a fully random map is too large to describe and too blunt as an implementation principle. What matters is the limited set of statistical tests that an eventual guarantee must survive.
+Families of hash functions provide a structured way to implement this public-seed approach. A family is called 2-universal if for all distinct inputs `x, x'`, a uniformly chosen member `H` satisfies
 
-The right precondition should therefore talk about collisions between possible source values. If a random choice prevents every unequal pair from colliding too often, then concentration of mass after compression becomes measurable.
+```text
+Pr_H[H(x) = H(x')] <= 1/|range(H)|.
+```
 
-## Evaluation Target
+Such families can be described compactly and evaluated efficiently, and their collision probabilities are well understood analytically.
 
-The target guarantee is a joint distribution statement. If `S` denotes the public choice and `Y` the processed output, then `(S, Y)` should be close in statistical distance to `(S, U_m)`, where `U_m` is uniform and independent of `S`.
+## Statistical Distance and the Evaluation Target
 
-This form is crucial for privacy amplification and for strong extraction: revealing the public choice must not destroy the uniformity of the processed value. The parameters to balance are the source uncertainty `k`, the output length `m`, and the tolerated statistical error.
+The target guarantee for any extraction procedure is stated in terms of statistical distance. If `S` denotes the public seed and `Y` the processed output, then `(S, Y)` should have small statistical distance from `(S, U_m)`, where `U_m` is uniform over `{0,1}^m` and independent of `S`.
+
+The parameters to balance are the source min-entropy `k`, the output length `m`, and the tolerated statistical error `epsilon`. Applications such as privacy amplification require the public seed to remain visible without reducing the quality of the extracted output.

@@ -6,16 +6,9 @@ Likelihood-based generative modeling of natural images is measured in bits per d
 held-out data: the negative log-likelihood the model assigns to test images, normalized per pixel-channel.
 On the standard density-estimation benchmarks (CIFAR-10, downsampled ImageNet), autoregressive models have
 held the top of the leaderboard for years. A separate family — models that corrupt data with Gaussian noise
-and learn to reverse the corruption — has begun producing perceptually striking samples, but it has not
-matched autoregressive likelihoods. The open question is sharp: can a noise-corruption generative model also
-be a *great likelihood* model, competitive with or better than autoregressive models on BPD?
-
-A solution would have to deliver three things. First, an objective that is genuinely a bound on the data
-log-likelihood (not a quality-tuned surrogate), so that minimizing it minimizes BPD. Second, a tractable,
-numerically stable way to evaluate and optimize that bound — existing implementations of this model family
-require 64-bit floating point to avoid catastrophic rounding, which is awkward on modern accelerators. Third,
-a way to handle the part of the likelihood that is most punishing: the fine-scale, exact-pixel-value detail
-that perceptual-quality methods can afford to ignore but a likelihood number cannot.
+and learn to reverse the corruption — has begun producing perceptually striking samples. The open question is
+whether such a noise-corruption generative model can also be a strong likelihood model, competitive with
+autoregressive models on BPD.
 
 ## Background
 
@@ -49,45 +42,39 @@ differential equation (Song et al. 2020); its time-reversal is another SDE drive
 there is an associated deterministic probability-flow ODE whose change-of-variables gives an exact likelihood.
 This continuous view unifies the variance-preserving and variance-exploding regimes as instances of one SDE.
 
-**Motivating empirical facts about existing systems.** (1) The discrete-time ELBO of a corruption model, when
+**Empirical observations about existing systems.** (1) The discrete-time ELBO of a corruption model, when
 the per-step variances are shared across dimensions, equals a sum of denoising-score-matching losses with a
 *specific per-noise-level weighting*; the perceptual-quality recipes drop that weighting (set all weights to
-one on the noise-prediction MSE), which improves samples but is no longer the likelihood bound. (2) Naive
-implementations of the discrete-time loss compute intermediate quantities very close to 1, where floating
-point is least precise; practitioners resort to 64-bit arithmetic to get correct results. (3) The noise
-schedule (the shape of `SNR(t)`) is hand-designed — β-linear, cosine — and treated as a fixed hyperparameter;
-different schedules give very different bounds. (4) At the lowest noise
-levels the marginal `q(z_t)` is sharply peaked because 8-bit pixel data is discrete; a denoiser that processes
-data only through smooth convolutions struggles to capture this fine-scale structure, and likelihood (unlike
-FID) is acutely sensitive to it.
+one on the noise-prediction MSE). (2) Naive implementations of the discrete-time loss compute intermediate
+quantities very close to 1, where floating point is least precise; practitioners resort to 64-bit arithmetic
+to get correct results. (3) The noise schedule (the shape of `SNR(t)`) is hand-designed — β-linear, cosine —
+and treated as a fixed hyperparameter; different schedules give very different bounds. (4) At the lowest noise
+levels the marginal `q(z_t)` is sharply peaked because 8-bit pixel data is discrete.
 
 ## Baselines
 
 **Deep diffusion / unfolded VAE (Sohl-Dickstein et al. 2015).** Defines the forward Gaussian corruption and a
 learned reverse Markov chain, trained by maximizing the ELBO, which decomposes into a prior KL, a
-reconstruction term, and a sum of transition KLs. Establishes the template but yields weak samples and
-uncompetitive likelihood; the objective is cumbersome.
+reconstruction term, and a sum of transition KLs. Establishes the template for this class of model.
 
 **Denoising diffusion with noise prediction (Ho et al. 2020).** Parameterizes the reverse-process mean through
 a *noise-prediction network* `ε̂_θ(z_t,t)`, with `x̂ = (z_t − σ_t ε̂)/α_t`. Shows the discrete ELBO equals a
 weighted sum of denoising-score-matching losses, then trains the *simplified* objective
 `E‖ε − ε̂_θ(z_t,t)‖²` — the same MSE but with the likelihood weighting removed. Uses a fixed β-linear
-schedule and requires 64-bit arithmetic for the exact bound. Excellent FID; the simplified loss is not the
-likelihood bound, and likelihood lags autoregressive models.
+schedule and requires 64-bit arithmetic for the exact bound.
 
 **Noise-conditional score networks (Song & Ermon 2019; 2020).** Learn the marginal score at multiple noise
 scales via denoising score matching, with a variance-exploding schedule (`α_t = 1`, `σ_t` a geometric series)
 and Langevin-style sampling. The implied per-level weighting happens to be constant — consistent with the
-likelihood bound — but the schedule endpoints are fixed by hand and not optimized.
+likelihood bound.
 
 **Score-SDE (Song et al. 2020).** Casts corruption as a forward SDE and generation as the reverse SDE /
 probability-flow ODE, unifying variance-preserving and variance-exploding regimes and giving exact likelihood
 through the ODE. The likelihood comes from continuous-flow machinery rather than a short, transparent
-variational expression; the diffusion specification is fixed.
+variational expression.
 
 **Improved discrete diffusion (Nichol & Dhariwal 2021).** A cosine schedule and learned reverse variances
-improve likelihood over the original recipe, but the schedule is still a fixed hand-designed family and the
-objective remains a perceptual-quality-leaning weighted loss.
+improve likelihood over the original recipe.
 
 **VAEs / flows as the likelihood incumbents on these benchmarks.** Hierarchical VAEs (IAF-VAE, Very Deep VAE,
 NVAE), normalizing flows (Glow, Flow++), and especially deep autoregressive transformers (PixelCNN/++,

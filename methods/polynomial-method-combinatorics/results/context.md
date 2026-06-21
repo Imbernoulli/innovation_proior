@@ -55,22 +55,15 @@ sumset conditions turn forbidden equalities into polynomial factors.
 ## Baselines
 
 **Direct counting and pigeonhole arguments.** These keep the problem in the
-original finite universe. They are transparent but often lose structure when
-many objects overlap, as in incidence problems where many lines share points.
-The polynomial method replaces overlap bookkeeping by a global low-degree
-certificate.
+original finite universe. They are transparent and work within the finite
+combinatorial structure.
 
 **Probabilistic and entropy methods.** Random choice proves existence or typical
-behavior, but it may not see exact algebraic obstructions. A polynomial proof can
-separate configurations that have the same density but different algebraic
-incidence, because the zero pattern is not just a statistic.
+behavior. These methods are natural for density and counting arguments.
 
 **Fourier and character methods.** Fourier analysis is natural for additive
-groups and detects bias through characters. It can stall when all visible
-Fourier coefficients are small or when the required saving is exponential
-rather than polynomial. The cap-set breakthrough is the standard contrast:
-low-degree rank bounds gave an exponential-rate upper bound where Fourier
-density-increment bounds had saved only polynomial factors.
+groups and detects bias through characters. It works by measuring how non-uniform
+a set is with respect to additive structure.
 
 **Ordinary linear algebra on incidence matrices.** Rank arguments already occur
 in combinatorics, but without polynomials they need a useful matrix in hand.
@@ -101,11 +94,5 @@ Kakeya proof, where a small Kakeya set would admit a nonzero low-degree
 polynomial that line restrictions force to vanish too much; and the
 Croot-Lev-Pach/Ellenberg-Gijswijt cap-set argument, where low-degree polynomial
 decompositions bound rank or slice rank.
-
-The method should also be judged by its failure modes. It depends on a field or
-ring where polynomial functions retain enough information; it needs a degree
-bound below the relevant root-counting threshold; and it can fail when the
-natural encoding has high degree, too many monomials, or collapses over small
-characteristic.
 
 

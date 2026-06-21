@@ -10,20 +10,17 @@ maintained or replaced, a routing policy keeps cycling. The question is: **which
 policy is best for a task that has no end?**
 
 The standard tool for infinite-horizon problems is the *discounted* total reward
-`Σ_{t≥0} γ^t r_t` with `0 ≤ γ < 1`. But for a genuinely unending, recurrent task the discount
-is uncomfortable. The factor `γ` was introduced for one technical reason — to keep an infinite
-sum of bounded rewards finite — yet it silently encodes an effective horizon of roughly
-`1/(1−γ)` periods and downweights the long-run behaviour that *is* the whole point of a
-continuing task. Worse, it can rank policies *wrongly*: a policy whose rewards arrive sooner
-can beat a policy that earns strictly more per step in the long run. So the goal a solution
-must hit is: directly optimize the **long-run average reward per step**,
+`Σ_{t≥0} γ^t r_t` with `0 ≤ γ < 1`, where the factor `γ` keeps an infinite sum of bounded
+rewards finite and encodes an effective horizon of roughly `1/(1−γ)` periods. For a
+genuinely unending, recurrent task the quantity one wants to optimize directly is the
+**long-run average reward per step**,
 
 ```
 g = lim_{N→∞} (1/N) · E[ Σ_{t=0}^{N-1} r_t ],
 ```
 
-characterize when an optimal policy exists, and give a way to compute it — without smuggling
-in an arbitrary discount.
+so the task is to characterize when an optimal policy for this criterion exists and to give a
+way to compute it.
 
 ## Background
 
@@ -51,46 +48,30 @@ converges. The Bellman *optimality* equation
 `V*(s) = max_a [ r(s,a) + γ Σ_{s'} p(s'|s,a) V*(s') ]` has a unique solution `V*`, its
 operator `T_γ` is a `γ`-contraction in the max-norm, **value iteration** `V ← T_γ V` converges
 geometrically, and the greedy policy with respect to `V*` is optimal. This machinery — Bellman's
-equation, value iteration, the contraction — is the prevailing wisdom and the toolbox into which
-any new criterion must fit.
+equation, value iteration, the contraction — is the prevailing toolbox into which any new
+criterion is set.
 
-**The pain point that motivates a different criterion.** The discounted criterion can pick a
-long-run-worse policy. Concretely: a controller sits in a state where it can enter one of two
-cycles. One cycle pays reward `5` immediately and then every `5` steps (average `1` per step);
-the other pays reward `10` four steps later and then every `5` steps (average `2` per step).
-The long-run-better choice is unambiguous — the second cycle. But the discounted values are
-`5/(1−γ^5)` and `10γ^4/(1−γ^5)`, so the first cycle has the larger discounted value whenever
-`γ < 2^{-1/4} ≈ 0.8409`, purely because its smaller reward arrives sooner and discounting
-overweights "sooner." One can push `γ` toward `1` to suppress the effect, but then
-`V_γ(s) → ∞` for *every* policy (an unending stream of bounded rewards, undiscounted,
-diverges), so the ranking is the difference of two quantities both blowing up — numerically and
-conceptually unstable. This is a known, documented failure mode of discounting on
-cyclic/continuing tasks: it "encourages short-term gains over long-term benefits," and finding a
-`γ` close enough to `1` to avoid it, while still keeping values finite and learnable, is fragile.
+**Discounting on cyclic tasks.** On a continuing task the relative ranking of two policies under
+the discounted criterion depends on `γ`. Consider a controller in a state where it can enter one
+of two cycles. One cycle pays reward `5` immediately and then every `5` steps (average `1` per
+step); the other pays reward `10` four steps later and then every `5` steps (average `2` per
+step). The discounted values are `5/(1−γ^5)` and `10γ^4/(1−γ^5)`, so the first cycle has the
+larger discounted value whenever `γ < 2^{-1/4} ≈ 0.8409`, even though the second has the larger
+long-run average. As `γ → 1`, `V_γ(s) → ∞` for every policy, since an undiscounted unending
+stream of bounded rewards diverges.
 
 **The state-independence of the average.** For a unichain policy the average reward `g` is the
 *same constant for every starting state*: the recurrent class is visited forever, so its
-time-average reward (a single number `d · r_π` under the stationary distribution `d`) dominates;
-the finite reward accumulated over the transient prefix is divided by `N → ∞` and vanishes. So
-the gain of a unichain policy is a scalar `g`, not a function of `s`. A scalar, by itself, cannot
-say *which states are better to be in* — it carries no ranking information across states, even
-though a greedy improvement step needs precisely that cross-state comparison.
-
-**The Laurent picture of the discount limit.** The discounted value, viewed as a function of
-`γ` near `1`, is singular: `(I − γ P_π)^{-1}` has a pole at `γ = 1` because `I − P_π` is
-singular (`P_π 1 = 1` makes `1` an eigenvalue, so `I − P_π` annihilates the constant vector).
-The resolvent of a stochastic matrix is known to admit a **Laurent expansion** about `γ = 1`:
-a `1/(1−γ)` pole term, a constant term, and higher vanishing terms. This is an analytic object
-linking the discounted world (which works) to the singular `γ = 1` limit (the goal).
+time-average reward (a single number `d · r_π` under the stationary distribution `d`) dominates,
+while the finite reward accumulated over the transient prefix is divided by `N → ∞` and vanishes.
+So the gain of a unichain policy is a scalar `g`, not a function of `s`.
 
 ## Baselines
 
 **Discounted MDP solution (Bellman; value iteration / policy iteration for `γ<1`).** Core idea:
 fix `γ<1`, solve `V* = T_γ V*` by the contraction fixed point. Math: `T_γ` is a max-norm
 `γ`-contraction, value iteration converges at rate `γ`, policy iteration alternates
-`(I−γP_π)V_π = r_π` (a nonsingular linear solve) with greedy improvement. **Gap it leaves:**
-needs a `γ < 1`; on a continuing task `γ` is an unprincipled knob that can invert the long-run
-ranking of policies and whose "right" value is task-dependent and fragile.
+`(I−γP_π)V_π = r_π` (a nonsingular linear solve) with greedy improvement.
 
 **Howard's policy iteration for the average criterion (Howard, 1960).** Core idea: alternate
 *value-determination* (solve a linear system for a per-step gain plus relative values) and
@@ -104,35 +85,27 @@ V(s) + g = r(s, π(s)) + Σ_{s'} p(s'|s,π(s)) V(s'),
 
 pinning the extra degree of freedom by setting `V(reference) = 0`; then improve
 `π'(s) = argmax_a [ r(s,a) + Σ_{s'} p(s'|s,a) V(s') ]`. Howard proved this converges in finitely
-many steps to a policy of maximal average reward. **Gap it leaves:** it finds a policy of maximal
-*gain*, but does not, on its own, discriminate *among* equal-gain policies — when several policies
-tie on the long-run average (e.g. several routes that all reach a goal), policy iteration can stop
-at one that is not the best on the *finite* reward accrued along the way.
+many steps to a policy of maximal average reward.
 
 **Ergodic Markov-chain / stationary-distribution evaluation.** Core idea: to *evaluate* one
 policy's average reward, compute the chain's stationary distribution `d` (`dP_π = d`) and read
-off `g = d · r_π`. Math: linear-algebra solve for the left eigenvector of `P_π`. **Gap it
-leaves:** gives the scalar `g` only — no per-state value, no improvement direction, and nothing
-to break ties between policies of equal `g`.
+off `g = d · r_π`. Math: linear-algebra solve for the left eigenvector of `P_π`.
 
 **Schwartz-style average-adjusted ("R-learning") value (Schwartz, 1993).** Core idea: replace
 the discounted return with the average-adjusted return `Σ_t (r_t − g)`, learning value estimates
-and `g` separately. **Gap it leaves (as a baseline for the characterization being sought):** it is
-a *learning* heuristic posed without a worked-out optimality theory; it does not by itself derive
-or justify its construction, nor pin down a finer ordering among gain-equal policies.
+and `g` separately, as a model-free learning rule for continuing tasks.
 
 ## Evaluation settings
 
 The natural yardsticks are small finite MDPs where the criteria can be checked by hand and the
 distinctions made visible: (i) **two-action MDPs with a single recurrent state** where two
-policies share the same average reward but differ in the finite reward accumulated reaching it —
-the canonical setting for exposing that gain alone is too coarse; (ii) **grid-world / queueing /
-maintenance-style continuing tasks** where the process cycles forever and "success is measured
-continuously," matching operations-research practice; (iii) **periodic chains** (recurrent classes
-of period `> 1`), which stress whether an iterative scheme converges at all. The relevant metrics
-are the policy's gain `g`, its per-state relative values, and — for an iterative solver — the
-**span seminorm** `sp(V) = max_s V(s) − min_s V(s)`, which measures the spread of the relative
-values while ignoring any common additive drift.
+policies share the same average reward but differ in the finite reward accumulated reaching it;
+(ii) **grid-world / queueing / maintenance-style continuing tasks** where the process cycles
+forever and success is measured continuously, matching operations-research practice; (iii)
+**periodic chains** (recurrent classes of period `> 1`), which stress whether an iterative scheme
+converges at all. The relevant metrics are the policy's gain `g`, its per-state relative values,
+and — for an iterative solver — the **span seminorm** `sp(V) = max_s V(s) − min_s V(s)`, which
+measures the spread of the relative values while ignoring any common additive drift.
 
 ## Code framework
 

@@ -2,13 +2,11 @@
 
 ## Research question
 
-Generative adversarial networks can produce sharp images, but on a large, diverse, many-class dataset like ImageNet the samples remain far from real photographs in both *fidelity* (does each image look like a convincing instance of its class?) and *variety* (does the model cover the full diversity within and across classes?). The best class-conditional ImageNet generators of the time reach an Inception Score around 52 against roughly 233 for real data — a wide gap. Two facts make closing this gap hard.
+Generative adversarial networks can produce sharp images. On a large, diverse, many-class dataset like ImageNet, samples are judged by both *fidelity* (does each image look like a convincing instance of its class?) and *variety* (does the model cover the full diversity within and across classes?). The best class-conditional ImageNet generators of the time reach an Inception Score around 52 against roughly 233 for real data.
 
-First, unlike supervised learning, adversarial training does not obviously benefit from brute-force scaling. It is a two-player game whose only fixed point is a Nash equilibrium, not the minimum of a single loss; the dynamics are notoriously sensitive to architecture, optimizer, and capacity. It is unknown whether simply enlarging the networks and the batch will help or will destabilize training.
+Adversarial training is a two-player game whose only fixed point is a Nash equilibrium, not the minimum of a single loss; the dynamics are sensitive to architecture, optimizer, and capacity. The setting here is the standard supervised-learning regime of growing networks, batch size, and dataset, applied to this game.
 
-Second, when a generator *can* produce high-fidelity samples, it tends to do so only in a narrow region of its output space, and pushing for fidelity tends to cost variety. There is no clean, controllable knob to navigate that trade-off, and no characterization of *why* large-scale adversarial training becomes unstable.
-
-The goal: produce diverse, high-fidelity, class-conditional samples at 128–512 px on ImageNet; find whatever architectural, regularization, and sampling changes make adversarial training survive at scale; and understand the instabilities that appear there.
+The goal: produce diverse, high-fidelity, class-conditional samples at 128–512 px on ImageNet.
 
 ## Background
 
@@ -16,13 +14,13 @@ The goal: produce diverse, high-fidelity, class-conditional samples at 128–512
 
   min_G max_D  E_{x∼q_data}[log D(x)] + E_{z∼p(z)}[log(1 − D(G(z)))].
 
-The prior p(z) is conventionally N(0, I) or U[−1, 1], chosen by habit rather than derivation. G and D are convolutional networks in the DCGAN lineage (Radford et al. 2016). Without auxiliary stabilization this game is brittle and requires careful tuning to train at all.
+The prior p(z) is conventionally N(0, I) or U[−1, 1]. G and D are convolutional networks in the DCGAN lineage (Radford et al. 2016); auxiliary stabilization techniques are commonly applied to train the game.
 
 **Stabilizing the game.** A large body of work attacks instability. One line changes the objective (Wasserstein GAN, least-squares GAN, the margin-based *hinge* objective of Lim & Ye 2017 and Tran et al. 2017). Another constrains D so it provides bounded, informative gradients everywhere. *Spectral Normalization* (Miyato et al. 2018) does this by dividing each weight matrix by its largest singular value σ₀(W), estimated cheaply with one step of power iteration reusing a persisted left singular vector; this bounds the Lipschitz constant of D and adaptively damps its top singular direction. Self-Attention GAN (Zhang et al. 2018) found that applying spectral normalization in G as well improves stability, allowing fewer D steps per iteration. Odena et al. (2018) observed that GAN performance correlates with the *conditioning* of G — the singular values of G's Jacobian — suggesting that the spectra of the weights are worth monitoring.
 
 **Modeling global structure.** Stacks of small convolutions model local texture well but struggle with long-range spatial dependencies. The non-local / self-attention block (Wang et al. 2018) computes a softmax over pairwise feature similarities so that each location can attend to all others; SA-GAN inserts this block into both G and D.
 
-**Conditioning on class.** In conditional GANs (Mirza & Osindero 2014) the class label can enter in several ways. AC-GAN (Odena et al. 2017) concatenates a one-hot class vector to z and adds an auxiliary classifier term to D's loss — but rewarding easily-classified samples tends to suppress variety. A cleaner route injects the class through normalization: conditional BatchNorm (Dumoulin et al. 2017; de Vries et al. 2017) and the more general FiLM layer (Perez et al. 2018) replace BatchNorm's single learned gain and bias with *per-conditioning* affine parameters γ(c), β(c) produced from a conditioning input, so that BN(h)·γ(c) + β(c) modulates features by class. On the discriminator side, the *projection* approach (Miyato & Koyama 2018) starts from the optimal-discriminator identity f(x,y) = log q(y|x)/p(y|x) + log q(x)/p(x); assuming the class posteriors are log-linear in a shared feature φ(x), the conditional term collapses to an inner product between a learned per-class embedding and φ(x), giving f(x,y) = yᵀVφ(x) + ψ(φ(x)) — class information added as evidence via a dot product rather than concatenated.
+**Conditioning on class.** In conditional GANs (Mirza & Osindero 2014) the class label can enter in several ways. AC-GAN (Odena et al. 2017) concatenates a one-hot class vector to z and adds an auxiliary classifier term to D's loss. Another route injects the class through normalization: conditional BatchNorm (Dumoulin et al. 2017; de Vries et al. 2017) and the more general FiLM layer (Perez et al. 2018) replace BatchNorm's single learned gain and bias with *per-conditioning* affine parameters γ(c), β(c) produced from a conditioning input, so that BN(h)·γ(c) + β(c) modulates features by class. On the discriminator side, the *projection* approach (Miyato & Koyama 2018) starts from the optimal-discriminator identity f(x,y) = log q(y|x)/p(y|x) + log q(x)/p(x); assuming the class posteriors are log-linear in a shared feature φ(x), the conditional term collapses to an inner product between a learned per-class embedding and φ(x), giving f(x,y) = yᵀVφ(x) + ψ(φ(x)) — class information added as evidence via a dot product rather than concatenated.
 
 **Conditioning and smoothness of G.** Orthogonal initialization (Saxe et al. 2014) preserves signal norms through depth (dynamical isometry), easing training of deep nets. Orthogonal *regularization* (Brock et al. 2017) softly pushes weight matrices toward orthonormality with a penalty β‖WᵀW − I‖²_F, keeping the learned map well-conditioned and close to norm-preserving.
 
@@ -30,15 +28,15 @@ The prior p(z) is conventionally N(0, I) or U[−1, 1], chosen by habit rather t
 
 ## Baselines
 
-- **DCGAN (Radford et al. 2016).** The convolutional G/D backbone: strided/transposed convolutions, BatchNorm, ReLU/LeakyReLU, weights initialized from N(0, 0.02 I). It made GAN training reproducible at low resolution but does not reach high-fidelity many-class synthesis and offers no class-conditioning mechanism beyond naive concatenation.
+- **DCGAN (Radford et al. 2016).** The convolutional G/D backbone: strided/transposed convolutions, BatchNorm, ReLU/LeakyReLU, weights initialized from N(0, 0.02 I), with class-conditioning by concatenation. Reproducible GAN training at low resolution.
 
-- **AC-GAN (Odena et al. 2017).** Conditions G by concatenating a one-hot class vector to z and adds an auxiliary-classifier loss to D. Gap: the auxiliary classifier rewards samples that are *easy to classify*, biasing the generator toward low-variety, prototypical images; concatenation is a weak channel for class information.
+- **AC-GAN (Odena et al. 2017).** Conditions G by concatenating a one-hot class vector to z and adds an auxiliary-classifier loss to D.
 
-- **SN-GAN (Miyato et al. 2018).** A ResNet-style GAN with spectral normalization on D's weights and a hinge objective. Spectral normalization bounds D's Lipschitz constant — for the discriminator output f, normalizing each layer keeps ‖∇D‖ controlled, giving G a usable gradient everywhere. Gap: demonstrated at modest scale; class-conditional ImageNet quality is still far below real data, and behavior at large batch/large model is unexplored.
+- **SN-GAN (Miyato et al. 2018).** A ResNet-style GAN with spectral normalization on D's weights and a hinge objective. Spectral normalization bounds D's Lipschitz constant — for the discriminator output f, normalizing each layer keeps ‖∇D‖ controlled, giving G a gradient everywhere.
 
-- **SA-GAN (Zhang et al. 2018).** The strongest prior class-conditional ImageNet model and the natural starting point. It is SN-GAN plus: the non-local self-attention block in G and D (for global structure), spectral normalization in *both* networks, the hinge objective, class-conditional BatchNorm in G, a projection discriminator, and a two-time-scale update rule (different learning rates for G and D). It reaches IS ≈ 52 / FID ≈ 18.6 on ImageNet at 128×128. Gaps it leaves open: a large absolute fidelity/variety gap to real data; no controllable fidelity/variety trade-off; small batch and modest model size; no account of what happens, or why training breaks, at scale.
+- **SA-GAN (Zhang et al. 2018).** The strongest prior class-conditional ImageNet model. It is SN-GAN plus: the non-local self-attention block in G and D (for global structure), spectral normalization in *both* networks, the hinge objective, class-conditional BatchNorm in G, a projection discriminator, and a two-time-scale update rule (different learning rates for G and D). It reaches IS ≈ 52 / FID ≈ 18.6 on ImageNet at 128×128.
 
-- **ProGAN (Karras et al. 2018).** Trains high-resolution GANs by progressively growing resolution; excellent on constrained single-class datasets. Gap: a multi-scale training schedule rather than a single model trained directly, and demonstrated mainly in the single-class regime rather than diverse many-class ImageNet.
+- **ProGAN (Karras et al. 2018).** Trains high-resolution GANs by progressively growing resolution over training, demonstrated on constrained single-class datasets.
 
 The hinge objective these baselines use is, for the discriminator,
   L_D = E_{x∼q_data}[max(0, 1 − D(x))] + E_{z}[max(0, 1 + D(G(z)))],

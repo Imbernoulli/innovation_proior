@@ -4,17 +4,17 @@
 
 A decoder-only Transformer generates text one token at a time. To produce token *t*, each attention layer must attend over the keys and values of all preceding tokens. To avoid recomputing those from scratch at every step, the standard trick is to keep a **KV cache**: after a token is processed, its per-layer keys and values are stored, and each new query reads the whole cache.
 
-This cache is the problem. For multi-head attention it holds `2·n_h·d_h·l` scalars *per token* (keys and values, across all `n_h` heads of dimension `d_h`, in all `l` layers). At long context and large batch it grows until it no longer fits in accelerator memory, and — more insidiously — decoding becomes **memory-bandwidth bound**: every generation step streams the entire cache through the chip to do a relatively tiny amount of arithmetic (one new query dotted against the stored keys, then a weighted sum of the stored values). The cache size directly caps the maximum batch size and sequence length, and the bandwidth cost dominates per-token latency.
+For multi-head attention the cache holds `2·n_h·d_h·l` scalars *per token* (keys and values, across all `n_h` heads of dimension `d_h`, in all `l` layers). At long context and large batch this grows substantially, and decoding becomes **memory-bandwidth bound**: every generation step streams the entire cache through the chip to do a relatively small amount of arithmetic (one new query dotted against the stored keys, then a weighted sum of the stored values). The cache size directly shapes the maximum batch size and sequence length, and the bandwidth cost contributes to per-token latency.
 
-The goal: shrink the per-token KV cache by a large factor — ideally an order of magnitude — **without** giving up the modelling quality of full multi-head attention. A solution has to attack the bytes-cached-per-token quantity itself, and it has to remain compatible with whatever positional-encoding scheme the model uses for long context.
+The question is how to design the key/value path of an attention layer so that the per-token cache is substantially smaller, while keeping whatever positional-encoding scheme the model uses for long context.
 
 ## Background
 
 **Multi-head attention and the decode bottleneck.** In a Transformer attention layer, the input `h_t ∈ R^d` of token *t* is mapped to queries, keys, and values by `W^Q, W^K, W^V`, each sliced into `n_h` heads of width `d_h`. Head *i* computes `o_{t,i} = Σ_{j≤t} softmax_j( q_{t,i}·k_{j,i} / √d_h ) v_{j,i}`, and the head outputs are concatenated and mixed by `W^O`. During training the whole sequence is processed in parallel, so this is compute-bound and efficient. During **incremental decoding** parallelism over the sequence is gone: each step appends one token, and the cost is dominated by repeatedly loading the large stored key and value tensors from memory (Shazeer, 2019). The arithmetic-to-memory ratio is low, so the operation is limited by bandwidth, not flops. This is why the KV cache, not the parameter count, governs decode throughput.
 
-**Rotary position embedding (RoPE).** Modern long-context decoders encode position with RoPE (Su et al., 2021). RoPE multiplies the query and key of a token at position *m* by a block-diagonal rotation `R_m` (rotating coordinate pairs by angles `m·θ_i`, with `θ_i = base^{-2i/d}`) *before* the dot product. The defining property is `(R_m q)^T (R_n k) = q^T R_{n-m} k`: the attention score depends only on the **relative** offset `n−m`. The rotation is position-dependent and is applied between the query and the key. Whatever attention mechanism the model uses, it has to remain compatible with this positional scheme.
+**Rotary position embedding (RoPE).** Modern long-context decoders encode position with RoPE (Su et al., 2021). RoPE multiplies the query and key of a token at position *m* by a block-diagonal rotation `R_m` (rotating coordinate pairs by angles `m·θ_i`, with `θ_i = base^{-2i/d}`) *before* the dot product. The defining property is `(R_m q)^T (R_n k) = q^T R_{n-m} k`: the attention score depends only on the **relative** offset `n−m`. The rotation is position-dependent and is applied between the query and the key.
 
-**Diagnostic finding — sharing keys and values across heads costs quality.** A controlled comparison of three 7B dense models, identical except for the attention mechanism and with parameters realigned to ~7B by adjusting depth, trained on the same 1.33T tokens, measures the quality price of cache reduction on hard benchmarks:
+**Diagnostic finding — sharing keys and values across heads.** A controlled comparison of three 7B dense models, identical except for the attention mechanism and with parameters realigned to ~7B by adjusting depth, trained on the same 1.33T tokens, measures quality on hard benchmarks:
 
 | Benchmark (metric) | MQA (1 KV head) | GQA (8 groups) | MHA |
 |---|---|---|---|
@@ -23,21 +23,19 @@ The goal: shrink the per-token KV cache by a large factor — ideally an order o
 | C-Eval (5-shot, acc) | 30.0 | 37.7 | **42.9** |
 | CMMLU (5-shot, acc) | 34.6 | 38.4 | **43.5** |
 
-Full multi-head attention is uniformly best; collapsing keys and values onto fewer heads (GQA) is worse, and collapsing onto one (MQA) is worst. So the cheap routes to a small cache trade away accuracy in a way that shows up clearly on demanding evaluations.
+Full multi-head attention scores highest; collapsing keys and values onto fewer heads (GQA) scores lower, and collapsing onto one (MQA) scores lowest.
 
 ## Baselines
 
-**Multi-Query Attention — MQA (Shazeer, 2019).** Keep `n_h` separate query heads but let *all* of them share a *single* key head and a *single* value head. The KV cache shrinks from `2·n_h·d_h·l` to `2·d_h·l` per token — a factor of `n_h`. This is the most aggressive cut available by head-sharing and it directly relieves the bandwidth bottleneck. The gap it leaves: with only one key/value subspace, every head attends through the same low-rank lens; reported quality degrades, mildly on easy tasks and more sharply on harder ones.
+**Multi-Query Attention — MQA (Shazeer, 2019).** Keep `n_h` separate query heads but let *all* of them share a *single* key head and a *single* value head. The KV cache shrinks from `2·n_h·d_h·l` to `2·d_h·l` per token — a factor of `n_h`. This is the most aggressive cut available by head-sharing and it directly relieves the bandwidth bottleneck.
 
-**Grouped-Query Attention — GQA (Ainslie et al., 2023).** Interpolate between MHA and MQA: partition the `n_h` query heads into `G` groups and give each group its own shared key/value head. `G = n_h` recovers MHA; `G = 1` recovers MQA. The cache is `2·n_g·d_h·l` per token (`n_g = G`), so `G` tunes the quality/memory trade-off. GQA also comes with an uptraining recipe — convert an existing MHA checkpoint by mean-pooling each group's key/value heads, then continue training with ~5% of the original pre-training compute. The gap it leaves: it is still strictly on the same Pareto frontier as MQA — to approach MHA quality you need `G` large, which means the cache stays large; you cannot have both small cache *and* MHA-level quality. Every head in a group still shares one key/value subspace.
-
-Both baselines reduce the cache by **throwing away key/value subspaces** (forcing heads to share). That is the move whose quality cost the diagnostic above quantifies.
+**Grouped-Query Attention — GQA (Ainslie et al., 2023).** Interpolate between MHA and MQA: partition the `n_h` query heads into `G` groups and give each group its own shared key/value head. `G = n_h` recovers MHA; `G = 1` recovers MQA. The cache is `2·n_g·d_h·l` per token (`n_g = G`), so `G` tunes the quality/memory trade-off. GQA also comes with an uptraining recipe — convert an existing MHA checkpoint by mean-pooling each group's key/value heads, then continue training with ~5% of the original pre-training compute.
 
 ## Evaluation settings
 
 The natural yardstick is a like-for-like comparison at fixed parameter and token budgets, varying only the attention mechanism. The protocol that exists at this time:
 
-- **Quality vs. cache trade-off** measured on hard few-shot benchmarks: BBH (3-shot, exact match), MMLU (5-shot accuracy), and the Chinese suites C-Eval and CMMLU (5-shot accuracy). These stress reasoning and broad knowledge, where cheap attention variants visibly lose ground.
+- **Quality vs. cache trade-off** measured on hard few-shot benchmarks: BBH (3-shot, exact match), MMLU (5-shot accuracy), and the Chinese suites C-Eval and CMMLU (5-shot accuracy). These stress reasoning and broad knowledge, where attention variants differ visibly.
 - **Controlled ablation design:** models sharing one architecture except for the attention block, with parameter counts realigned (by adjusting the number of layers) so the comparison isolates the attention mechanism, trained on a fixed token budget (e.g. 1.33T tokens for the 7B-scale study).
 - **Efficiency metric:** KV cache per token, counted in number of cached elements per layer (storage-precision-agnostic), since that is the quantity that governs both the memory ceiling and the decode bandwidth.
 - **Long-context behaviour:** retrieval-style probes (needle-in-a-haystack) over contexts up to ~128K, to confirm the positional scheme still works once attention is restructured.

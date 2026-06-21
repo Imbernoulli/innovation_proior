@@ -2,7 +2,7 @@
 
 Direct policy search asks for a good controller by adjusting the parameters of a stochastic policy, not by first building a value function and acting greedily from it. The attraction is clear in large or partially observed control problems: a small parameter change can make a small change in the policy, stochastic policies remain available, and convergence arguments can be phrased for the policy parameters themselves.
 
-The weak point is the update direction. The conventional rule follows the raw derivative of long-run reward with respect to the chosen coordinates. That rule silently treats the parameter vector as a flat Euclidean object. If the same policy class is reparameterized, the derivative transforms as a covector, while the applied parameter displacement is being used as a tangent vector. Two coordinate descriptions of the same policy can therefore produce different physical moves in policy space. A usable replacement must make the step a property of the policy being changed, while still allowing the direction to be estimated from rollouts.
+The conventional update rule follows the raw derivative of long-run reward with respect to the chosen coordinates, treating the parameter vector as a flat Euclidean object. The question is how to define the update direction in a way that reflects the geometry of the policy distributions rather than the arbitrary choice of parameter coordinates.
 
 ## Background
 
@@ -26,13 +26,13 @@ Sutton, McAllester, Singh, and Mansour also show how to use a learned critic wit
 
 `psi(s,a) = grad log pi(a|s,theta)`.
 
-For Gibbs policies, these score features are the action features centered under the current policy, so the critic is naturally advantage-like. The baseline still moves along the raw policy-gradient direction; compatibility solves estimation bias, not the geometry of the step.
+For Gibbs policies, these score features are the action features centered under the current policy, so the critic is naturally advantage-like.
 
 ## Tensions
 
-Greedy policy iteration offers a different promise: evaluate a policy, then choose actions that look best under the current value estimates. With exact values this is powerful, but approximate value functions can make greedy changes that are non-monotone and brittle. Smooth policy gradients are safer but can be slow and can get trapped by state-visitation weights and plateaus.
+Greedy policy iteration offers a different approach: evaluate a policy, then choose actions that look best under the current value estimates. With exact values this is powerful, but approximate value functions can produce greedy changes. Smooth policy gradients offer a different tradeoff.
 
-Second-order optimization is also tempting, but the reward Hessian in a control problem is not merely a property of the policy parameterization. It is coupled to values and to how values change as the policy changes. A curvature matrix for the objective may be indefinite far from a maximum, while a metric for policy displacement should remain a valid positive notion of local length. The open slot is a direction that is coordinate-respecting like information geometry, sample-estimable like policy gradients, and still aimed toward the improvement behavior that makes policy iteration attractive.
+Second-order optimization is also considered in this setting. The reward Hessian in a control problem is coupled to values and to how values change as the policy changes, making it different in character from a metric for policy displacement. A curvature matrix for the objective may be indefinite far from a maximum, while a metric for policy displacement should remain a valid positive notion of local length.
 
 ## Code Framework
 

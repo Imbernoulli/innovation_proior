@@ -6,47 +6,34 @@ Multivariate time series forecasting (MTSF) takes a lookback window of `C` chann
 `L` past time steps, `X ∈ R^{C×L}`, and must predict the next `H` steps, `Y ∈ R^{C×H}`. Real deployments
 in traffic, energy, and electricity routinely have hundreds to nearly a thousand channels (a city's traffic
 sensors, a grid's meters), and the signal at each channel is non-stationary: its mean and scale drift over
-days and seasons, and individual channels go anomalous (a stuck sensor, a missing meter). A useful forecaster
-has to do two things at once that pull against each other. It must (1) exploit the *correlation* between
-channels — nearby road sensors rise and fall together, so one channel's history informs another — because a
-model that treats every channel in isolation throws away information that visibly helps. And it must (2) stay
-*robust* to the non-stationarity and to bad channels, because the per-channel statistics that a correlation
-model leans on are exactly the thing that drifts and breaks. On top of that it must (3) *scale*: with `C` in
-the hundreds, anything whose cost grows quadratically in `C` becomes the bottleneck in both memory and time.
-
-The precise goal is a forecasting component that captures cross-channel information yet keeps cost linear in
-the number of channels and the window length, and that does not collapse when individual channels are
-unreliable. Each family of prior methods below buys one or two of these three and pays for it with another.
-Closing that three-way gap — correlation *and* robustness *and* linear scaling — is the problem.
+days and seasons, and individual channels go anomalous (a stuck sensor, a missing meter). Channels are
+correlated — nearby road sensors rise and fall together — so one channel's history can inform another's
+forecast. The question is how to design a forecasting component that captures cross-channel information
+while keeping computational cost manageable as `C` grows into the hundreds.
 
 ## Background
 
 **The temporal-modeling backbone and the move to long horizons.** Early deep forecasters were RNNs (LSTM,
-GRU) and temporal convolutional networks. RNNs impose a Markov-style recurrence and TCNs a finite local
-receptive field, so both struggle to carry information across the long lookbacks that long-term forecasting
-needs. Transformers entered the field precisely to capture long-range temporal dependence through attention,
-and a line of efficient variants — Informer (probabilistic sparse attention), Autoformer (autocorrelation +
-FFT), FEDformer (frequency-domain attention) — pushed long-horizon accuracy forward. In these models a
-*token is a timestamp*: at each time step the `C` channel values are embedded together into one vector, and
-attention runs along the time axis.
+GRU) and temporal convolutional networks. Transformers entered the field to capture long-range temporal
+dependence through attention, and a line of efficient variants — Informer (probabilistic sparse attention),
+Autoformer (autocorrelation + FFT), FEDformer (frequency-domain attention) — pushed long-horizon accuracy
+forward. In these models a *token is a timestamp*: at each time step the `C` channel values are embedded
+together into one vector, and attention runs along the time axis.
 
-**The robustness finding that reshaped the field.** Mixing all channels into one per-timestamp token was then
-shown to be fragile. A simple one-layer linear model (DLinear; Zeng et al., AAAI 2023, "Are Transformers
-Effective for Time Series Forecasting?") matched or beat these elaborate channel-mixing Transformers on the
-standard benchmarks. The diagnosis (Han, Ye & Zhan, 2023, "The capacity and robustness trade-off") is that
-multivariate series are *non-stationary*: the joint distribution over channels drifts between train and test,
-so a model that fits cross-channel structure overfits to correlations that no longer hold at test time, and a
-high-capacity channel-mixer is *less* robust than a low-capacity per-channel model. This is the load-bearing
-empirical fact for everything that follows: **cross-channel correlation is informative but, on real
-non-stationary data, the per-pair correlations a model extracts are not trustworthy.**
+**The robustness finding that reshaped the field.** A simple one-layer linear model (DLinear; Zeng et al.,
+AAAI 2023, "Are Transformers Effective for Time Series Forecasting?") matched or beat elaborate
+channel-mixing Transformers on the standard benchmarks. The diagnosis (Han, Ye & Zhan, 2023, "The capacity
+and robustness trade-off") is that multivariate series are *non-stationary*: the joint distribution over
+channels drifts between train and test, so a model that fits cross-channel structure can overfit to
+correlations that no longer hold at test time. This is the load-bearing empirical fact for everything that
+follows: **cross-channel correlation is informative but, on real non-stationary data, the per-pair
+correlations a model extracts are not always trustworthy.**
 
-**Channel independence and what it leaves on the table.** The response was the *channel-independent* (CI)
-strategy: process each channel's series on its own with a shared-weight model (PatchTST; Nie et al., ICLR
-2023; SegRNN; the linear models). CI is robust — there is no cross-channel structure to overfit — and it is
-cheap. But by construction it *cannot* use the genuine correlation between channels, which on highly
-correlated data (dense sensor grids) is real signal. Treating CI as the ceiling leaves measurable accuracy
-unclaimed; the open question is how to put *some* cross-channel information back without re-importing the
-fragility that CI was invented to escape.
+**Channel independence and what it offers.** The response was the *channel-independent* (CI) strategy:
+process each channel's series on its own with a shared-weight model (PatchTST; Nie et al., ICLR 2023;
+SegRNN; the linear models). CI is robust — there is no cross-channel structure to overfit — and it is
+cheap. On highly correlated data (dense sensor grids), genuine inter-channel correlation also exists as
+real signal.
 
 **Reversible instance normalization (RevIN; Kim et al., ICLR 2021).** A standard tool for fighting
 distribution shift: before forecasting, subtract each instance's per-channel mean over the lookback and
@@ -69,9 +56,9 @@ conv nets. Over the activations `a_i` to be pooled, form probabilities from the 
 original nonnegative-activation setting this is `p_i = a_i / Σ_k a_k`, and for unconstrained learned
 activations the same idea can be implemented by a softmax over the items being pooled. During *training*,
 sample one element `c ∼ Multinomial(p)` and output `a_c`; at *test* time output the expectation
-`Σ_i p_i a_i`. It sits between max pooling (which always takes the largest, and is brittle) and mean pooling
-(which always averages, and washes out): training-time sampling injects noise tied to activation magnitude,
-and the test-time expectation is a magnitude-weighted average.
+`Σ_i p_i a_i`. It sits between max pooling (which always takes the largest) and mean pooling (which always
+averages): training-time sampling injects noise tied to activation magnitude, and the test-time expectation
+is a magnitude-weighted average.
 
 ## Baselines
 
@@ -79,23 +66,15 @@ and the test-time expectation is a magnitude-weighted average.
 2022).** Token = timestamp: embed the `C` channels at each step into one vector, attend along time.
 Informer sparsifies attention probabilistically, Autoformer replaces the attention map with
 autocorrelation accelerated by FFT, FEDformer attends in the frequency domain on selected components — all to
-tame the `O(L^2)` cost of long sequences. **Gap:** by fusing channels at each timestamp they entangle
-variables whose joint distribution drifts; they are observed to be *less robust* than a plain linear model
-and can be beaten by one, so the elaborate temporal machinery does not buy accuracy on non-stationary
-multivariate data.
+tame the `O(L^2)` cost of long sequences.
 
 **DLinear / linear forecasters (Zeng et al., AAAI 2023).** Decompose the series into a moving-average trend
 and a residual seasonal component, run one shared linear layer per component mapping `L → H`, channel by
-channel. **Gap:** the very thing that makes it robust — it has no cross-channel pathway at all — is also its
-ceiling; on densely correlated channels it cannot use information that is plainly present in the other
-channels.
+channel.
 
 **PatchTST / channel-independent Transformers (Nie et al., ICLR 2023).** Cut each channel's series into
 patches, embed patches as tokens, run a Transformer along time *within each channel separately* with shared
-weights, then a flatten-and-linear head to `H`. Robust (per-channel, no cross-channel overfitting) and strong.
-**Gap:** still channel-independent — no mechanism to share information across channels — and the per-channel
-patch tokens give a per-channel time complexity that grows with the number of patches; nothing addresses the
-cross-channel correlation that is left unused.
+weights, then a flatten-and-linear head to `H`.
 
 **Cross-channel-attention forecasters (Crossformer, Zhang & Yan 2023; iTransformer, Liu et al., ICLR 2024).**
 The most direct precursors. iTransformer *inverts* the tokenization: a token is now a whole channel's series
@@ -103,16 +82,10 @@ The most direct precursors. iTransformer *inverts* the tokenization: a token is 
 Self-attention then runs *across the channel tokens* (so it explicitly models inter-channel correlation),
 while a position-wise feed-forward network acts *within* each channel token to learn its temporal nonlinear
 representation; LayerNorm and residuals wrap each sublayer; a linear head maps each refined token to the `H`
-forecast. This recovers cross-channel correlation while keeping the per-channel robustness of treating each
-series as a unit. **Gap:** the cross-channel mechanism is all-pairs self-attention, so it costs `O(C^2)` in
-both compute and memory — on datasets with hundreds to ~900 channels this is the binding constraint — and it
-weighs every pair of channels by an extracted correlation, the same per-pair correlation that the robustness
-literature shows is untrustworthy under non-stationarity and is corrupted when a channel goes anomalous.
+forecast.
 
 **MLP mixers for time series (TSMixer; LightTS; FreTS).** Replace attention with cheap MLP mixing along the
-time and/or channel axes. Cheaper than attention. **Gap:** they tend to fall short of the best
-attention-based forecasters in accuracy, especially as the channel count grows, so they trade away accuracy
-for the efficiency.
+time and/or channel axes.
 
 ## Evaluation settings
 
@@ -127,7 +100,7 @@ The established yardstick for long-term MTSF at this time:
 - **Metrics:** Mean Squared Error and Mean Absolute Error, lower is better, in the original scale after the
   inverse normalization.
 - **Efficiency axis:** memory and wall-clock vs. number of channels (e.g. on Traffic at `L=96, H=720`, small
-  batch) — the curve that exposes the `O(C^2)` methods as `C` grows.
+  batch) — the curve that exposes scaling behavior as `C` grows.
 - **Optimization:** Adam; MSE training loss; identical data splits across methods so accuracy differences are
   attributable to the model.
 

@@ -8,23 +8,13 @@ another on its way to the output; a backpropagated error is multiplied by the (t
 weight matrices on its way back to the early layers. Both passes are therefore governed by the
 *spectrum* of the per-layer matrices and of their product: if those matrices systematically
 shrink vectors, signals and gradients vanish with depth; if they systematically stretch
-vectors, signals and gradients explode. The pain point is concrete and well documented — deep
-and recurrent nets are hard to train precisely because this repeated multiplication drives the
-signal away from an `O(1)` scale.
+vectors, signals and gradients explode. The repeated multiplication of activations and gradients
+by weight matrices is well documented in the literature on deep and recurrent nets.
 
 There is a known square-weight configuration that makes a layer exactly norm-preserving, and a
-known way to *start* training from it. The open problem is different and sharper: that good
-configuration is only imposed at initialization, and there is nothing holding the weights there.
-As soon as the data gradient starts moving the weights, they drift, and the flat-spectrum
-property erodes over the course of training. What is wanted is a way to keep convolutional
-filter banks close to the feasible semi-orthogonal configuration *throughout* training, not just
-at step zero — and to do it cheaply: as an extra term in the loss that the existing optimizer
-already minimizes, differentiable or subdifferentiable, with no matrix factorization in the
-inner loop, no change to the architecture, the base objective, or the training procedure, and
-applicable to the rectangular weight matrices that convolutional layers actually have. Such a
-method would, plausibly, also improve generalization, to the extent that a well-conditioned
-weight spectrum keeps more of the model's nominal capacity usable rather than letting it degrade
-over training.
+known way to *start* training from it. The question is how to keep convolutional filter banks
+well-conditioned with respect to their singular value spectrum throughout the training process,
+using the standard loss-minimization setting that already exists.
 
 ## Background
 
@@ -47,9 +37,8 @@ linear/spectral-radius analysis this appears as `lambda_1 < 1` for vanishing, wh
 not by itself sufficient condition for exploding gradients. The same product-of-matrices logic
 applies to the depth direction of a plain feedforward net. Their remedy for exploding gradients
 is to clip the gradient norm; for vanishing gradients they suggest a soft term that encourages
-the backpropagated signal to keep its norm. The lesson that carries over: the spectrum and
-operator norms of the weight matrices are the levers that control whether deep signal
-propagation is stable.
+the backpropagated signal to keep its norm. The spectrum and operator norms of the weight
+matrices are the levers that control whether deep signal propagation is stable.
 
 **The configuration with a flat spectrum.** A square matrix whose singular values are all exactly
 `1` is exactly norm-preserving: `|| W x || = || x ||` for every `x`. These are the orthogonal
@@ -61,7 +50,7 @@ why the square flat-spectrum case matters at depth.
 Glorot & Bengio (2010) had already proposed scaling random Gaussian weights so that, *on
 average*, norms are preserved — for an `N x N` matrix, drawing entries i.i.d. from a zero-mean
 Gaussian with standard deviation `1/sqrt(N)` gives `< v^T W^T W v > = v^T v`. Saxe et al.
-pointed out the catch: norm preservation *in expectation* is not the same as a flat spectrum.
+pointed out that norm preservation *in expectation* is not the same as a flat spectrum.
 The squared singular values of a scaled Gaussian matrix follow the Marchenko-Pastur
 distribution, which has a nontrivial spread that does not vanish even as `N -> infinity`; and a
 *product* of such matrices across many layers develops a highly kurtotic singular spectrum —
@@ -76,22 +65,11 @@ MNIST, matching greedy layer-wise pretraining, while scaled Gaussian init did no
 survives into nonlinear networks operating just past the "edge of chaos" (gain `g_c = 1` for
 `tanh`), where the end-to-end Jacobian still acts as a near-isometry.
 
-**The diagnostic gap these findings leave.** Both of the above are facts about the *spectrum of
-the weights*, and the orthogonal-initialization result is a fact about *step zero only*. A good
-initial condition does not pin the weights in place: once the data-driven gradient starts
-updating them, there is no force keeping the matrices orthogonal, and the flat-spectrum property
-that made early learning fast erodes as training proceeds. This is an observed limitation of the
-initialization approach, not a prescription — the weights leave the orthogonal configuration and
-nothing measures or resists that drift.
-
 **Adjacent regularizers of the time.** Standard L2 weight decay adds `(lambda/2) || W ||^2` to
 the loss, i.e. it shrinks the Frobenius norm of the weights toward zero. It is the default
-generalization aid, but it pulls every singular value *down*, which is the opposite of holding
-them at `1`. Batch Normalization (Ioffe & Szegedy, 2015) stabilizes the *distribution* of
-layer activations by normalizing them, indirectly easing signal scale, but it operates on
-activations rather than on the weight spectrum and does not by itself flatten the singular
-values of a weight matrix. None of these tools maintains the specific property — singular values
-near `1` — that the propagation analysis identifies as the thing that matters.
+generalization aid, pulling every singular value downward. Batch Normalization (Ioffe & Szegedy,
+2015) stabilizes the *distribution* of layer activations by normalizing them, indirectly easing
+signal scale, but it operates on activations rather than on the weight spectrum.
 
 ## Baselines
 
@@ -103,36 +81,21 @@ Gaussian it improves on).** Set each weight matrix at the start of training to a
 orthogonal matrix, obtained as the orthogonal factor of a QR (or SVD) decomposition of a random
 Gaussian matrix. Core idea: enter training already on the orthogonal manifold, with all singular
 values exactly `1`, so the initial forward/backward map is exactly norm-preserving and learning
-is depth-independent. *Gap:* it is a one-time condition. There is no mechanism that keeps the
-weights orthogonal after the first gradient step; the matrices drift off the manifold as the
-data loss pulls them, and the flat spectrum it bought at step zero is gone by mid-training. It
-constrains nothing during the part of training where most of the weight movement happens.
+is depth-independent.
 
 **Hard orthogonality via Stiefel-manifold / Riemannian optimization.** Treat orthogonality as a
 hard constraint: confine each weight matrix to a Stiefel manifold such as `{ W : W^T W = I }` or
 `{ W : W W^T = I }`, whichever side is feasible, and optimize on the manifold using Riemannian
 gradients, or re-orthogonalize the weights after each update by an explicit factorization (QR or
 SVD) projecting back onto the manifold. Core idea: never let the weights leave the selected
-semi-orthogonal set at all, so the feasible side's spectrum is exact at every step. *Gap:* the
-per-step cost is heavy — a manifold step or an explicit SVD/QR of every weight matrix on every
-iteration is expensive on a GPU and grows badly with matrix size. And the hard constraint is
-awkward for convolutional layers, whose weights, when reshaped to a matrix, are strongly
-rectangular (`out_channels` versus `in_channels * k * k`); square orthogonality cannot hold
-simultaneously for the rows and the columns of a non-square matrix, so the constraint has to be
-restricted to whichever side is feasible, complicating the procedure.
+semi-orthogonal set at all, so the feasible side's spectrum is exact at every step.
 
 **Gradient clipping (Pascanu et al. 2013).** Rescale the gradient when its norm exceeds a
 threshold, capping explosive steps. Core idea: directly bound the size of the parameter update so
-an exploding-gradient event cannot blow up training. *Gap:* it is a reactive cap on the
-*gradient*, applied after the fact, not a property of the *weights*; it does nothing about
-vanishing gradients and does nothing to flatten or maintain the singular value spectrum of the
-weight matrices that caused the instability.
+an exploding-gradient event cannot blow up training.
 
 **L2 weight decay.** Add `(lambda/2) || W ||_F^2` to the objective; the optimizer shrinks weights
-toward the origin. Core idea: penalize weight magnitude to improve generalization. *Gap:* it
-drives the spectrum toward zero (all singular values smaller), the opposite of the target of
-keeping them near `1`; it controls overall scale, not the *shape* of the spectrum, and on its own
-allows filters to become small or mutually redundant.
+toward the origin. Core idea: penalize weight magnitude to improve generalization.
 
 ## Evaluation settings
 

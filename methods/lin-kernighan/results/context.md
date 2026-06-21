@@ -12,12 +12,10 @@ There are `(n-1)!/2` distinct tours, so exhaustive search is hopeless even for m
 prevailing belief by the early 1970s — reinforced by the then-new complexity theory — is that the
 problem is inherently exponential: exact methods blow up in running time at realistic sizes.
 
-What a solution must achieve, therefore, is not a guarantee of optimality but *reliably good tours,
-fast*: optimum or near-optimum on the classical and randomly generated instances of the day, on the
-order of tens to a hundred-plus cities, with running time that grows gently with `n` (something near
-quadratic) rather than explosively. The practical bar is to beat the existing fast heuristics in
-solution quality at a comparable or better cost, and to do so without the user having to hand-tune a
-difficulty knob in advance.
+The practical bar is to find optimum or near-optimum tours on the classical and randomly generated
+instances of the day, on the order of tens to a hundred-plus cities, with running time that grows
+gently with `n` rather than explosively. The question is how to design a `k`-exchange local-search
+step that achieves high solution quality at reasonable computational cost.
 
 ## Background
 
@@ -38,40 +36,26 @@ links — possibly reversing some paths — so the result is again a tour, and k
 A tour is called **`k`-optimal** (`k`-opt) if no exchange of any `k` of its links for `k` other links
 shortens it. Any `k`-opt tour is also `k'`-opt for `1 ≤ k' ≤ k`, and an `n`-city tour is optimal iff
 it is `n`-opt. Intuitively, the larger `k`, the more likely a `k`-opt tour is globally optimal.
-
-**The motivating limitation of fixed `k`.** Testing all `k`-exchanges has time complexity that grows
-like `O(n^k)` in a naive implementation, and there is no useful bound on how many improving
-`k`-exchanges a tour admits. So computational effort rises steeply with `k`, and — this is the
-decisive pain point — `k` must be chosen *in advance*. There is no way to know a priori which `k`
-strikes the best compromise between running time and tour quality for a given instance: too small and
-you stall at a poor local optimum; too large and the per-move cost is ruinous. So in practice the
-fixed-`k` interchange leaves the user guessing at a depth that, by all appearances, ought to differ
-from instance to instance and even from move to move within a single run.
+Testing all `k`-exchanges has time complexity that grows like `O(n^k)` in a naive implementation.
 
 ## Baselines
 
 **2-opt (Croes 1958).** The `k`-opt interchange with `k` fixed at 2: repeatedly remove two tour links
 and reconnect the two resulting paths the other way, which amounts to reversing one subsegment of the
-tour, keeping the move whenever it shortens the tour; stop at a 2-opt local optimum. Simple and fast,
-and a 2-opt move always keeps the tour feasible, but it is a shallow neighborhood — it leaves many
-poor local optima that a deeper exchange would escape.
+tour, keeping the move whenever it shortens the tour; stop at a 2-opt local optimum. Simple and fast;
+a 2-opt move always keeps the tour feasible.
 
 **3-opt (Lin 1965).** The same idea with `k = 3`: remove three links and reconnect the three paths in
-one of the several possible ways that yields a tour. Markedly better quality than 2-opt, and the
-tours reached are 3-opt (hence also 2-opt). But the per-move work is much larger (on the order of
-`n^3` to scan the neighborhood), and the user is still committed to `k = 3` regardless of the
-instance. Going to `k = 4` or `5` improves quality further but the cost grows again, and the choice of
-`k` remains a blind guess.
+one of the several possible ways that yields a tour. Tours reached are 3-opt (hence also 2-opt); the
+per-move work is on the order of `n^3` to scan the neighborhood.
 
 **Exact methods of the time.** Held & Karp's approach solves a class of instances exactly in
-reasonable time, but when an instance falls outside that class it must be supplemented (branch and
-bound) and run times become prohibitive; the largest instance reported is 64 cities. These set the
-"optimum" reference on small instances but do not scale.
+reasonable time, with branch-and-bound supplementation for other instances; the largest instance
+reported is 64 cities. These set the "optimum" reference on small instances.
 
 **Man-machine and multi-heuristic schemes.** Krolak et al. use several fast, weak heuristics and then
 human judgment on plots of the tour ("man-machine interaction") to push toward optimality. This
-reaches large (200-city) instances but is costly in machine and especially human time, gives
-generally suboptimal results, and breaks down entirely for non-Euclidean or non-planar instances.
+reaches large (200-city) instances with a combination of machine and human time.
 
 ## Evaluation settings
 

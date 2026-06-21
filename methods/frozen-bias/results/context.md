@@ -11,33 +11,26 @@ y = f_*(<theta*, x>) + xi,   x ~ N(0, I_d),   theta* in S^{d-1},   xi ~ N(0, sig
 
 where *both* the unit direction `theta*` and the univariate "link" `f_*` are unknown. The
 projection `<theta*, x>` is a single-number summary (an "index") of the high-dimensional point
-`x`. This is the simplest target on which a learner must do genuine *feature learning* — it
-cannot succeed by treating the input features as fixed, because the informative one-dimensional
-subspace is hidden and must be discovered. The problem is *semi-parametric*: a high-dimensional
-*parametric* part (recover `theta*` in `R^d`) sits next to a low-dimensional *non-parametric*
-part (estimate the univariate `f_*`).
+`x`. This is a target on which a learner must do genuine *feature learning*: the informative
+one-dimensional subspace is hidden and must be discovered. The problem is *semi-parametric*: a
+high-dimensional *parametric* part (recover `theta*` in `R^d`) sits next to a low-dimensional
+*non-parametric* part (estimate the univariate `f_*`).
 
-The precise goal is a single learner that, trained by plain gradient descent, simultaneously
-(1) recovers the hidden direction `theta*` with *near-optimal* sample complexity in the
-dimension `d`; (2) approximates the link `f_*` non-parametrically with a rate that does *not*
-degrade with `d`; (3) does this *without knowing `f_*` in advance* (so the activation cannot be
-chosen to equal the link, as in teacher-student studies); and (4) does it with a standard,
-practitioner-style shallow network and gradient method rather than a bespoke estimator built
-for this one problem. Each existing approach below achieves a subset; none achieves all four
-with a network trained end to end. Closing that gap is the problem.
+The question is how a single learner, trained by plain gradient descent, can recover the hidden
+direction `theta*` from the dimension-`d` input while at the same time estimating the unknown
+link `f_*` non-parametrically — using a standard shallow network and gradient method, without
+the activation being chosen to equal `f_*` as in teacher-student studies.
 
 ## Background
 
-By this time the central theoretical question is *when do neural networks, trained by
-gradient methods, provably beat fixed-kernel methods on high-dimensional data with hidden
+By this time a central theoretical question is *when do neural networks, trained by
+gradient methods, beat fixed-kernel methods on high-dimensional data with hidden
 low-dimensional structure?* Approximation-theoretic advantages of shallow nets over
 non-adaptive kernels have been known for decades (Barron 1993; Pinkus 1999), and Bach (2017a)
 showed that infinite-width shallow networks approximate single- and multi-index models *without
-a curse of dimensionality*, hinting at a statistical advantage — but that work gives no
-tractable training algorithm. The missing piece is a *computational* guarantee: a concrete
-gradient procedure that finds the hidden structure efficiently. Hardness results rule this out
-in full generality, so progress comes from structured target classes; single-index models are
-the cleanest such class.
+a curse of dimensionality*. Computational guarantees — a concrete gradient procedure that finds
+the hidden structure efficiently — are studied through structured target classes, since hardness
+results rule out full generality; single-index models are the cleanest such class.
 
 The load-bearing concepts:
 
@@ -62,14 +55,13 @@ The load-bearing concepts:
   They also establish the *search-vs-descent* picture: for `s >= 2` essentially all the data is
   spent in the *search* phase that escapes the high-entropy equatorial region; once a
   macroscopic correlation is reached, the *descent* to full alignment `|m| -> 1` is fast,
-  costing only `O(d)` further samples. This is the diagnostic that frames the whole difficulty:
-  the hard part is leaving the neighborhood of a random initialization, *not* the final descent.
+  costing only `O(d)` further samples.
 
-- **Random initialization sits dangerously near the equator.** A direction drawn uniformly on
+- **Random initialization sits near the equator.** A direction drawn uniformly on
   `S^{d-1}` has correlation `|<theta_0, theta*>| = Theta(1/sqrt(d))` with the truth (a standard
   high-dimensional-probability fact). So at initialization the learner is at `m ~ 1/sqrt(d)`,
-  *inside* the flat equatorial region whose gradient signal is `~ m^{s-1}`. The signal there is
-  tiny, and it must be told apart from the finite-sample fluctuation of the empirical gradient.
+  *inside* the flat equatorial region whose gradient signal is `~ m^{s-1}`, on the scale of the
+  finite-sample fluctuation of the empirical gradient.
 
 - **Random features and the degrees-of-freedom equivalence (Rahimi & Recht 2007; Bach 2017b).**
   If a direction is *fixed*, fitting only the readout layer of a shallow net is a *random-feature*
@@ -89,9 +81,8 @@ The load-bearing concepts:
   Mei, Bai & Montanari 2016; Foster et al. 2018; Dudeja & Hsu 2018) studies non-convex
   objectives whose *population* landscape has only well-understood critical points, and transfers
   this structure to the *empirical* landscape via uniform convergence of the empirical gradient
-  to the population gradient, of the form `||nabla L_n - nabla L|| = O(sqrt(d/n))`. A recurring
-  subtlety is that some of these landscapes lack the *strict-saddle* property usually used to
-  guarantee escape, so the flat equatorial saddle needs a dedicated argument.
+  to the population gradient, of the form `||nabla L_n - nabla L|| = O(sqrt(d/n))`. The
+  *strict-saddle* property is the structure usually invoked to guarantee escape from saddles.
 
 ## Baselines
 
@@ -101,10 +92,7 @@ The prior approaches a new method would be measured against.
 2021).** Study a "student" network trained to fit a "teacher," where the student's *activation
 is set equal to the teacher's link* `f_*`. Under this match, learning reduces to estimating the
 hidden direction(s), and the population landscape (in the Hermite basis) has exactly the
-information-exponent structure above. **Limitation:** the link is *assumed known* and hard-wired
-into the architecture. The non-parametric half of the semi-parametric problem is removed by
-fiat, so these results do not cover the situation where `f_*` is unknown and must itself be
-estimated.
+information-exponent structure above.
 
 **Dedicated semi-parametric / single-index estimators (projection pursuit, Friedman & Stuetzle;
 sliced inverse regression, Li 1991; moment methods, Dalalyan et al.; Hermite-feature methods,
@@ -112,32 +100,19 @@ Dudeja & Hsu 2018).** These recover `theta*` (and sometimes `f_*`) with `n = O(d
 *explicitly* exploiting the model: e.g. building estimators around individual Hermite
 polynomials or inverse-regression slices. Dudeja & Hsu (2018) in particular characterize the
 population landscape of such an objective over Gaussian data and obtain the benign,
-`m^s`-near-the-equator topology. **Limitation:** each is a *tailored procedure* engineered for
-the single-index structure, not a standard network trained by gradient descent; the recovery of
-`theta*` and the estimation of `f_*` are handled by separate, problem-specific machinery rather
-than emerging from one end-to-end gradient method.
+`m^s`-near-the-equator topology.
 
-**Infinite-width approximation results (Bach 2017a).** Show a *representational* advantage:
+**Infinite-width approximation results (Bach 2017a).** Show a *representational* property:
 shallow networks can represent single- and multi-index targets without a curse of dimensionality.
-**Limitation:** purely about approximation/representation — no algorithm, no optimization or
-sample-complexity guarantee for actually *finding* the representing network by gradient descent.
 
 **One-giant-step / first-layer-then-readout analyses (Ba et al. 2022; Damian, Lee &
 Soltanolkotabi 2022), concurrent.** Take a *single* large gradient step on the first layer, then
 fit the readout, and show this already separates networks from fixed kernels — e.g. learning the
-relevant direction with `n = O(d^2)` samples. **Limitation:** a single step suffices only for a
-*separation*; it does not optimize both layers to convergence, and the resulting sample
-complexity does not track the information exponent `s` of a general link. What happens when the
-two layers are trained *jointly to convergence* — and whether that recovers the
-information-exponent-optimal rate for arbitrary `s` — is left open.
+relevant direction with `n = O(d^2)` samples.
 
 **Plain shallow ReLU net + SGD with standard initialization.** The natural practitioner baseline:
-a two-layer ReLU MLP, Kaiming-initialized, both layers trained by SGD with momentum.
-**Limitation:** with all first-layer weights free and untied, the high-dimensional search and the
-non-parametric fit are entangled; near a random start the direction signal is buried in the flat
-equatorial region, and there is no clean theory that the joint dynamics recover `theta*` at the
-information-exponent rate — naive analyses of the entangled dynamics give pessimistic
-complexities far above `d^s`.
+a two-layer ReLU MLP, Kaiming-initialized, both layers trained by SGD with momentum, with all
+first-layer weights free and untied.
 
 ## Evaluation settings
 
@@ -165,12 +140,10 @@ The natural yardsticks for this problem, all pre-existing.
 
 The method plugs into a fixed shallow-network training harness. The model is a two-layer ReLU
 MLP `Linear(d, W) -> ReLU -> Linear(W, 1)`; the data generator, the link functions, the
-evaluation, and the outer driver are all fixed. The learner only controls four callbacks:
-how to *initialize* the two layers, how to choose the parameters passed to the optimizer, how to build
-the *optimizer* over the trainable parameters, how to run one *training step* on a minibatch,
-and an optional *finalize* hook for a post-hoc re-fit. Nothing about how the direction is to be
-discovered or how the readout dictionary should be chosen is settled — that is exactly what is
-to be designed, so the slots are left empty.
+evaluation, and the outer driver are all fixed. The learner controls the callbacks:
+how to *initialize* the two layers and which parameters to train, how to build the *optimizer*
+over the trainable parameters, how to run one *training step* on a minibatch, and an optional
+*finalize* hook for a post-hoc re-fit. These slots are left empty for the learner to fill in.
 
 ```python
 import torch
@@ -191,7 +164,7 @@ class Strategy:
 
     def init_two_layer(self, net: TwoLayerMLP, config) -> None:
         # TODO: how to initialize fc1 (weights and biases) and fc2, and which
-        #       parameters, if any, to train vs. hold fixed. To be designed.
+        #       parameters, if any, to train vs. hold fixed.
         pass
 
     def make_optimizer(self, net: TwoLayerMLP, config) -> torch.optim.Optimizer:
@@ -222,4 +195,4 @@ def direction_estimate(net: TwoLayerMLP) -> torch.Tensor:
 ```
 
 The empty `init_two_layer`, `make_optimizer`, and `finalize` slots are where the learner's
-choices about initialization, optimizer scope, per-step updates, and any readout refit will go.
+choices about initialization, optimizer scope, per-step updates, and any refit will go.

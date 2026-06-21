@@ -6,24 +6,16 @@ When a transformer language model is built, one design number dominates its cost
 `L` of the training input subsequence. The self-attention sublayer compares every token with
 every other token in its input, so both compute and memory grow quadratically in `L`. Longer
 inputs give each prediction more left context and lower the loss, but they make every training
-step dramatically more expensive. The wish is to have it both ways: train on short
-subsequences (cheap), then at inference feed sequences *longer* than `L` and still predict
-well — ideally better, because more context should help.
+step dramatically more expensive. The question is whether a model trained on short
+subsequences can still predict well when fed sequences *longer* than `L` at inference —
+ideally better, because more context should help.
 
 Call this ability **extrapolation**: a model trained at length `L` keeps (and hopefully
 improves) its held-out perplexity when evaluated at length `L_valid > L`. The recurrent
 language models that preceded transformers were routinely trained at short lengths and simply
-run on longer contexts at test time, and this was assumed to generalize; the transformer was
-hoped to inherit the same property. The precise problem: does a transformer LM trained at `L`
-keep its perplexity when scored at `L_valid > L`, and if not, *why* not — and can the
-position-representation mechanism be changed so that it does, **without** spending any extra
-runtime or parameters, and with at most negligible mask memory overhead relative to the cheapest
-existing position method?
-
-A solution has to clear three bars simultaneously: (1) it must genuinely extrapolate to much
-longer inputs; (2) it must be no slower than the cheapest current position method and can add
-only negligible auxiliary memory; (3) ideally it adds no learned parameters, so a single recipe
-transfers across model sizes and datasets without retuning.
+run on longer contexts at test time; the transformer was hoped to inherit the same property.
+The precise question: does a transformer LM trained at `L` keep its perplexity when scored at
+`L_valid > L`, and how does the choice of position-representation mechanism affect this?
 
 ## Background
 
@@ -63,13 +55,12 @@ structure — provided it does not break when handed more tokens than it trained
 
 **The diagnostic finding that frames everything.** A transformer LM with the standard added
 position signal, trained at `L` and evaluated at `L+k`, improves perplexity only for very
-small `k` (a few dozen tokens), holds briefly, then *degrades sharply* as `k` grows. The model
-does not gracefully use the extra length; it breaks. Holding architecture, data, seed, and
-training budget fixed and changing *only* the position method changes this behavior, which
-pins the failure on the position representation rather than on the transformer as such. The
-mechanism is traceable: at positions beyond `L`, the position signal the model is asked to
-interpret is one it never saw in training — it is out of distribution, and the responses the
-model tuned to the signals in `[0, L)` do not apply.
+small `k` (a few dozen tokens), holds briefly, then degrades sharply as `k` grows. Holding
+architecture, data, seed, and training budget fixed and changing *only* the position method
+changes this behavior, which pins the behavior on the position representation rather than on
+the transformer as such. The mechanism is traceable: at positions beyond `L`, the position
+signal the model is asked to interpret is one it never saw in training — it is out of
+distribution, and the responses the model tuned to the signals in `[0, L)` do not apply.
 
 A second, architectural observation matters for the design space. In the original
 added-signal scheme, position information mixes into the *values* and so flows into every
@@ -79,33 +70,27 @@ average of value vectors — carries no explicit absolute-position component.
 
 ## Baselines
 
-These are the prior position methods a new method would be measured against and would react
-to. Each is given with its actual mechanism and the specific limitation it leaves open.
-
 **Learned absolute position embeddings.** Store a trainable vector for each position `0..L-1`
-and add it to the token embedding there. Simple and effective inside the training range. The
-limitation for this goal: there is no vector for any position `>= L`, so the method has *no
-defined behavior* beyond the training length.
+and add it to the token embedding there. Simple and effective inside the training range. There
+is no vector defined for any position `>= L`.
 
 **Sinusoidal position embeddings (Vaswani et al., 2017, §3.5).** Replace the learned
 per-position vectors with fixed, non-learned vectors whose coordinates are sines and cosines
 of the position at a geometric range of frequencies, added to the token embeddings at the
-input. Parameter-free, cheap, and — being a function defined for every position — it *can* in
+input. Parameter-free, cheap, and — being a function defined for every position — it can in
 principle produce a signal past `L`; Vaswani et al. speculated it might therefore extrapolate.
-Empirically it barely does: trained at `L`, perplexity improves for only the first ~20–50
-extra tokens, holds briefly, then degrades, because the continued-but-novel combinations of
-sinusoid phases past `L` are still out of distribution. Leaves the gap: cheap and
-parameter-free, but does not extrapolate.
+Empirically it does so for only the first ~20–50 extra tokens, holding briefly before
+degrading, because the continued-but-novel combinations of sinusoid phases past `L` are still
+out of distribution.
 
 **Rotary position embeddings (Su et al., 2021; popularized via GPT-J).** Rather than adding a
 vector at the input, rotate the query and key vectors in *each* attention layer by an angle
 proportional to their absolute position, across a geometric range of frequencies. A query at
 `i` and a key at `j` then interact through a rotation by `i-j`, so the scheme is effectively
 relative; it injects position at every layer rather than only the first, and never into the
-values. It extrapolates somewhat better than sinusoidal (perplexity keeps improving for
-roughly the first hundred-plus extra tokens), but the per-layer rotations make training and
-inference slower and heavier than the sinusoidal baseline. Leaves the gap: better
-extrapolation, but not efficient.
+values. It extrapolates somewhat better than sinusoidal, with perplexity continuing to improve
+for roughly the first hundred-plus extra tokens. The per-layer rotations make training and
+inference slower and heavier than the sinusoidal baseline.
 
 **Relative position bias on attention scores (Shaw et al., 2018; the T5 variant of Raffel et
 al., 2020).** Add no signal to the token embeddings. Instead, after each query–key dot-product
@@ -116,17 +101,9 @@ distances each get their own learned bias, while distances beyond a cutoff are p
 shared buckets — which intuitively might help past training length, since a never-seen
 distance falls into an already-learned far bucket. Like rotary, it injects position at every
 layer through the query–key comparison only, never into the values. Of the existing methods it
-extrapolates best (perplexity improving for several hundred extra tokens). Its limitation is
-efficiency: computing and gathering the bucketed relative bias makes it at least roughly twice
-as slow as the sinusoidal baseline in a PyTorch/GPU setting, and it adds learned parameters.
-So even though it proves that *changing the position method can buy extrapolation*, it cannot
-deliver the intended payoff — train short and cheap, then extrapolate — because the method
-itself is expensive.
-
-The ladder, then: extrapolation is demonstrably reachable by swapping the position method (the
-relative-bias result shows it), but every method that extrapolates well is slower and heavier
-than the cheapest method that does not, and the position signals that *are* cheap (sinusoidal,
-learned absolute) go out of distribution past `L`.
+extrapolates best, with perplexity improving for several hundred extra tokens. Computing and
+gathering the bucketed relative bias makes it at least roughly twice as slow as the sinusoidal
+baseline in a PyTorch/GPU setting, and it adds learned parameters.
 
 ## Evaluation settings
 

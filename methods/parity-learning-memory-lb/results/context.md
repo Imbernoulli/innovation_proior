@@ -24,10 +24,7 @@ quadratic memory yet provably blows up to an exponential number of samples the m
 budget drops below quadratic — say, down to linear, the size of a single sample? If parity were
 such a problem, it would be the first formally proved example showing that a *large memory* can be
 indispensable for *fast* learning: not because the learner lacks computational power, but purely
-because it cannot hold enough state. At the time, **no non-trivial lower bound on the number of
-samples was known for any learning problem, even when the memory was capped at the length of one
-sample** (not counting the space taken by the sample currently being read). Settling this for
-parity is the goal.
+because it cannot hold enough state. Settling this for parity is the goal.
 
 The stakes reach past learning theory. A sample lower bound of this kind would say something about
 the structure of computation (a strong time-space tradeoff, with "time" measured in samples) and
@@ -97,49 +94,30 @@ always re-readable and its storage is not charged as memory.
 Rabin 2002; Vadhan 2003; Dziembowski–Maurer 2004).** Here security rests not on computational
 hardness but on a cap on the *adversary's memory*. The standard template streams a long public
 random string that the adversary cannot fully store; legitimate parties use a shared key to extract
-bits the adversary knows little about. A structural limitation of this template: the number of
-random bits transmitted per encryption must exceed the adversary's memory, so the *time* to
-encrypt is at least linear in the adversary's memory size.
+bits the adversary knows little about.
 
 ## Baselines
 
 **Gaussian elimination (the high-memory learner).** Maintain a reduced system of independent
 equations $a_i \cdot x = b_i$. After $O(n)$ samples the system has full rank and $x$ is read off.
-Cost: $O(n)$ samples, $\Theta(n^2)$ memory. *Limitation it leaves open:* it spends quadratic
-memory and says nothing about whether less memory can still succeed with a polynomial number of
-samples — it is an upper bound, not a barrier.
+Cost: $O(n)$ samples, $\Theta(n^2)$ memory.
 
 **Candidate enumeration (the low-memory learner).** Hold one candidate string at a time, draw
 samples until it is contradicted, advance. Cost: $n+o(n)$ memory but up to $2^{\Theta(n)}$ samples.
-*Limitation it leaves open:* it shows that with tiny memory the sample cost *can* be exponential,
-but only for this particular naive strategy; it does not rule out a cleverer small-memory algorithm
-that uses few samples.
 
 **SQ lower bound for parity (Kearns 1998).** Exponentially many tolerance-$\tau$ statistical queries
 are required to learn parity, because any single bounded statistic has $\approx 2^{-n}$ correlation
-with the choice of target parity. *Where it stalls for the present question:* SQ bounds a learner
-that interacts only through low-tolerance averages; they certify that *per-query* one learns almost
-nothing, but a memory-bounded learner is not constrained to extract little per sample — it may read
-each sample in full and only be limited in how much *accumulated* state it carries forward.
+with the choice of target parity.
 
 **SVW communication / sCOM lower bound for parity (Steinhardt–Valiant–Wager 2015).** Any protocol
 compressing each example to $b$ bits before the next example arrives needs $2^{\Omega(n)}$ examples
-to learn parity. *Where it stalls:* the constraint is *per-example compression* — each sample must
-be squeezed to $b$ bits in isolation. A genuine memory-bounded streaming learner is more powerful:
-it never has to compress any single example to few bits; it only has to keep its *total* running
-state small, and that state can depend adaptively on everything seen so far. SVW themselves flagged
-the gap: they could handle "any algorithm whose memory states correspond to subspaces," but a
-general memory-bounded learner whose states are arbitrary functions of the history was beyond their
-method, and a complete proof eluded them. They conjectured (Conjecture 1.1) that any parity learner
-needs either $\ge n^2/4$ bits of memory or $\ge 2^{n/4}$ samples, and that parity should therefore
-separate efficient bounded-memory learning from PAC learning.
+to learn parity. SVW conjectured (Conjecture 1.1) that any parity learner needs either $\ge n^2/4$
+bits of memory or $\ge 2^{n/4}$ samples, and that parity should therefore separate efficient
+bounded-memory learning from PAC learning.
 
 **Branching-program time-space lower bounds for computing functions (BJS98, Ajtai99, BSSV00,
-and the SAT line).** These give the most general non-uniform tradeoffs known, but only sub-quadratic
-time and only with the input stored for free. *Where they stall for learning:* the free-input
-assumption is exactly wrong for learning — a past sample is gone unless stored — so these techniques
-top out far below the exponential time (sample) regime that learning seems to demand, and they were
-not designed to exploit "you cannot revisit the data."
+and the SAT line).** These give the most general non-uniform tradeoffs known, with the input
+available for re-reading at any step (not charged as memory).
 
 ## Evaluation settings
 

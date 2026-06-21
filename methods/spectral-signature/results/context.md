@@ -7,11 +7,6 @@ accuracy on clean validation data while mapping triggered inputs to the target. 
 data-cleaning step: identify the likely corrupted training examples, remove them, and retrain without
 discarding so much clean data that the classifier is damaged.
 
-The difficulty is structural. The corrupted examples are a small minority, usually concentrated in one
-training label after relabeling, and at the pixel level the trigger can be a tiny patch or faint blended
-pattern. Clean validation accuracy is not a warning signal, and a simple visual or input-space anomaly
-test can miss the poison.
-
 ## Available ingredients
 
 Several lines of work are already available before designing the defense.
@@ -23,36 +18,30 @@ clean examples.
 
 **Classical poisoning defenses.** Prior data-poisoning defenses often study attackers that degrade
 ordinary test accuracy. Some defenses remove input outliers and then run empirical risk minimization,
-or certify a worst-case loss against a family of attacks. These tools are useful context, but their
-objective is not the same as a backdoor whose clean behavior remains intact.
+or certify a worst-case loss against a family of attacks.
 
 **High-dimensional robust statistics.** Robust mean and covariance estimation asks for reliable
-estimates when an adversary corrupts an `epsilon` fraction of samples. The useful lesson is that
-high-dimensional contamination may be directional: a small shifted subpopulation can be hard to see
-coordinate by coordinate but can still change the covariance spectrum.
+estimates when an adversary corrupts an `epsilon` fraction of samples. A small shifted subpopulation
+can be hard to see coordinate by coordinate but can still change the covariance spectrum.
 
 **Learned representations.** A trained classifier supplies intermediate feature vectors, often the
 penultimate-layer representation, for every training example. These vectors are available to a
 post-training cleaning procedure even when the training images themselves are high-variance and hard
 to compare directly.
 
-## Baselines and failure modes
+## Baselines
 
-Clean validation accuracy is the first obvious check, and it fails by construction: the attack is meant
-to preserve ordinary validation behavior while changing triggered behavior.
+**Clean validation accuracy.** The standard metric for catching harmful models; often reported
+alongside attack success rate in the backdoor literature.
 
-Input-space outlier removal is also weak. Natural images from one class vary across pose, color,
-background, and subtype; a small trigger may shift the input vector far less than ordinary within-class
-variation does. Distance from an input centroid, simple sphere/slab filters, or a raw-pixel principal
-direction can therefore be dominated by clean image variation.
+**Input-space outlier removal.** Filtering based on distance from a class centroid in pixel space,
+simple sphere or slab filters, or principal directions in raw-pixel space.
 
-Influence-style explanations are a poor fit when the queried examples are ordinary clean inputs. The
-poisoned points are influential for triggered behavior, not necessarily for the predictions seen in a
-standard clean validation set.
+**Influence functions.** Gradient-based importance scores that quantify how much each training point
+affects predictions on a held-out set.
 
-Scalar feature statistics such as representation norm or correlation with an arbitrary direction are
-cheap, but they throw away directional information. If the poison differs from the clean points in one
-particular direction, an unguided scalar score can overlap heavily between clean and corrupted data.
+**Scalar feature statistics.** Representation norm or correlation with a fixed direction in feature
+space, used as a per-example suspicion score.
 
 ## Evaluation setting
 

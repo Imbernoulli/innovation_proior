@@ -2,36 +2,28 @@
 
 ## Research question
 
-Real-world image recognition is hurt by *style* variation. By style I mean the cues that are
-largely independent of an object's spatial configuration — texture, contrast, global
+Real-world image recognition has to contend with *style* variation. By style I mean the cues
+that are largely independent of an object's spatial configuration — texture, contrast, global
 brightness, lighting and weather conditions, the color cast of a particular camera or filter.
 These variations are usually irrelevant to what an object *is*, yet they change the pixel and
-feature statistics enough to complicate training and degrade accuracy. The standard answer has
-been "more data and deeper networks will absorb it", but that is implicit and expensive.
+feature statistics. At the same time, style is not always a nuisance: sometimes the very same
+statistic is the label-relevant signal — global brightness is irrelevant to which object is
+present but is exactly the feature for predicting weather or time of day; the texture of a
+fabric is irrelevant to "shirt vs. skirt" but *is* the answer for "spotted vs. striped".
 
-The complication is that style is not *always* a nuisance. Sometimes the very same statistic
-is the label-relevant signal: global brightness is irrelevant to which object is present but is
-exactly the feature for predicting weather or time of day; the texture of a fabric confuses
-"shirt vs. skirt" but *is* the answer for "spotted vs. striped". So a layer that simply scrubs
-all style out would throw away useful discriminative information in some channels while helping
-in others.
-
-The precise goal is a normalization layer for deep convolutional networks that (1) can suppress
-*disturbing* style variation but (2) can avoid erasing style where it carries class information,
-(3) is a drop-in replacement for the normalization layer already used in modern architectures
-(same input/output shape `[N,C,H,W]`, same affine parameters), and (4) adds only a negligible
-number of parameters and almost no compute, while leaving the data pipeline and outer training
-loop essentially unchanged. Existing normalization layers each sit at one fixed point of this
-trade-off; choosing one globally forces a single treatment even when different feature maps are
-playing different roles.
+The question pursued here is how to design the normalization layer inside a deep convolutional
+network so that it handles style variation in recognition — operating as a drop-in replacement
+for the normalization layer already used in modern architectures (same input/output shape
+`[N,C,H,W]`, same affine parameters), adding little parameter or compute overhead, and leaving
+the data pipeline and outer training loop essentially unchanged.
 
 ## Background
 
 Normalization layers became a standard ingredient of deep networks because they control the
 scale and distribution of internal activations, ease optimization, allow higher learning rates,
-and act as a mild regularizer. The field also discovered, separately, that the *summary
-statistics* of convolutional feature maps encode the *style* of an image — and these two
-threads are what the problem above sits on top of.
+and act as a mild regularizer. The field also found, separately, that the *summary statistics*
+of convolutional feature maps encode the *style* of an image. These are the two threads the
+setting above sits on top of.
 
 **Activation normalization for optimization.** Ioffe & Szegedy (2015) framed the difficulty of
 training deep nets as *internal covariate shift*: as the parameters of lower layers change, the
@@ -55,20 +47,18 @@ while each individual sample may have a different style. The operative premise f
 the information in a convolutional feature map splits into **shape** (the spatial configuration
 of activations) and **style** (the per-channel mean and variance of those activations).
 
-**Diagnostic observations about existing normalizers.** Two reported facts set up the problem.
-First, replacing batch-level normalization with per-instance normalization in a *generator*
-dramatically improves stylization, because it removes instance-specific contrast/style that the
-network would otherwise have to learn to discard (Ulyanov et al. 2016/2017). Second — and this
-is the tension — directly substituting per-instance normalization into an image *classifier*
-**degrades** accuracy (reported by Ulyanov et al.), because in a discriminative task some of the
-style it erases was actually useful. So the same operation that helps generation hurts
-recognition, and the difference is whether the erased style was nuisance or signal.
+**Reported observations about existing normalizers.** Two facts about per-instance
+normalization are on record. First, replacing batch-level normalization with per-instance
+normalization in a *generator* dramatically improves stylization, because it removes
+instance-specific contrast/style that the network would otherwise have to learn to discard
+(Ulyanov et al. 2016/2017). Second, directly substituting per-instance normalization into an
+image *classifier* lowers accuracy relative to batch normalization (reported by Ulyanov et al.).
 
 ## Baselines
 
-These are the normalization layers a new design would be measured against and reacts to. Take a
-layer input `x ∈ R^{N×C×H×W}`, with `n` the example index, `c` the channel, `h,w` the spatial
-location, and a small `ε` for stability.
+These are the normalization layers a new design would be measured against. Take a layer input
+`x ∈ R^{N×C×H×W}`, with `n` the example index, `c` the channel, `h,w` the spatial location, and
+a small `ε` for stability.
 
 **Batch Normalization — BN (Ioffe & Szegedy 2015).** Normalize each channel using the mean and
 variance pooled over the batch *and* the spatial dimensions, then apply a per-channel affine:
@@ -83,10 +73,7 @@ y            = γ_c · x̂^(B)_{nchw} + β_c
 Because the statistics pool over the whole minibatch, BN keeps the *differences between
 examples*: two images in the batch with different global brightness remain different after BN
 (it subtracts one shared mean, not each image's own). In the style/shape reading, BN normalizes
-a batch toward a single style but **retains the per-instance style variation**. **Limitation
-for this problem:** BN has no mechanism to remove a style that differs from image to image — it
-preserves exactly the instance-level style inconsistency that complicates recognition whenever
-that style is nuisance rather than signal.
+a batch toward a single style while retaining the per-instance style variation.
 
 **Instance Normalization — IN (Ulyanov, Vedaldi & Lempitsky 2016/2017).** Normalize each
 example independently, per channel, over the spatial dimensions only:
@@ -100,19 +87,12 @@ x̂^(I)_{nchw} = (x_{nchw} − μ^(I)_{nc}) / sqrt(σ²^(I)_{nc} + ε)
 By subtracting each image's *own* per-channel mean and dividing by its own standard deviation,
 IN forces every example to the same per-channel feature statistics — i.e. it removes the
 instance-specific style and keeps only the spatial shape. It is applied identically at train and
-test time. This is precisely what helps generative stylization. **Limitation for this problem:**
-IN *erases* the per-channel mean/variance, which is exactly the style information. When that
-style was a useful discriminative feature, IN destroys it; dropped into a classifier in place of
-BN, it loses accuracy. IN sits at the opposite extreme from BN — it always removes instance
-style, with no way to keep it where it matters.
+test time. This is the operation that helps generative stylization. Relative to BN, IN removes
+the per-channel mean/variance — the style information — rather than retaining it.
 
-**A static blend of the two (fixed-weight ensemble).** A natural midpoint is to run both BN and
-IN and average their outputs with a *fixed* weight (e.g. half BN, half IN) for every channel.
-This narrows the BN-IN gap somewhat. **Limitation:** the weight is fixed and shared across all
-channels, so it is still a single global compromise — it dilutes BN's preserved style everywhere
-by a constant amount and removes IN-style everywhere by a constant amount. A static average must
-over-remove somewhere and under-remove elsewhere whenever style is useful in one part of the
-representation and nuisance in another.
+**A static blend of the two (fixed-weight ensemble).** A midpoint between the two is to run both
+BN and IN and average their outputs with a *fixed* weight (e.g. half BN, half IN), the same for
+every channel.
 
 **Minibatch-independence variants — LayerNorm (Ba et al. 2016), GroupNorm (Wu & He 2018).**
 These keep BN's normalization idea but change *which* axes the statistics pool over to remove
@@ -122,10 +102,8 @@ groups and pools within each group per sample, commonly using 32 groups when the
 supports it. Its limiting cases are useful to keep straight: one group gives layer-style
 normalization, while one channel per group gives instance-style normalization. GroupNorm's
 reported motivation is that BN's error rises sharply as the batch shrinks because the batch
-statistics become noisy.
-**Limitation for this problem:** these address *batch dependence*, a different axis entirely.
-They still make one fixed statistical choice once the layer is selected, so the
-style-preservation/style-removal dilemma remains.
+statistics become noisy. These variants address *batch dependence* — which axes the statistics
+pool over — independently of the train/test affine behavior.
 
 ## Evaluation settings
 

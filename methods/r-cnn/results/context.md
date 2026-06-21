@@ -2,27 +2,27 @@
 
 Object detection on PASCAL VOC asks for more than assigning one image-level label. A detector must name every object of interest in an image and return a tight bounding box for each one. The immediate question is whether the new gains from large convolutional networks in whole-image classification can transfer to this harder setting, where localization and recognition have to happen together.
 
-Two obstacles make that transfer nontrivial. First, a classifier can ignore object position once it has enough evidence for a label, while a detector is judged by whether its box overlaps the right object by at least 0.5 intersection-over-union. Second, the high-capacity CNN that just changed ImageNet classification has tens of millions of parameters, but detection datasets with box labels are small. Training such a network from scratch on only a few thousand boxed images risks severe overfitting.
+A classifier can ignore object position once it has enough evidence for a label, while a detector is judged by whether its box overlaps the right object by at least 0.5 intersection-over-union. The high-capacity CNN that changed ImageNet classification has tens of millions of parameters, but detection datasets with box labels are small.
 
-The state of detection also makes the opportunity sharp. Progress on PASCAL VOC had been slow for several years. Strong systems relied on hand-designed gradient-orientation features and gained mainly through ensembles, context rescoring, and minor variants. The missing piece is a way to get the representational strength of a deep CNN into a detector without forcing the CNN itself to solve every localization problem from a dense sliding grid.
+Progress on PASCAL VOC had been steady but incremental for several years. Strong systems relied on hand-designed gradient-orientation features and gained through ensembles, context rescoring, and minor variants.
 
 ## Background
 
-Hand-designed visual features dominated detection. SIFT and HOG summarize local gradient orientations in blocks, giving useful but shallow representations. Deformable models and spatial pyramids build on these features, but the underlying visual code is still fixed by the designer rather than learned through multiple stages.
+Hand-designed visual features dominated detection. SIFT and HOG summarize local gradient orientations in blocks, giving useful but shallow representations. Deformable models and spatial pyramids build on these features, but the underlying visual code is fixed by the designer rather than learned through multiple stages.
 
-Large supervised CNNs reopened the feature question. A network trained on ImageNet classification, with five convolutional layers, high-capacity fully connected layers, rectified nonlinearities, dropout, and millions of labeled images, produced a step change in classification. What remains unclear in the pre-method frame is how to reuse that hierarchy when the target task has few box labels and requires precise location.
+Large supervised CNNs reopened the feature question. A network trained on ImageNet classification, with five convolutional layers, high-capacity fully connected layers, rectified nonlinearities, dropout, and millions of labeled images, produced a step change in classification. What remains open is how to reuse that hierarchy when the target task has few box labels and requires precise location.
 
-The localization choices are constrained. Directly regressing object boxes from the image is conceptually simple, but concurrent deep-network regression results are not yet compelling for VOC-style detection. A dense sliding-window classifier is familiar, but a deep CNN's high-level units have large receptive fields and coarse effective stride, making precise localization awkward. A third paradigm already exists: generate a modest set of category-independent candidate regions, then classify each region.
+The localization choices are constrained. Directly regressing object boxes from the image is conceptually simple, and concurrent deep-network regression results exist for this setting. A dense sliding-window classifier is a familiar paradigm; a deep CNN's high-level units have large receptive fields and coarse effective stride. A third paradigm already exists: generate a modest set of category-independent candidate regions, then classify each region.
 
 Category-independent region proposal methods make that third option plausible. Selective search begins with graph-based oversegmentation, greedily merges neighboring regions using color, texture, size, and fill compatibility, diversifies over color spaces and similarity choices, and emits bounding boxes from the resulting hierarchy. Its fast mode gives roughly a few thousand windows per image, far fewer than exhaustive sliding windows while retaining high recall.
 
 ## Baselines
 
-Deformable part models are the strongest HOG-based reference point. A model has a coarse root filter, higher-resolution part filters, and quadratic deformation costs that let parts move around their anchors. The best part placements are latent, and training uses a latent SVM with hard-negative mining. DPM also refines boxes from inferred part geometry. Its limitation for the present question is that the features remain HOG-like and hand-designed.
+Deformable part models are the strongest HOG-based reference point. A model has a coarse root filter, higher-resolution part filters, and quadratic deformation costs that let parts move around their anchors. The best part placements are latent, and training uses a latent SVM with hard-negative mining. DPM also refines boxes from inferred part geometry.
 
-The most direct region-based comparison is a selective-search spatial-pyramid bag-of-visual-words detector. It uses the same kind of candidate boxes, then encodes each region with dense SIFT variants, multiple codebooks, a multi-level spatial pyramid, and a histogram-intersection-kernel SVM. This proves that region proposals can support detection, but the representation is huge and hand-engineered.
+The most direct region-based comparison is a selective-search spatial-pyramid bag-of-visual-words detector. It uses the same kind of candidate boxes, then encodes each region with dense SIFT variants, multiple codebooks, a multi-level spatial pyramid, and a histogram-intersection-kernel SVM.
 
-Other strong VOC systems add richer context, segmentation, or regionlets on top of hand-designed features. They establish the leaderboard level a learned hierarchy must beat without relying on an ensemble of unrelated cues. On the ImageNet detection side, a sliding-window CNN detector is a natural comparison because it uses CNN features but commits to a different localization strategy.
+Other strong VOC systems add richer context, segmentation, or regionlets on top of hand-designed features. They establish the leaderboard level a learned hierarchy must beat without relying on an ensemble of unrelated cues. On the ImageNet detection side, a sliding-window CNN detector is a natural comparison because it uses CNN features with a different localization strategy.
 
 ## Evaluation settings
 

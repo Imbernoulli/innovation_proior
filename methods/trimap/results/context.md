@@ -2,22 +2,11 @@
 
 Given `n` points in high dimension, `{x_i in R^D}`, produce a low-dimensional embedding
 `{y_i in R^d}` with `d = 2` or `3` that a human can look at and trust. "Trust" has two
-faces that pull against each other. The first is **local structure**: points that are
-neighbors in `R^D` should stay neighbors in the map, so the fine-grained cluster membership
-of each point is faithful. The second is **global structure**: the overall shape of the data,
-the relative placement of the clusters with respect to one another, the macroscopic geometry
-of a curved manifold, and the existence of far-flung outliers. A genuinely useful map has to
-get both right at once: it must show which points share a fine-grained neighborhood and how
-larger groups, manifolds, and outliers sit with respect to one another.
-
-The pain point is that the methods in wide use, and the metrics used to judge them, have
-quietly optimized only the first face. They preserve neighborhoods beautifully and scramble
-the global layout, and because the standard scores are themselves local, the scrambling goes
-unmeasured. So the problem is twofold: build an embedding method that preserves global
-structure as well as a linear projection does while keeping competitive local fidelity and
-scaling to millions of points; and build a quantitative score that actually *measures* global
-accuracy, since none of the established scores can. It also has to run on commodity hardware
-in minutes, without forming any `n x n` matrix.
+faces. The first is **local structure**: points that are neighbors in `R^D` should stay
+neighbors in the map, so the fine-grained cluster membership of each point is faithful.
+The second is **global structure**: the overall shape of the data, the relative placement
+of the clusters with respect to one another, the macroscopic geometry of a curved manifold,
+and the existence of far-flung outliers. How can an embedding method get both right at once?
 
 ## Background
 
@@ -25,11 +14,11 @@ The earliest dimensionality-reduction tool is **PCA** (Pearson, 1901): project o
 orthogonal directions of highest variance. PCA only ever uses the aggregate second-order
 statistics of the data, never the local neighborhood of any individual point. That is exactly
 why it is excellent at the global picture — the overall shape, the placement of clusters, the
-outliers — and exactly why it is poor at local structure: a flat linear projection cannot
+outliers — and why it tends to be poor at local structure: a flat linear projection cannot
 unfold a curved manifold. Silva & Tenenbaum (2003) drew this global-versus-local distinction
-explicitly. PCA carries one more property that turns out to be load-bearing: among all
-embeddings it admits the most accurate *linear inverse map* back to high dimension. Given any
-low-D embedding `Y`, the best linear reconstruction of `X` is a ridgeless least-squares fit,
+explicitly. PCA carries one more property that is worth noting: among all embeddings it admits
+the most accurate *linear inverse map* back to high dimension. Given any low-D embedding `Y`,
+the best linear reconstruction of `X` is a ridgeless least-squares fit,
 `min_A ||X - A Y||_F^2`, solved in closed form by `A* = X Y^T (Y Y^T)^{-1}` (which absorbs any
 rotation/scaling of `Y`); PCA achieves the smallest such reconstruction error of any DR method.
 
@@ -84,60 +73,32 @@ gradient sign opposes the current velocity direction and shrinks when they have 
 sign), combined with a momentum schedule, is the optimizer already used to train t-SNE.
 
 A motivating diagnostic ties these together. On the classic 3D **S-curve** manifold, and on
-the activations of a hidden layer of an image classifier, the local-focused methods recover
-the neighborhoods but visibly *distort the global layout*: t-SNE and UMAP get high values of a
-local score yet fail to unveil the curved shape of the S-curve or the macroscopic hierarchy of
-super-clusters, whereas the linear PCA projection — poor locally — recovers the global shape.
-This phenomenon is the heart of the matter: local accuracy and global accuracy are genuinely
-different, and the standard methods buy the first by sacrificing the second.
+the activations of a hidden layer of an image classifier, local-focused methods recover
+the neighborhoods while also showing visible distortions in the global layout: t-SNE and UMAP
+get high values of a local score, whereas the linear PCA projection recovers the global shape.
+This comparison illustrates that local accuracy and global accuracy can come apart, and that
+different design choices favor one over the other.
 
 ## Baselines
 
 These are the prior methods a new visualization method is measured against and reacts to.
 
 **PCA** (Pearson, 1901). Project onto the top-`d` eigendirections of the data covariance; the
-optimal linear DR by variance preserved and by linear reconstruction error. *Limitation:* a
-single linear projection cannot unfold nonlinear manifold structure, so neighborhoods that are
-close along a curved sheet but far in the ambient chord distance are torn apart; local fidelity
-is weak.
+optimal linear DR by variance preserved and by linear reconstruction error.
 
 **t-SNE** (van der Maaten & Hinton, 2008). Gaussian `P` (perplexity-tuned) vs. Student-t `Q`,
 minimize `KL(P||Q)` by gradient descent with momentum and per-coordinate adaptive gains; the
-heavy-tailed low-D kernel fixes crowding. *Limitation:* the objective is built from *pairwise*
-neighbor probabilities and is dominated by the local neighborhood, so the relative placement
-of separate clusters is essentially unconstrained — different runs and different perplexities
-produce wildly different global arrangements of the same clusters; the naive cost is `O(n^2)`
-(Barnes-Hut brings it to `O(n log n)`); and it is highly sensitive to initialization,
-converging well only from a small random start near the origin.
+heavy-tailed low-D kernel fixes crowding.
 
 **LargeVis** (Tang et al., 2016) and **UMAP** (McInnes et al., 2018). kNN-graph neighbor
 embeddings with sampled attractive/repulsive objectives that scale to large `n` and run fast.
-*Limitation:* the forces still act essentially between neighbors (attraction on graph edges)
-and randomly-sampled negatives (repulsion); the objective can be driven near zero — all
-neighbors close, all sampled non-neighbors apart — while the macroscopic arrangement of the
-clusters remains arbitrary. The global layout is not what these losses constrain.
 
 **STE / t-STE** (van der Maaten & Weinberger, 2012). Triplet embedding by maximizing
 `Σ log p_ijℓ` over a *given* set of triplets, with a heavy-tailed kernel in `p`.
-*Limitation:* (a) the triplets are assumed supplied (human similarity judgements); there is no
-mechanism to *sample* informative triplets from a feature representation, nor any notion that
-some triplets carry more evidence than others — every triplet counts equally. (b) Maximizing
-log-satisfaction-probability keeps applying force to triplets that are *already satisfied* (the
-heavy tail never lets go), pulling satisfied near-pairs ever tighter and pushing satisfied
-far-pairs ever farther — useful for denoising human labels, but it over-compresses when the
-triplets come from real feature distances. (c) It is initialized from a small random
-configuration, with no anchor to the data's global geometry.
 
 **Semi-supervised metric learning from relative comparisons** (Amid, Gionis & Ukkonen, 2016).
 Refine an initial feature-kernel `K_0` to satisfy relative-distance constraints while staying
-close to `K_0`. *Limitation:* it targets a *metric/kernel* for downstream clustering, learned
-from a modest set of human-provided comparisons in a kernel-learning (PSD-constrained)
-formulation; it is not a large-scale 2D-visualization method and does not address sampling
-constraints automatically from high-dimensional features or scaling to millions of points.
-
-The common thread across the nonlinear baselines: their objective, when minimized, pins down
-the *local* neighborhoods but leaves the *relative arrangement of clusters* — the thing PCA
-gets for free — underdetermined.
+close to `K_0`.
 
 ## Evaluation settings
 
@@ -153,8 +114,7 @@ activations of a small CNN on CIFAR-10 are used to inspect class separation.
 Local-accuracy metrics already in use: **nearest-neighbor (kNN) accuracy** of a classifier
 in the embedding; **trustworthiness and continuity** (Venna & Kaski, 2005), the fraction of
 embedding neighbors that are also original neighbors and vice versa; and the AUC of a
-precision-recall view of neighborhood retrieval (Venna et al., 2010). All of these score the
-*local* neighborhood; there is no established score for *global* accuracy. As an external
+precision-recall view of neighborhood retrieval (Venna et al., 2010). As an external
 sanity check on any proposed global score, one can `k`-means-cluster (e.g. `k = 100`) in high
 and low dimension and compare the cluster-center distance matrices via the Mantel test
 (yielding a Pearson correlation coefficient). Standard protocol: identical default parameters

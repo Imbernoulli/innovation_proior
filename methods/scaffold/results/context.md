@@ -12,7 +12,7 @@ min_x  f(x) = (1/N) sum_{i=1}^N f_i(x),   f_i(x) = E_{zeta_i}[ f_i(x; zeta_i) ],
 
 where `f_i` is the loss on client `i` and `g_i(x) := grad f_i(x; zeta_i)` is an unbiased
 stochastic gradient with within-client variance bounded by `sigma^2`. Three structural
-constraints make this hard and define the problem:
+constraints define the problem:
 
 1. **Communication is the bottleneck.** The network between server and clients is slow and
    unreliable, so the number of *communication rounds* is the resource to minimize. To amortize
@@ -25,35 +25,32 @@ constraints make this hard and define the problem:
 
 The precise goal is a *server-side aggregation rule* (together with whatever per-client
 local rule it exposes) that, under arbitrary heterogeneity and with only `S` of `N`
-clients per round, converges to the global optimum in as few communication rounds as possible
-— ideally no slower than centralized SGD, and faster when the clients happen to be similar. The
-contribution sought is in *how the local work is shaped and how the updates are combined*,
+clients per round, converges to the global optimum in as few communication rounds as possible.
+The contribution sought is in *how the local work is shaped and how the updates are combined*,
 not in the local optimizer or the simulation harness.
 
 ## Background
 
-**Local-update federated optimization and its drift.** The dominant recipe takes `K` local
+**Local-update federated optimization and client drift.** The dominant recipe takes `K` local
 steps then averages. Each sampled client copies the server model `y_i <- x`, performs `K`
 stochastic gradient steps on its own data, and ships back the change `y_i - x`; the server moves
 its model along the (sample-)average of those changes with a step size. For *identical* clients
 this is exactly parallel / local SGD, analyzed asymptotically by Zinkevich et al. (2010) and
-sharpened by Stich (2018), Stich & Karimireddy (2019), Khaled et al. (2020). The trouble is
-heterogeneity. Each `y_i` is pulled toward its *own* optimum `x_i^*`, so after `K` steps the
-average of the client models has moved toward `(1/N) sum_i x_i^*`, which under non-IID data is
-*not* the global optimum `x^*`. The gap between `(1/N) sum_i x_i^*` and `x^*` is the
-**client-drift**: a systematic bias in the aggregated step that grows with the number of local
-steps and with how dissimilar the clients are. This drift was first observed empirically by Zhao
-et al. (2018), and it persists even with full-batch gradients and full participation — it is not
-a stochastic-noise artifact. To stay stable in its presence, a local-averaging method is forced
-to shrink its step size, which directly slows convergence.
+sharpened by Stich (2018), Stich & Karimireddy (2019), Khaled et al. (2020). Under heterogeneity,
+each `y_i` is pulled toward its *own* optimum `x_i^*`, so after `K` steps the average of the
+client models has moved toward `(1/N) sum_i x_i^*`, which under non-IID data differs from the
+global optimum `x^*`. The gap between `(1/N) sum_i x_i^*` and `x^*` is the **client-drift**:
+a systematic bias in the aggregated step that grows with the number of local steps and with how
+dissimilar the clients are. This drift was first observed empirically by Zhao et al. (2018), and
+it persists even with full-batch gradients and full participation — it is not a stochastic-noise
+artifact.
 
 Heterogeneity can be quantified. A standard measure is **gradient dissimilarity**: there are
 constants `G >= 0`, `B >= 1` with `(1/N) sum_i ||grad f_i(x)||^2 <= G^2 + B^2 ||grad f(x)||^2`
 for all `x`. A second, orthogonal measure is **Hessian dissimilarity**:
 `||grad^2 f_i(x) - grad^2 f(x)|| <= delta` for all `x`. These are independent — one can have
 `G = 0` with `delta` large, or `delta = 0` with `G` arbitrarily large (the clients then share a
-common curvature but have far-apart optima). Which notion of dissimilarity actually governs the
-slowdown is an open question at this point.
+common curvature but have far-apart optima).
 
 **Smoothness and convexity tools.** Each `f_i` is `beta`-smooth (`beta`-Lipschitz gradient),
 which gives the quadratic upper bound `f_i(y) <= f_i(x) + <grad f_i(x), y-x> + (beta/2)||y-x||^2`
@@ -75,10 +72,8 @@ direction `X = g_j(x)` is corrected by a stored stale gradient `Y = g_j(phi_j)` 
 average `E[Y] = (1/n) sum_i g_i(phi_i)`, giving the linearly convergent update
 `x <- x - gamma [ g_j(x) - g_j(phi_j) + (1/n) sum_i g_i(phi_i) ]`. The correction
 `-g_j(phi_j) + (1/n) sum_i g_i(phi_i)` removes the component of `g_j(x)` that is specific to the
-sampled index `j` rather than common to the whole sum. This finite-sum machinery is mature, but
-it is built for sampling *individual components* of a static sum with one gradient step each, not
-for clients that each run many local steps on a *stochastic* objective and are only intermittently
-available.
+sampled index `j` rather than common to the whole sum. This machinery is built for sampling
+*individual components* of a static sum with one gradient step each.
 
 ## Baselines
 
@@ -86,41 +81,26 @@ available.
 client `i in S` sets `y_i <- x` and runs `K` local SGD steps,
 `y_i <- y_i - eta_l g_i(y_i)`; the server aggregates with a global step size `eta_g`,
 `x <- x + (eta_g/|S|) sum_{i in S} (y_i - x)`. It carries no server- or client-side state beyond
-the model. Its strength is communication efficiency (one round per `K` local steps); its
-weakness is exactly the client-drift above. Because each client descends *its own* `f_i`, the
-aggregated direction is biased toward `(1/N) sum_i x_i^*`, and the bias is what the gradient
-dissimilarity `G` measures. Where it breaks: under heterogeneous data its convergence stalls,
-and increasing the local-step count `K` — the very lever that buys communication efficiency —
-makes the drift worse, so past a point more local work *hurts*.
+the model. Each client descends *its own* `f_i`, so the aggregated direction reflects the
+gradient dissimilarity `G` between local and global objectives.
 
 **FedProx (Li et al., MLSys 2020; aka EASGD, Zhang et al. 2015).** Keeps FedAvg's server average
 unchanged but adds a proximal penalty to each client's local objective:
 `min_w  f_i(w) + (mu/2) ||w - x||^2`, so the local gradient becomes
-`g_i(w) + mu (w - x)`. The penalty *anchors* each client to the shared model `x`, shrinking how
-far `w` can wander in `K` steps. Where it falls short: the penalty only damps the *magnitude* of
-the local move; it does not change the *direction* the local gradient points. The corrected
-direction `g_i(w) + mu(w - x)` still descends `f_i`, so the aggregate is still pulled toward
-`(1/N) sum_i x_i^*` — the drift is throttled, not removed, and it pays for the throttling with
-slower progress. The pull toward the wrong point remains as long as the clients are dissimilar.
+`g_i(w) + mu (w - x)`. The penalty *anchors* each client to the shared model `x`, controlling how
+far `w` can wander in `K` steps.
 
 **DANE (Shamir et al., 2014).** A distributed approximate-Newton method. Each machine solves a
 local subproblem that adds a *linear gradient-correction* term:
 `w_i <- argmin_w [ f_i(w) - <grad f_i(x) - grad f(x), w> + (mu/2) ||w - x||^2 ]`, then the server
 averages the `w_i`. The correction `-(grad f_i(x) - grad f(x))` subtracts off the part of the
 local gradient that is specific to client `i` — the same finite-sum-correction spirit as SAGA.
-Where it falls short: the subproblem is an *exact proximal-point* solve, which in practice means
-running the local optimizer to convergence each round, and its guarantees depend on the Hessian
-dissimilarity quadratically (it needs `(delta/mu)^2` rounds) — far more than one would hope —
-unless augmented with an extra line search. It is also a full-participation, deterministic-style
-method, not designed for sampling a handful of stochastic clients per round.
+Its guarantees depend on Hessian dissimilarity and it is designed for a full-participation,
+deterministic-style setting.
 
 **Large-batch / centralized SGD.** As a yardstick, ignore the local-step structure and treat
-each round as one big stochastic gradient step over the sampled data. This is heterogeneity-free
-in its analysis (`(sigma^2)/(mu N K eps) + 1/mu` rounds in the strongly convex case) but throws
-away the communication advantage of taking many local steps — it never benefits from local
-computation when clients are similar. Where it falls short: it sets the bar any improved
-local-averaging method must *match* under arbitrary heterogeneity and ideally *beat* when the
-clients are similar.
+each round as one big stochastic gradient step over the sampled data. Its rate in the strongly
+convex case is `(sigma^2)/(mu N K eps) + 1/mu` rounds, with no heterogeneity dependence.
 
 ## Evaluation settings
 

@@ -4,10 +4,10 @@ Continuous-control RL from reward alone, off-policy: a simulated body emits a re
 
 ## Prior art / Background / Baselines
 
-- **Deep Q-learning (DQN).** Learns `Q(s,a)` with a replay buffer and target network, using a greedy max over actions for both control and bootstrap targets. Gap: the max is only defined over a finite discrete action set, so it does not apply to real-valued actions.
-- **Discretizing the action space.** Bins each actuator and runs DQN over the product set. Gap: the product grows exponentially with the number of actuators and loses the metric structure between nearby torque values.
-- **Deterministic policy gradient (DPG).** Replaces the action max with a differentiable deterministic actor `μ(s)`, obtaining the policy gradient by chaining through a critic `Q(s,a)`. Gap: it is a theoretical gradient theorem; a stable deep off-policy learner for continuous control has not yet been demonstrated, and the coupled actor-critic optimization is fragile.
-- **Experience replay + target networks.** Stores past transitions in a FIFO buffer for off-policy reuse and uses slowly-updated target copies for bootstrap targets. Gap: these stabilize discrete-action value learning but do not address continuous actions or the exploration problem of a deterministic actor.
+- **Deep Q-learning (DQN).** Learns `Q(s,a)` with a replay buffer and target network, using a greedy max over actions for both control and bootstrap targets. The max is defined over a finite discrete action set.
+- **Discretizing the action space.** Bins each actuator and runs DQN over the product set.
+- **Deterministic policy gradient (DPG).** Replaces the action max with a differentiable deterministic actor `μ(s)`, obtaining the policy gradient by chaining through a critic `Q(s,a)`.
+- **Experience replay + target networks.** Stores past transitions in a FIFO buffer for off-policy reuse and uses slowly-updated target copies for bootstrap targets.
 
 ## Fixed substrate / Code framework
 

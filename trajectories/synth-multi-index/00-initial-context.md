@@ -22,19 +22,15 @@ start.
 Three baselines frame the difficulty.
 
 - **Kernel / random-feature methods (fixed-feature regime).** Freeze the first-layer features and fit
-  only a linear readout. The features never learn the teacher subspace, so a degree-3 target costs
-  `Ω(d³)` samples. Gap: no feature learning; sample complexity scales with the ambient dimension.
+  only a linear readout. A degree-3 target costs `Ω(d³)` samples under this regime.
 - **Single-index information-exponent analysis.** For a target reading one direction with information
   exponent `s`, one-pass SGD on the first layer needs roughly `d^{s-1}` samples/steps; the gradient
-  pull toward the true direction is `O(overlap^{s-1})` and vanishes at small overlap. Gap: for
-  `s = 3` this gives a `d²` wall, far above the `n ~ d` information floor.
+  pull toward the true direction is `O(overlap^{s-1})` and vanishes at small overlap.
 - **Multi-direction saddle-to-saddle SGD.** For several directions, SGD climbs saddle-to-saddle,
   picking up Hermite components in increasing order; a direction leaves the equator only after the
-  directions it is coupled to are already found. Gap: on a bare cubic with no lower-degree ladder,
-  there is no staircase to climb.
+  directions it is coupled to are already found.
 
-The starting point is vanilla joint SGD on the fixed MLP. It establishes the baseline wall in the
-data, and every subsequent rung modifies the same four-hook interface.
+The starting point is vanilla joint SGD on the fixed MLP, and every subsequent rung modifies the same four-hook interface.
 
 ## Fixed substrate / Code framework
 

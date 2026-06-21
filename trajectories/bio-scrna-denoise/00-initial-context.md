@@ -6,9 +6,9 @@ No clean ground truth exists on real data; evaluation uses molecular cross-valid
 
 ## Prior art / Background / Baselines
 
-- **kNN-smoothing (Wagner, Yan & Yanai, 2018).** Average each cell's profile with its `k` nearest neighbors by observed expression distance to pool molecules and reduce Poisson noise. *Gap:* neighbors are chosen from noisy profiles, so wrong cells are pooled in high-dropout regimes, and a single global `k` over-smooths dense regions while under-smoothing isolated cells.
-- **MAGIC (van Dijk et al., Cell 2018).** Build a cell-cell affinity graph with an adaptive-bandwidth kernel, normalize it to a Markov matrix `P`, and impute by `X̂ = P^t X`, diffusing expression transitively along the data manifold. *Gap:* the diffusion time `t` and kernel are global, so too much diffusion erases genuine cell-to-cell variation, and one variance-stabilizing transform is not suitable across genes with very different dropout rates.
-- **ALRA (Linderman et al., 2022).** Take a low-rank SVD of the normalized matrix, reconstruct from the top components, and threshold per gene to preserve biological zeros. *Gap:* low-rank structure recovers dominant axes but misses fine local geometry, and the method does not target the log-normalized MSE or Poisson NLL metrics directly.
+- **kNN-smoothing (Wagner, Yan & Yanai, 2018).** Average each cell's profile with its `k` nearest neighbors by observed expression distance to pool molecules and reduce Poisson noise.
+- **MAGIC (van Dijk et al., Cell 2018).** Build a cell-cell affinity graph with an adaptive-bandwidth kernel, normalize it to a Markov matrix `P`, and impute by `X̂ = P^t X`, diffusing expression transitively along the data manifold.
+- **ALRA (Linderman et al., 2022).** Take a low-rank SVD of the normalized matrix, reconstruct from the top components, and threshold per gene to preserve biological zeros.
 
 ## Fixed substrate / Code framework
 

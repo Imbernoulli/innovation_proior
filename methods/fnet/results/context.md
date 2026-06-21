@@ -2,11 +2,9 @@
 
 ## Research question
 
-The Transformer encoder has become the default backbone for language understanding, and its distinctive sublayer is self-attention. For a length-`N` sequence, self-attention lets each token form a representation from all other tokens, with the weights produced by query-key dot products and a softmax over an `N x N` score matrix.
+The Transformer encoder has become the default backbone for language understanding, and its distinctive sublayer is self-attention. For a length-`N` sequence, self-attention lets each token form a representation from all other tokens, with the weights produced by query-key dot products and a softmax over an `N x N` score matrix. The standard encoder pays `O(N^2)` time and `O(N^2)` memory in the sequence length. Efficient-attention variants reduce this cost by sparsifying the score matrix or by linearizing the attention computation.
 
-That matrix is also the bottleneck. The standard encoder pays `O(N^2)` time and `O(N^2)` memory in the sequence length, and long-input encoders are often memory-bound. Efficient-attention variants try to reduce the cost by sparsifying the score matrix or by linearizing the attention computation, but these approaches still preserve attention as the object being approximated or constrained, and their favorable asymptotics can hide large constants.
-
-The question is whether the encoder really needs token-dependent attention in every layer. Can the self-attention sublayer be replaced by a simpler token-mixing operation, while leaving embeddings, feed-forward sublayers, residual connections, layer normalization, and task heads essentially unchanged? A useful answer must mix information across positions, avoid quadratic length scaling when possible, and not add a complicated new parameterized mechanism in place of the old one.
+The question is whether the self-attention sublayer can be replaced by a simpler token-mixing operation, while leaving embeddings, feed-forward sublayers, residual connections, layer normalization, and task heads essentially unchanged.
 
 ## Background
 
@@ -14,17 +12,15 @@ The architectural template is BERT-style. Inputs are represented by word, absolu
 
 This block separates two kinds of work. The feed-forward sublayer mixes the hidden dimension at each token independently. The self-attention sublayer is the part that mixes the sequence dimension, so downstream per-token transformations can use information that has already crossed positions. In that view, attention is one implementation of token mixing, not necessarily the only possible implementation.
 
-Prior work already weakens the assumption that token mixing must be content-dependent dot-product attention. Synthesizer replaces query-key dot products with synthetic attention weights. Fixed-pattern and Gaussian attention variants show that some non-learned positional structure can carry useful signal. MLP-Mixer makes an analogous separation between token mixing and channel mixing in vision. These results do not solve the encoder problem, but they make it reasonable to ask for a simpler global mixer.
+Several lines of work loosen the assumption that token mixing must be content-dependent dot-product attention. Synthesizer replaces query-key dot products with synthetic attention weights. Fixed-pattern and Gaussian attention variants use non-learned positional structure. MLP-Mixer makes an analogous separation between token mixing and channel mixing in vision.
 
 ## Baselines
 
-**BERT encoder with self-attention.** This is the reference architecture. Its self-attention sublayer computes `softmax(QK^T / sqrt(d_k))V`, giving a flexible, token-dependent all-pairs mixer. Its gap is the `N x N` score matrix, with quadratic time and memory in sequence length and a substantial parameterized projection stack.
+**BERT encoder with self-attention.** This is the reference architecture. Its self-attention sublayer computes `softmax(QK^T / sqrt(d_k))V`, a token-dependent all-pairs mixer built from a `Q`, `K`, `V` projection stack and an `N x N` score matrix.
 
-**Dense learned token mixing.** One direct replacement is to use ordinary learned linear maps: one across sequence positions and one across hidden features. This preserves global mixing and removes the attention softmax and query-key interaction. Its gap is that a learned sequence mixer has an `N x N` matrix tied to a chosen maximum length, so it keeps quadratic sequence cost and does not naturally transfer to a different length.
+**Dense learned token mixing.** One direct replacement uses ordinary learned linear maps: one across sequence positions and one across hidden features. This keeps global mixing and removes the attention softmax and query-key interaction. The across-sequence map is an `N x N` matrix tied to a chosen maximum length.
 
-**Efficient and long-sequence attention variants.** Sparse and linearized attention models reduce or restructure attention cost. Their gap is that they remain attention mechanisms: they either approximate the dense attention calculation or restrict its connectivity pattern, often adding implementation complexity and constants that matter at practical lengths.
-
-The shared gap is that these baselines either keep the expensive all-pairs attention object, or replace it with a learned dense object that is still tied to the sequence length.
+**Efficient and long-sequence attention variants.** Sparse and linearized attention models restructure the attention cost, either approximating the dense attention calculation or restricting its connectivity pattern.
 
 ## Evaluation settings
 

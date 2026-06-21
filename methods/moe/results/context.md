@@ -10,14 +10,9 @@ training cost scales roughly as the product of model size and dataset size, i.e.
 quadratically as we grow both together. Compute and inter-device bandwidth are
 not keeping pace with that demand.
 
-The precise goal: build a model whose *parameter count* can be made enormous
-(orders of magnitude beyond a dense baseline), while the *computation per
-example* stays roughly fixed. A solution must (i) route each example to only a
-small, input-dependent subset of the parameters; (ii) keep that routing trainable
-end-to-end; (iii) remain efficient on hardware that is far faster at dense
-arithmetic than at branching, and whose aggregate compute dwarfs its network
-bandwidth; and (iv) be demonstrated on data large enough to actually supply
-training signal for billions of parameters.
+How can a model's parameter count be made very large while its computation per
+example stays roughly fixed, trainable end-to-end, and efficient on GPU clusters
+whose compute far outpaces their network bandwidth?
 
 ## Background
 
@@ -33,31 +28,12 @@ and balance. Cho & Bengio (2014) exponentially increase the capacity-to-
 computation ratio with a parameterized weight matrix selected per input. Eigen,
 Ranzato & Sutskever (2013) stack gated mixtures as components inside a deep net.
 
-These works share a set of obstacles, which together explain why the promise had
-not been realized at scale:
-- GPUs are much faster at arithmetic than at branching, so a gating decision must
-  switch a *large* chunk of computation on or off to pay for itself.
-- Large batches amortize the cost of loading and updating parameters; conditional
-  computation shrinks the effective batch seen by each conditionally-active chunk.
-- Aggregate cluster compute can exceed inter-device bandwidth by a factor of
-  thousands; any scheme that ships parameters or activations across the network
-  (embedding lookups are the canonical example) is bandwidth-bound, not
-  compute-bound.
-- Hard, sparse gating needs auxiliary loss terms to reach the desired sparsity
-  and to keep utilization balanced; getting these right affects both quality and
-  load distribution.
-- The published demonstrations used small datasets (image sets of up to ~600k
-  examples), which plausibly cannot supply enough signal to train millions, let
-  alone billions, of parameters.
-
-**A diagnosed failure of trainable gating: collapse.** When a softmax gate over
-experts is trained jointly with the experts, it tends to converge to a state where
-it assigns large weight to the same few experts on every example. The imbalance is
-self-reinforcing: a favored expert receives more gradient, improves faster, and is
-therefore selected even more often. Eigen et al. (2013) report exactly this and
-sidestep it with a *hard* constraint at the start of training; Bengio et al.
-(2015) add a *soft* constraint on the batch-wise average of each gate. This is a
-pre-method fact about trainable mixtures, independent of any particular fix.
+**Gate behavior in trainable mixtures.** When a softmax gate over experts is
+trained jointly with the experts, it tends to converge to a state where it
+assigns large weight to the same few experts on every example. Eigen et al.
+(2013) report this and sidestep it with a hard constraint at the start of
+training; Bengio et al. (2015) add a soft constraint on the batch-wise average
+of each gate.
 
 **Mixtures of experts.** Jacobs, Jordan, Nowlan & Hinton (1991) and Jordan &
 Jacobs (1994) introduced adaptive mixtures of local experts: a set of expert
@@ -79,25 +55,20 @@ together.
 
 - **Dense softmax-gated mixture of experts (Jacobs/Jordan).** Gate
   `G(x) = Softmax(x·W_g)` over `n` experts; output `y = Σ_i G(x)_i E_i(x)`.
-  Trained end-to-end by backprop. *Gap:* the gate is dense — all `n` experts run
-  for every example, so capacity and compute scale together. No savings.
+  Trained end-to-end by backprop. All `n` experts run for every example.
 
 - **Stacked deep MoE components (Eigen et al., 2013).** Use MoEs as layers inside
-  a deep network, each with its own gate, rather than as the whole model. Note the
-  potential for sparsity but do not realize it; combat gate collapse with a hard
-  constraint at the start of training. *Gap:* still dense in practice; only two
-  stacked sets of gating decisions; sparsity left as a remark.
+  a deep network, each with its own gate, rather than as the whole model. Combat
+  gate collapse with a hard constraint at the start of training.
 
 - **REINFORCE-trained boolean gates (Bengio et al., 2015).** Hard on/off gates on
   network blocks, trained with a policy-gradient estimator, plus three auxiliary
-  losses (per-example sparsity, batch-wise balance, gate diversity). *Gap:*
-  high-variance gradient estimation; several losses to tune; demonstrated on small
-  data; the binary gate forfeits the smooth credit assignment that backprop gives.
+  losses (per-example sparsity, batch-wise balance, gate diversity). Demonstrated
+  on image datasets of up to ~600k examples.
 
 - **Dense LSTM language models / GNMT (Jozefowicz et al., 2016; Wu et al., 2016).**
   Strong sequence baselines whose quality improves with parameter count, at a
-  proportional compute cost. *Gap:* every parameter fires for every token; scaling
-  capacity means scaling compute.
+  proportional compute cost.
 
 ## Evaluation settings
 
@@ -122,8 +93,7 @@ The primitives that already exist: a tensor library with autograd, `nn.Linear`,
 `ReLU`, `Softmax`, `Softplus`, a normal distribution with a CDF, and an Adam
 optimizer; a sequence model (stacked LSTM layers, embeddings, a softmax output)
 into which a new layer can be dropped at one position and applied at every
-timestep. What does not yet exist is a layer that holds a large bank of
-sub-networks and runs only a few of them per example.
+timestep.
 
 ```python
 import torch

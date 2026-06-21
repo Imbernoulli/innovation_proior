@@ -2,16 +2,11 @@
 
 ## Research question
 
-Modern deep networks are excellent at perception and pattern completion but stumble badly on "hard," "global" constraints — the discrete, all-or-nothing relationships that define logical and combinatorial problems. A convolutional net can read a handwritten digit beautifully, yet cannot reliably learn the rules of a constraint puzzle from examples, because those rules are a *discrete* logical structure and the network only has continuous, locally-smooth machinery.
+Modern deep networks are excellent at perception and pattern completion but handle "hard," "global" constraints differently from "soft," locally-smooth ones. A convolutional net can read a handwritten digit beautifully, but the rules of a constraint puzzle are a *discrete* logical structure, not a locally-smooth one.
 
-The sharper version of the question is not "can a network *apply* a known logical rule" — much prior work does that — but **can a network *discover* the discrete relationships that explain a set of observations, end to end, with the rules unknown and learnable from data?** A solution would have to:
+The broad question is: **can a network *discover* the discrete relationships that explain a set of observations, end to end, with the rules unknown and learnable from data?**
 
-- represent an *unknown* logical/constraint problem with parameters that are *continuous and differentiable*, so gradients can flow into them;
-- be embeddable as a layer inside a larger network, so it can sit behind (say) a digit-recognition front-end and be trained jointly with it;
-- learn the structure from weak supervision (bit labels, single-bit labels), not from a hand-specified rule template;
-- and **scale** — a layer that takes a fraction of a second per forward/backward pass on realistic problem sizes, not minutes.
-
-Two concrete tasks make the gap vivid. First, the **parity** of a bit string (1 if an odd number of ones): a pure logical function (chained XOR) that is notoriously hard to learn by gradient descent from input/output pairs alone. Second, **9×9 Sudoku** learned *from examples only* — the constraints (rows, columns, 3×3 blocks each a permutation of 1–9) are never given; the system must infer them. And a harder variant, **visual Sudoku**: the input is an *image* of a board (cells are handwritten digits), and the output must be a logical solution — so a perception network and a constraint-learning module must be trained together, end to end.
+Two concrete tasks frame the setting. First, the **parity** of a bit string (1 if an odd number of ones): a pure logical function (chained XOR) that is hard to learn by gradient descent from input/output pairs alone. Second, **9×9 Sudoku** learned *from examples only* — the constraints (rows, columns, 3×3 blocks each a permutation of 1–9) are never given; the system must infer them. And a harder variant, **visual Sudoku**: the input is an *image* of a board (cells are handwritten digits), and the output must be a logical solution — so a perception network and a constraint-learning module would need to be trained together, end to end.
 
 ## Background
 
@@ -21,7 +16,7 @@ Two concrete tasks make the gap vivid. First, the **parity** of a bit string (1 
 maximize_{ṽ ∈ {−1,1}^n}  Σ_j  ⋁_i  1{ s̃_ij ṽ_i > 0 }.
 ```
 
-SAT/MAXSAT is the universal target of reductions across symbolic AI and constraint satisfaction, which makes it an attractive single primitive: a great many discrete logical problems can be *encoded* as MAXSAT, and the clause-sign data `S` is a natural place to put learnable parameters. But MAXSAT is discrete and NP-hard, and the indicator/disjunction objective is non-differentiable — exactly the property that has kept it out of neural architectures.
+SAT/MAXSAT is the universal target of reductions across symbolic AI and constraint satisfaction, which makes it an attractive single primitive: a great many discrete logical problems can be *encoded* as MAXSAT, and the clause-sign data `S` is a natural place to put learnable parameters.
 
 **Semidefinite relaxation and randomized rounding (Goemans & Williamson, 1995).** A landmark line of approximation algorithms relaxes such combinatorial problems to semidefinite programs. For MAXCUT and MAX-2SAT, Goemans and Williamson "lift" each binary `ṽ_i ∈ {±1}` to a unit vector `v_i ∈ R^k`, `‖v_i‖ = 1`, and optimize a quadratic form over the vectors — a semidefinite program in the Gram matrix `X = V^T V ⪰ 0`. They recover a discrete assignment by **randomized rounding**: draw a uniformly random hyperplane with normal `r` on the unit sphere and assign variable `i` by the sign of `r^T v_i`. Two facts from that analysis are load-bearing here:
 
@@ -49,19 +44,17 @@ z_{i+1} = argmin_z  ½ z^T Q z + q^T z   s.t.  Az = b,  Gz ≤ h,
 
 inside the network, where `(Q,q,A,b,G,h)` can depend differentiably on the previous layer. The gradient of the layer's solution with respect to its parameters is obtained not by unrolling the solver but by **differentiating the KKT optimality conditions at the solution** (matrix differentials / implicit differentiation), and the backward pass reuses the forward factorization so it is nearly free once the problem is solved. Related layers exist for submodular optimization and for equilibria of zero-sum games. The general recipe — *solve an optimization problem in the forward pass; differentiate its solution implicitly in the backward pass* — is the template.
 
-**Diagnostic failures that frame the problem.**
-- *Parity is hard for gradient-based learning.* Shalev-Shwartz, Shamir & Shammah (2017) show that for the family of parity functions the gradient of a network's loss carries almost no information about *which* parity generated the data — the gradient's variance across the family is essentially zero — so gradient descent has nothing to follow and fails to learn parity from input/output pairs.
-- *Sudoku defeats convolutional nets.* A strong ConvNet (e.g. Park 2016, ten convolutional layers) can fit the training boards but fails to generalize, and collapses entirely on *permuted* boards where the spatial-locality crutch is removed: the network never recovers the underlying logical relations, only surface statistics.
-- *Existing differentiable-optimization layers do not scale to these sizes.* The dense interior-point QP backward of the optimization-layer line is `O(n³)`-ish per solve and cannot exploit GPU parallelism over many small coordinate updates; it can handle a 4×4 toy Sudoku but stalls on the 9×9 problem.
-- *Existing neuro-symbolic systems require the rules.* Most differentiable-logic systems (relational reasoning nets seeded with which variables may interact, inductive-logic-programming nets seeded with rule templates, probabilistic-logic-programming nets) tune the parameters of a *given* relational structure rather than discovering the structure itself.
+**Background results on parity and Sudoku.**
+- *Parity and gradient-based learning.* Shalev-Shwartz, Shamir & Shammah (2017) analyze parity functions and the behavior of network gradients across the family of parity functions when trained from input/output pairs.
+- *Neural Sudoku solvers.* A strong ConvNet (e.g. Park 2016, ten convolutional layers) can be trained on Sudoku boards. OptNet (Amos & Kolter, 2017) showed on 4×4 Sudoku that a differentiable optimization layer can learn discrete structure from input/output examples alone.
 
 ## Baselines
 
-- **Convolutional Sudoku solver (Park, 2016).** Interprets the bit board as image channels and stacks ~10 convolutional layers (512 3×3 filters each) to output the completed board; trained with MSE. *Limitation:* it fits training boards (e.g. ~73% train) but generalizes essentially not at all to held-out boards, and on permuted boards — where locality is destroyed — it makes little progress even on the training set. It learns surface spatial statistics, not the logical constraints. A variant that additionally receives a binary mask of which cells are unknown (ConvNetMask) helps only marginally.
-- **OptNet (Amos & Kolter, 2017).** A differentiable QP layer; differentiates KKT conditions to get gradients w.r.t. the problem data. On 4×4 Sudoku it learns the rules from input/output examples alone, which is the proof of concept that a differentiable optimization layer *can* learn discrete structure. *Limitation:* the dense primal-dual interior-point solve does not scale — on 9×9 Sudoku it makes negligible progress even after days of training, and per-epoch wall-clock is far higher than a coordinate-descent solver of comparable accuracy. QP is also not the most natural relaxation of *logical* (clause) structure.
-- **LSTM sequence classifier (for parity).** A recurrent classifier (e.g. 100 hidden units) trained to map a bit sequence to its parity. *Limitation:* with only single-bit (final-answer) supervision it cannot find a representation of the chained-XOR structure; test error stays near chance (≈0.5) regardless of architecture/learning-rate sweeps — consistent with the gradient-uninformativeness result for parities.
-- **Recurrent relational networks (Palm et al., 2017).** A strong neural Sudoku solver, but one that is *given* hand-coded information about which variables are allowed to interact (the message-passing graph encodes the board's structure). *Limitation:* it does not *discover* the relations; the structure is built in.
-- **Differentiable-logic systems with known rules** (DeepProbLog, ∂ILP/Evans–Grefenstette, lifted relational nets, semantic-loss, etc.). *Limitation:* each requires a pre-specified set of relationships / rule templates / groundings; they learn parameters *within* a fixed logical skeleton rather than learning the skeleton from data, so they cannot operate when the structure of the domain is unknown.
+- **Convolutional Sudoku solver (Park, 2016).** Interprets the bit board as image channels and stacks ~10 convolutional layers (512 3×3 filters each) to output the completed board; trained with MSE. A variant that additionally receives a binary mask of which cells are unknown (ConvNetMask) is also evaluated.
+- **OptNet (Amos & Kolter, 2017).** A differentiable QP layer; differentiates KKT conditions to get gradients w.r.t. the problem data. On 4×4 Sudoku it learns the rules from input/output examples alone.
+- **LSTM sequence classifier (for parity).** A recurrent classifier (e.g. 100 hidden units) trained to map a bit sequence to its parity.
+- **Recurrent relational networks (Palm et al., 2017).** A neural Sudoku solver that receives hand-coded information about which variables are allowed to interact (the message-passing graph encodes the board's structure).
+- **Differentiable-logic systems with known rules** (DeepProbLog, ∂ILP/Evans–Grefenstette, lifted relational nets, semantic-loss, etc.). These systems tune the parameters of a given relational structure.
 
 ## Evaluation settings
 

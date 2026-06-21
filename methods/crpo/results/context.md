@@ -23,29 +23,20 @@ natural-gradient, or trust-region step on the Lagrangian, while the multipliers 
 the nonnegative orthant after being increased by observed constraint violation. This family includes
 actor-critic and policy-gradient primal-dual methods, and its appeal is supported by CMDP duality
 results showing that constrained reinforcement learning can have zero duality gap under suitable
-representations.
-
-## Practical Friction
-
-The multiplier is also the source of practical lag. If a policy starts violating a cost constraint, a
-small multiplier may not push back strongly enough; after the policy returns below the budget, a large
-multiplier can keep suppressing reward while it decays. The method therefore reacts through accumulated
-history, not just through the current constraint estimate. Implementations also inherit dual learning
-rates, multiplier initialization choices, and projection thresholds or normalizations, all of which can
-change behavior substantially.
+representations. Implementations carry dual learning rates, multiplier initialization choices, and
+projection thresholds or normalizations.
 
 ## Available Optimization Building Blocks
 
-Unconstrained policy-optimization methods already provide strong local update rules and, in tabular or
+Unconstrained policy-optimization methods provide local update rules and, in tabular or
 well-parameterized settings, finite-time global-convergence analyses. Natural policy gradient has a
 simple tabular form: for each reward or cost return `J_i`, the natural-gradient direction is proportional
 to the corresponding action-value function, with factor `(1 - gamma)^(-1)`. TRPO and related methods can
 be viewed as adaptive-step versions of the same natural-gradient idea, and ordinary actor-critic code can
 estimate reward and cost advantages from the same rollout batch.
 
-## Missing Piece
+## Research Question
 
-What is missing is a primal safe-RL rule that keeps the simplicity of ordinary policy-optimization
-steps while reacting quickly to constraint information. Such a rule has to handle multiple constraints,
-arbitrary initialization, estimation error in critics or rollouts, and a convergence proof in which the
-policy optimizer may not be following one fixed scalar objective at every iteration.
+The setting asks how to drive a parameterized policy toward the reward-maximizing point of the feasible
+set `Omega_C`, using the same kind of reward and cost action-value estimates that an actor-critic rollout
+already produces, across one or more constraints and from an arbitrary starting policy.

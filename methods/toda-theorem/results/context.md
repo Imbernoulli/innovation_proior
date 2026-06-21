@@ -13,7 +13,3 @@ Probabilistic polynomial-time computation introduces acceptance by comparison wi
 ## Randomness and Isolation
 
 Bounded-error randomness supplies a way to reshape a search problem before asking a deterministic or counting question about it. The isolation idea behind Valiant-Vazirani is that random linear constraints can turn a satisfiable instance into one with a unique witness with noticeable probability, while preserving unsatisfiable instances. Once uniqueness appears, parity becomes a witness detector.
-
-## The Missing Bridge
-
-The open conceptual gap is how to make alternation, randomness, parity, thresholds, and exact counting communicate without simulating each quantifier layer directly. A convincing proof has to explain why nested logical structure can be flattened into randomized parity and threshold tests, and then why those tests can be evaluated by exact counting power.

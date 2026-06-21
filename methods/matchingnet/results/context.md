@@ -9,32 +9,8 @@ one-shot case `k = 1`; in the broader few-shot case `k` is still small. Random g
 `1/N`, so the problem is not merely recognizing familiar labels with fewer examples. The
 learner must create a usable classifier for labels that did not exist during training.
 
-The hard operational constraint is that test-time classes arrive only as a support set. A
-useful system should not need to add output units, run gradient descent on the support
-examples, or fine-tune the backbone for each new episode. The wanted object is therefore a
-reusable procedure that can take a variable-size labeled set, compare a query against it,
-and return a distribution over the labels present in that set.
-
-## Pre-Method Tension
-
-Parametric deep classifiers are strong when each class has many examples. Their knowledge is
-stored in weights, and those weights move slowly through many stochastic-gradient updates.
-That makes them poorly matched to a class represented by one or a handful of examples. A
-single support image provides almost no stable gradient signal, while aggressive fine-tuning
-on so little data risks overfitting and forgetting.
-
-Non-parametric classifiers have the opposite profile. Nearest-neighbor, kernel, and locally
-weighted methods absorb a new example immediately because the stored examples are the model.
-They naturally handle a changing label set and their effective capacity grows with the
-reference set. Their weakness is also structural: performance is only as good as the metric
-or feature space used for comparison. Pixel distance is weak, and borrowed features from a
-base-class classifier are optimized for fixed softmax separation, not for comparing unseen
-classes inside a tiny support set.
-
-The useful direction is to keep the instant-assimilation behavior of non-parametric methods
-while learning the representation used for comparison. The challenge is making that
-comparison differentiable, task-shaped, and compatible with a support set whose labels change
-from episode to episode.
+The central question is how to build a classifier that generalizes to new classes given only
+a small support set at test time, without modifying the model's parameters for each new task.
 
 ## Load-Bearing Prior Art
 
@@ -48,9 +24,7 @@ p_i  = sum_{j: c_j = c_i} p_ij
 
 The objective maximizes `sum_i p_i`, the expected number of correctly classified training
 points. This turns a discontinuous nearest-neighbor rule into a smooth objective for the
-metric. Its limitation for this setting is that it learns a fixed Mahalanobis map and scores
-points against the training set, rather than learning the episode-level operation of using a
-fresh support set as the classifier.
+metric.
 
 Content-based attention supplies the second ingredient. Sequence-to-sequence attention scores
 a query state against each memory entry, softmax-normalizes those scores, and reads a weighted
@@ -65,11 +39,10 @@ the set, read a weighted summary, and fold that readout back into the state. Thi
 to do multiple rounds of computation over a set without treating a single arbitrary order as
 the object of interest.
 
-Contemporary one-shot systems also define the baseline pressure. Siamese networks learn a
-pairwise same/different embedding and then use nearest-neighbor matching, but the training
-objective is a proxy for the actual `N`-way decision. Memory-augmented meta-learners train a
-recurrent model to absorb examples sequentially, but the support examples are a set rather
-than an ordered stream.
+Siamese networks provide a contemporary few-shot baseline. They learn a pairwise same/different
+embedding and then use nearest-neighbor matching. Memory-augmented meta-learners train a
+recurrent model to absorb examples sequentially, storing and retrieving from an external
+memory across episodes.
 
 ## Evaluation Frame
 

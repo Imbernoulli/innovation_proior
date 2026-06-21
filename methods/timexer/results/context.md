@@ -3,25 +3,20 @@
 ## Research question
 
 Long-term multivariate forecasting asks for the next `S` steps of *every* channel of a
-multivariate series given a fixed look-back window. But the channels of a real multivariate
-system play genuinely different roles relative to any one prediction: when forecasting
-electricity price, grid load and wind-power forecasts are the causal levers; when forecasting a
-building's CO₂ concentration, the other meteorological readings drive it. For the channel
-currently being predicted — call it the **target** — the other channels are **side** channels:
-observed information that should sharpen *its* forecast even though, on its own turn, that
-target is never helped by being lumped in with the rest. So a method that scores well on the
-whole multivariate task still has to respect, per channel, the asymmetry between the one series
-whose exact future trajectory matters and the others that are only there to inform it.
+multivariate series given a fixed look-back window. The channels of a real multivariate system
+play genuinely different roles relative to any one prediction: when forecasting electricity price,
+grid load and wind-power forecasts are the causal levers; when forecasting a building's CO₂
+concentration, the other meteorological readings drive it. For the channel currently being
+predicted — call it the **target** — the other channels are **side** channels: observed information
+that may sharpen *its* forecast. So a method that scores well on the whole multivariate task still
+has to respect, per channel, the asymmetry between the one series whose exact future trajectory
+matters and the others that are only there to inform it.
 
 The concrete problem: for each channel, given its look-back `x_{1:T} ∈ R^T` and the other
 channels as side series `z_{1:T_ex} ∈ R^{T_ex × C}` (in real settings possibly with `T_ex ≠ T`,
 different sampling, missing values, temporal misalignment), predict the next `S` steps of that
-channel, `x̂_{T+1:T+S} = F_θ(x_{1:T}, z_{1:T_ex})`, and do so for all channels at once. A good
-solution must (a) model fine intra-target temporal structure, (b) let the side channels
-influence the target, (c) stay cheap as the channel count `C` grows, and (d) tolerate irregular
-side series better than per-timestamp concatenation does. It must do this inside a fixed
-look-back/horizon and a standard forecasting pipeline, while still supporting the ordinary
-multivariate case where every channel is predicted.
+channel, `x̂_{T+1:T+S} = F_θ(x_{1:T}, z_{1:T_ex})`, and do so for all channels at once, inside
+a fixed look-back/horizon and a standard forecasting pipeline.
 
 ## Background
 
@@ -37,9 +32,7 @@ ever more temporal tokens.
 
 **Channel independence vs. cross-variate modeling.** A second axis of the field is whether channels
 interact. Channel-independent backbones (one shared model per series, no cross-channel mixing) are
-strong, well-regularized on small datasets, and transfer across a changing number of channels — but
-by construction they cannot use information in *other* channels. Cross-variate models do mix
-channels, at the cost of either new attention machinery or quadratic cost in the number of channels.
+strong, well-regularized on small datasets, and transfer across a changing number of channels. Cross-variate models do mix channels, at the cost of either new attention machinery or quadratic cost in the number of channels.
 
 **The learnable aggregator token.** In vision Transformers (Dosovitskiy et al. 2020) a single
 learnable `[class]` token is prepended to the patch sequence; through self-attention it is forced to
@@ -63,8 +56,7 @@ extend ARIMA with regressors. Deep covariate models (Temporal Fusion Transformer
 NBEATSx, Olivares et al. 2023; TiDE, Das et al. 2023) incorporate covariates, typically by
 concatenating exogenous features onto endogenous features *at each time step* and projecting jointly.
 That concatenation forces the endogenous and exogenous series to be aligned in time, equal in
-length, and equally sampled — exactly the assumptions that break under missing values and uneven
-sampling in real data unless a preprocessing layer has already repaired them.
+length, and equally sampled.
 
 ## Baselines
 
@@ -72,35 +64,21 @@ sampling in real data unless a preprocessing layer has already repaired them.
 and a remainder, apply one linear map per component from the `T`-step past directly to the `S`-step
 future, sum them. Channel-independent, no attention. It matches or beats elaborate temporal-attention
 Transformers on long-horizon benchmarks, which establishes that a linear map from representation to
-horizon is sufficient for the generation step. Gap: being channel-independent and purely linear, it
-cannot represent any cross-channel influence — exogenous information is invisible to it.
+horizon is sufficient for the generation step.
 
 **PatchTST (Nie et al. 2023, arXiv 2211.14730).** Split each series into subseries-level patches,
 embed each patch as a token, and run self-attention over the patch tokens, with a channel-independent
 backbone shared across series. Patching gives a token a wider receptive field than a single instant
-and recovers local temporal semantics, and channel independence regularizes well. Gap: it never
-mixes channels, so cross-variate (endogenous↔exogenous) correlation is outside its hypothesis class;
-side channels cannot inform the target at all.
+and recovers local temporal semantics, and channel independence regularizes well.
 
 **iTransformer (Liu et al. 2024, arXiv 2310.06625).** Invert the token: embed each variate's whole
 look-back as a single token via a linear `R^T → R^D` map, giving `C` tokens, and reuse the stock
 encoder so self-attention runs *across* variate tokens (cross-variate correlation) and the FFN runs
-*within* each token. Gap for this setting: the whole series is compressed into one coarse token by a
-linear projection, so intra-series temporal detail is lost; and it treats every channel as an equal
-token, spending `O(C²)` attention over the channel set even in settings where many channels are only
-informers for the current target.
+*within* each token.
 
 **Crossformer (Zhang et al. 2022).** Patch every series and run a two-stage attention across both
-time and variate dimensions. It does model cross-variate structure, but only by redesigning the
-attention layer and surrounding architecture; patching every channel and attending across all
-segments is costly and, by mixing all channels at a fine granularity, injects unnecessary noise from
-channels that are only meant to inform.
-
-The shared shape of the gap: one camp captures intra-target temporal detail but no cross-channel
-influence (DLinear, PatchTST); the other captures cross-channel influence but loses intra-target
-detail or pays heavily across channels (iTransformer, Crossformer). The open slot is a model that
-keeps the target's temporal resolution while letting side information affect it without forcing all
-channels into the same representation.
+time and variate dimensions, modeling cross-variate structure by redesigning the attention layer and
+surrounding architecture.
 
 ## Evaluation settings
 

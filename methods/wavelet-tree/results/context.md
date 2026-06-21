@@ -9,9 +9,7 @@ Given a static array of $n$ integers, answer queries: the $k$-th smallest value 
 The array is fixed after input; queries do not update it. Indices are $1$-based with
 $1 \le l \le r \le n$, and for the order-statistic query $k$ is $1$-based with
 $1 \le k \le r - l + 1$. Values may be negative and may repeat; equal values count
-with multiplicity. Sorting `a[l..r]` per query, or scanning the slice to count
-elements $\le x$, is correct but costs $O((r-l)\log(r-l))$ or $O(r-l)$ per query —
-too slow when both $n$ and $q$ are large.
+with multiplicity.
 
 ## Code framework
 

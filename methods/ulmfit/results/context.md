@@ -7,10 +7,9 @@ large source corpus, then fine-tune its weights for a new supervised task. Text
 classification does not yet have that recipe. The common reusable object is a word
 embedding table, which initializes only the first layer and leaves the sequence
 model and classifier random. The question is whether a whole pretrained text model
-can be adapted to many target classification tasks - short or long documents, few
-or many labels, small or large labeled sets - with one architecture, one training
-process, no hand-built task features, and no requirement for millions of
-additional in-domain documents.
+can be adapted to many target classification tasks — short or long documents, few
+or many labels, small or large labeled sets — with one architecture and one
+training process.
 
 ## Background
 
@@ -19,14 +18,12 @@ layers, so transfer usually keeps low layers stable and adapts upper layers firs
 (Yosinski et al. 2014; Donahue et al. 2014; Long et al. 2015). End-to-end
 fine-tuning has mostly replaced fixed feature extraction in that setting.
 
-**Why text transfer is harder.** Word2vec-style transfer only moves an embedding
-matrix. Hypercolumn-style NLP transfer carries richer contextual vectors from a
-pretrained model, but feeds them as fixed features into a new task-specific model
-that is still trained from scratch. Multi-task approaches train the auxiliary and
-target objectives together, so they must be rerun for every task and require
-objective balancing. Earlier attempts at full NLP fine-tuning across unrelated
-tasks were reported to fail, and language-model fine-tuning needed millions of
-in-domain documents while still overfitting around the 10k-label regime.
+**Text transfer approaches.** Word2vec-style transfer moves an embedding matrix.
+Hypercolumn-style NLP transfer carries richer contextual vectors from a pretrained
+model and feeds them as fixed features into a task-specific model. Multi-task
+approaches train the auxiliary and target objectives together for every task.
+Earlier work by Dai and Le explored language-model fine-tuning as a pretraining
+step, using large in-domain document collections.
 
 **The useful source signal.** Next-word prediction is attractive because unlabeled
 text is abundant and the objective forces a model to encode syntax, long-range
@@ -36,31 +33,20 @@ attention or shortcut connections, but with weight-drop on recurrent matrices,
 locked/variational dropout, activation regularization, temporal activation
 regularization, randomized-length BPTT, and averaged-SGD training.
 
-**The optimization failure modes.** A small target corpus can make a pretrained
-language model overfit. A random classifier head can send large noisy gradients
-through all recurrent layers and erase useful source knowledge. Freezing almost
-everything, the common vision shortcut, can underfit because the recurrent text
-model has only a few layers to adapt. Any successful recipe has to balance these
-three cases rather than solve just one of them.
-
 ## Baselines
 
 **Embedding transfer.** Initialize words from a pretrained embedding table, then
-train the rest of the classifier from scratch. This is simple and widely useful,
-but it does not transfer the sequence model.
+train the rest of the classifier from scratch.
 
 **Hypercolumn and contextual-feature transfer.** CoVe, ELMo-style, and related
 approaches use representations from an auxiliary model as fixed inputs to a task
-model. They avoid catastrophic forgetting by not fine-tuning the source model, but
-that also leaves the main classifier randomly initialized and often task-specific.
+model. They avoid catastrophic forgetting by not fine-tuning the source model.
 
 **Language-model fine-tuning before this point.** Dai and Le showed the direction
-was plausible, but relied on very large in-domain document collections and did not
-give a generally stable small-data fine-tuning recipe.
+was plausible, using large in-domain document collections.
 
 **Training text classifiers from scratch.** Character CNNs, word CNNs, recurrent
-classifiers, and deep pyramid CNNs were strong on large benchmarks, but they paid
-for each task with fresh supervised training and many labels.
+classifiers, and deep pyramid CNNs are strong baselines on large benchmarks.
 
 ## Evaluation settings
 

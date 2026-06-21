@@ -2,29 +2,24 @@
 
 We have a fixed offline dataset `D = {(s_i, a_i, r_i, s'_i)}` collected by an
 unknown behavior policy `pi_D`, and there is no further environment interaction.
-The goal is to learn the best policy that the data can justify, even when the
-data came from a good controller, a mediocre controller, or a mixture of
-operators.
+The goal is to learn a policy from this data, which may come from a good
+controller, a mediocre controller, or a mixture of operators.
 
-The central difficulty is the interaction between temporal-difference
-bootstrapping and poor action coverage. A fitted-Q target such as
+Temporal-difference bootstrapping interacts with the action coverage of the
+batch. A fitted-Q target such as
 
 ```text
 r(s,a) + gamma max_{a'} q(s',a')
 ```
 
-can select an action that never appears in the batch at `s'`. The value of that
-action is then an extrapolation of the function approximator rather than a
-quantity trained by data. If it is overestimated, the bootstrap target pushes
-nearby values upward, and the effect can feed back through later updates. An
-offline actor-critic has the same failure mode in a softer form: if the actor
-drifts toward high predicted values in uncovered parts of action space, the
-critic can start evaluating and backing up those unsupported actions.
+takes a maximization over `a'` at `s'`, which may select an action that never
+appears in the batch at `s'`. The value of such an action is an extrapolation of
+the function approximator rather than a quantity trained by data. An offline
+actor-critic backs up the actions chosen by its actor, which are likewise scored
+by the critic wherever the actor places probability.
 
-A useful solution should keep the backup and policy extraction tied to actions
-the dataset can support, while still allowing improvement over a suboptimal
-behavior policy. Staying exactly behavior-cloned is safe but often too weak;
-free maximization is strong but unsafe.
+We want to learn a policy from `D` and the values that support it, given only
+the actions the dataset contains.
 
 ## Background
 

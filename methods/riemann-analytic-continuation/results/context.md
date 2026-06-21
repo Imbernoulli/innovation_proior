@@ -7,19 +7,14 @@ $2,3,5,7,11,13,\dots$ and thin out as one climbs: there is no formula that produ
 from the last, and inspection of the tables shows, in Euler's own words, "no order and no rule."
 Yet the *count* $\pi(x)$ is far from lawless. From the prime tables compiled up to a few million,
 Gauss and Legendre had observed that $\pi(x)$ tracks a smooth function astonishingly closely. The
-problem is to explain — and ultimately to compute exactly — this regularity: to find an analytic
-expression for $\pi(x)$, or for the closely related density of primes near $x$, that accounts both
-for the smooth trend and for the local fluctuations the tables exhibit.
+question is to find an analytic expression for $\pi(x)$, or for the closely related density of primes
+near $x$, that accounts both for the smooth trend and for the local fluctuations the tables exhibit.
 
 Why it matters: the primes are the multiplicative atoms of the integers (every whole number factors
-uniquely into primes), so the way they are distributed is the most basic unsolved quantitative
-question in number theory. An exact law for $\pi(x)$ — not merely an empirical fit — would convert a
-century of tabulated observation into mathematics. The pain point is the gap between two facts that
-sit uneasily together: locally the primes look random, but globally $\pi(x)$ follows a smooth curve
-to within small, oscillating corrections. No tool of real analysis connects the discrete, irregular
-primes to the smooth curve they obey. The methods that fit the trend treat it as an empirical curve
-and stop at the trend; none of them reaches the fluctuation, and none connects the irregular primes
-to the smooth count by anything one could analyze rather than tabulate.
+uniquely into primes), so the way they are distributed is the most basic quantitative question in
+number theory. Locally the primes look random, but globally $\pi(x)$ follows a smooth curve to
+within small, oscillating corrections. The task is to connect the discrete, irregular primes to the
+smooth count they obey by an expression one could analyze.
 
 ## Background
 
@@ -34,7 +29,7 @@ strikingly good and improving with $x$, with the counted value running a little 
 $\mathrm{Li}(x)$, the difference growing slowly and with many fluctuations. These fluctuations — an
 observed irregular oscillation of the prime density about its smooth trend — were noticed but
 obeyed no stated law. This is the central empirical fact on the table: a smooth approximation
-$\mathrm{Li}(x)$ that is almost right, plus an unexplained oscillating discrepancy.
+$\mathrm{Li}(x)$ that is almost right, plus an oscillating discrepancy.
 
 **Euler's product.** In 1737 Euler observed, as a consequence of unique factorization together with
 the geometric series $\frac1{1-p^{-s}} = 1 + p^{-s} + p^{-2s} + \cdots$, that
@@ -42,9 +37,8 @@ $$\prod_{p\ \text{prime}} \frac{1}{1-p^{-s}} \;=\; \sum_{n=1}^{\infty} \frac{1}{
 the product over all primes equalling the sum over all whole numbers, valid for real $s>1$. This is
 the one identity that packages *every* prime into a single analytic expression. Euler used it to
 reprove that there are infinitely many primes and, more, that $\sum_p 1/p$ diverges — a quantitative
-strengthening of Euclid. But Euler treated $s$ as a real variable greater than $1$; the product and
-the series both diverge at $s=1$ and have no meaning, as written, for $s\le 1$. The prime
-information is locked inside a function defined only on a half-line.
+strengthening of Euclid. Euler treated $s$ as a real variable greater than $1$; the product and the
+series both converge there.
 
 **The Gamma (factorial) function.** Euler's interpolation of the factorial,
 $\Gamma(s) = \int_0^\infty e^{-x}x^{s-1}\,dx$ (here written $\Pi(s-1)$, with $\Pi(s-1)=\Gamma(s)$ and
@@ -76,27 +70,19 @@ function from an integral transform of it.
 ## Baselines
 
 **Direct counting / sieving.** Compute $\pi(x)$ by listing or sieving the primes up to $x$
-(Eratosthenes). Exact, but it is enumeration, not a law: it yields the value at one $x$ with no
-analytic expression, no asymptotics, no explanation of the trend or the fluctuations. Its gap is
-total — it tells you *what* but never *why*, and gives no handle on the discrepancy from
-$\mathrm{Li}(x)$.
+(Eratosthenes). It yields the exact value at one $x$ by enumeration.
 
-**Gauss's logarithmic-integral approximation $\pi(x)\approx \mathrm{Li}(x)$.** The best smooth
+**Gauss's logarithmic-integral approximation $\pi(x)\approx \mathrm{Li}(x)$.** The smooth
 description available: a single clean function matching the counts to within a slowly growing,
-oscillating error. Its gaps are that it is (i) empirical, conjectured from tables with no proof and
-no error term, and (ii) silent about the oscillation — it captures the trend but not the
-fluctuations the tables plainly show, and offers no mechanism that would predict them.
+oscillating error. It is conjectured from tables and describes the trend.
 
 **Legendre's fit $\pi(x)\approx x/(\log x - A)$.** A two-parameter empirical formula with a fitted
-constant. Same gaps as Gauss's, plus the constant $A$ is a fitting artifact with no structural
-meaning.
+constant $A\approx 1.08$.
 
 **Euler's product as an analytic identity.** The product $\prod_p(1-p^{-s})^{-1}=\sum_n n^{-s}$ is
-the one baseline object that contains all primes analytically, and Euler extracted real qualitative
-facts from it (infinitude of primes, divergence of $\sum 1/p$). Its gap is that it lives only on the
-real half-line $s>1$, where both sides converge; the identity is silent everywhere else, and as a
-real-variable identity it has stalled — Euler drew qualitative conclusions from it but it has never
-been pushed to yield the count $\pi(x)$ itself.
+the one baseline object that contains all primes analytically, and Euler extracted qualitative facts
+from it (infinitude of primes, divergence of $\sum 1/p$). As written it holds on the real half-line
+$s>1$, where both sides converge.
 
 ## Evaluation settings
 
@@ -113,5 +99,3 @@ which any analytic law for $\pi(x)$ would be checked:
 - The domain of validity to be respected: the Euler product and the Dirichlet series both require
   $\mathrm{Re}(s)>1$, so any analytic claim must be checked first where these converge and only then
   extended.
-
-

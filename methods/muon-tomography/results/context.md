@@ -5,20 +5,14 @@
 The concrete problem is to look inside a large, dense, optically opaque object — a sealed cargo
 container, a truck, a shielded cask — and decide whether it hides a lump of high-`Z` material
 (uranium, plutonium, tungsten, lead) without opening it, without an artificial radiation source,
-and in a usable amount of time. The obstacle is penetration: the things that need imaging are
-exactly the things that stop ordinary probes. X-rays and gamma rays are absorbed by a few
-centimetres of steel; a uranium core wrapped in lead shielding is essentially invisible to them.
-Active interrogation with high-energy beams penetrates better but needs an accelerator, dose
-control, and a one-sided source/detector geometry that a closed container does not afford.
+and in a usable amount of time. X-rays and gamma rays are absorbed by a few centimetres of steel;
+a uranium core wrapped in lead shielding is essentially invisible to them. Active interrogation
+with high-energy beams penetrates better but needs an accelerator, dose control, and a one-sided
+source/detector geometry that a closed container does not afford.
 
-A solution would have to (1) use a probe that genuinely traverses metres of dense matter, (2)
-respond *strongly* to atomic number `Z`, so that a small high-`Z` object stands out against a
-low-`Z` background of ordinary cargo, (3) localize that object in three dimensions, not merely
-report a line-integral, and (4) do all of this passively, harmlessly, and fast enough to be
-operationally useful (minutes-to-hours, not days). No existing radiographic method meets all
-four at once. What *is* freely available, everywhere on Earth's surface, is a steady rain of
-highly penetrating charged particles — and the question is whether their behaviour as they cross
-an object can be turned into a three-dimensional, `Z`-sensitive image.
+What is freely available, everywhere on Earth's surface, is a steady rain of highly penetrating
+charged particles — and the question is whether their behaviour as they cross an object can be
+turned into a three-dimensional, `Z`-sensitive image.
 
 ## Background
 
@@ -66,9 +60,8 @@ different deflections, contributing extra spread.
 **Why scattering, not absorption, is the sensitive channel.** Scattering is about as `Z`-sensitive
 as energy loss, but the milliradian deflection angle is *measurable from millimetre-level position
 measurements* using tracking stations above and below the object — no magnetic spectrometer or
-precise energy measurement is needed. Absorption radiography, by contrast, needs an
-enormous flux (or a large natural overburden) to build statistics in the surviving-muon count, is
-only weakly `Z`-discriminating, and yields a line-integral, not a 3D position.
+precise energy measurement is needed. Absorption radiography yields a line-integral summed along
+each muon path.
 
 **Scattering also displaces.** In either projected detector view, a muon crossing thickness `L`
 emerges not only with a net projected deflection `Delta_theta` but also shifted sideways by a lateral
@@ -82,8 +75,8 @@ signal as a raysum `s_i = sum_j w_ij f_j` (`w_ij` = path length of ray `i` in vo
 the linear system `s = W f` — by filtered back-projection, or iteratively by Algebraic
 Reconstruction Techniques (ART), or by statistical maximum-likelihood expectation-maximization as
 developed for emission tomography. This machinery assumes each ray contributes a deterministic
-line-integral signal; whether it transfers to the muon datum — an in/out track pair, not a
-transmitted count — is the open question.
+line-integral signal; the muon datum arrives as an in/out track pair and the small random deflection
+between the legs.
 
 ## Baselines
 
@@ -93,26 +86,17 @@ by comparing the muon flux inside to that outside. Luis Alvarez and collaborator
 Pyramid of Chephren at Giza by placing muon counters in a chamber beneath it and measuring the
 *differential attenuation* of the downward muon flux versus direction, searching for hidden
 chambers (they found none). The method is a transmission count: where there is less material along
-a given direction, more muons survive. Its limitations for the present problem are decisive — it
-measures only an integrated areal density along each line of sight (no depth resolution, hence no
-3D localization), it is only weakly sensitive to `Z` (a thick low-`Z` mass mimics a thin high-`Z`
-one), and it needs very long exposures or a large overburden to accumulate a statistically
-significant deficit in survivors.
+a given direction, more muons survive.
 
 **Active (man-made source) radiography — X-ray / gamma cargo scanners.** High-energy X-ray cargo
-scanners penetrate further than medical X-rays but are still defeated by heavy shielding, deliver
-dose, require an accelerator and a one-sided transmission geometry, and like all absorption methods
-return a 2D line-integral projection rather than a 3D map. They establish the *operational target*
-(scan a container for dense contraband) but not a passive, 3D, strongly-`Z`-sensitive solution.
+scanners use an accelerator source in a one-sided transmission geometry to image the interior of
+containers. They establish the *operational target* — scan a container for dense contraband — and
+demonstrate what an imaging instrument must accomplish.
 
 **Classical tomographic reconstruction (ART; ML-EM for emission tomography).** ART and ML-EM are
 the established machinery for inverting many rays into a voxel image. They presuppose a
 deterministic raysum model `s_i = sum_j w_ij f_j`: each ray's measured number is a linear functional
 of the voxel values, and the established inversions take that linear raysum as their starting point.
-The muon datum does not arrive in that form: a single muon yields one in/out track pair and the
-small random deflection between the legs, with no transmitted-count line integral to feed the raysum.
-Where prior tomographic machinery stalls on this problem is in bridging that gap between the
-per-muon track pair and a per-voxel material image.
 
 ## Evaluation settings
 

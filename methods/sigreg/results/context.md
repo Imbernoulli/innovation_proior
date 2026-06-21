@@ -7,45 +7,25 @@ embeddings are a good foundation for *unknown* downstream tasks. The dominant re
 joint-embedding self-supervised learning: form two semantically related *views* of the same
 input (two augmentations of an image, two frames of a video), push the encoder so the
 embedding of one view predicts the embedding of the other, and read off a representation.
-The predictability objective alone is fatally under-constrained. Its global minimum is the
-trivial *constant* map — every input goes to the same point, so prediction is perfect and
-the representation is useless (*complete collapse*); a softer failure sends all embeddings
-into a low-dimensional subspace (*dimensional collapse*). So every joint-embedding method
-needs a second term whose job is to prevent the embeddings from degenerating.
+The predictability objective alone is under-constrained — its global minimum is the
+trivial *constant* map (*complete collapse*), and a softer failure sends all embeddings
+into a low-dimensional subspace (*dimensional collapse*). Every joint-embedding method
+therefore includes a second term whose job is to prevent the embeddings from degenerating.
 
-The precise problem is to design that second term — an anti-collapse regularizer over a
-batch of embeddings — that simultaneously: (1) actually rules out the degenerate solutions,
-not just penalizes a symptom of them; (2) costs no more than linear time and memory in the
-batch size and embedding dimension, so it scales and stays compatible with data-parallel
-training; (3) produces bounded, well-behaved gradients regardless of the embedding
-distribution, so training does not blow up at scale; (4) introduces as few extra knobs as
-possible — ideally a single trade-off coefficient against the prediction term that
-transfers across architectures and datasets without re-tuning; and (5) rests on a
-statement of *what distribution the embeddings should have and why*, rather than on a
-collection of empirical safeguards. Each of the existing regularizers below achieves a
-subset of these; none achieves all five at once.
+The question is how to design that second term — an anti-collapse regularizer over a
+batch of embeddings.
 
 ## Background
 
 Joint-embedding self-supervised learning had, by this time, become a central engine for
-representation learning, but its anti-collapse half had grown into a pile of heuristics
-that were carefully combined and hand-balanced. The mechanisms in wide use fall into a few
-families: *feature whitening / decorrelation* layers that force the batch covariance toward
+representation learning. The mechanisms in wide use fall into a few families:
+*feature whitening / decorrelation* layers that force the batch covariance toward
 the identity (Ermolov et al. 2021); *negative samples* that explicitly push apart
 embeddings of different inputs (SimCLR, Chen et al. 2020; MoCo, He et al. 2020);
 *asymmetric architectures* — a momentum / EMA *teacher* network feeding a *student*, with a
 *stop-gradient* on the teacher branch and asymmetric view generation (BYOL; DINO, Caron et
-al. 2021; I-JEPA, Assran et al. 2023). These safeguards were observed to share recurring
-defects. They are *under-specified*: the criterion can be driven to its minimum while the
-embeddings are still in a degenerate configuration, because the criterion only constrains a
-few summary statistics rather than the full distribution. Several are *quadratic* in batch
-size or embedding dimension (anything that forms or compares all pairs). They are
-*sensitive* to the data distribution, the architecture, and a delicate balance of
-hyperparameters — learning-rate-coupled EMA decay schedules, temperature, projector widths,
-warmup — so a recipe tuned for one setting often collapses in another. And they came with
-*little theory*: the dominant theoretical lens, mutual information, was applied
-*post hoc* — its various bounds were shown to recover methods that already existed (InfoNCE
-and relatives), explaining found solutions rather than guiding new ones.
+al. 2021; I-JEPA, Assran et al. 2023). The dominant theoretical lens was mutual information,
+whose various bounds were shown to recover methods such as InfoNCE and relatives.
 
 A few load-bearing facts about the design space were established and knowable before any new
 regularizer. **Collapse is a real, observed failure mode** of the bare predictability
@@ -96,43 +76,24 @@ coordinate's standard deviation above a threshold `gamma` (`max(0, gamma - std(Z
 summed over coordinates `j`); a *covariance* penalty summing the squared off-diagonal
 entries of the batch covariance matrix (decorrelating coordinates); and an *invariance*
 term, the mean-squared distance between the two views' embeddings. It is simple, symmetric,
-needs no negatives, teacher, or stop-gradient. **Gap:** the variance and covariance terms
-constrain only the first two moments of the embedding distribution — they pin the mean,
-the per-coordinate variance, and the pairwise correlations, and nothing else. A
-distribution can satisfy "unit variance per coordinate, zero covariance" while being
-wildly non-Gaussian and still concentrated on a degenerate set, so the criterion can be
-minimized in configurations that are effectively collapsed; this under-specification is a
-documented source of shortcut solutions. The covariance term is also quadratic in the
-embedding dimension.
+needs no negatives, teacher, or stop-gradient.
 
 **Barlow Twins (Zbontar et al. 2021).** Drives the *cross-correlation matrix* between the
 two views' embeddings toward the identity: diagonal entries to one (invariance), off-
-diagonal to zero (redundancy reduction). **Gap:** like VICReg it is a second-order
-(correlation-matrix) criterion — it controls pairwise linear relationships between
-coordinates but says nothing about the full distributional shape — and forming the
-cross-correlation matrix is quadratic in the embedding dimension.
+diagonal to zero (redundancy reduction).
 
 **Whitening / decorrelation methods (Ermolov et al. 2021).** Insert a whitening operation
-so the batch covariance is forced to the identity directly. **Gap:** enforces identity
-*covariance* — again a second-moment constraint, blind to higher-order structure — and the
-whitening transform requires a matrix square-root / inverse of the covariance, which is
-both expensive and numerically delicate.
+so the batch covariance is forced to the identity directly.
 
 **Teacher–student with stop-gradient (DINO, Caron et al. 2021; I-JEPA, Assran et al.
 2023).** Prevent collapse not with an explicit statistical penalty but with an asymmetry:
 a slowly-updated EMA teacher provides targets for a student, a stop-gradient blocks the
-trivial solution, and centering / sharpening keeps outputs from degenerating. **Gap:** the
-mechanism is implicit and under-specified — there is no statement of what distribution the
-embeddings reach — and it depends on a delicate balance of EMA decay schedules,
-centering/temperature, and asymmetric view design that must be re-tuned per setting, with
-no guarantee against collapse.
+trivial solution, and centering / sharpening keeps outputs from degenerating.
 
 **Direct multivariate goodness-of-fit (Baringhaus–Henze / Henze–Zirkler).** One could, in
 principle, attach a multivariate normality test directly to the batch of embeddings to
-force them toward a Gaussian. **Gap:** every such test is a double sum over sample pairs,
-`O(N^2)` in batch size, which destroys the embarrassingly-parallel structure of stochastic
-gradient descent and is infeasible at the batch sizes and embedding dimensions used in
-practice; in high dimension it also needs an enormous number of samples to be powerful.
+force them toward a Gaussian. Every such test takes the form of a double sum over sample
+pairs, `O(N^2)` in batch size.
 
 ## Evaluation settings
 

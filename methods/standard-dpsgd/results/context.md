@@ -14,14 +14,10 @@ model that matters is strong: an adversary who knows the entire training procedu
 final model parameters, and may even control every training record except the one whose privacy
 we are trying to protect.
 
-The precise goal is to train such a model with a rigorous, worst-case privacy guarantee —
-specifically `(ε, δ)`-differential privacy — at a *small*, "single-digit" `ε`, while the model
-is non-convex, has several layers, and tens of thousands to millions of parameters, and while
-keeping the loss in accuracy, training speed, and software complexity modest. What makes this
-hard is the combination: prior work could get strong privacy on *convex* models with few
-parameters, or could handle a real neural network but only at a privacy loss so large the
-guarantee was vacuous. Closing that gap — deep, non-convex networks *and* a meaningful `ε` —
-is the problem.
+The goal is to train such a model with a rigorous, worst-case privacy guarantee — specifically
+`(ε, δ)`-differential privacy — at a *small*, "single-digit" `ε`, while the model is non-convex,
+has several layers, and tens of thousands to millions of parameters, and while keeping the loss
+in accuracy, training speed, and software complexity modest.
 
 ## Background
 
@@ -54,7 +50,7 @@ M(d) = f(d) + N(0, S_f² σ² I),
 and a single application is `(ε, δ)`-DP whenever `δ ≥ (4/5) exp(−(σε)²/2)` with `ε < 1`
 (Dwork & Roth, Thm 3.22); equivalently, for unit-sensitivity `f`, taking `σ = √(2 ln(1.25/δ)) / ε`
 suffices. The noise is calibrated in the `L2` norm, which is what makes Gaussian noise the
-natural match. Critically, this analysis is *post hoc*: many `(ε, δ)` pairs satisfy the same
+natural match. This analysis is *post hoc*: many `(ε, δ)` pairs satisfy the same
 inequality, so one can fix the noise and read off the privacy afterward.
 
 **Composition and the privacy accountant.** A private computation that touches the data many
@@ -88,11 +84,8 @@ layers and nonlinearities (ReLU, sigmoid). Training minimizes an empirical loss
 `L(θ) = (1/N) Σ_i L(θ, x_i)`, which for deep nets is non-convex. The workhorse is mini-batch
 stochastic gradient descent: at each step form a batch `B`, compute
 `g_B = (1/|B|) Σ_{x∈B} ∇_θ L(θ, x)` as an unbiased estimate of `∇L(θ)`, and step
-`θ ← θ − η g_B`. Two diagnostic facts about plain SGD matter here. First, there is no a-priori
-bound on the norm of an individual `∇_θ L(θ, x)` — it can be arbitrarily large for an outlier
-example. Second, *gradient clipping* — rescaling a gradient down when its norm exceeds a
-threshold — is already a routine ingredient of deep-network SGD for stability reasons, though
-in that non-private setting it is applied to the *averaged* batch gradient, after summation.
+`θ ← θ − η g_B`. *Gradient clipping* — rescaling a gradient down when its norm exceeds a
+threshold — is already a routine ingredient of deep-network SGD for stability reasons.
 Per-example gradients, which plain batched autodiff does not expose, can nonetheless be computed
 efficiently (Goodfellow 2015).
 
@@ -108,32 +101,20 @@ the final minimizer (output perturbation) or by adding a random linear term to t
 before minimizing (objective perturbation). Bassily et al. give matching upper and lower bounds
 on the excess empirical risk for both `(ε, 0)`- and `(ε, δ)`-DP, e.g. `Õ(√p / ε)` excess risk
 for the general convex case, with a noisy gradient-descent algorithm achieving it. The analysis
-leans on convexity twice over: the Lipschitz constant gives a clean per-step gradient-sensitivity
-bound, and convexity is what lets the sensitivity of the *minimizer* be characterized at all.
-**Gap:** for a non-convex, many-layer network there is no tight handle on how the final
-parameters depend on any one record, so output/objective perturbation has nothing to calibrate
-its noise against except a worst case, which is so pessimistic it would wipe out the model's
-utility; and the risk bounds, being convex, do not transfer.
+leans on convexity: the Lipschitz constant gives a clean per-step gradient-sensitivity bound,
+and convexity is what lets the sensitivity of the *minimizer* be characterized.
 
 **Noisy stochastic gradient updates (Song, Chaudhuri & Sarwate 2013; the stochastic variant in
 Bassily, Smith & Thakurta 2014).** Rather than perturb the endpoint, perturb the *process*:
 inject noise into each SGD gradient step, bounding the per-step contribution of an example and
 using the randomness of which example is drawn. Empirically, raising the batch size reduces the
 relative impact of the noise. Bassily et al. run such an algorithm for `T = n²` steps and reach
-the optimal convex risk, observing that to run a first-order method for enough steps one
-*appears* to need the strong composition of `(ε, δ)`-privacy. **Gap:** these treatments are
-convex, and — more sharply — the privacy of the many-step process is accounted by feeding each
-step's `(ε, δ)` into the generic strong composition theorem, which is wasteful because it is
-blind to the specific noise distribution being composed.
+the optimal convex risk, using strong composition to account for the many-step privacy cost.
 
 **Strong composition as the accounting tool (Dwork, Rothblum & Vadhan 2010).** As the privacy
 accountant for an iterative private algorithm, advanced composition is the best generic option:
-`ε` grows like `√(k log(1/δ'))`. **Gap:** it is a bound for *arbitrary* `(ε, δ)` mechanisms. It
-does not inspect the shape of the noise distribution being composed, so for a repeated noisy
-gradient computation it can pay for privacy as if only one tail point of each step were known.
-It also accumulates a `kδ` term in the `δ` part; with the number of steps `T` far exceeding
-`1/q` (each example revisited many times) and `δ` taken very small, that slack can make the
-reported budget too large to be useful.
+`ε` grows like `√(k log(1/δ'))`. It applies to any sequence of `(ε, δ)` mechanisms and is the
+standard tool for bounding multi-step privacy costs.
 
 ## Evaluation settings
 
@@ -142,7 +123,7 @@ The natural yardsticks already in use, all on public datasets with a long benchm
 - **MNIST** — 60,000 training / 10,000 test grayscale `28×28` handwritten-digit images,
   10 classes. The standard small-scale image-classification benchmark.
 - **CIFAR-10** — 50,000 training / 10,000 test color `32×32` natural images, 10 classes; a
-  harder benchmark where private training is known to be far more demanding.
+  harder benchmark where private training is known to be more demanding.
 - Protocol: train a convolutional or fully-connected classifier by mini-batch SGD; report test
   **accuracy** as the utility metric, alongside the **privacy budget** `(ε, δ)` consumed (with
   `δ` fixed small, e.g. `10⁻⁵`). Privacy and accuracy are read off against each other — the

@@ -1,6 +1,6 @@
 ## Research question
 
-Softmax cross-entropy — the logistic loss — is the standard training objective for neural-net classifiers. It is convex in the activations of the last layer, which is comforting from an optimization standpoint. But that same convexity, together with the exponential tail of the softmax, makes the loss fragile in two specific ways when the training labels are not perfectly clean. A large-margin mislabeled example (one the model is confident about, far from the boundary) incurs an unboundedly large loss and remains a persistent source of pressure on the fitted boundary. And a small-margin mislabeled example (one sitting near the boundary) is chased by the short-tailed softmax, which saturates its probability toward 0/1 and forces the classifier to fit it. The question is whether the softmax-and-log construction can be generalized — without abandoning the things that make it work — so that the loss is *bounded* (capping the influence of large-margin outliers) and the probability assignment is *heavy-tailed* (refusing to chase small-margin noise), while still being a *proper* loss whose minimizer recovers the true class posterior.
+Softmax cross-entropy — the logistic loss — is the standard training objective for neural-net classifiers. It is convex in the activations of the last layer, and the softmax maps activations to a probability vector through an exponential. The construction has two pieces: a transfer function from activations to probabilities, and a divergence that scores those probabilities against the target. The question is how to choose this pair when the training labels are not perfectly clean — in particular, whether the softmax-and-log construction can be generalized, without abandoning the properties that make it work, so that the loss still behaves as a *proper* loss whose minimizer recovers the true class posterior.
 
 ## Background
 
@@ -8,23 +8,23 @@ Softmax cross-entropy — the logistic loss — is the standard training objecti
 
 **Bregman divergences.** For a strictly convex `F`, the Bregman divergence is `Δ_F(y, ŷ) = F(y) − F(ŷ) − (y − ŷ)·∇F(ŷ)`; it is nonnegative, zero iff `y = ŷ`, convex in its first argument, and invariant to adding affine terms to `F`. Squared Euclidean distance (`F = ½‖·‖²`) and KL divergence (`F` = negative entropy) are both Bregman divergences. The negative-entropy/KL/softmax triple is the special case the logistic loss uses.
 
-**Why convex, light-tailed losses are fragile.** Convex potential losses are known to be non-robust to label noise (Long & Servedio): because the per-example loss grows without bound as the activation moves the wrong way, a handful of mislabeled large-margin points can dominate the empirical risk and bend the learned boundary. Separately, the softmax tail decays exponentially, so probabilities saturate quickly; a mislabeled point near the boundary therefore gets assigned a near-extreme probability and the classifier must distort itself to satisfy it. Heavy-tailed alternatives to the softmax have been shown to soften this. These two failure modes — large-margin outliers and small-margin boundary noise — are distinct and call for distinct fixes.
+**Behavior of convex, light-tailed losses under label noise.** Convex potential losses are non-robust to label noise (Long & Servedio): the per-example loss grows without bound as the activation moves the wrong way. The softmax tail decays exponentially, so probabilities saturate quickly toward 0/1. Heavy-tailed alternatives to the softmax have been studied as a way to soften the probability assignment near the decision boundary.
 
-**Tempered logarithm and exponential.** A temperature-deformed logarithm (Naudts; Tsallis statistics) is `log_t(x) = (x^{1−t} − 1)/(1 − t)`, monotonically increasing and concave, recovering `log` as `t → 1`. Crucially, for `0 ≤ t < 1` it is *bounded below* by `−1/(1−t)`. Its inverse is the tempered exponential `exp_t(x) = [1 + (1−t)x]_+^{1/(1−t)}` (with `[·]_+ = max(·,0)`), recovering `exp` as `t → 1`; for `t > 1` it has a *heavier* (polynomial) tail than `exp`. These are standard one-parameter deformations of the elementary `log`/`exp`.
+**Tempered logarithm and exponential.** A temperature-deformed logarithm (Naudts; Tsallis statistics) is `log_t(x) = (x^{1−t} − 1)/(1 − t)`, monotonically increasing and concave, recovering `log` as `t → 1`. For `0 ≤ t < 1` it is *bounded below* by `−1/(1−t)`. Its inverse is the tempered exponential `exp_t(x) = [1 + (1−t)x]_+^{1/(1−t)}` (with `[·]_+ = max(·,0)`), recovering `exp` as `t → 1`; for `t > 1` it has a heavier (polynomial) tail than `exp`. These are standard one-parameter deformations of the elementary `log`/`exp`.
 
-**Diagnostic illustration on synthetic 2-D data.** On a two-dimensional binary problem with a small feed-forward net, small-margin label flips expose the light-tail problem: the logistic loss stretches the boundary toward noisy points near the clean boundary. Large-margin flips expose the convex unbounded-loss problem: mislabeled points far from the clean boundary pull the classifier strongly despite being implausible under the rest of the data. Random label noise mixes both regimes. The diagnostic lesson is the separation itself: the two failure modes move the boundary in visibly different ways and do not reduce to a single phenomenon.
+**Diagnostic illustration on synthetic 2-D data.** On a two-dimensional binary problem with a small feed-forward net, two kinds of label corruption are studied. Small-margin label flips place noisy points near the clean boundary; large-margin flips place mislabeled points far from the clean boundary; random label noise mixes both regimes. Visualizing the fitted boundary under each regime shows how the trained classifier responds to each kind of corruption.
 
 ## Baselines
 
-**Logistic / softmax cross-entropy.** `Δ_F(y, softmax(â))` with `F` the negative entropy; the matching loss for the softmax, convex in the activations, minimizer is the true posterior. Gap: convex and unbounded in the activations (large-margin outliers dominate), and the softmax tail is exponentially light (small-margin boundary noise is chased). Robust only when labels are clean.
+**Logistic / softmax cross-entropy.** `Δ_F(y, softmax(â))` with `F` the negative entropy; the matching loss for the softmax, convex in the activations, minimizer is the true posterior.
 
-**Label smoothing (Szegedy et al., 2016).** Replaces the one-hot target with `(1−ε) one-hot + ε/k`, putting a floor under every class so the correct logit has no incentive to run to `+∞`. Bounds *overconfidence* and helps generalization and calibration. Gap: it is a static modification of the *target*, identical for every example and class; the loss is still convex and unbounded in the activations and the softmax is still light-tailed, so it does not address the two outlier/noise failure modes at their source, and it cannot adapt to how wrong or how confident a given example is.
+**Label smoothing (Szegedy et al., 2016).** Replaces the one-hot target with `(1−ε) one-hot + ε/k`, putting a floor under every class so the correct logit has no incentive to run to `+∞`. Bounds overconfidence and helps generalization and calibration. It is a static modification of the *target*, identical for every example and class.
 
-**Focal loss (Lin et al., 2017).** `−(1−P_t)^γ log(P_t)`; down-weights easy (well-classified) examples to fight class imbalance. Gap: it reshapes the loss by confidence but is still built on the standard softmax and an unbounded `log`, so it does not bound the loss for large-margin outliers nor heavy-tail the probabilities; it targets imbalance, not label noise.
+**Focal loss (Lin et al., 2017).** `−(1−P_t)^γ log(P_t)`; down-weights easy (well-classified) examples to address class imbalance. It reshapes the loss by confidence while keeping the standard softmax and the `log`.
 
-**Mean absolute error / truncated cross-entropy (Ghosh et al., 2017; Feng et al., 2020).** MAE on the softmax probabilities is bounded and provably noise-robust; truncating the Taylor series of cross-entropy interpolates between cross-entropy and MAE. Gap: MAE-like losses are bounded but train slowly and under-fit on hard, many-class problems, and they do not touch the light-tailed softmax.
+**Mean absolute error / truncated cross-entropy (Ghosh et al., 2017; Feng et al., 2020).** MAE on the softmax probabilities is bounded and provably noise-robust; truncating the Taylor series of cross-entropy interpolates between cross-entropy and MAE.
 
-**Tsallis-divergence two-temperature loss (Amid et al., 2018).** Generalizes logistic regression with two temperatures via the Tsallis divergence, containing earlier tempered variants as special cases. Gap: the Tsallis-based construction does *not* yield a *proper* loss — because `log_t(a/b) ≠ log_t(a) − log_t(b)` in general, the natural Monte-Carlo estimator requires access to the unknown conditional `P(y|x)`, so approximating it by `1` gives a biased estimator. Properness — that minimizing the expected loss recovers the true posterior — is required for real applications, and this construction lacks it.
+**Tsallis-divergence two-temperature loss (Amid et al., 2018).** Generalizes logistic regression with two temperatures via the Tsallis divergence, containing earlier tempered variants as special cases. Because `log_t(a/b) ≠ log_t(a) − log_t(b)` in general, the natural Monte-Carlo estimator of the Tsallis divergence references the conditional `P(y|x)`.
 
 ## Evaluation settings
 
@@ -57,9 +57,9 @@ def transfer_function(activations):
 def classification_loss(activations, targets):
     """Score the predicted probabilities against the target.
 
-    The standard choice is the relative entropy (KL), giving the convex,
-    unbounded logistic loss. The open question is which divergence bounds the
-    per-example loss while remaining a proper loss.
+    The standard choice is the relative entropy (KL), giving the convex
+    logistic loss. The open question is which divergence to use and how it
+    relates to the choice of transfer function.
     """
     # TODO: choose the divergence between target and predicted probabilities
     raise NotImplementedError

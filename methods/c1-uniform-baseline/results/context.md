@@ -17,9 +17,9 @@ R(f) = max_{|t|≤1/2} (f*f)(t) / ( ∫_{-1/4}^{1/4} f )^2 .
 ```
 
 Every admissible `f` with a measured `R(f)` is a *constructive upper bound* `C1 ≤ R(f)`, so this is a
-**minimization**: lower `R` is a tighter, better certificate. This is the opposite direction from the second
-inequality `C2` (a maximization). The provable lower bound is `C1 ≥ 1.28` (Cloninger–Steinerberger, 2017),
-so `C1 ∈ [1.28, 1.5028…]`.
+**minimization**: lower `R` gives a tighter certificate. This is the opposite direction from the second
+inequality `C2`, which is a maximization. The provable lower bound is `C1 ≥ 1.28` (Cloninger–Steinerberger,
+2017), so `C1 ∈ [1.28, 1.5028…]`.
 
 ## Construction class and score
 
@@ -27,15 +27,14 @@ A candidate is a non-negative **piecewise-constant step function** `f = Σ_{n=0}
 `a_n ≥ 0`, `N` unit-width pieces. The objective is translation- and dilation-invariant, so only the heights
 and their count matter. The autoconvolution of a step function is **piecewise linear**: its node values are
 the discrete self-convolution `b = a*a`, `b_k = Σ_n a_n a_{k−n}`, and the maximum over `t` equals `max_k b_k`
-(a piecewise-linear curve peaks at a node). The mass is `Σ_n a_n`. The scale-normalized score every modern
-result uses is
+(a piecewise-linear curve peaks at a node). The mass is `Σ_n a_n`. The scale-normalized score used is
 
 ```
 R(a) = 2N · max_k (a*a)_k / ( Σ_n a_n )^2 .
 ```
 
-The `2N` factor carries the dimensionless discrete ratio to the continuous constant on `[-1/4,1/4]`; it makes
-the flat indicator score exactly `2`.
+The `2N` factor carries the dimensionless discrete ratio to the continuous constant on `[-1/4,1/4]`, fixing
+the scale so the score is comparable across piece counts `N`.
 
 ## Fixed yardsticks
 
@@ -66,5 +65,5 @@ def autoconv_c1_ratio(a):
     return 2.0 * N * peak / (s * s)
 ```
 
-This baseline rung fixes the trivial ceiling and validates the evaluator (flat = `2` exactly; the AutoEvolver
-record sequence = `1.5028628969` exactly) before any optimization begins.
+This baseline rung fixes the ceiling of the score and validates the evaluator against the published
+reference points before any optimization begins.

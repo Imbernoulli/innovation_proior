@@ -3,22 +3,18 @@
 A 3D Gaussian Splatting (3DGS) scene is a cloud of anisotropic 3D Gaussians, each carrying a
 position, a covariance (factored into scale and rotation), an opacity, and view-dependent
 color, all optimized by differentiable rasterization against multi-view photographs. The
-representation does not start dense enough to capture fine geometry: it is seeded from a
-sparse Structure-from-Motion point cloud and must *grow* during training. That growth is the
-job of **adaptive density control (ADC)** — the rule that decides, every hundred or so
-iterations, which Gaussians to add (clone, split), which to remove (prune), and when to
-reset opacities. Crucially, ADC is *interleaved* with the gradient-descent optimization of
-the Gaussian parameters: every densification step perturbs a representation that the
-optimizer has already partly fitted, and then optimization has to recover from the
-perturbation before it can make further progress.
+representation is seeded from a sparse Structure-from-Motion point cloud and *grows* during
+training. That growth is the job of **adaptive density control (ADC)** — the rule that
+decides, every hundred or so iterations, which Gaussians to add (clone, split), which to
+remove (prune), and when to reset opacities. ADC is *interleaved* with the gradient-descent
+optimization of the Gaussian parameters: every densification step edits a representation that
+the optimizer has already partly fitted, and then optimization continues from the edited
+state.
 
-The precise problem is to make that growth rule do its job without fighting the optimizer.
-Concretely, a good density-control rule must decide when a Gaussian needs more local
-capacity, add that capacity without handing gradient descent a large discontinuity, avoid
-near-duplicate Gaussians that never separate, keep the total count practical for memory and
-rendering speed, and remove Gaussians whose contribution is not reliable across views. The
-standard ADC achieves the coarse goal of growing the scene, but its edit operations and its
-static opacity-and-size pruning leave these sub-goals only partly handled.
+The setting is to design that growth rule: given the per-Gaussian gradient and shape
+statistics gathered during training, decide when to add local capacity, how to add it, and
+which Gaussians to remove, while keeping the total count practical for memory and rendering
+speed.
 
 ## Background
 
@@ -50,25 +46,21 @@ knowable before any new rule is designed:
   densify from the gradient of the loss with respect to each Gaussian's *projected 2D mean*.
   Per view k it sums the per-pixel sub-gradients, `dL/dmu_{k,x} = sum_j dL_j/dmu_{i,x}` (and
   likewise y), forms the per-view magnitude, and averages over the views a Gaussian appears
-  in: `grad_i = (1/M^i) sum_k sqrt((dL/dmu_{k,x})^2 + (dL/dmu_{k,y})^2)`. A large
-  `grad_i` means "this Gaussian's footprint wants to move inconsistently to fit the image" —
-  a signal that one Gaussian is being asked to cover detail it cannot represent. Gaussians
-  above a threshold `tau_pos = 0.0002` are densified, every 100 iterations between iteration
-  500 and 15000.
+  in: `grad_i = (1/M^i) sum_k sqrt((dL/dmu_{k,x})^2 + (dL/dmu_{k,y})^2)`. Gaussians above a
+  threshold `tau_pos = 0.0002` are densified, every 100 iterations between iteration 500 and
+  15000.
 
-- **Densification is interleaved with optimization, so each edit is a perturbation.** The
-  Gaussians' shapes are continuously driven by backprop to align with scene geometry. Any
-  densification op that changes the *rendered output* at the moment it fires hands the
-  optimizer a discontinuity it must spend iterations undoing. The cheaper an edit is for the
-  renderer to absorb — the smaller the change in the density/color it produces along every ray
-  — the faster optimization resumes.
+- **Densification is interleaved with optimization.** The Gaussians' shapes are continuously
+  driven by backprop to align with scene geometry. A densification op that changes the
+  *rendered output* at the moment it fires changes the field the optimizer was fitting; the
+  smaller the change in the density/color produced along every ray, the closer the edited
+  state is to the pre-edit state.
 
-- **Gradient collision starves the large Gaussians that most need splitting** (diagnostic
-  finding, Ye et al. 2024; Yu et al. 2024). A big Gaussian over a textured region covers many
-  pixels whose positional sub-gradients point in *opposing* directions; summing the signed
-  sub-gradients per view, `sum_j dL_j/dmu`, lets them cancel, so the aggregated magnitude
-  falls *below* the densification threshold and the blurry Gaussian is never split. The very
-  Gaussians responsible for over-reconstruction are the ones the signal hides.
+- **Gradient collision in large Gaussians** (diagnostic finding, Ye et al. 2024; Yu et al.
+  2024). A big Gaussian over a textured region covers many pixels whose positional
+  sub-gradients point in *opposing* directions; summing the signed sub-gradients per view,
+  `sum_j dL_j/dmu`, lets them partially cancel, so the aggregated magnitude can fall below the
+  densification threshold.
 
 - **Opacity reset and its purpose** (diagnostic, from 3DGS and follow-ups). Every 3000
   iterations 3DGS clamps every opacity down to a small value (alpha <- min(alpha, 0.01)).
@@ -85,11 +77,9 @@ knowable before any new rule is designed:
   value that trades off under- vs over-reconstruction to minimize the loss, whether the region
   was initially over- or under-fit.
 
-- **Overfit Gaussians are real and survive opacity pruning** (diagnostic observation). Some
-  Gaussians improve a few training views while harming others; at steady state they hold a
-  moderate opacity, so an opacity-threshold prune cannot distinguish them from genuinely
-  useful Gaussians. Any pruning rule that only looks at final opacity therefore misses a
-  class of view-inconsistent primitives.
+- **View-inconsistent Gaussians** (diagnostic observation). Some Gaussians improve a few
+  training views while harming others; at steady state they hold a moderate opacity comparable
+  to genuinely useful Gaussians.
 
 ## Baselines
 
@@ -103,23 +93,14 @@ iteration, so the two separate only through the parent's parameter update that s
 (for large Gaussians): replace the parent with two children, each scale divided by 1.6, each
 keeping the parent's shape, opacity, and color, and each placed at the parent's center plus a
 sample drawn from the parent's own covariance (a draw from `N(0, Sigma)` rotated into world
-frame). **Gaps:** clone's two copies only separate if the parent happens to take a large step
-that iteration; when the step is small the copies stay nearly coincident, receive almost
-identical gradients thereafter, and can never be individually optimized — the
-under-reconstruction persists. Split changes the rendered scene at the moment it fires: two
-children that keep the *full* parent shape cannot tile the parent's footprint without
-overshooting it, so the covered shape differs before and after the edit; the probabilistic
-sampling of child positions injects run-to-run variance; and two children at the parent's
-opacity overcompound the density along a ray that passes through both.
+frame).
 
 **Homodirectional / absolute-value gradient (Ye et al. 2024, AbsGS; Yu et al. 2024, GOF).**
-Cure gradient collision by taking the magnitude of each per-pixel sub-gradient *before*
-summing over pixels: `ghat_{i,x} = sum_j |dL_j/dmu_{i,x}|`, then combine x and y. Now opposing
-per-pixel pulls add instead of cancel, so over-reconstructed Gaussians clear the threshold and
-get split. Because the aggregated magnitudes are larger, the densification threshold is raised
-(e.g. 0.0002 -> 0.0004). **Gap:** this fixes *which* Gaussians are selected for densification;
-it does nothing about *how* the selected Gaussian is subdivided — the clone/split operations,
-with all their perturbation problems, are untouched.
+Take the magnitude of each per-pixel sub-gradient *before* summing over pixels:
+`ghat_{i,x} = sum_j |dL_j/dmu_{i,x}|`, then combine x and y. Now opposing per-pixel pulls add
+instead of cancel. Because the aggregated magnitudes are larger, the densification threshold
+is raised (e.g. 0.0002 -> 0.0004). This changes *which* Gaussians are selected for
+densification; the clone/split operations are used unchanged.
 
 **Budgeted score-based densification (Mallick et al. 2024, TamingGS).** Replace the fixed
 threshold with an explicit Gaussian-count budget and a per-step growth schedule that
@@ -128,32 +109,21 @@ densify from a weighted multi-feature saliency score (gradient blended with cove
 opacity, scale, blending weight, and per-pixel saliency) rather than the gradient alone. A
 common reduced form blends the *average* positional gradient with the per-Gaussian *maximum*
 gradient over the interval, which keeps a Gaussian that spikes strongly in even one view.
-**Gap:** again this improves *when and which* to densify and how many; the underlying clone
-and split *operations* are inherited unchanged.
+This governs *when, which, and how many* to densify; the clone and split operations are
+inherited unchanged.
 
 **Revised split opacity (Rota Bulo et al. 2024, RevisingGS).** Observes that turning one
 Gaussian of opacity alpha into two of the same alpha biases compositing: two stacked children
 transmit `(1 - alpha)^2`, not the parent's `(1 - alpha)`. Solving `(1 - alpha) = (1 -
 alphahat)^2` gives the corrected child opacity `alphahat = 1 - sqrt(1 - alpha)`, which keeps
-the through-ray transmittance invariant when both children lie on a ray. **Gap:** corrects
-the opacity for the *transmittance* of two stacked children, but is derived for the standard
-covariance-sampled split and leaves the child *positions and shapes* — and hence the change in
-the spatial density profile — unaddressed.
+the through-ray transmittance invariant when both children lie on a ray. It is derived for the
+standard covariance-sampled split and adjusts the child opacity.
 
 **Deterministic principal-axis placement (Chen et al. 2024, VCR-GauS).** Observes that
 children sampled from the same parent covariance stay clustered (same distribution, similar
-positions), causing surface protrusions. Replaces the random sample with deterministic
-placement along the *longest* principal axis, the two children evenly dividing the parent's
-maximum scale. **Gap:** deterministic placement removes the clustering and the sampling
-variance, but the children keep the parent's full shape and opacity, so the covered shape and
-the density mass still jump at the edit.
-
-Across all of these, one fault line stays open: prior work improves *which* Gaussians to
-densify, *how many*, and one-off corrections such as opacity adjustment or deterministic
-placement, but the edit itself still changes the optimized density/color field in ways the
-optimizer must repair. The pruning side has a parallel gap: static opacity, size, and
-importance scores are weak signals for Gaussians whose contribution is inconsistent across
-views.
+positions). Replaces the random sample with deterministic placement along the *longest*
+principal axis, the two children evenly dividing the parent's maximum scale; the children keep
+the parent's shape and opacity.
 
 ## Evaluation settings
 

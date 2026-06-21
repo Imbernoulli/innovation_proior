@@ -1,16 +1,16 @@
 ## Research question
 
-Finite-sum optimization: minimize `F(x) = (1/n) Σ_{i=1}^n f_i(x)` with stochastic first-order steps. Mini-batch SGD samples a batch each step and follows its gradient. The gradient variance scales like `1/b` in the batch size and does not vanish near a minimizer: at a solution the per-example gradients `∇f_i(x*)` average to zero but are not zero individually, so constant-step SGD rattles inside a noise ball and must anneal its step to `O(1/t)` for convergence. The design target is a **variance-reduction mechanism**: whatever auxiliary state an optimizer keeps so its update direction has lower variance than a raw mini-batch gradient, ideally with variance that shrinks as the iterate settles. Models, losses, data, learning rates, epoch budgets, and gradient helpers stay fixed.
+Finite-sum optimization: minimize `F(x) = (1/n) Σ_{i=1}^n f_i(x)` with stochastic first-order steps. Mini-batch SGD samples a batch each step and follows its gradient. The gradient variance scales like `1/b` in the batch size; at a solution the per-example gradients `∇f_i(x*)` average to zero but are not zero individually. Models, losses, data, learning rates, epoch budgets, and gradient helpers stay fixed. The question is how to improve convergence behavior in this finite-sum setting using the available first-order gradient helpers.
 
 ## Prior art / Background / Baselines
 
-- **Full gradient descent.** Steps along the exact average gradient `∇F(x) = (1/n) Σ_i ∇f_i(x)`; with a constant step it contracts suboptimality by a fixed factor each iteration for strongly convex problems. Gap: each step touches all `n` examples, so a single iteration costs a full pass and is unaffordable per step at large `n`.
+- **Full gradient descent.** Steps along the exact average gradient `∇F(x) = (1/n) Σ_i ∇f_i(x)`; with a constant step it contracts suboptimality by a fixed factor each iteration for strongly convex problems. Each step touches all `n` examples.
 
-- **Mini-batch SGD.** Draws a batch and follows its gradient; each step costs `O(b)` regardless of `n` and gives an unbiased estimate of `∇F`. Gap: gradient variance has a floor that persists at the optimum, so a constant step leaves a noise ball and convergence degrades to `O(1/t)` unless the step is annealed.
+- **Mini-batch SGD.** Draws a batch and follows its gradient; each step costs `O(b)` regardless of `n` and gives an unbiased estimate of `∇F`.
 
-- **SAG / SDCA.** Stores per-example information—a table of past gradients or dual variables—so each cheap step carries information about all `n` examples and achieves a linear rate at SGD-like cost. Gap: an `O(n)`-sized table, which is infeasible for large `n` or for models where the per-example gradient is not a cached scalar, plus a complicated convergence story.
+- **SAG / SDCA.** Stores per-example information—a table of past gradients or dual variables—so each cheap step carries information about all `n` examples and achieves a linear rate at SGD-like cost. Requires an `O(n)`-sized table.
 
-- **Heavy-ball / Nesterov momentum.** Keeps an exponential moving average of past gradients to smooth the descent direction. Gap: widely used in practice, but in the stochastic setting it has no general theorem improving the convergence rate over plain SGD; the noise nullifies the averaging benefit.
+- **Heavy-ball / Nesterov momentum.** Keeps an exponential moving average of past gradients to smooth the descent direction. Widely used in practice in both deterministic and stochastic settings.
 
 ## Fixed substrate / Code framework
 
@@ -28,7 +28,7 @@ The learning rate `self.lr` and L2 coefficient `self.l2_reg` are fixed per probl
 
 Only one region is editable: the `VarianceReductionOptimizer` class in `custom_vr.py`. The contract is two methods:
 
-- `__init__(self, model, lr, l2_reg, loss_type, n_train, batch_size, device)` — set up whatever state the variance-reduction mechanism needs.
+- `__init__(self, model, lr, l2_reg, loss_type, n_train, batch_size, device)` — set up whatever state the optimizer needs.
 - `train_one_epoch(self, X_train, y_train)` — train for one pass over the data and return `{'avg_loss': ..., 'full_grad_count': ...}` (the latter optional). Hard constraint: `compute_full_gradient` may be called at most once per epoch.
 
 The starting fill is vanilla mini-batch SGD:

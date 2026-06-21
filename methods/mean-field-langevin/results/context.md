@@ -16,9 +16,8 @@ subspace spanned by the `u_i` and the link `g`.
 
 Counting parameters suggests that, for fixed `k`, the relevant subspace has only order `d`
 degrees of freedom. On isotropic data this makes `n` proportional to `d` the natural statistical
-floor. The hard question is whether a standard first-order neural-network training procedure can
-reach that floor for broad links and broad covariance structure, rather than paying a price tied to
-the algebraic order of the link.
+floor. The question is whether a standard first-order neural-network training procedure can
+reach that floor for broad links and broad covariance structure.
 
 ## Statistical structure
 
@@ -40,7 +39,7 @@ The link is locally Lipschitz on the range where the observed projected data liv
 chosen so that the response has constant-order second moment. This includes polynomially growing
 links on the relevant observed ball, not only globally bounded links.
 
-## Known obstacles
+## Known structure of gradient dynamics
 
 For single-index models, online stochastic gradient descent from a random start is governed by the
 information exponent: the first nonzero term in the expansion of the population correlation around
@@ -48,33 +47,26 @@ the uninformative equator. If that exponent is `s`, the gradient signal near ini
 like a small overlap raised to the `s - 1` power. The resulting search phase needs `n ~ d` for
 `s = 1`, `n ~ d log d` for `s = 2`, and polynomially larger sample sizes for `s >= 3`.
 
-For multi-index models, the analogous obstruction is leap complexity. Training can proceed by a
+For multi-index models, the analogous phenomenon is leap complexity. Training can proceed by a
 saddle-to-saddle sequence in which some coordinates become visible only after earlier coordinates
-have been learned. Existing analyses of ordinary two-layer training therefore give costs governed
-by the link's hierarchy, not just by the dimension of the hidden subspace.
-
-This creates the central gap: the target is statistically low-dimensional, but the usual gradient
-dynamics can spend most of its effort escaping a nearly flat, uninformative initialization.
+have been learned. Existing analyses of ordinary two-layer training give costs governed
+by the link's hierarchy.
 
 ## Existing baselines
 
 Plain two-layer SGD trains the first layer directly on squared or correlation loss. It is a
-homogeneous first-order procedure, but the known rates follow the information or leap exponent and
-can be far above the `n ~ d` floor.
+homogeneous first-order procedure. The known rates follow the information or leap exponent.
 
-Layer-wise or two-stage procedures first try to recover first-layer directions and then fit the
+Layer-wise or two-stage procedures first recover first-layer directions and then fit the
 output layer by a convex solve, such as ridge regression on learned features. These methods clarify
-the feature-learning step, but they are staged and still rely on the first-layer search signal being
-strong enough.
+the feature-learning step as a staged process.
 
-Random-features or fixed-grid methods freeze the first layer and solve only the output weights.
-They avoid non-convex first-layer optimization, but without adaptive movement of the features they
-do not exploit the hidden low-dimensional structure efficiently.
+Random-features or fixed-grid methods freeze the first layer and solve only the output weights,
+avoiding non-convex first-layer optimization.
 
 Convex infinite-width formulations show that, after lifting a wide two-layer network to a
 distribution over neurons, the prediction is linear in the distribution and the loss becomes convex
-as a functional of that distribution. The missing piece is a general finite-sample, finite-training
-guarantee for arbitrary multi-index links under general covariance.
+as a functional of that distribution.
 
 ## Code frame
 

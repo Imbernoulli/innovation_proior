@@ -1,22 +1,11 @@
 ## Research question
 
 Two of the strongest generative models of the moment share one recipe: corrupt training data with
-slowly increasing noise, then learn to undo the corruption. Both, however, use a hand-chosen
-*finite ladder* of discrete noise scales, each with its own bespoke training loss and its own
-bespoke sampling rule, and there is no shared theory connecting them. The precise problem is:
-
-- Is there a *principled, parameter-free* way to bridge a complex data distribution to a simple
-  known prior — one that does not require choosing the number and spacing of noise scales by hand,
-  and that exposes whatever common structure the existing recipes are hiding?
-- The two existing samplers (annealed Langevin dynamics; an ancestral reverse Markov chain) look
-  unrelated. Are they secretly the same thing, and can a better sampler subsume both?
-- Score-based models do not give an exact likelihood, unlike normalizing flows. Can the same model
-  be made to compute one?
-- Can a *single* trained model perform conditional tasks — class-conditional generation, inpainting,
-  colorization — without retraining a new conditional model for each task?
-
-A solution would have to estimate something learnable from data alone, drive a generation process
-that provably inverts the corruption, and do all of the above within one framework rather than four.
+slowly increasing noise, then learn to undo the corruption. Both use a hand-chosen *finite ladder*
+of discrete noise scales, each with its own training loss and its own sampling rule, and there is
+no shared theory connecting them. The broad question is: is there a principled way to bridge a
+complex data distribution to a simple known prior — one that exposes whatever common structure the
+existing recipes share?
 
 ## Background
 
@@ -28,17 +17,14 @@ the second term is zero because Z_θ does not depend on x. So a network that out
 of the normalizability constraint. Given a score model one samples by Langevin dynamics,
 x ← x + ε s(x) + sqrt(2ε) z, which converges to p as ε→0.
 
-**Why a single noise scale fails, and why many scales help.** Fitting s_θ to ∇log p_data by the
-Fisher divergence E_{p_data(x)} ||s_θ(x) - ∇log p_data(x)||² weights the error by p_data(x). In
-high dimensions real data concentrates near a low-dimensional manifold, so almost everywhere p_data
-is tiny and the learned score there is unconstrained and wrong. Langevin chains initialized in those
-empty regions get inaccurate gradients and wander; they also mix between separated modes extremely
-slowly. Perturbing the data with Gaussian noise of standard deviation σ fixes both problems at once:
-it spreads mass into the empty regions (so the score is well-defined and learnable there) and smooths
-the landscape (so chains mix). Large σ helps coverage and mixing; small σ keeps the perturbed
-distribution close to the true data. Using *many* scales σ_1 < ... < σ_N and a single
-noise-conditioned network s_θ(x, σ) gives the best of both, and one samples by walking down the ladder
-from the largest scale to the smallest.
+**Why many noise scales help.** Fitting s_θ to ∇log p_data by the Fisher divergence
+E_{p_data(x)} ||s_θ(x) - ∇log p_data(x)||² weights the error by p_data(x). In high dimensions real
+data concentrates near a low-dimensional manifold, so the learned score in empty regions is
+unconstrained. Perturbing the data with Gaussian noise of standard deviation σ spreads mass into
+those regions and smooths the landscape. Large σ helps coverage and mixing; small σ keeps the
+perturbed distribution close to the true data. Using *many* scales σ_1 < ... < σ_N and a single
+noise-conditioned network s_θ(x, σ) gives the best of both, and one samples by walking down the
+ladder from the largest scale to the smallest.
 
 **Denoising score matching (Vincent, 2011) is what makes the score target tractable.** The score of
 a *noisy marginal* p_σ(x̃) = ∫ p_data(x) N(x̃; x, σ²I) dx is still intractable. Vincent's identity
@@ -79,10 +65,6 @@ log-density. The divergence is expensive (O(d) backprops), but the Skilling–Hu
 ∇·f̃ = E_v[vᵀ (∇f̃) v] with E[v]=0, Cov[v]=I turns it into a single vector-Jacobian product, unbiased
 and arbitrarily accurate by averaging.
 
-**A measured discrepancy in sample quality.** Samples from these models carry residual high-frequency
-noise imperceptible to the eye but damaging to FID, and the additive-noise (NCSN) family had been
-measuring worse on FID than the DDPM family despite comparable models.
-
 ## Baselines
 
 **Score matching with Langevin dynamics (SMLD / NCSN), Song & Ermon (2019, 2020).** A geometric
@@ -95,9 +77,7 @@ Score Network s_θ(x, σ) is trained with a weighted sum of denoising score matc
 with σ_i² chosen because it is proportional to 1/E||∇log p_{σ_i}(x̃|x)||², equalizing the per-scale
 loss. Sampling runs M steps of Langevin dynamics
 x ← x + ε_i s_θ(x, σ_i) + sqrt(2ε_i) z at each scale, annealing from i=N down to i=1, carrying the
-final state of one scale into the next. *Gaps it leaves:* the ladder is a discrete hyperparameter;
-sampling needs many Langevin steps per scale; and (as it was usually run) no final denoising step,
-hurting FID.
+final state of one scale into the next.
 
 **Denoising diffusion probabilistic models (DDPM), Sohl-Dickstein et al. (2015); Ho et al. (2020).** A
 discrete forward Markov chain with scales 0 < β_1, ..., β_N < 1,
@@ -110,10 +90,7 @@ ELBO that, rewritten, is again a weighted sum of denoising score matching terms,
   θ* = argmin_θ Σ_i (1-α_i) E_{p_data(x)} E_{p_{α_i}(x̃|x)} ||s_θ(x̃, i) - ∇_x̃ log p_{α_i}(x̃|x)||²,
 
 so the optimum matches the score of the perturbed data. Sampling is ancestral:
-x_{i-1} = (x_i + β_i s_θ(x_i, i))/sqrt(1-β_i) + sqrt(β_i) z, from i=N down to 1. *Gaps it leaves:* the
-forward chain rescales the signal (sqrt(1-β_i)) rather than just adding noise, so it is not obviously
-the same object as NCSN's additive ladder; the sampler is tied to this particular discretization; and
-there is no exact likelihood (only an ELBO).
+x_{i-1} = (x_i + β_i s_θ(x_i, i))/sqrt(1-β_i) + sqrt(β_i) z, from i=N down to 1.
 
 **Where these meet.** Both objectives are weighted sums of denoising score matching, and their
 weights, σ_i² and 1-α_i, are each proportional to the inverse expected squared conditional score.
@@ -142,8 +119,8 @@ the bars a new method would be measured against.
 
 The pieces that already exist: a data pipeline, an Adam optimizer with warmup/clipping, a
 noise-conditioned U-Net score network from prior work, denoising score matching, and Langevin
-dynamics. What does *not* yet exist is a common process abstraction: the forward corruption is a
-discrete ladder, the loss is a per-scale sum, and the sampler is a hand-derived chain.
+dynamics. The forward corruption is a discrete ladder, the loss is a per-scale sum, and the sampler
+is a hand-derived chain.
 
 ```python
 import torch
@@ -159,11 +136,6 @@ class ScoreNet(torch.nn.Module):
 def get_dataloader(): ...
 def get_optimizer(params):
     return torch.optim.Adam(params, lr=2e-4, betas=(0.9, 0.999))
-
-# --- TODO: the process abstraction the current code lacks ---
-# Today the corruption is a fixed discrete ladder, the loss is a per-scale sum, and the
-# sampler is a hand-derived chain. What replaces them goes here.
-...
 
 # Training loop skeleton (loss to be supplied above).
 def train(model):

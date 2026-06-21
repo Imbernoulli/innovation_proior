@@ -4,13 +4,13 @@ Self-attention is the throughput bottleneck of a Transformer forward pass. For `
 
 ## Prior art / Background / Baselines
 
-Attention has been accelerated along several axes, each leaving a concrete gap.
+Attention has been accelerated along several axes.
 
-- **Standard (materialized) attention.** Form `S = Q K^T` as an `N x N` matrix, write it to HBM, read it back to softmax into `P`, then read `P` and `V` to form `O = P V`. The idea is exact and simple, but it moves `Theta(N d + N^2)` bytes across HBM; the `N^2` term dominates for `N` in the thousands with `d` only 64-256. Observed limitation: the wall-clock is dominated by HBM traffic on `S` and `P`, not the matmuls.
+- **Standard (materialized) attention.** Form `S = Q K^T` as an `N x N` matrix, write it to HBM, read it back to softmax into `P`, then read `P` and `V` to form `O = P V`. The operation is exact and moves `Theta(N d + N^2)` bytes across HBM; the `N^2` term dominates for `N` in the thousands with `d` only 64-256.
 
-- **Approximate attention (Reformer, Linformer, Performer, Longformer, BigBird).** Sparsify or low-rank/kernel-approximate the score matrix to cut FLOPs to near-linear in `N`. Measured wall-clock is often no better than dense attention at the lengths that matter, because FLOPs were never the bottleneck, and the approximation changes the function. Observed limitation: optimizes the wrong cost and is inexact.
+- **Approximate attention (Reformer, Linformer, Performer, Longformer, BigBird).** Sparsify or low-rank/kernel-approximate the score matrix to cut FLOPs to near-linear in `N`.
 
-- **Online / lazy softmax (Milakov & Gimelshein; Rabe & Staats).** A numerically-stable softmax is fully determined by a running max `m` and normalizer `l`; the online-normalizer identity combines block partials exactly by rescaling with `e^{m_old - m_new}`, so the output can be built one block at a time with `O(1)` memory per query. Existing implementations minimize memory footprint, but their HBM access count stays quadratic and the work is not organized as a single kernel. Observed limitation: right recurrence, wrong cost axis (footprint, not traffic), and not fused.
+- **Online / lazy softmax (Milakov & Gimelshein; Rabe & Staats).** A numerically-stable softmax is fully determined by a running max `m` and normalizer `l`; the online-normalizer identity combines block partials exactly by rescaling with `e^{m_old - m_new}`, so the output can be built one block at a time with `O(1)` memory per query.
 
 ## Fixed substrate / Code framework
 

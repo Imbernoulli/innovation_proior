@@ -2,28 +2,17 @@
 
 Offline reinforcement learning asks for a good policy from a *fixed* dataset
 `D = {(s, a, r, s')}` collected by some unknown behavior policy `mu(a|s)`, with no further
-interaction with the environment. The central pathology is well documented: any algorithm that
-bootstraps — that fits a value function with a Bellman backup `Q(s,a) <- r + gamma * Q(s', a')`
-— has to evaluate `Q` at next-state actions `a'`. If those actions come from the *learned*
-policy rather than from the data, they drift out of the support of `mu`, and the function
-approximator, never having seen them, returns arbitrary and usually *over*-estimated values.
-The backup propagates those phantom values, the policy chases them, and training diverges. The
-whole difficulty of offline RL is value estimation under this distribution shift.
+interaction with the environment. An algorithm that bootstraps — that fits a value function
+with a Bellman backup `Q(s,a) <- r + gamma * Q(s', a')` — has to evaluate `Q` at next-state
+actions `a'`. When those actions come from the *learned* policy rather than from the data, they
+can fall outside the support of `mu`, where the function approximator returns values it has no
+data to ground. Much of offline RL is organized around value estimation under this distribution
+shift.
 
-A second, quieter problem rides along with the first. Even once a value function is trained
-that genuinely captures the value of good in-support actions, that value function does not, by
-itself, hand you a policy you can run. You still need a *policy extraction* step that turns the
-value function into something that maps a state to an action — and that extracted policy must
-faithfully represent whatever policy the value function is implicitly evaluating. If the
-extraction step distorts that policy, the careful value learning is wasted.
-
-The precise goal here is a single model-free offline policy algorithm that (1) learns values
-without ever querying actions outside the data support, so it is stable; (2) actually performs
-multi-step dynamic programming (stitches good sub-trajectories together) rather than just
-cloning the behavior policy's own value; (3) is robust to hyperparameters, because in offline
-RL one cannot tune online against the real return; and (4) extracts a policy that genuinely
-matches the value function's implied behavior, even when that behavior is complicated. Each
-existing method below achieves some of this; none achieves all of it at once.
+Alongside value estimation sits a *policy extraction* step: turning a trained value function
+into something that maps a state to an action, in a way that represents whatever policy the
+value function is implicitly evaluating. The setting here is a single model-free offline policy
+algorithm that learns values from dataset actions and extracts a policy to run from them.
 
 ## Background
 
@@ -40,9 +29,9 @@ out-of-distribution actions. Three broad families of fixes are on the table:
   (Fujimoto & Gu 2021, TD3+BC).
 - **Critic regularization** — directly push down the `Q`-values of OOD actions
   (Kumar et al. 2020, CQL), so even if they are queried they cannot win.
-- **In-sample / implicit backups** — the most recent line, which sidesteps the OOD query
-  *entirely* by replacing the explicit `max_{a'} Q(s', a')` with a statistic computable from
-  dataset actions alone, using asymmetric loss functions in a SARSA-style backup.
+- **In-sample / implicit backups** — the most recent line, which replaces the explicit
+  `max_{a'} Q(s', a')` with a statistic computable from dataset actions alone, using asymmetric
+  loss functions in a SARSA-style backup.
 
 The load-bearing tool for that third family is **expectile regression**, borrowed from
 econometrics. The `tau`-expectile of a random variable `X` is the solution of an asymmetric
@@ -56,12 +45,12 @@ For `tau = 0.5` this is ordinary mean regression; for `tau > 0.5` it downweights
 where `x < m` and upweights residuals where `x > m`, so `m_tau` sits above the mean, and as
 `tau -> 1` it approaches the *supremum* of `X`. Applied state-conditionally to the distribution
 of `Q(s, a)` over dataset actions `a ~ mu(.|s)`, a high expectile estimates "the value of the
-best in-support action at `s`" without ever naming that action — the maximization is performed
-*implicitly* by the asymmetry of the loss, leveraging the function approximator's
-generalization rather than an explicit `argmax`. A useful monotonicity holds: higher `tau`
-gives a higher (and provably no-larger-than the constrained optimum) value estimate, so `tau`
-trades off between cloning the behavior policy's mean value (`tau = 0.5`, SARSA) and
-approximating constrained Q-learning (`tau -> 1`).
+best in-support action at `s`" without naming that action — the maximization is performed
+*implicitly* by the asymmetry of the loss, via the function approximator's generalization rather
+than an explicit `argmax`. A monotonicity holds: higher `tau` gives a higher (and provably
+no-larger-than the constrained optimum) value estimate, so `tau` trades off between cloning the
+behavior policy's mean value (`tau = 0.5`, SARSA) and approximating constrained Q-learning
+(`tau -> 1`).
 
 A second background ingredient is the **advantage-weighted regression** view of policy
 extraction. Given a value function and advantage `A(s,a) = Q(s,a) - V(s)`, AWR fits a policy by
@@ -90,16 +79,11 @@ L_mu(phi) = E_{t, eps, (s,a)~D}[ || eps - mu_phi(sqrt(abar_t) a + sqrt(1-abar_t)
 
 and sampling runs the reverse chain from Gaussian noise. Diffusion models can represent sharply
 multimodal continuous distributions that a single Gaussian cannot, and have begun to be used as
-behavior-cloning and offline-RL action models. There is a known diagnostic caveat: a naive MLP
-score network on low-dimensional continuous data fits the modes poorly and emits *outlier*
-samples far from the data; increasing batch size and capacity helps but outliers persist, and
-those outliers are exactly the OOD actions a `Q`-function may erroneously score high.
+behavior-cloning and offline-RL action models.
 
-There is also a recurring empirical observation about expressive models trained with
-importance-weighted objectives: such high-capacity models tend to raise the likelihood of *all*
-training points regardless of their weight (Byrd et al. 2019; Xu et al. 2021), so an
-importance-weighting signal that is supposed to skew the model toward high-advantage actions
-gets washed out.
+A recurring empirical observation about expressive models trained with importance-weighted
+objectives is that such high-capacity models tend to raise the likelihood of *all* training
+points regardless of their weight (Byrd et al. 2019; Xu et al. 2021).
 
 ## Baselines
 
@@ -126,50 +110,29 @@ that the value defined recursively by these objectives is monotone in `tau`, is 
 by the support-constrained optimal `Q*`, and converges to it as `tau -> 1`; so the spectrum
 runs from SARSA (`tau = 0.5`) to constrained Q-learning (`tau -> 1`). For the *policy*, IQL
 extracts a unimodal conditional Gaussian via AWR (the `exp(beta*A) log pi` objective above).
-IQL is fast, simple, and a small modification to a SARSA TD loop. **Gap:** the critic is trained with no
-reference to any explicit policy, so it is unclear *which* policy the implicitly trained value
-function actually corresponds to for an intermediate `0.5 < tau < 1`; and the policy is then
-extracted with a unimodal Gaussian, a representation that may simply be unable to reproduce
-whatever the critic implicitly evaluated. Because IQL deliberately decouples critic training
-from the actor, the critic never adapts to the actor's representational limits — a strength for
-stability, but it means a mismatch between the extracted policy and the implicit one is never
-corrected.
+IQL is fast, simple, and a small modification to a SARSA TD loop, and deliberately decouples
+critic training from the actor.
 
 **Conservative Q-learning (CQL; Kumar et al. 2020).** Adds a regularizer that pushes down
 `Q`-values of actions sampled from the current policy while pushing up dataset-action values,
-yielding a conservative lower bound on the value. Strong on locomotion. **Gap:** it does query
-and penalize OOD actions, so it reintroduces a sensitivity to the regularizer weight, and in
-practice needs substantially different tuning across domains (e.g. locomotion vs AntMaze) to
-work well.
+yielding a conservative lower bound on the value. Strong on locomotion.
 
 **TD3+BC (Fujimoto & Gu, 2021).** A minimalist recipe: standard TD3 off-policy actor-critic
-plus a behavior-cloning term on the deterministic actor, with normalized states. **Gap:** the
-deterministic, unimodal actor is constrained toward `mu` but cannot represent multimodal optima,
-and the actor-critic coupling reintroduces the OOD-action query the actor's `max` performs.
+plus a behavior-cloning term on the deterministic actor, with normalized states.
 
 **Diffusion Q-learning (DQL; Wang, Hunt & Zhou, ICLR 2023).** Parameterizes the actor as a
 diffusion model and trains it with a TD3+BC-style objective: a behavior-cloning diffusion loss
 plus a `Q`-maximization term that backpropagates the critic through the *entire sampling chain*.
 A twin `Q` critic is trained jointly; at inference it samples `K` candidate actions from the
 diffusion actor and reranks by `Q`. This is the closest diffusion-actor actor-critic baseline.
-**Gap:** the diffusion actor and the critic are
-tightly coupled — the `Q`-term flows gradients through the sampling chain into the actor — which
-is computationally heavy (training time several times that of IQL) and reintroduces the
-instability and per-task hyperparameter sensitivity that fully decoupled methods avoided; the
-balance between the BC term and the `Q`-term is a sensitive knob.
 
 **Select-from-Behavior-Candidates (SfBC; Chen et al. 2022).** Trains a diffusion behavior
 model, then defines the policy by importance-reweighting samples from it with critic weights,
-and trains the critic by value iteration using samples from that policy. A close relative in
-spirit. **Gap:** the critic is trained on samples from the diffusion policy, so the behavior
-model and critic learning are again entangled, which is expensive (very long training time) and
-couples the two learning processes.
+and trains the critic by value iteration using samples from that policy.
 
 **One-step / behavior-value methods (Brandfonbrener et al. 2021; Peng et al. 2019).** Fit the
 value of the behavior policy with a SARSA objective (equivalently `tau = 0.5`) and extract
-greedily via AWR. Simple and stable on easy MuJoCo locomotion. **Gap:** with no multi-step
-dynamic programming they cannot stitch sub-optimal trajectories, and collapse on tasks like
-AntMaze that need it.
+greedily via AWR. Simple and stable on MuJoCo locomotion.
 
 ## Evaluation settings
 
@@ -191,8 +154,7 @@ locomotion are standardized by the dataset's return range, and AntMaze rewards h
 subtracted, per the D4RL recommendation. The value-learning side uses twin critics,
 target networks, Adam-style optimizers around learning rate `3e-4`, and soft target updates;
 the implementation scaffold uses two-layer LayerNorm+Mish utilities for `Q` and `V`.
-Training-time / walltime is itself reported and compared, because a practical offline method is
-judged partly on how cheaply and how-tunably it reaches its score.
+Training-time / walltime is itself reported and compared alongside the normalized score.
 
 ## Code framework
 

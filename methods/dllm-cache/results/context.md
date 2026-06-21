@@ -5,17 +5,15 @@ not left-to-right but by iteratively *denoising* a fully masked response: a bidi
 Transformer takes the prompt plus the current partially-masked response, predicts a
 distribution over the clean tokens at every position at once, commits a few high-confidence
 tokens, and repeats. To produce a response of length `L`, the model runs on the order of `L`
-denoising steps, and **each step is a full forward pass over the entire prompt-plus-response
-sequence**, recomputing bidirectional attention and the feed-forward network in every layer
-from scratch. The practical cost is therefore roughly cubic in the sequence length, `O(N^3)`
-for the whole generation, against the roughly quadratic `O(N^2)` that autoregressive models
-(ARMs) achieve. This latency is the single biggest obstacle to deploying dLLMs, and it sets
-the precise problem: **reduce redundant per-step recomputation during the denoising rollout
-without changing the model weights or the intended decoded sequence.**
+denoising steps, and each step is a full forward pass over the entire prompt-plus-response
+sequence, recomputing bidirectional attention and the feed-forward network in every layer.
+The practical cost is therefore roughly cubic in the sequence length, `O(N^3)` for the whole
+generation, against the roughly quadratic `O(N^2)` that autoregressive models (ARMs) achieve.
 
-What makes this hard is that the one technique ARMs rely on for exactly this — the Key-Value
-cache — does not carry over. The challenge is to find what *is* reusable across denoising
-steps in a bidirectional, non-sequential model, and to reuse it cheaply and safely.
+The question is how to run the denoising rollout of a fixed dLLM faster, without changing the
+model weights or the intended decoded sequence. ARMs reach `O(N^2)` with a Key-Value cache,
+but that technique assumes a causal mask and a fixed left-to-right order — neither of which a
+bidirectional dLLM has.
 
 ## Background
 
@@ -33,53 +31,44 @@ highest-confidence predictions (low-confidence remasking); generation can also r
 semi-autoregressively, filling the response one fixed-size *block* at a time. The number of
 steps `K` trades quality against latency.
 
-**Why bidirectionality forbids the standard cache.** In an ARM, a causal mask restricts each
+**How the AR cache works and why dLLMs differ.** In an ARM, a causal mask restricts each
 token to attend only to earlier positions, so once a token is processed its Key and Value
 states are fixed for the rest of generation and can be cached; per-step cost drops and the
 total falls to `O(N^2)`. A dLLM has **no causal mask**: every token attends to every other
-token, including still-masked ones, at every step. Two consequences follow, both observed in
-the prior literature on dLLM efficiency. (1) *Timestep-variant K/V*: the Key and Value of a
-token a model committed earlier keep changing as other positions get unmasked, because the
-representation depends on the full (evolving) context — the K/V a position presents at step
-`m` differ from those at step `n != m`. (2) *Non-sequential decoding order*: any masked
-position may be the next one filled, so one cannot pre-decide which position's states to
-compute. The global-reuse assumption that makes the AR KV cache correct simply does not hold.
-Host dLLMs such as LLaDA were even built with vanilla multi-head attention (not grouped-query
-attention) precisely because they are "incompatible with KV caching."
+token, including still-masked ones, at every step. Two structural properties follow, both
+noted in the prior literature on dLLM efficiency. (1) *Timestep-variant K/V*: the Key and
+Value of a token a model committed earlier keep changing as other positions get unmasked,
+because the representation depends on the full (evolving) context — the K/V a position
+presents at step `m` differ from those at step `n != m`. (2) *Non-sequential decoding order*:
+any masked position may be the next one filled, so the order in which positions are computed
+is not fixed in advance. Host dLLMs such as LLaDA were built with vanilla multi-head attention
+(not grouped-query attention).
 
-**Two diagnostic observations about the denoising rollout.** Across *adjacent* denoising
-steps, the model's intermediate features barely move for most positions. Measuring the cosine
-similarity between a token's feature (Key, Value, attention output, or FFN output) at the
-current step and at the previous step yields a sharp, reproducible pattern. *First*, the
-**prompt** region is uniformly very stable: the prompt tokens never change, and their internal
-representations drift only slowly over many steps. The **response** region is mixed: across
-adjacent steps most response tokens are highly similar to their previous version, and only a
-*small fraction* are significantly dissimilar. *Second*, for the response tokens, a token's
-**Value** (or Key) adjacent-step similarity is **strongly correlated** with the adjacent-step
-similarity of its downstream attention output and FFN output: among the most-changed tokens by
-K/V similarity, the same tokens are the ones whose expensive downstream features changed most.
-These are properties of how an existing dLLM behaves during its rollout, measurable before
-any new acceleration mechanism exists. They show that the denoising trajectory is not uniform:
-some regions remain nearly fixed while a minority of response positions move sharply between
-neighboring steps.
+**Measurable behavior of the denoising rollout.** Across *adjacent* denoising steps, one can
+measure the cosine similarity between a token's feature (Key, Value, attention output, or FFN
+output) at the current step and at the previous step. The **prompt** tokens never change and
+their internal representations drift only slowly over many steps. In the **response** region,
+across adjacent steps most tokens are highly similar to their previous version, while some are
+markedly dissimilar. For the response tokens, the adjacent-step similarity of a token's
+**Value** (or Key) is correlated with the adjacent-step similarity of its attention output and
+FFN output. These are properties of how an existing dLLM behaves during its rollout,
+measurable independently of any acceleration mechanism.
 
 **Feature caching for iterative denoisers (from image/video diffusion).** A separate line of
 work accelerates *continuous* diffusion transformers (for images and video) by caching
-intermediate features. The naive scheme: at the first timestep of a cache period compute all
+intermediate features. The basic scheme: at the first timestep of a cache period compute all
 layer features (self-attention, cross-attention, MLP) and store them, then for the next `N-1`
-timesteps skip those computations and reuse the cache, giving roughly `N-1x` acceleration;
-it works only because adjacent-step features differ very little, and degrades as the cache
-period `N` grows and the stored features drift from the correct ones. Finer-grained variants
-observe that **different tokens have different temporal redundancy** — the per-token feature
-distance between adjacent steps varies widely, with a minority of tokens moving far more than
-the mean — and therefore select *which* tokens to cache versus recompute, scoring tokens by
-their similarity to the cached value (cache the most-similar, recompute the least-similar),
-updating the cache for computed tokens at every step rather than only at period start, and
-even using different cache ratios at different layer depths. This paradigm — caching layer
-intermediate features and choosing tokens by temporal similarity — is established for
-continuous-noise image/video DiTs, where the input is a grid of patch tokens under a fixed
-noise schedule. It had not been adapted to the structure of language denoising, where the
-sequence splits into a fixed prompt and a gradually-revealed response.
+timesteps skip those computations and reuse the cache, giving roughly `N-1x` acceleration; it
+relies on adjacent-step features differing very little, with accuracy depending on the cache
+period `N`. Finer-grained variants observe that **different tokens have different temporal
+redundancy** — the per-token feature distance between adjacent steps varies, with some tokens
+moving far more than the mean — and select *which* tokens to cache versus recompute, scoring
+tokens by their similarity to the cached value (cache the most-similar, recompute the
+least-similar), updating the cache for computed tokens at every step rather than only at
+period start, and using different cache ratios at different layer depths. This paradigm —
+caching layer intermediate features and choosing tokens by temporal similarity — is
+established for continuous-noise image/video DiTs, where the input is a grid of patch tokens
+under a fixed noise schedule.
 
 ## Baselines
 
@@ -90,21 +79,13 @@ and the concurrent attempts to cache it.
 prompt-plus-response sequence at every one of the `K` steps. Per-step FLOPs are dominated by
 attention and the FFN: for `T` layers, sequence length `n`, hidden size `d`, and FFN
 intermediate size `m`, roughly `T*(8 n d^2 + 4 n^2 d + 6 n d m)` (the `6 n d m` reflecting a
-three-matmul SwiGLU FFN), times `K` steps. **Limitation:** every step repeats nearly the same
-computation; the prompt is reprocessed `K` times despite never changing, and the response has
-heterogeneous adjacent-step drift, so a full-sequence recompute spends most work in places
-whose features barely moved.
+three-matmul SwiGLU FFN), times `K` steps.
 
-**Delayed KV reuse for dLLMs (dKV-Cache; Ma et al., 2025).** Pins down *why* the AR cache
-fails (timestep-variant K/V, non-sequential order), then observes that once a token is
+**Delayed KV reuse for dLLMs (dKV-Cache; Ma et al., 2025).** Observes that once a token is
 *decoded* its Key/Value become relatively stable while still-masked tokens keep fluctuating,
 with the largest K/V change happening at a token's own decoding step. It therefore caches K/V
 only for already-decoded tokens, with a one-step *delay* (cache on the step after a token is
-decoded), indexed by an arbitrary-order set rather than a contiguous prefix. **Limitation:**
-it caches Key/Value states only, so the attention-output and FFN-output recomputation across
-layers is still paid; its reuse is keyed on discrete decode events and the stability of
-decoded tokens, leaving open the broader question of how to use adjacent-step feature drift
-inside the still-evolving response and static prompt.
+decoded), indexed by an arbitrary-order set rather than a contiguous prefix.
 
 **Block-wise approximate KV cache for dLLMs (Fast-dLLM; Wu et al., 2025).** Decodes the
 response block by block; computes a KV cache for the prompt once and reuses it across a
@@ -112,16 +93,12 @@ block's steps, and after a block finishes recomputes the KV cache for all blocks
 "DualCache" variant also caches the masked suffix). Justified by the empirically high cosine
 similarity of KV activations across adjacent steps within a block. It pairs this with
 confidence-aware parallel decoding — unmask all tokens whose confidence exceeds a threshold,
-rather than a fixed count — to counter the quality loss from the conditional-independence
-assumption when many tokens are unmasked at once. **Limitation:** the reuse is coarse, at the
-granularity of whole blocks / prefix, with cache refresh only at block boundaries; like
-dKV-Cache it caches KV states only, not the attention and FFN outputs.
+rather than a fixed count — to address the conditional-independence assumption when many
+tokens are unmasked at once.
 
-**AR Key-Value caching (Pope et al., 2023) — the ancestor it cannot use.** Under a causal
-mask, append each new token's K/V to a running buffer and attend over it, computing fresh
-states only at the current decoding position; total cost `O(N^2)`. This is the efficiency
-dLLMs lack, and the structural reason they lack it (bidirectional attention, no fixed order)
-is the starting point for everything above.
+**AR Key-Value caching (Pope et al., 2023).** Under a causal mask, append each new token's
+K/V to a running buffer and attend over it, computing fresh states only at the current
+decoding position; total cost `O(N^2)`. This is the standard reuse mechanism for ARMs.
 
 ## Evaluation settings
 

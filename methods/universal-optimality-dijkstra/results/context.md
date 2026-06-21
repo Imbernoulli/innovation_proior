@@ -77,20 +77,15 @@ class of heaps (tournament heaps) was answered negatively (Munro, Peng, Wild & Z
 cannot expect a fully self-adjusting heap to be the vehicle.
 
 **The motivating phenomenon.** The path-off-a-star example above
-is the diagnostic. Its lesson: the source of Dijkstra's waste is
-that a Fibonacci heap charges each delete-min by the *current heap size*, while on this graph the
-deleted path vertices were inserted and removed in immediate succession — there was strong *locality*
-in the sequence of heap operations that the size-based bound is blind to. The path vertices' deletions
-*can* be cheap in principle (their order is forced; `log` of the number of orders they participate in
-is small), yet the heap makes them expensive. The gap between "how many orderings are actually
-consistent with this graph" (`log D`, small for the path) and "what the heap charges" (`log` of heap
-size, large) is the whole phenomenon.
+illustrates the contrast between Dijkstra's worst-case bound and per-graph performance. A Fibonacci
+heap charges each delete-min by the *current heap size*, while on this graph the deleted path vertices
+were inserted and removed in immediate succession — there is strong *locality* in the sequence of heap
+operations that the size-based bound does not reflect.
 
 **A neighbouring fact about distances vs. ordering.** The three Dijkstra outputs are not equally hard.
-Computing only the distances (not a sorted order) was later shown to be doable faster than Dijkstra in
-the comparison-addition model (Duan, Mao, Mao, Shu & Yin 2025, `O(m log^{2/3} n)`), which means the
-*distance order* problem is strictly harder than the distances-only problem and is the right place to
-look for an optimality statement about Dijkstra specifically.
+Computing only the distances (not a sorted order) is doable faster than Dijkstra in
+the comparison-addition model (Duan, Mao, Mao, Shu & Yin 2025, `O(m log^{2/3} n)`), so the
+*distance order* problem is strictly harder than the distances-only problem.
 
 **A counting tool for orderings of intervals.** A recurring combinatorial object is a family of integer
 intervals `{[a_i, b_i] ⊆ [1, k]}` and the partial order in which `[a_i, b_i] ≺ [a_j, b_j]` when
@@ -104,43 +99,28 @@ global "how many orderings are possible" quantity.
 ## Baselines
 
 **Dijkstra + binary heap (Williams 1964).** Insert/decrease-key/delete-min all `O(log n)`; total
-`O(m log n)`. Limitation: the `log n` factor multiplies *every* arc relaxation, including the `m − n`
-decrease-keys, so on dense or even moderately dense graphs it is far from the `O(m + n log n)` that is
-possible. Every per-operation cost is tied to the *whole* current heap size.
+`O(m log n)`. Every per-operation cost is tied to the *whole* current heap size.
 
 **Dijkstra + Fibonacci heap (Fredman & Tarjan 1987).** `O(1)` amortized insert and decrease-key,
 `O(log n)` amortized delete-min, total `O(m + n log n)`. This is worst-case optimal for distance
 ordering: there exist graphs (a single star, where the leaves must be fully sorted) forcing
-`Ω(n log n)` comparisons for any correct algorithm. Limitation (the one the path-off-a-star exhibits):
-the delete-min bound is `log(current heap size)`. When many items linger in the heap while a long run
-of recently-inserted items is inserted and immediately deleted, every one of those quick deletions is
-still charged `log(heap size)`, even though the items had very short residence. The bound cannot see
-that a deleted item was inserted only moments before; it has no notion of locality, so it overcharges
-exactly the easy instances.
+`Ω(n log n)` comparisons for any correct algorithm. The delete-min bound is `log(current heap size)`.
 
 **Pairing heap and its working-set-style bounds (Fredman–Sedgewick–Sleator–Tarjan 1986; Iacono 2000;
-Elmasry; Elmasry–Farzan–Iacono).** These heaps *do* have fine-grained bounds where the deletion cost
-of an item depends on how recently it entered rather than on the heap size — exactly the locality the
-Fibonacci bound lacks. Limitation: every one of these results assumes decrease-key is *not* a supported
-operation. Dijkstra performs up to `m − n + 1` decrease-keys, and they must be `O(1)` amortized for the
-overall bound to come out right; a heap whose locality bound evaporates (or whose decrease-key is
-`ω(1)`) the moment decrease-key is allowed does not apply to Dijkstra. The locality property and the
-`O(1)` decrease-key property have not been available simultaneously.
+Elmasry; Elmasry–Farzan–Iacono).** These heaps have fine-grained bounds where the deletion cost
+of an item depends on how recently it entered rather than on the heap size. These results assume
+decrease-key is *not* a supported operation; Dijkstra performs up to `m − n + 1` decrease-keys.
 
 **Instance-optimal algorithms (Fagin–Lotem–Naor 2001; Afshani–Barbay–Chan 2017).** The benchmark is
 the best correct algorithm on each individual input. Where attainable (top-`k` aggregation; planar
-convex hull under order-oblivious instance optimality) this is the strongest guarantee. Limitation for
-distance ordering: it is impossible, since a fixed weighted instance is solved in linear time by an
-algorithm that knows the answer and only verifies it, so there is no nontrivial instance-optimal
-benchmark to match. One must relax both the model (to make lower bounds provable) and the granularity
-(to rule out the verify-only cheat).
+convex hull under order-oblivious instance optimality) this is the strongest guarantee. For distance
+ordering, a fixed weighted instance is solved in linear time by an algorithm that knows the answer and
+only verifies it, so there is no nontrivial instance-optimal benchmark to match.
 
 **Universally-optimal distributed algorithms (Haeupler–Wajc–Zuzic 2021 and follow-ups).** In the
 distributed (e.g. CONGEST) model, "best possible on this topology, worst case over weights" has been
-achieved for several problems. Limitation: these results live in a communication-complexity model with
-its own notion of cost and its own techniques (e.g. low-congestion shortcuts); they say nothing about a
-*sequential, comparison-based* algorithm's running time or comparison count, and the machinery does not
-transfer.
+achieved for several problems. These results live in a communication-complexity model with its own
+notion of cost and techniques (e.g. low-congestion shortcuts).
 
 ## Evaluation settings
 
@@ -200,11 +180,10 @@ def Dijkstra(G, s, Heap):
                 d[w] = d[v] + c(vw);  Heap.DecreaseKey(w, d[w], H)
     return order
 
-# ---- the heap whose cost profile the analysis will require ----
+# ---- the heap the analysis will require ----
 class TODOHeap(Heap):
     # All standard heaps (binary, Fibonacci, ...) implement this interface, but
-    # charge each DeleteMin by the *current size* of the heap. The data structure
-    # to be designed here has a different, finer cost profile.
+    # charge each DeleteMin by the *current size* of the heap.
     # TODO: the heap we will design.
     pass
 

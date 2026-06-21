@@ -14,11 +14,11 @@ Each family stresses a different axis: width/polarity, term count/monotonicity, 
 
 DNF learnability under the uniform distribution has a large literature. The relevant baselines for this random-sample setting are:
 
-- **Quasi-polynomial bound (Verbeurgt 1990).** Learns any `s`-term DNF in `n^{O(log s / ε)}` time from uniform random examples by collecting all low-width conjunctions consistent with the sample and ORing them. **Gap:** the dependence on `s` is super-polynomial, so it is not a practical learner for moderate `s`.
-- **Harmonic Sieve (Jackson 1997).** A polynomial-time DNF learner that uses Fourier-based boosting. **Gap:** it requires membership queries, which this task forbids.
-- **Random-DNF average case (Jackson & Servedio 2005).** Polynomial-time algorithms exist for random monotone DNF with `s = O(n^{2−γ})` terms and random non-monotone DNF with `s = O(n^{3/2−γ})` terms, via Fourier/correlation arguments. **Gap:** the analysis is specific to planted random families and does not yield a general trainable model.
-- **Tree ensembles on Boolean tabular data (Breiman 2001; Friedman 2001).** A decision tree’s depth-`w` root-to-leaf path is exactly a width-`w` conjunction; bagging and boosting are the canonical strong practical baselines on Boolean tabular data. **Gap:** they are not differentiable, and it is an open empirical question whether a neural learner can match them here from random samples alone.
-- **Differentiable DNF architectures (Payani & Fekri 2019; Mat_DNF 2023).** Encode soft DNF structure directly into the network: learnable literal memberships, soft conjunctions, and an OR layer. **Gap:** their performance against tree ensembles under a random-sample-only, fixed-family protocol is not established; whether the DNF inductive bias pays off in this exact setting is open.
+- **Quasi-polynomial bound (Verbeurgt 1990).** Learns any `s`-term DNF in `n^{O(log s / ε)}` time from uniform random examples by collecting all low-width conjunctions consistent with the sample and ORing them.
+- **Harmonic Sieve (Jackson 1997).** A polynomial-time DNF learner that uses Fourier-based boosting with membership queries.
+- **Random-DNF average case (Jackson & Servedio 2005).** Polynomial-time algorithms exist for random monotone DNF with `s = O(n^{2−γ})` terms and random non-monotone DNF with `s = O(n^{3/2−γ})` terms, via Fourier/correlation arguments.
+- **Tree ensembles on Boolean tabular data (Breiman 2001; Friedman 2001).** A decision tree’s depth-`w` root-to-leaf path is exactly a width-`w` conjunction; bagging and boosting are the canonical strong practical baselines on Boolean tabular data.
+- **Differentiable DNF architectures (Payani & Fekri 2019; Mat_DNF 2023).** Encode soft DNF structure directly into the network: learnable literal memberships, soft conjunctions, and an OR layer.
 
 ## Fixed substrate / Code framework
 

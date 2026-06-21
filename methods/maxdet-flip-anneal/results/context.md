@@ -37,35 +37,27 @@ The `342` sits above the record multiplier `320` and below the Barba ceiling
 | Best reported LLM-evolution result (ThetaEvolve) | ~197 | ~0.576 |
 | Symmetric-design baseline (Jacobsthal `Q + I`) | 49 | 0.1433 |
 
-## The starting point and its wall
+## The starting point
 
 The principled place to start is the symmetric *Jacobsthal* design. For the prime `q = 29`, the
 quadratic-residue matrix `Q_{ij} = χ(i − j)` (with `χ` the Legendre symbol) is symmetric and
 satisfies `QQᵀ = qI − J`; filling its zero diagonal with `+1` gives a legal `±1` matrix
 `R = Q + I`. This realizes the "almost orthogonal" Gram structure parity permits and yields
-multiplier exactly `49` (score `0.1433`) — but it is rigid. Direct measurement shows that **not
-one of the `841` single-entry sign flips raises `|det|`**: `Q + I` is a *strict local maximum*
-under the basic flip move. Any greedy hill-climb from this seed terminates immediately at `49`.
-The symmetry that makes the design elegant has parked the search at the bottom of a basin that
-looks like a peak to a greedy eye, while the record at `320` lives elsewhere on the landscape.
-This is the wall the present method must break: to get anywhere, the search must be willing to
-accept moves that make the determinant temporarily *worse*, in order to cross the ridge out of the
-symmetric basin.
+multiplier exactly `49` (score `0.1433`). Direct measurement shows that not one of the `841`
+single-entry sign flips raises `|det|`: `Q + I` is a strict local maximum under the basic flip
+move.
 
 ## Prior art
 
-- **Hadamard's bound (1893).** `|det| ≤ n^{n/2}`, attained only at orthogonal rows; unreachable
-  and loose for `n = 29`.
+- **Hadamard's bound (1893).** `|det| ≤ n^{n/2}`, attained only at orthogonal rows.
 - **Barba (1933) / Ehlich / Wojtas residue-class bounds.** For `n ≡ 1 (mod 4)`,
-  `|det| ≤ √(2n−1)·(n−1)^{(n−1)/2} = 2^28 · 7^12 · 369.94…` at `n = 29`; met with equality only by
-  a Gram structure that does not exist here.
-- **Paley / Jacobsthal construction (1933).** The symmetric quadratic-residue design above; rigid,
+  `|det| ≤ √(2n−1)·(n−1)^{(n−1)/2} = 2^28 · 7^12 · 369.94…` at `n = 29`.
+- **Paley / Jacobsthal construction (1933).** The symmetric quadratic-residue design above;
   parameter-free, multiplier `49`.
 - **Simulated annealing (Kirkpatrick, Gelatt & Vecchi 1983).** The general tool for escaping
   local optima of a discrete objective: propose a local move, accept improving moves always and
   worsening moves with a temperature-dependent Metropolis probability, and cool the temperature
-  over time so the search wanders early and settles late. The natural engine for leaving a strict
-  local maximum.
+  over time so the search wanders early and settles late.
 - **Computer search for maximal determinants (Orrick, Solomon, Brent, et al., 2000s).** The
   records for non-Hadamard orders come from large-scale search over Gram matrices and `±1`
   configurations seeded by number-theoretic constructions; the `n = 29` record `m = 320` is

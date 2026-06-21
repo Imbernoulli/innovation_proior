@@ -12,23 +12,8 @@ $d$ defines local neighborhoods whose properties — notably **sampling density*
 vary across the cloud (perspective, radial falloff, and motion all make real scans
 denser in some regions than others).
 
-The pain point is sharper than "process a set." A network that aggregates all
-points into a single global descriptor in one shot — encode each point, then one
-symmetric pooling over the whole set — does respect permutation invariance, but it
-has no notion of *local* structure at intermediate scales: every point is encoded
-independently and then merged into one global vector, so fine-grained local
-geometric patterns are never formed and the model generalizes poorly to complex
-scenes with many parts. Convolutional networks succeed on grids precisely because
-they build a *multi-resolution hierarchy* of local receptive fields — small
-neighborhoods low in the network, progressively larger ones higher up — and that
-hierarchical abstraction of local patterns is what gives them generalizability. The
-question is how to get the same hierarchical local-feature learning for an
-*irregular, unordered, non-uniformly sampled* point set, where there is no grid to
-slide a kernel over.
-
-Whatever the solution, it has to remain robust to the density variation that real
-scans exhibit — a local pattern that is recognizable in a densely sampled region
-may be destroyed by sampling deficiency in a sparse one.
+The question is how to build a deep network that learns features on such an
+*irregular, unordered, non-uniformly sampled* point set.
 
 ## Background
 
@@ -39,25 +24,18 @@ $$f(x_1,\dots,x_n)=\gamma\Big(\underset{i}{\mathrm{MAX}}\,\{h(x_i)\}\Big),$$
 with $\gamma,h$ MLPs. This is permutation-invariant by construction and can
 approximate any continuous set function arbitrarily well given enough pooling width;
 the per-point encoding $h(x_i)$ can be read as a spatial encoding of the point. It is
-also empirically robust to point corruption. Its limitation as a *whole-cloud*
-encoder is the single global pooling: no local context.
+also empirically robust to point corruption.
 
 **Generic set networks vs. the metric.** Prior work on learning representations of
 generic sets treats each element as independent and relies on a global normalization
 plus a max/average pooling to aggregate; the result is either a single-point
-embedding or one global set feature, with no explicit modeling of point-to-point
-*relations*. For point clouds the metric distance is information that such generic
-set networks throw away — neighborhoods, local context, and sampling density are all
-defined by $d$ and are exactly what a point-cloud model should exploit.
+embedding or one global set feature.
 
 **The convolutional hierarchy.** A CNN stacks layers each of which looks at a local
 neighborhood (a kernel of fixed index-extent) and pools/strides to a coarser grid,
 so deeper layers see larger receptive fields and abstract larger-scale patterns over
 a multi-resolution hierarchy. The size of the local neighborhood is the kernel size,
-and on grids smaller kernels tend to help (VGG, Simonyan & Zisserman 2014). The
-ingredients of a CNN that do *not* transfer directly to point sets: it assumes a
-grid to define neighborhoods, a fixed-stride scan agnostic of where the data
-actually is, and a fixed uniform density (the last violated by real scans).
+and on grids smaller kernels tend to help (VGG, Simonyan & Zisserman 2014).
 
 **Choosing centroids and neighborhoods.** Two primitives are available for imposing
 structure on a metric point set. Farthest point sampling iteratively picks the point
@@ -79,19 +57,13 @@ standard scattered-data interpolation tool.
 with a shared MLP, then one global max-pool, then classify; for segmentation,
 concatenate the single global feature back onto each point. It is permutation
 invariant, a universal continuous-set-function approximator, and robust to
-corruption. Its gap: a single global pooling captures no local structure at
-intermediate scales, so it misses fine-grained patterns and generalizes poorly to
-scenes; the per-point segmentation features see only their own encoding plus one
-global vector, with no genuine local neighborhood context.
+corruption.
 
 **Generic set / Deep-Sets-style networks.** Aggregate independent per-element
-embeddings by a symmetric pooling after global normalization. Gap: they ignore the
-metric — no point-to-point relations, no local context, no notion of sampling
-density.
+embeddings by a symmetric pooling after global normalization.
 
 **Volumetric CNNs.** Impose a regular grid and run 3D convolutions, getting the
-convolutional hierarchy "for free." Gap: cubic cost on mostly-empty grids,
-quantization, and a fixed-stride scan that is agnostic to where the data actually is.
+convolutional hierarchy.
 
 ## Evaluation settings
 
@@ -113,10 +85,7 @@ set encoder (shared per-point MLP followed by a symmetric max-pool), batch
 normalization, ReLU, fully connected layers with dropout, a farthest-point-sampling
 routine, a ball / $k$-NN range query over a metric point set, a gather/group
 operation that collects neighbor points by index, and an inverse-distance
-interpolation over nearest neighbors. What does *not* yet exist is how these
-primitives should be organized into a model that learns local features and is robust
-to the density variation real scans exhibit, and — for per-point prediction — how to
-produce a label at every original point.
+interpolation over nearest neighbors.
 
 ```python
 import torch

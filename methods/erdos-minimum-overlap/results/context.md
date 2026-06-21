@@ -15,7 +15,7 @@ A construction gives an upper bound by exhibiting partitions, or by exhibiting a
 
 ## Background
 
-The first invariant is total mass. Summing \(M_k\) over all shifts counts every element of \(A\times B\) once, so \(\sum_k M_k=n^2\). Since there are fewer than \(4n\) shifts, \(\max_k M_k>n/4\). The elementary middle-block construction gives \(M(n)\le n/2\). This fixes the right scale but leaves a wide constant gap.
+The first invariant is total mass. Summing \(M_k\) over all shifts counts every element of \(A\times B\) once, so \(\sum_k M_k=n^2\). Since there are fewer than \(4n\) shifts, \(\max_k M_k>n/4\). The elementary middle-block construction gives \(M(n)\le n/2\). This fixes the scale, with the constant lying between \(1/4\) and \(1/2\).
 
 The useful asymptotic language replaces a partition by a density. On \([-1,1]\), take \(f:[-1,1]\to[0,1]\) with \(\int_{-1}^1 f=1\), put \(g=1-f\), extend both functions by zero outside \([-1,1]\), and define
 \[
@@ -39,15 +39,15 @@ so the centered variance is \(2/3-E(M)^2/2\le 2/3\). A mass-one function bounded
 \[
 \sqrt{4-\sqrt{15}}\approx0.35639395869.
 \]
-The moment approach stalls because it constrains \(M\) only through its mass and variance, and successive refinements in this vein have not pushed the lower bound past Moser's value.
+This approach constrains \(M\) through its mass and variance.
 
 ## Baselines
 
-**Erdos averaging.** The identity \(\sum_kM_k=n^2\) gives \(M(n)>n/4\), while the middle interval construction gives \(M(n)\le n/2\). The method is completely robust but blind to all geometry of the overlap profile.
+**Erdos averaging.** The identity \(\sum_kM_k=n^2\) gives \(M(n)>n/4\), while the middle interval construction gives \(M(n)\le n/2\).
 
-**Erdos-Scherk, Swierczkowski, Motzkin-Ralston-Selfridge.** These works improve the finite bookkeeping around difference multiplicities and narrow the interval for the constant. They do not provide a variational object whose every feasible point can be attacked by analytic constraints.
+**Erdos-Scherk, Swierczkowski, Motzkin-Ralston-Selfridge.** These works improve the finite bookkeeping around difference multiplicities and narrow the interval for the constant.
 
-**Moser-Murdeshwar and Moser.** The function analogue brings in mass and second-moment information. It proves that too flat an overlap profile cannot fit into the available variance budget, and Moser's refinement reaches \(\sqrt{4-\sqrt{15}}\). These bounds use only low-order integral data of \(M\).
+**Moser-Murdeshwar and Moser.** The function analogue brings in mass and second-moment information, bounding how flat an overlap profile can be within the available variance budget; Moser's refinement reaches \(\sqrt{4-\sqrt{15}}\).
 
 **Swinnerton-Dyer reduction.** The asymptotic combinatorial constant equals the continuous infimum over bounded step densities. This makes two complementary tactics legitimate: search for explicit step densities for upper bounds, and certify universal inequalities for continuous overlaps for lower bounds.
 
@@ -55,7 +55,6 @@ The moment approach stalls because it constrains \(M\) only through its mass and
 \[
 \mu\le0.3809268534330870.
 \]
-This supplies the best constructive target in this frame, but it does not by itself explain why every density must have a comparable peak.
 
 ## Evaluation settings
 

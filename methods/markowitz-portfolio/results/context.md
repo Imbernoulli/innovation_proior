@@ -6,14 +6,6 @@ is: what *rule* should the investor follow to choose the split — and can that 
 precisely enough to compute the answer for a realistic number of securities, given some beliefs
 about how the securities will perform?
 
-The rule has to clear a bar that any candidate must meet: it must be consistent with the one
-investment behavior everyone already agrees is sensible, namely diversification — spreading money
-across several securities rather than betting it all on one. A rule that, taken at face value, would
-tell a rational investor to concentrate everything in a single security cannot be the right rule,
-because that is not what sensible investors do and not what a careful investor *should* do. So the
-problem is twofold: find a decision rule under uncertainty that (a) explains and recommends
-diversification, and (b) is computable in practice for many securities.
-
 ## Background
 
 The tool on the table for valuing a security is the discounted-cash-flow idea, given its sharpest
@@ -52,28 +44,18 @@ coefficient.
 
 **Maximize expected (discounted) return.** Taking Williams' valuation as a decision rule under
 uncertainty: assign each security i its anticipated discounted return Rᵢ, and choose weights
-Xᵢ ≥ 0 with Σ Xᵢ = 1 to maximize the portfolio's expected return R = Σ Xᵢ Rᵢ. Core idea: value is
-expected discounted dividends; more value is better. The actual math: R is a weighted average of the
-Rᵢ with nonnegative weights summing to one, so it is maximized by setting Xᵢ = 1 for the security
-with the largest Rᵢ (ties broken arbitrarily). The specific gap: this rule never makes a diversified
-portfolio preferable to all undiversified ones — it always sends the investor to a single security.
-It contradicts the diversification everyone agrees on, so it fails as both a description of and a
-guide to investment behavior. It also carries no notion of risk at all.
+Xᵢ ≥ 0 with Σ Xᵢ = 1 to maximize the portfolio's expected return R = Σ Xᵢ Rᵢ. The expected return
+is a weighted average of the Rᵢ with nonnegative weights summing to one, so it is maximized by
+setting Xᵢ = 1 for the security with the largest Rᵢ (ties broken arbitrarily).
 
-**Maximize expected return, then diversify by the law of large numbers.** A patch on the first rule:
-among the securities tied for (or near) maximum expected return, spread the money, trusting that the
-law of large numbers makes the portfolio's realized yield close to its expected yield. Core idea:
-get the high mean *and* the safety of averaging. The gap: the law of large numbers requires
-near-independence, and security returns are too intercorrelated for it to apply; diversification
-cannot eliminate the variance. Moreover this rule presumes the maximum-expected-return portfolio is
-also the safest one, which the patch simply asserts rather than establishes.
+**Maximize expected return, then diversify by the law of large numbers.** Among the securities tied
+for (or near) maximum expected return, spread the money, trusting that the law of large numbers
+makes the portfolio's realized yield close to its expected yield.
 
 **Maximize expected utility E[U] over the full return distribution.** The broader rational-choice
-rule from von Neumann–Morgenstern. Core idea: pick the portfolio whose return distribution has the
-highest E[U] for the investor's utility U. The gap is operational, not conceptual: evaluating E[U]
-for a portfolio of many securities requires the full joint distribution of returns, which is far
-beyond what can be estimated and optimized with the data and computation available; it does not, by
-itself, yield a procedure an investor can run.
+rule from von Neumann–Morgenstern: pick the portfolio whose return distribution has the highest
+E[U] for the investor's utility U. Evaluating E[U] for a portfolio of many securities requires the
+full joint distribution of returns.
 
 ## Evaluation settings
 

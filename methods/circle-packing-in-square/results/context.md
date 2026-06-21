@@ -16,14 +16,11 @@ square of side `L = 2 + 2/d_n`. Maximizing `d_n = min_{i<j} ‖s_i − s_j‖` t
 `r_n`, so we may forget the circles and the walls' radius offset and just spread points. This is
 the formulation everything below works in.
 
-What makes the problem hard is the objective itself. `d_n` is a **min over all pairs** — a
-non-smooth function of the `2n` coordinates. At any configuration only a handful of pairs are at
-the minimum distance; nudging a point changes which pairs are active, and the gradient is a
-subgradient that jumps. The feasible region is a box, but the landscape inside it is riddled with
-local optima: dozens of distinct rigid arrangements that no local move can improve. A method has
-to (1) cope with the non-smoothness of a max-min objective, (2) respect the box constraint
-cheaply, and (3) escape the swarm of local optima to approach the global best. None of the
-methods on the table at the time does all three well.
+The objective `d_n` is a **min over all pairs** — a function of the `2n` coordinates that is
+piecewise smooth, with kinks wherever the pair achieving the minimum switches. At any
+configuration only a handful of pairs are at the minimum distance, and the feasible region is the
+box `[0,1]^{2n}`. The broad task is: place `n` points in the unit square so as to maximize the
+smallest pairwise distance, and report the best arrangement found together with its `d_n`.
 
 ## Background
 
@@ -36,55 +33,45 @@ obvious configuration (four corners plus centre) attains it, so `d_5 = √2/2`. 
 only sporadic cases (`n = 14, 16, 25, 36`) were proved by hand over the following decades.
 
 Two facts about the structure of optima shape intuition. First, for `n = k²` the naive
-`k × k` square-lattice arrangement is the obvious candidate — and it is in fact optimal, but only
-for small squares; it is known to be optimal for `n = 1, 4, 9, 16, 25, 36` and to *stop* being
-optimal for larger square numbers (denser non-lattice packings exist from `n = 64` upward). So
-the "obvious" answer is a trap past a certain size. Second, the best arrangements are frequently
-**almost but not exactly symmetric**: a configuration obtained by slightly *breaking* an obvious
-symmetry can beat the symmetric one. This means a method that hard-codes symmetry will miss the
-true optimum, and a method that finds a clean symmetric local optimum should be suspected of
-having stopped short.
+`k × k` square-lattice arrangement is the obvious candidate, and it is known to be optimal for
+`n = 1, 4, 9, 16, 25, 36`; for larger square numbers denser non-lattice packings exist (from
+`n = 64` upward). Second, the best arrangements are frequently **almost but not exactly
+symmetric**: a configuration obtained by slightly *breaking* an obvious symmetry can beat the
+symmetric one.
 
 Because exact proofs run out so quickly, the practical goal becomes **lower-bounding `d_n`**: find
 the best arrangement you can by computer, and report its `d_n` as a candidate (a packing that
 exists but is not proven optimal). The infinite-`n` limit is governed by the hexagonal lattice
 (packing density `π/√12 ≈ 0.9069`), which all finite square packings stay below; the densities of
-the best finite packings creep upward toward it as `n` grows. The working picture is a non-smooth
-objective, a constraint box, a multimodal landscape, exact values only for modest `n`, a
-square-lattice answer that is a trap past a certain size, and best configurations that tend to be
-slightly-broken-symmetric.
+the best finite packings creep upward toward it as `n` grows. The working picture is a piecewise
+objective, a constraint box, a multimodal landscape, exact values only for modest `n`, and best
+configurations that tend to be slightly-broken-symmetric.
 
 ## Baselines
 
 **Direct radius maximization (de Groot, Peikert, Würtz, 1990–92).** Treat the `n` centres as the
 variables and maximize the largest non-overlapping radius they admit — i.e. maximize the
 piecewise function `min` over inter-point and point-to-wall distances. They drove this with the
-simplex (Nelder–Mead polytope) algorithm and the quasi-Newton BFGS method. The trouble is exactly
-the non-smoothness: the function being maximized has kinks wherever the active minimum switches,
-and a smooth quasi-Newton method stalls in the kinks. In practice this approach **failed to find
-the optimum for `n = 14, 15, 17`** even within `n ≤ 20`. A stochastic Langevin-equation variant
-(adding noise to a gradient flow) did better than the deterministic optimizers.
+simplex (Nelder–Mead polytope) algorithm and the quasi-Newton BFGS method, and also tried a
+stochastic Langevin-equation variant that adds noise to a gradient flow.
 
-**Grid search and contact-graph enumeration.** A literal brute-force attack would discretize the
-square and test many `n`-tuples of grid points, or enumerate possible graphs of touching
-circle-circle and circle-wall contacts and solve each graph. Both versions fight the wrong
-problem. The coordinates are continuous, so a grid fine enough to certify a close packing becomes
-exponential in `2n` and still misses the small broken-symmetry offsets that often improve a
-packing. The contact graph is also unknown in advance: for larger `n` there are many nearly rigid
-graphs, loose circles, and near-ties between contacts and gaps. Enumeration spends most of its
-time on artifacts of the discretization or on impossible contact systems before it ever reaches
-the geometric optimization problem.
+**Grid search and contact-graph enumeration.** A literal brute-force attack discretizes the
+square and tests many `n`-tuples of grid points, or enumerates possible graphs of touching
+circle-circle and circle-wall contacts and solves each graph as a system of contact equations.
+The coordinates are continuous, so the grid resolution controls how finely a candidate packing
+can be located, and the contact graph (which pairs touch, which circles are loose) must be posited
+before each graph's equations are solved.
 
 **Energy minimization on the sphere (Clare–Kepert 1986; Kottwitz 1991).** A parallel community was
 spreading points on a *sphere* (closest packing of equal circles on a sphere, spherical codes).
 They did not optimize the min-distance directly. Instead they regarded the points as mutually
 repelling charges and **minimized a total potential energy** of repulsion, `Σ_{i<j} φ(d_ij)` for a
 decreasing `φ`, with a quasi-Newton method (Fletcher–Powell–Davidon) or gradient-plus-Newton.
-This trades the kinky max-min function for a smooth surrogate that is everywhere differentiable.
-Having converged to an approximate configuration, they would **identify which pairs are at minimum
-distance**, write the contact conditions as a system of equations, and solve it by Newton–Raphson
-to sharpen the result. The energy they minimize is a fixed surrogate: its minimizer balances all
-the pairwise distances, not the single smallest one, so it is not by itself the max-min objective.
+This replaces the kinky max-min function with a smooth surrogate that is everywhere
+differentiable. Having converged to an approximate configuration, they would **identify which
+pairs are at minimum distance**, write the contact conditions as a system of equations, and solve
+it by Newton–Raphson to sharpen the result. The minimizer of `Σ φ(d_ij)` balances all the
+pairwise distances together.
 
 **Billiard / molecular-dynamics simulation (Graham–Lubachevsky 1995–96; Lubachevsky–Stillinger
 1990).** A physically-motivated alternative. Put `n` point particles in the box with random
@@ -95,9 +82,8 @@ increasingly hemmed in, and the system approaches a **jammed** state where the c
 grow no further. The jammed radius is a candidate `r_n`. The simulation is event-driven (compute
 the next collision time analytically for the growing disks, jump to it) rather than time-stepped,
 so it is fast — over a million collisions per CPU-hour on early-1990s hardware. "Rattlers" are
-loose particles that never jam (they rattle in a cage of jammed neighbours). The method is
-principled physics, but it is stochastic: different initial velocities jam at different radii, so
-it too needs many restarts and has no notion of *the* optimum.
+loose particles that never jam (they rattle in a cage of jammed neighbours). Different initial
+positions and velocities jam at different radii, so the method is run from many random starts.
 
 ## Evaluation settings
 

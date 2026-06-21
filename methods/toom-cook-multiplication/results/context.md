@@ -10,13 +10,9 @@ sharing one product across the two cross terms, needs only three half-size multi
 giving `Θ(n^{log₂ 3}) ≈ Θ(n^{1.585})` — already below the `n²` that was long believed to be a
 floor.
 
-The precise question is whether `1.585` is anything special. The half-split saved one of four
-sub-products (`4 → 3`); the exponent it produced is exactly `log₂(number of sub-products)`. If
-cutting into two parts turns four sub-products into three, a larger split raises the same
-question in sharper form: can the `k²` sub-products of the direct convolution be replaced by a
-much smaller set of sub-products, with the remaining bookkeeping cheap enough not to dominate?
-A solution would have to be uniform, exact for every input, and still expressible with ordinary
-positional input and output rather than by changing the representation problem.
+The question is whether splitting operands into more than two parts, combined with appropriate
+algebraic recombination, can reduce the asymptotic exponent further, and if so, how to carry it
+out with ordinary positional integer arithmetic.
 
 ## Background
 
@@ -37,16 +33,13 @@ the middle, `x = x₁Bᵐ + x₀`, `y = y₁Bᵐ + y₀` with `m = n/2`. Then
 ```
 x·y = x₁y₁·B²ᵐ + (x₁y₀ + x₀y₁)·Bᵐ + x₀y₀ .
 ```
-The naive reading needs four half-size products, giving `T(n) = 4T(n/2) + O(n) = Θ(n²)` —
-divide-and-conquer alone buys nothing, because `log₂ 4 = 2`. The saving is that the middle
-coefficient needs only the *sum* `x₁y₀ + x₀y₁`, and that sum is recovered from one extra
-product of the half-sums minus the two corner products already in hand:
+The naive reading needs four half-size products, giving `T(n) = 4T(n/2) + O(n) = Θ(n²)`.
+The saving is that the middle coefficient needs only the *sum* `x₁y₀ + x₀y₁`, and that sum is
+recovered from one extra product of the half-sums minus the two corner products already in hand:
 ```
 x₁y₀ + x₀y₁ = (x₁+x₀)(y₁+y₀) − x₁y₁ − x₀y₀ .
 ```
-Three half-size products, `T(n) = 3T(n/2) + O(n) = Θ(n^{log₂ 3})`. The gap this leaves open is
-exactly the research question above: it is the `k = 2` case of a pattern, with no account of
-what `k > 2` does, and `n^{1.585}` is still far from linear.
+Three half-size products, `T(n) = 3T(n/2) + O(n) = Θ(n^{log₂ 3})`.
 
 **Limbs and the digit convolution.** Cutting `x` into limbs writes `x = Σ_{i} x_i (Bᵐ)^i`;
 multiplying two such expansions produces, at each output place, the sum `Σ_{i+j=ℓ} x_i y_j` of
@@ -73,9 +66,8 @@ expensive, so it does not lower `M(n)` for positional input/output.
 
 **Schoolbook long multiplication.** Core idea: form every digit-by-digit product `xᵢyⱼ` and
 accumulate at place `i+j`. Cost `Θ(n²)` single-digit products and additions. Exact and simple.
-Gap: every digit-pair is multiplied separately; no work is shared, so it is quadratic with no
-structure exploited. In the polynomial view it is the full convolution of the two limb
-polynomials — `k²` coefficient products for a `k`-limb split.
+In the polynomial view it is the full convolution of the two limb polynomials — `k²` coefficient
+products for a `k`-limb split.
 
 **Half-split with three products (Karatsuba–Ofman 1962).** Core idea: two-limb polynomial
 split, compute the three coefficients with three sub-products by sharing one product across the
@@ -84,19 +76,13 @@ two cross terms. Algorithm:
 z₂ = x₁y₁,  z₀ = x₀y₀,  z₁ = (x₁+x₀)(y₁+y₀) − z₂ − z₀,
 x·y = z₂B²ᵐ + z₁Bᵐ + z₀ .
 ```
-Cost `T(n) = 3T(n/2) + O(n) = Θ(n^{log₂ 3}) ≈ n^{1.585}`. Gap: it is a single fixed split
-factor `k = 2` that saves exactly one of four products; it neither explains why `log₂ 3` arises
-(it is `log_k` of the sub-product count) nor offers a knob to push the exponent lower. Why the
-specific three products `{x₁y₁, (x₁+x₀)(y₁+y₀), x₀y₀}` suffice, and whether a comparable saving
-exists for a finer split, is left unexamined.
+Cost `T(n) = 3T(n/2) + O(n) = Θ(n^{log₂ 3}) ≈ n^{1.585}`.
 
 **Naive `k`-part split (the `k²` convolution).** Core idea: cut each operand into `k` limbs,
 form the limb polynomials `p, q` of degree `k−1`, and compute the `2k−1` coefficients of
 `p·q` directly by convolution. Algorithm: `c_ℓ = Σ_{i+j=ℓ} x_i y_j`, then evaluate at `Bᵐ`.
 Cost: `k²` sub-products of size `n/k`, so `T(n) = k²·T(n/k) + O(n) = Θ(n²)` for every fixed
-`k` (since `log_k k² = 2`). Gap: this is the decisive baseline — more parts, by themselves,
-buy nothing; the convolution still does `k²` multiplications. Any improvement must cut the
-*number* of sub-products below `k²`, the way the half-split cut `4` to `3`.
+`k` (since `log_k k² = 2`).
 
 ## Evaluation settings
 

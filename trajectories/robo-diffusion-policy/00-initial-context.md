@@ -11,27 +11,21 @@ checkpoint names — is frozen.
 ## Prior art / Background / Baselines
 
 - **Behavior cloning by L2 regression.** Fits `f(s) -> a` by minimizing `E||a - f(s)||^2`, which converges
-  to the conditional mean `E[a|s]` — a unimodal Gaussian head. On a `medium` D4RL buffer where several action
-  clusters are valid for the same state, the mean of two modes is an action no one took. Gap: unimodal
-  regressors invent invalid in-between actions at branchy states.
+  to the conditional mean `E[a|s]` — a unimodal Gaussian head.
 - **Conservative offline value learning (CQL).** Bootstraps a value function while penalizing Q-values of
   out-of-distribution actions, pushing them below in-support values so the policy cannot exploit phantom
-  optima. The penalty is a coarse, dataset-wide pressure and the extracted policy remains a Gaussian. Gap:
-  conservative value, weak actor.
+  optima. The penalty is a coarse, dataset-wide pressure and the extracted policy remains a Gaussian.
 - **Advantage-weighted regression (AWR / AWAC).** Extracts a policy by
   `E[exp(beta * A(s,a)) log pi(a|s)]`, a maximum-likelihood fit to the KL-constrained reward-maximizing
-  distribution `pi ∝ mu * exp(beta * A)`. This stays near data by construction, but the policy class is again
-  a unimodal Gaussian fit to what is generally a multimodal reweighted target. Gap: the extraction step loses
-  expressivity.
+  distribution `pi ∝ mu * exp(beta * A)`. This stays near data by construction, with a unimodal Gaussian
+  fit to the reweighted target.
 - **In-sample value learning (IQL).** Avoids writing `max_{a'} Q(s',a')` by estimating the value of the best
   in-support action through expectile regression of `Q` over dataset actions on a separate value net `V`, then
-  SARSA-backing `Q` against `V(s')`. The value side is stable and in-sample; how to extract an expressive
-  policy from that critic is not settled. Gap: stable critic, unresolved expressive actor.
+  SARSA-backing `Q` against `V(s')`. The value side is stable and in-sample.
 - **Score-based generative modeling / DDPM.** Models a distribution by learning the gradient field of its
   log-density through a denoising regression objective, then samples via a stochastic reverse chain from
   Gaussian noise. This gives an expressive, multimodal conditional density `p(a|s)` trained by plain MSE with
-  no intractable normalizer, but it is not wired into an off-the-shelf offline RL actor-critic. Gap:
-  generative power exists; its role inside an offline RL algorithm is unsettled.
+  no intractable normalizer.
 
 ## Fixed substrate / Code framework
 

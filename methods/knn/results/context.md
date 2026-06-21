@@ -7,17 +7,11 @@ distance or kernel between two rows is undefined the moment one coordinate is ab
 before any modelling can happen the table must be turned into a finite-valued table of the
 same shape, with no `NaN`.
 
-The precise goal is a *completion procedure* with three properties. (1) It must be
-**learnable from the observed entries alone** — there is no oracle for the missing values,
-and it may not look at the prediction target while fitting. (2) It must be **applicable out
-of sample**: a new row at test time, itself possibly carrying holes, must be completed by the
-*same* frozen rule, or it is not a well-defined predictor. (3) It must **exploit the
-dependence between features**. This last point is where the pressure sits. The cheapest
-completions write one number per feature into every hole in that feature, ignoring the rest
-of the row entirely. But the observed part of a row can carry information about its missing
-part whenever features are correlated. A completion that throws that structure away leaves
-accuracy on the table. The problem is to write into each hole a value that can use the
-observed covariates of that row, not just the identity of the column containing the hole.
+The goal is a *completion procedure* that (1) learns from the observed entries alone — there
+is no oracle for the missing values, and it may not look at the prediction target while
+fitting — and (2) is applicable out of sample: a new row at test time, itself possibly
+carrying holes, must be completed by the *same* frozen rule. How should missing entries be
+filled so that the same learned rule applies both on the training table and on new rows?
 
 ## Background
 
@@ -71,34 +65,17 @@ for *inference*; under a *predictive* objective, where the downstream model is r
 completed table, the relevant question is instead whether the filled values are accurate and
 consistent between train and test.
 
-**The cost of refusing to fill.** With `d` columns each independently missing at rate `p`
-under MCAR, the probability a given row is completely observed is `(1 − p)^d`. At `p = 0.2`
-this is about `0.17` for `d = 8`, `0.055` for `d = 13`, and `0.0012` for `d = 30`:
-restricting to complete rows can discard almost the entire table as the width grows, and a
-test row with a hole still cannot be scored. These facts define the pressure a completion
-procedure faces.
-
 ## Baselines
 
 Useful baselines:
 
 **Zero-fill.** Write `0` into every hole. Core idea: the cheapest possible placeholder.
-**Limitation:** `0` is an arbitrary point in the data range with no relation to the column or
-the row; it injects a spurious value that distorts both the column statistics and any
-distance computed afterward. Universally treated as the floor that anything should beat.
 
 **Mean imputation.** Replace each hole with a single constant for its feature (or, in the
 gene-expression orientation, the row average for that gene). Core idea: the least-squares
 constant predictor of a feature is its observed mean, so among no-covariate guesses the mean
 is optimal, and it is the unique constant that leaves the feature mean unchanged. Cheap,
-deterministic, trivially frozen and replayed on test rows. **Limitation:** it uses *nothing*
-about the row the hole sits in. Two rows that look completely different on their observed
-coordinates receive the *same* fill at a shared missing coordinate, because the fill depends
-only on the feature. When features are correlated — so that the observed part of a row
-genuinely predicts its missing part — the constant fill discards that signal entirely. It also
-deflates the feature variance (by the fraction of entries filled) and attenuates inter-feature
-correlations toward zero, since every filled point sits flat at the feature mean regardless of
-the other features.
+deterministic, trivially frozen and replayed on test rows.
 
 **Global low-rank (eigen-vector) completion.** Learn a small set of `J` basis vectors from
 the fully observed rows (a truncated SVD of the complete subtable), then for an incomplete row
@@ -106,21 +83,14 @@ regress its observed coordinates on those bases and read off the bases' values a
 coordinates; an all-data variant iterates this as an EM fit of a rank-`J` approximation that
 ignores the missing entries in its Frobenius objective. Core idea: the table is approximately
 low-rank, so a few global directions explain most of every row, and a hole can be recovered by
-projecting onto them. **Limitation:** the basis is fit to the *bulk* of the data, so it
-borrows strength globally and represents typical rows well but can badly misfit an *unusual*
-row whose structure is not captured by the leading directions; it must also choose the rank
-`J`, and a poorly chosen `J` either underfits (too few directions) or overfits the observed
-coordinates.
+projecting onto them.
 
 **Iterative regression / EM completion (chained equations).** For each feature with holes,
 regress that feature on all the others over the rows where it is observed, predict the holes,
 and iterate — initializing the holes with the column means and refining as the imputations
 improve (an EM fit of a joint Gaussian, with the imputations as a by-product; generalizable
 to non-linear per-feature regressors). Core idea: model each feature as a function of the
-rest and cycle until the completed table is self-consistent. **Limitation:** it fits a
-predictive model per incomplete feature, assumes a functional form for each, and the EM
-iterations are slow to converge; deterministic fitted values still place every imputed point
-on a regression surface, understating residual scatter.
+rest and cycle until the completed table is self-consistent.
 
 ## Evaluation settings
 

@@ -6,15 +6,15 @@ How fast can 8×H100 GPUs train a GPT-2-scale language model from scratch to a f
 
 The starting recipe is the standard small-GPT pipeline inherited from NanoGPT and llm.c.
 
-- **llm.c / NanoGPT trainer.** A 124M-parameter GPT-2 small with 12 transformer blocks, width 768, 12 heads, learned absolute positional embeddings, LayerNorm, GELU MLPs of width 4×, tied input/output embeddings, trained with AdamW under a cosine learning-rate schedule. Gap: on 8×H100 it reaches the 3.28 FineWeb val-loss bar in roughly 45 minutes.
+- **llm.c / NanoGPT trainer.** A 124M-parameter GPT-2 small with 12 transformer blocks, width 768, 12 heads, learned absolute positional embeddings, LayerNorm, GELU MLPs of width 4×, tied input/output embeddings, trained with AdamW under a cosine learning-rate schedule. On 8×H100 it reaches the 3.28 FineWeb val-loss bar in roughly 45 minutes.
 
-- **AdamW optimizer.** It maintains per-coordinate first- and second-moment estimates and rescales each scalar parameter by its own running gradient statistics, with weight decay decoupled from the adaptive step. Gap: it stores two full moment buffers per parameter and treats every scalar update independently.
+- **AdamW optimizer.** It maintains per-coordinate first- and second-moment estimates and rescales each scalar parameter by its own running gradient statistics, with weight decay decoupled from the adaptive step.
 
-- **Original positional / normalization / nonlinearity choices.** Learned absolute position embeddings are added once at the input, LayerNorm uses learned gain and bias, and the MLP uses GELU. Gap: these are the original GPT-2 choices and have not been re-evaluated for wallclock-to-loss on this benchmark.
+- **Original positional / normalization / nonlinearity choices.** Learned absolute position embeddings are added once at the input, LayerNorm uses learned gain and bias, and the MLP uses GELU.
 
-- **Dense causal attention over the full sequence.** Every query attends to every earlier key, giving an O(T²) cost in sequence length for compute and memory. Gap: the per-step cost grows quadratically with context length, so long contexts quickly dominate training time.
+- **Dense causal attention over the full sequence.** Every query attends to every earlier key, giving an O(T²) cost in sequence length for compute and memory.
 
-- **fp32/tf32 logits and tied embeddings.** The language-model head reuses the input embedding matrix and is computed in high precision. Gap: the head matmul is one of the largest in the model and runs in high precision, and the classifier shares weights with the input lookup table.
+- **fp32/tf32 logits and tied embeddings.** The language-model head reuses the input embedding matrix and is computed in high precision.
 
 ## Fixed substrate / Code framework
 

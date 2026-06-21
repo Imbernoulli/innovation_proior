@@ -40,8 +40,7 @@ values.
 The clipping range can be placed in different ways. Asymmetric ranges use the data
 minimum and maximum, which can be a good fit for skewed quantities such as
 post-ReLU activations. Symmetric ranges center the grid around zero and simplify the
-integer arithmetic because the zero-point vanishes, but they may spend levels on
-both signs even when a tensor is one-sided. Signed integer formats also have one
+integer arithmetic because the zero-point vanishes. Signed integer formats also have one
 extra negative code. A common restricted-range convention keeps the full
 container range available for clamping while choosing the scale so that the
 effective grid avoids that most-negative endpoint; the decoded levels then remain
@@ -51,8 +50,7 @@ product.
 Granularity is another independent choice. One set of quantization parameters can
 serve a whole tensor, or the tensor can be split so smaller regions get their own
 parameters. Finer granularity spends more metadata, because more scales or offsets
-must be stored, but it can prevent a small part of a tensor with a large range from
-dictating the resolution everywhere else.
+must be stored, but it can adapt to local magnitude variation across a tensor.
 
 Weights and activations differ sharply. Weights are fixed after training, so their
 ranges are available directly from the tensors. Activations depend on input data, so
@@ -60,45 +58,27 @@ activation quantization usually needs calibration batches or runtime statistics.
 weight-only compression rule can choose whether to ignore calibration entirely or use
 it only to estimate which weight errors are most damaging to layer outputs.
 
-A known diagnostic failure for simple post-training quantization is range imbalance.
-Large, over-parameterized networks may tolerate a crude conversion, but smaller or
-efficiency-tuned models can degrade sharply. Two causes are especially important:
-output channels in the same layer can have weight ranges differing by more than
-100x, and individual outlier weights can stretch a shared range so most other
-weights get a coarse representation. Any low-overhead method has to confront those
-range effects without turning the conversion into another training run.
-
 ## Baselines
 
 **Floating-point deployment.** Keep every trained weight in fp16 or fp32 and run the
 ordinary linear layers. This preserves the trained model exactly up to normal
-inference precision, but it leaves the memory footprint and bandwidth cost
-unchanged.
+inference precision.
 
 **Per-tensor affine post-training quantization.** Pick one affine grid for an entire
 weight tensor from its global min/max range, map every weight to an integer code on
-that grid, and dequantize with the same shared parameters. It is simple and cheap,
-but a single wide range can waste nearly all resolution on channels whose weights
-occupy a much smaller interval. Outliers have the same effect: they enlarge the
-range while most weights are forced onto fewer useful levels.
+that grid, and dequantize with the same shared parameters.
 
 **Non-uniform or codebook compression.** Cluster weights, use logarithmic/power-of-two
 levels, or otherwise place representable values unevenly. These schemes can match a
-weight distribution more closely at a fixed bit budget, but the decoded value is no
-longer just a shared multiply and offset. That makes fast dense matmul kernels and
-portable deployment harder.
+weight distribution more closely at a fixed bit budget.
 
 **Binary, ternary, and shift-style networks.** Restrict weights to one bit, three
 levels, or powers of two so multiplications become signs, masks, or shifts. These
-formats can be efficient in specialized kernels, but they are a much stronger
-constraint on the trained model and usually require training or fine-tuning around
-the constraint.
+formats can be efficient in specialized kernels.
 
 **Quantization-aware training or post-quantization fine-tuning.** Insert simulated
 quantization into training, or run additional optimization after converting the
-weights, so the floating-point parameters adapt to the discrete grid. This can
-recover accuracy, especially at low precision, but it violates the zero-retraining
-constraint and can be too expensive for very large models.
+weights, so the floating-point parameters adapt to the discrete grid.
 
 ## Evaluation settings
 

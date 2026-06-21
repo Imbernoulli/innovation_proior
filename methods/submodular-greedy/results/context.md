@@ -12,13 +12,12 @@ NP-hard already for maximum coverage, so we cannot hope to compute the best S
 exactly in polynomial time. The question is whether some efficient, simple
 procedure can come with a *worst-case multiplicative guarantee*: a constant alpha
 such that the value of the subset it returns is always at least alpha * f(OPT),
-no matter the instance. A guarantee of that form is what separates a principled
-algorithm from a heuristic that merely "tends to work."
+no matter the instance.
 
-The class of f we care about is the one where this is possible: f non-negative,
+The class of f we care about is the one where this is tractable: f non-negative,
 monotone (adding elements never decreases value), and submodular (it exhibits
 diminishing returns). Those three properties are exactly the structure that many
-real selection objectives share, and they are what a guarantee can be built on.
+real selection objectives share.
 
 ## Background
 
@@ -45,17 +44,11 @@ S_j to cover the most of U -- is the prototypical instance, and many other
 objectives (entropy of selected variables, weighted coverage, facility location)
 are also monotone submodular.
 
-The diagnostic fact that makes the problem both hard and approachable: greedy
-constructions on combinatorial objectives usually have no guarantee at all (one
-can build instances where greedily growing a set ends arbitrarily far from the
-optimum). But for the *set cover* problem -- the cost-minimization cousin, "pick
-the cheapest collection of sets whose union is all of U" -- the greedy algorithm
-that repeatedly takes the set covering the most uncovered elements is known to be
-an H_n ~ ln n approximation. That positive result sits on top of exactly the
-coverage structure above, and it raises the obvious question: is the logarithmic
-charging argument a special accident of coverage, or a symptom of diminishing
-returns that should transfer to the value-maximization,
-cardinality-constrained version?
+For the *set cover* problem -- the cost-minimization cousin, "pick the cheapest
+collection of sets whose union is all of U" -- the greedy algorithm that repeatedly
+takes the set covering the most uncovered elements is known to be an H_n ~ ln n
+approximation. That analysis is a charging argument over how fast the uncovered
+remainder shrinks, and it rests on exactly the coverage structure above.
 
 ## Baselines
 
@@ -63,33 +56,23 @@ cardinality-constrained version?
 (cover all of U at minimum cost), repeatedly pick the set with the best
 cost-per-newly-covered-element. This yields an H_n approximation for unit costs
 and a logarithmic guarantee in general. Its analysis is a charging argument over
-how fast the uncovered remainder shrinks. The gap it leaves: it solves the
-*covering* (feasibility-to-completion, minimize cost) problem, not the *budgeted*
-problem where we are handed a hard size limit k and must maximize value -- and its
-guarantee is logarithmic, not a constant fraction.
+how fast the uncovered remainder shrinks.
 
 **Exact / exhaustive selection.** Enumerate all subsets of size k and take the
 best. This is the only method that is *guaranteed optimal*, but there are C(m,k)
-of them; it is exponential and useless beyond toy sizes. It anchors what "OPT"
-means in the analysis but is not a usable algorithm.
+of them; it is exponential and usable only for toy sizes. It anchors what "OPT"
+means in the analysis.
 
 **Ad hoc local search and random/restart heuristics.** Randomly sampling size-k
 subsets, taking a few restarts, or swapping until no obvious improvement appears
-will return *a* set, sometimes a good one, but the guarantee depends on a
-specified exchange rule and proof. Without that analysis, extra compute only
-changes the search budget; it does not by itself produce a worst-case
-multiplicative ratio. They are the foil -- output without a guarantee -- against
-which a principled method must be measured.
+will return *a* set, sometimes a good one, but without a worst-case multiplicative
+ratio analysis.
 
 **The matroid-constraint viewpoint.** A cardinality constraint |S| <= k is the
 simplest *independence system*: the uniform matroid of rank k. Posing the problem
 over a general matroid (partition constraints, spanning-set constraints) is the
 natural generalization, and greedy on a matroid is a classical theme
-(matroid greedy is exact for *linear* objectives). For submodular objectives, the
-linear-exchange proof no longer applies directly: an element that looks best now
-can block future feasible exchanges whose value is not additive. The cardinality
-case sits at the simple end of this spectrum, and how its rank-k uniform structure
-bears on the analysis is left open.
+(matroid greedy is exact for *linear* objectives).
 
 ## Evaluation settings
 

@@ -4,13 +4,11 @@
 
 Computer vision has a single workhorse backbone — the convolutional network — that is trained once on classification and then reused, almost unchanged, as the feature extractor for object detection, instance segmentation, and semantic segmentation. The question is whether a Transformer can play that same role: a *general-purpose* visual backbone that serves every recognition task, the way the Transformer already dominates natural language processing.
 
-Two properties of images make a direct port of a language Transformer hard.
+Two properties of images complicate a direct port of a language Transformer.
 
-First, **scale**. In language, the token (a word/subword) is the atomic unit and is essentially of one scale. In images, the objects of interest span enormous scale ranges — a distant pedestrian and a foreground bus live in the same frame — and the standard remedy in detection and segmentation is a *feature pyramid*: feature maps at several resolutions (typically strides 4, 8, 16, 32 relative to the input). A backbone that emits only a single-resolution feature map cannot feed the pyramid-based heads (FPN, U-Net, the FPN inside Mask R-CNN) that the field relies on.
+First, **scale**. In language, the token (a word/subword) is the atomic unit and is essentially of one scale. In images, the objects of interest span enormous scale ranges — a distant pedestrian and a foreground bus live in the same frame — and the standard remedy in detection and segmentation is a *feature pyramid*: feature maps at several resolutions (typically strides 4, 8, 16, 32 relative to the input). Dense-prediction heads (FPN, U-Net, the FPN inside Mask R-CNN) consume this pyramid.
 
-Second, **resolution and cost**. Self-attention compares every token with every other token, so its cost grows quadratically in the number of tokens. A dense-prediction image tokenized at a fine stride has thousands of tokens; at detection/segmentation resolutions the token count is far larger still. Quadratic attention is then intractable.
-
-A satisfactory answer must therefore (a) produce a *hierarchical, multi-scale* feature map at the same strides a convnet produces, so it drops into existing dense-prediction heads without modification; (b) have computational complexity that is *linear*, not quadratic, in the number of pixels; and (c) keep enough modeling power to match or beat strong convolutional backbones across all three tasks.
+Second, **resolution and cost**. Self-attention compares every token with every other token, so its cost grows quadratically in the number of tokens. A dense-prediction image tokenized at a fine stride has thousands of tokens; at detection/segmentation resolutions the token count is far larger still.
 
 ## Background
 
@@ -18,29 +16,29 @@ A satisfactory answer must therefore (a) produce a *hierarchical, multi-scale* f
 
 **The Transformer.** In NLP the dominant architecture (Vaswani et al., 2017) is built from scaled dot-product attention, `Attention(Q,K,V) = softmax(QKᵀ/√d) V`, run in parallel heads, wrapped in residual connections and layer normalization, with a two-layer position-wise MLP (GELU activation, ~4× hidden expansion) as the feed-forward sublayer. Attention models long-range dependencies directly, but it is global — every token attends to every other — so for n tokens it costs Θ(n²) in both the score matrix and the value aggregation.
 
-**Vision Transformer (Dosovitskiy et al., 2020).** The first convincing demonstration that a near-pure Transformer can do image classification. It cuts the image into non-overlapping 16×16 patches, linearly embeds each patch into a token, prepends a learnable class token, adds a learned absolute position embedding, and runs a standard Transformer encoder with *global* self-attention. It reaches an excellent speed/accuracy trade-off on classification — but only when pre-trained on a very large dataset (JFT-300M); on ImageNet-1K alone it underperforms convnets. Structurally it has two limitations that matter here: it emits a *single* low-resolution feature map (stride 16 throughout — no pyramid), and its global attention is *quadratic* in image size, so it cannot scale to the token counts of dense prediction.
+**Vision Transformer (Dosovitskiy et al., 2020).** The first convincing demonstration that a near-pure Transformer can do image classification. It cuts the image into non-overlapping 16×16 patches, linearly embeds each patch into a token, prepends a learnable class token, adds a learned absolute position embedding, and runs a standard Transformer encoder with *global* self-attention. It reaches an excellent speed/accuracy trade-off on classification when pre-trained on a very large dataset (JFT-300M); on ImageNet-1K alone it underperforms convnets. It emits a single feature map at stride 16 throughout, and uses global attention that is quadratic in image size.
 
-**Training Transformers on moderate data (Touvron et al., 2020).** A data-efficient recipe shows the same Transformer can be trained on ImageNet-1K with heavy augmentation and regularization (AdamW; RandAugment; Mixup; CutMix; random erasing; stochastic depth / drop-path), plus distillation. This removes the JFT-300M requirement but leaves the single-scale, quadratic structure untouched.
+**Training Transformers on moderate data (Touvron et al., 2020).** A data-efficient recipe shows the same Transformer can be trained on ImageNet-1K with heavy augmentation and regularization (AdamW; RandAugment; Mixup; CutMix; random erasing; stochastic depth / drop-path), plus distillation.
 
-**Self-attention as a local operator.** A line of work replaces spatial convolutions in a ResNet with self-attention computed in a local window *around each pixel* — a sliding window (Ramachandran et al., 2019; Hu et al., 2019; Zhao et al., 2020). This makes attention local and, in principle, cheaper, and it reaches slightly better accuracy/FLOPs than the convolutional counterpart. The reported pain point is *real* latency: because each query pixel sits at the center of its own window, different queries have *different* key sets, which defeats batched matrix multiplication and produces poor memory-access patterns on general hardware — so wall-clock time is far worse than the FLOP count suggests. This is the diagnostic finding that distinguishes "local attention is a good idea" from "*sliding-window* local attention is hardware-friendly."
+**Self-attention as a local operator.** A line of work replaces spatial convolutions in a ResNet with self-attention computed in a local window *around each pixel* — a sliding window (Ramachandran et al., 2019; Hu et al., 2019; Zhao et al., 2020). This makes attention local and cheaper, and it reaches slightly better accuracy/FLOPs than the convolutional counterpart.
 
 **Relative position encoding.** Rather than (or in addition to) an absolute position embedding, several works (Shaw et al., 2018; Raffel et al., 2019; Hu et al., 2018; Hu et al., 2019) add a learned bias to the attention logits that depends only on the *relative* offset between the query and key positions. This injects a translation-equivariant geometric prior, which matches the statistics of images better than absolute coordinates.
 
-**Efficient attention.** A separate strand attacks the quadratic cost by approximating the softmax kernel to obtain linear-time attention (e.g., Performer, Choromanski et al., 2020). It reduces cost but pays in accuracy, and it does not by itself produce a feature pyramid.
+**Efficient attention.** A separate strand attacks the quadratic cost by approximating the softmax kernel to obtain linear-time attention (e.g., Performer, Choromanski et al., 2020).
 
-A concurrent observation: a multi-resolution Transformer pyramid can be built by progressively reducing spatial resolution (Wang et al., 2021), but if the attention within each stage remains global-like, the cost stays quadratic in image size even though the pyramid is present.
+A concurrent observation: a multi-resolution Transformer pyramid can be built by progressively reducing spatial resolution (Wang et al., 2021).
 
 ## Baselines
 
-**Vision Transformer (ViT).** Patchify (16×16) → linear embed → +class token → +absolute position embedding → L identical Transformer encoder blocks with global MSA → classify from the class token. Block: `x ← x + MSA(LN(x)); x ← x + MLP(LN(x))`, pre-norm, GELU MLP at 4× width, head dimension 64, scaling `1/√d`. *Gap:* one feature scale (stride 16) so it cannot feed pyramid heads; global attention is Θ((hw)²) so it is intractable at dense-prediction resolutions; data-hungry without huge pre-training.
+**Vision Transformer (ViT).** Patchify (16×16) → linear embed → +class token → +absolute position embedding → L identical Transformer encoder blocks with global MSA → classify from the class token. Block: `x ← x + MSA(LN(x)); x ← x + MLP(LN(x))`, pre-norm, GELU MLP at 4× width, head dimension 64, scaling `1/√d`. Emits a single feature map at stride 16; global attention cost is Θ((hw)²).
 
-**DeiT.** Same architecture as ViT, trained on ImageNet-1K with strong augmentation/regularization and distillation. *Gap:* fixes the data requirement, not the structure — still single-scale and quadratic; cannot be dropped into detection frameworks without bolt-on deconvolution to fabricate multiple scales.
+**DeiT.** Same architecture as ViT, trained on ImageNet-1K with strong augmentation/regularization and distillation. Retains the same single-scale, quadratic structure.
 
-**ResNet / ResNeXt.** The standard convolutional backbones: a stem to stride 4 then four residual stages at strides 4/8/16/32, channels doubling per stage; ResNeXt adds grouped convolutions. They naturally produce the pyramid and have linear cost in pixels, so they slot directly into FPN/Mask-R-CNN/UperNet. *Gap:* convolution's receptive field grows only slowly with depth and its weights are content-independent; it lacks the data-dependent long-range interaction that attention provides.
+**ResNet / ResNeXt.** The standard convolutional backbones: a stem to stride 4 then four residual stages at strides 4/8/16/32, channels doubling per stage; ResNeXt adds grouped convolutions. They naturally produce the pyramid and have linear cost in pixels, so they slot directly into FPN/Mask-R-CNN/UperNet.
 
-**Sliding-window self-attention backbones.** Replace ResNet's spatial convolutions with per-pixel local self-attention. *Gap:* good FLOPs/accuracy but poor real latency because the per-query key set varies, blocking efficient batched computation on general hardware.
+**Sliding-window self-attention backbones.** Replace ResNet's spatial convolutions with per-pixel local self-attention, reaching competitive FLOPs/accuracy relative to the convolutional counterpart.
 
-**Linear/efficient attention (Performer).** Kernel-approximated softmax for linear-time global attention. *Gap:* approximation costs accuracy, and it offers no hierarchy on its own.
+**Linear/efficient attention (Performer).** Kernel-approximated softmax for linear-time global attention.
 
 ## Evaluation settings
 

@@ -12,17 +12,12 @@ that must not waste its first hundred actions flailing.
 
 The optimal way to balance that trade-off is known in principle. A policy that conditions its action
 not only on the current state but on its own *uncertainty about which environment it is in* will
-explore exactly as much as pays off within the time it has left, and no more. The trouble is that
-computing such a policy requires (a) knowing how to parameterise the unknown reward and transition
-functions, (b) maintaining a posterior belief over them as data arrives, and (c) planning in the
-space of beliefs — and each of these is intractable for anything beyond toy problems.
+explore exactly as much as pays off within the time it has left, and no more. Computing such a policy
+requires knowing how to parameterise the unknown reward and transition functions, maintaining a
+posterior belief over them as data arrives, and planning in the space of beliefs.
 
 So the precise problem is: given a distribution over related tasks to train on, produce an agent that,
-at test time on a *held-out* task, adapts within a handful of interactions and maximises online return
-— approaching the behaviour of an agent that reasons optimally about its own task uncertainty — while
-staying as tractable as cheap heuristics, requiring no privileged task labels, and scaling to deep
-networks and continuous control. Each existing approach below gets part of the way; none delivers
-uncertainty-aware online adaptation at scale.
+at test time on a *held-out* task, adapts within a handful of interactions and maximises online return.
 
 ## Background
 
@@ -56,10 +51,6 @@ BAMDP is a special case of a belief MDP / partially observable MDP, with the cru
 property that the hidden quantity — the task's `(R, T)` — is **constant** over the task rather than
 changing each step.
 
-Three things make the BAMDP intractable in practice: we do not know the parameterisation of the true
-`R, T`; computing the posterior `p(R, T | tau_{:t})` is itself usually intractable; and even given the
-posterior, planning in belief space is intractable for all but the smallest tabular tasks.
-
 A separate line of work supplies a tool for cheap approximate posterior inference. In **amortised
 variational inference** (Kingma & Welling 2014), an intractable posterior `p(z|x)` is replaced by a
 learned recognition network `q_phi(z|x)` trained jointly with a generative decoder `p_theta(x|z)` by
@@ -88,20 +79,12 @@ These are the prior methods a new meta-RL agent would be measured against and wo
 **Posterior sampling / Thompson sampling for RL** (Thompson 1933; Strens 2000; Osband et al. 2013).
 Maintain a posterior over MDPs; periodically (e.g. at the start of each episode) sample one hypothesis
 MDP from it, compute the policy optimal *for that single sampled MDP*, and follow it until the next
-sample. Planning is tractable because it happens on an ordinary MDP rather than a BAMDP. Core idea:
-randomise over your uncertainty to explore. **Gap:** committing to one sampled hypothesis at a time
-explores inefficiently — the agent walks to a sampled goal, finds nothing, resamples, walks
-elsewhere, revisits cells, and never reduces its uncertainty in the systematic way an
-uncertainty-aware agent would; its online return during learning is correspondingly low. It also still
-requires the (often intractable) posterior.
+sample. Core idea: randomise over your uncertainty to explore.
 
 **Classical Bayesian RL / BAMDP planners** (Asmuth & Littman 2011; Guez et al. 2012, 2013; Brunskill
 2012; Poupart et al. 2006). These attack the BAMDP head-on with sample-based tree search or analytic
 solutions over a belief that is updated by an explicit, hand-specified prior and Bayes rule. Core
-idea: approximate Bayes-optimal planning directly. **Gap:** they are restricted to small, discrete
-state/action spaces or a small discrete set of tasks; they require us to define the prior and belief
-update on `R, T` by hand; and the sample-based planning is expensive. They do not scale to deep
-networks or continuous control.
+idea: approximate Bayes-optimal planning directly.
 
 **RL² / "learning to reinforcement learn"** (Duan et al. 2016; Wang et al. 2016). Structure the agent
 as a recurrent network whose input at each step is the observation concatenated with the *previous
@@ -109,40 +92,22 @@ action, previous reward, and a done flag*. Preserve the hidden state across epis
 (a sequence of episodes on one fixed MDP) and train, by ordinary RL, to maximise return over the whole
 trial. The within-task learning then lives entirely in the recurrent dynamics: the net becomes a
 fast learning algorithm, distilled by slow outer-loop RL. Core idea: let a black-box RNN discover the
-adaptation procedure. **Gap:** there is no explicit representation of task or of *uncertainty* — the
-hidden state is an opaque vector trained only by the policy-gradient signal, with no inductive bias
-toward representing a posterior, no pressure to capture the task beyond what the reward signal happens
-to require, and (as observed) instabilities in a large hidden state when the environment resets
-between episodes.
+adaptation procedure.
 
 **Gradient-based meta-RL: MAML and descendants** (Finn et al. 2017; ProMP, Rothfuss et al. 2019;
 E-MAML, Stadie et al. 2018). Meta-learn an initialisation such that a few policy-gradient steps on a
 new task yield a good policy. Core idea: adaptation = a short inner-loop optimisation from a learned
-start. Lightweight (typically a feedforward policy). **Gap:** the procedure separates exploration
-(rollouts collected *before* adaptation, under the un-adapted policy) from exploitation (the policy
-*after* the gradient steps), so the exploration is not itself optimised for the online return and the
-two phases are decoupled by design — making it sample-inefficient in the online-return sense.
+start. Lightweight (typically a feedforward policy).
 
 **Probabilistic-context off-policy meta-RL: PEARL** (Rakelly et al. 2019). Encode the collected
 context transitions into a probabilistic latent with a *permutation-invariant* encoder — a product of
 per-transition Gaussians — and train it alongside an off-policy SAC backbone; explore by sampling a
 latent and acting greedily for it. Core idea: a probabilistic task latent + posterior-sampling-style
-exploration, made sample-efficient by off-policy training. **Gap:** the order-invariant encoder treats
-the context transitions as an unordered set, assuming the individual transitions are independent and
-discarding the temporal structure of the exploration process; and acting greedily for one sampled
-latent reproduces posterior sampling's inefficient exploration rather than uncertainty-aware online
-adaptation.
+exploration, made sample-efficient by off-policy training.
 
 **Supervised task-inference** (Humplik et al. 2019). Condition the policy on a posterior over the MDP,
 but meta-train the inference network with *privileged* supervision — true task descriptions or IDs.
-Core idea: directly learn the belief, supervised by ground-truth task labels. **Gap:** it relies on
-privileged task information at training time, which is often unavailable, limiting flexibility.
-
-Across these, the common shortfall is clear: the cheap and scalable methods (RL², MAML, PEARL) carry
-no explicit, calibrated representation of *task uncertainty* that the policy can act on for online
-adaptation; the principled uncertainty-aware methods (BAMDP planners) do not scale and need a
-hand-built prior and belief update; and the one that does condition on a posterior leans on privileged
-labels.
+Core idea: directly learn the belief, supervised by ground-truth task labels.
 
 ## Evaluation settings
 

@@ -20,13 +20,9 @@ target a finite-budget network learns fastest and most evenly across noise level
 
 - **DDPM $\epsilon$-prediction (Ho et al. 2020).** The network predicts the Gaussian noise $\epsilon$
   added to $x_0$; at sampling time $\hat x_0$ is recovered from the predicted noise using the schedule
-  scalars. Gap: at low noise $x_t$ is nearly $x_0$, so inferring $\epsilon$ requires taking a small
-  difference and is numerically fragile; at high noise $x_t$ is nearly pure noise, so the task is
-  easier, and optimization effort concentrates unevenly across the noise range.
+  scalars.
 - **Direct $x_0$ prediction.** The network predicts the clean image $x_0$ directly, and the output is
-  used as the recovered $\hat x_0$. Gap: at low noise the target is almost visible in the input, while
-  at high noise the network must reconstruct a full clean image from near-pure noise, so the target
-  scale and difficulty vary heavily across timesteps.
+  used as the recovered $\hat x_0$.
 
 ## Fixed substrate / Code framework
 

@@ -14,19 +14,12 @@ This second formulation has no counterpart in the quantum theory.
 The question is: **what plays the role, in quantum mechanics, of the classical Lagrangian and
 of the action `S`?** Concretely — is there a way to *state* quantum mechanics directly in terms
 of the action functional `S[x(t)]` along trajectories, rather than in terms of operators and the
-Hamiltonian? A positive answer matters for two reasons. First, the action principle packages
-all the equations of motion into one scalar statement and is manifestly Lorentz-invariant,
-whereas the Hamiltonian formalism singles out a time axis and is awkward to make relativistic.
-Second, there are physical systems — an electrodynamics formulated as direct action-at-a-
-distance between charges, with no independent field degrees of freedom and hence no
-Hamiltonian — that one can only write down as an *action*. For such a system, quantization
-*through* the action is not a stylistic preference; it is the only available route, because the
-standard recipe "write the Hamiltonian, promote to operators" has nothing to act on.
-
-So a solution must do three things: (i) give the action `S` an explicit, central operational role
-in computing quantum amplitudes; (ii) reduce, in the classical limit `ℏ → 0`, to the
-least-action principle `δS = 0`; and (iii) be provably equivalent to ordinary quantum mechanics
-— i.e. reproduce Schrödinger's equation — so that it is a reformulation, not a rival theory.
+Hamiltonian? The action principle packages all the equations of motion into one scalar
+statement and is manifestly Lorentz-invariant, whereas the Hamiltonian formalism singles out a
+time axis. There are also physical systems — an electrodynamics formulated as direct action-at-
+a-distance between charges, with no independent field degrees of freedom and hence no
+Hamiltonian — that one can only write down as an *action*; for such a system the standard
+recipe "write the Hamiltonian, promote to operators" has nothing to act on.
 
 ## Background
 
@@ -40,14 +33,13 @@ Born and Jordan, and von Neumann, supplied the statistical interpretation: the a
 squared modulus is a probability, and amplitudes for *indistinguishable* alternatives are added
 (then squared), whereas amplitudes for *distinguished* alternatives have their probabilities
 added. This superposition-of-amplitudes rule — interference — is the operative content of
-quantum mechanics and is the thing any reformulation must respect.
+quantum mechanics.
 
 **The kernel / propagator.** Within transformation theory there is a quantity that carries the
 wave function forward in time: a kernel `K(x', t+ε; x, t)` such that
 `ψ(x', t+ε) = ∫ K(x', x) ψ(x, t) dx`. It is equivalent to the differential equation but is an
 integral object — it composes by `K(t₂, t₀) = ∫ K(t₂, t₁) K(t₁, t₀) dq₁`, integrating over the
-intermediate coordinate. This composition-by-integration over intermediate positions is the
-structural hook everything will hang on.
+intermediate coordinate.
 
 **The classical action and least action.** In Lagrangian mechanics `S[q(t)] = ∫ L dt` and the
 classical path extremizes it: `δS = 0` gives the Euler–Lagrange equations. Hamilton's principal
@@ -69,49 +61,29 @@ law `⟨q_t|q_T⟩ = ∫ ⟨q_t|q_m⟩ dq_m ⟨q_m|q_{m−1}⟩ … dq_1 ⟨q_1|
 integrand is `e^{iF/ℏ}` with `F` finite as `ℏ → 0`; the rapid oscillation kills the integral except
 where `F` is *stationary* in the intermediate `q`'s, and `F`'s classical analogue is the sum of the
 slice-actions `∑∫L dt`. Thus the *classical least-action principle is recovered as the `ℏ → 0`
-limit* of the quantum composition. This is the decisive seed.
-
-**The diagnostic gaps in Dirac's account.** Dirac left the
-construction at the level of a *correspondence* and stopped short of three things. (1) He wrote
-"corresponds to" / "analogous," never "equals," and never pinned a *constant of
-proportionality* relating `⟨q_{t+dt}|q_t⟩` to `e^{iLdt/ℏ}` — so the relation is suggestive, not
-computational. (2) He never assembled the infinitesimal correspondence and the composition law
-into a single explicit object computing a finite-time amplitude as a self-contained functional of
-the trajectory between fixed endpoints — the infinitesimal hint and the kernel composition are
-left as separate remarks, with no stated measure tying them together. (3) He never ran the
-infinitesimal relation *forward* to show it *reproduces Schrödinger's equation*; the equivalence
-to ordinary quantum mechanics was asserted by analogy, not derived. These three gaps are exactly
-what a solution must close.
+limit* of the quantum composition. Dirac stated these as *correspondences* — writing
+"corresponds to" / "analogous" rather than "equals" — without fixing a constant of
+proportionality relating `⟨q_{t+dt}|q_t⟩` to `e^{iLdt/ℏ}`.
 
 ## Baselines
 
-These are the prior formulations a new action-based formulation would be measured against
-and must reproduce.
+These are the prior formulations of quantum mechanics on the table.
 
 - **Schrödinger wave mechanics (1926).** State = complex wave function `ψ(x, t)`; dynamics
   `iℏ ∂ψ/∂t = [−(ℏ²/2m)∇² + V]ψ`. Computes everything via a differential equation in
-  configuration space. *Gap*: built on the Hamiltonian `Ĥ`; gives no role to the action `S` or
-  the Lagrangian, and singles out a time coordinate, making relativistic and field-with-delay
-  problems awkward. It is the equation any reformulation must recover.
+  configuration space, built on the Hamiltonian `Ĥ`.
 
 - **Heisenberg matrix mechanics (1925) / Dirac–Jordan transformation theory.** State =
   vector; observables = non-commuting matrices/operators with `[q, p] = iℏ`; evolution by
-  Heisenberg's equations or by the transformation function `⟨q'|Q'⟩` between bases. *Gap*:
-  again purely Hamiltonian/operator-algebraic; the action enters, if at all, only as Dirac's
-  unexploited "corresponds to."
+  Heisenberg's equations or by the transformation function `⟨q'|Q'⟩` between bases.
 
-- **Dirac's 1933 Lagrangian-in-QM proposal.** The closest prior art: it *does* bring the
-  Lagrangian and `S` into quantum mechanics and *does* recover least action as `ℏ → 0` (see
-  Background). *Gap*: stops at "corresponds to" with no fixed proportionality constant, no
-  single self-contained finite-time object built from the infinitesimal correspondence, and no
-  forward derivation of Schrödinger's equation from the infinitesimal kernel. It is the platform
-  the new construction stands on and the precise thing it must complete.
+- **Dirac's 1933 Lagrangian-in-QM proposal.** Brings the Lagrangian and `S` into quantum
+  mechanics and recovers least action as `ℏ → 0` (see Background), at the level of a
+  correspondence `⟨q_{t+dt}|q_t⟩` *corresponds to* `e^{iLdt/ℏ}`.
 
 - **Wentzel–Kramers–Brillouin (WKB) / semiclassical wave.** Writes `ψ ≈ A e^{iS_cl/ℏ}` with
-  `S_cl` the classical action, valid when `ℏ` is small compared with the action scale. *Gap*: an
-  *approximation* tied to a single classical path and its neighborhood, not an exact
-  formulation; it hints that `S/ℏ` belongs in the phase but does not say how to sum over all
-  paths exactly.
+  `S_cl` the classical action, valid when `ℏ` is small compared with the action scale, tied to a
+  single classical path and its neighborhood. It places `S/ℏ` in the phase of the wave.
 
 ## Evaluation settings
 

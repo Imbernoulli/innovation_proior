@@ -3,14 +3,14 @@
 Time-to-event data are not ordinary regression data. For each subject we observe a time `T_i`, an
 event indicator `delta_i`, and covariates `x_i`. If `delta_i = 1`, the event happened at `T_i`; if
 `delta_i = 0`, the subject was still event-free when follow-up ended, so the true event time is
-known only to exceed `T_i`. A useful regression method has to use both kinds of records without
-pretending that censored times are event times or discarding them altogether.
+known only to exceed `T_i`. A regression method here uses both kinds of records: it must handle
+censored times without treating them as event times and without discarding them.
 
 The scientific target is usually a comparison: how does age, treatment, dose, blood pressure, or a
 tumor marker change the instantaneous event rate among subjects who have survived to the same time?
 The absolute event rate can rise and fall sharply over follow-up for reasons not captured by the
-covariates. A method therefore needs to estimate covariate effects while avoiding a brittle
-commitment to a fully specified time curve for the underlying event process.
+covariates. The setting is therefore to estimate covariate effects on the event rate from
+right-censored data.
 
 ## Background
 
@@ -24,42 +24,38 @@ censoring time because the subject was known to be at risk until then, but contr
 event after that time. The natural bookkeeping device is the risk set: at an event time `t`, the
 risk set contains all subjects whose observed follow-up time is at least `t`.
 
-Covariate regression has a particular need in this setting. A life-table or nonparametric survival
-curve can describe one group at a time, and a two-sample comparison can ask whether two survival
-curves differ, but clinical and reliability data often contain several covariates at once. The
-working question is not just whether groups differ; it is how to estimate a multiplicative change
-in event rate associated with a covariate while using censored observations correctly.
+Covariate regression has a particular form in this setting. A life-table or nonparametric survival
+curve describes one group at a time, and a two-sample comparison asks whether two survival curves
+differ. Clinical and reliability data often contain several covariates at once, both continuous and
+categorical. The working question is how to estimate the change in event rate associated with a
+covariate while using censored observations correctly.
 
 ## Baselines
 
 Kaplan-Meier estimation gives a nonparametric survival curve for one sample. It handles right
-censoring cleanly by multiplying conditional survival probabilities at event times. Its limitation
-is that it is descriptive rather than a multivariable regression model: it does not give a direct
-coefficient for each covariate in a joint model.
+censoring by multiplying conditional survival probabilities at event times. It is descriptive: it
+produces a survival curve for a group rather than coefficients for covariates.
 
 The log-rank test compares survival experience between groups by contrasting observed and expected
-event counts over risk sets. It is powerful and naturally risk-set based, but it is a test rather
-than an estimation framework for several continuous and categorical covariates.
+event counts over risk sets. It is naturally risk-set based and is a hypothesis test for whether
+groups differ.
 
 Parametric survival regression models, such as exponential or Weibull models, specify a full event
-time distribution. They provide likelihoods and covariate coefficients, but the baseline time shape
-is part of the model. If that shape is wrong, covariate estimates can inherit the misspecification.
+time distribution. They provide likelihoods and covariate coefficients, with the baseline time
+shape supplied as part of the model.
 
-Stratified life-table and actuarial methods can adjust coarsely by analyzing groups separately, but
-the number of strata grows quickly with multiple covariates, and continuous predictors require
-arbitrary binning.
+Stratified life-table and actuarial methods adjust by analyzing groups separately, with one stratum
+per combination of covariate levels.
 
 ## Evaluation settings
 
 The natural data are right-censored cohort or clinical-trial records with observed follow-up times,
-event indicators, and fixed baseline covariates. The estimand is a regression coefficient vector
-whose exponentiated contrasts are interpretable as event-rate ratios between subjects who are at
-risk at the same time.
+event indicators, and fixed baseline covariates. The estimand is a regression coefficient vector for
+the covariate effects on the event rate.
 
 A method would be assessed by whether it uses censored cases up to their censoring times, produces
-stable coefficient estimates and standard errors, supports hypothesis tests and confidence
-intervals for covariate effects, and can recover an interpretable baseline survival curve after the
-covariate effects have been estimated. Simulated studies would vary censoring fraction, covariate
+stable coefficient estimates and standard errors, and supports hypothesis tests and confidence
+intervals for covariate effects. Simulated studies would vary censoring fraction, covariate
 correlation, event-time distribution, and sample size; applied studies would check covariate
 effects, residual diagnostics, and survival predictions.
 

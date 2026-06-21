@@ -82,36 +82,24 @@ conservation" must reproduce.
 
 ## Baselines
 
-These are the partial results a general theorem would have to subsume and surpass.
-
 - **Case-by-case first integrals in mechanics (cyclic coordinates; Routh, Jacobi).** If a coordinate q_j
   does not appear in the Lagrangian (an "ignorable" or cyclic coordinate), its conjugate momentum
   ∂L/∂q̇_j is conserved. If the Lagrangian has no explicit time dependence, the Jacobi integral / energy
-  function h = Σ q̇_j ∂L/∂q̇_j − L is conserved. *Gap*: these are read off individually from the form of
-  L; there is no single statement that produces all of them from the symmetry, and nothing tells you
-  what to do for a symmetry that mixes the coordinates non-trivially or that depends on arbitrary
-  functions.
+  function h = Σ q̇_j ∂L/∂q̇_j − L is conserved.
 
 - **Special-group results: Hamel, Herglotz, Fokker, Lorentz, Klein, Kneser.** Several authors had, for
   particular finite groups or particular variational problems, derived the corresponding invariants or
   conservation laws (Hamel and Herglotz for special finite groups; Lorentz and Fokker for relativistic
   invariance; Klein and Weyl for special infinite groups; Kneser on setting up invariants by a similar
-  method). *Gap*: each is tied to a specific group or a specific Lagrangian. None states the general
-  correspondence, none separates the finite-group case from the infinite-group case, and none has a
-  converse (symmetry ⇔ conservation law in both directions).
+  method).
 
 - **Hilbert's energy vector and the GR pseudotensor (Hilbert 1916; Einstein 1916; Klein 1918).** In
   general relativity one constructs an "energy vector"/pseudotensor t^{μν} so that
   ∂_μ(T^{μν} + t^{μν}) = 0. Klein, in his dialogue with Hilbert (1918), showed Hilbert's intermediate
-  calculations could be shortened "by the use of the ordinary Lagrange variation theorem." *Gap*: the
-  object is coordinate-dependent, can be gauged away at a point, and Hilbert could only *assert* — not
-  prove — that proper energy equations "do not exist at all" in GR. There is a conjecture in want of a
-  theorem, and no explanation of *why* general covariance forces this.
+  calculations could be shortened "by the use of the ordinary Lagrange variation theorem."
 
 - **Lie's theory of group-admitting differential equations.** Lie classified continuous groups and the
-  equations admitting them. *Gap*: it is a theory of differential equations in general, not of equations
-  *arising from a variational problem*; it does not draw on the extra structure that the action provides,
-  and so cannot reach the precise symmetry ↔ conservation statements.
+  equations admitting them.
 
 ## Evaluation settings
 

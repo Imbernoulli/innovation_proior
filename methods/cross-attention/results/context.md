@@ -8,22 +8,16 @@ relative and specific humidity at a range of pressure levels, plus static surfac
 like land-sea mask and orography. A single training example is therefore a tensor of shape
 `V × H × W`: `V` physical variables, each a map over an `H × W` latitude-longitude grid.
 The number and identity of these variables is *not* fixed across data sources. Different
-reanalysis products, and especially the many climate-simulation datasets that would be the
-natural fuel for large-scale pretraining, each carry a *different set* of variables — one
-collection might provide temperature and humidity, another wind and geopotential, a third
-some overlapping-but-not-identical mixture. At deployment one often wants to feed the model
-only a *subset* of variables, or a variable that a particular source simply does not record.
+reanalysis products, and the many climate-simulation datasets that are candidate fuel for
+large-scale pretraining, each carry a *different set* of variables — one collection might
+provide temperature and humidity, another wind and geopotential, a third some
+overlapping-but-not-identical mixture. At deployment one often wants to feed the model only
+a *subset* of variables, or a variable that a particular source simply does not record.
 
-The precise goal is an architecture that can ingest an *arbitrary set* of these variables —
-any count, any subset drawn from a known vocabulary of possible variables, including a
-variable not seen in a given pretraining run — and turn the per-variable spatial content at
-each grid location into one fixed-width representation that a shared sequence backbone can
-process. It must do this (1) without re-architecting or retraining a new input layer every
-time the variable set changes; (2) at a compute cost that does not explode as the number of
-variables grows toward the few dozen present in realistic data; and (3) in a way that lets
-the backbone learn cleanly despite the variables having wildly different physical units,
-scales, and dynamics. None of the architectures on the table below achieves all three at
-once. Closing that gap is the problem.
+The question is how to turn the per-variable spatial content at each grid location into one
+fixed-width representation that a shared sequence backbone can process, when the set of
+variables presented to the model — any count, any subset drawn from a known vocabulary,
+possibly a variable not seen in a given pretraining run — varies from input to input.
 
 ## Background
 
@@ -32,33 +26,27 @@ weather prediction. The dominant recipe is to train a deep network on decades of
 gridded reanalysis (ERA5; Hersbach et al. 2020) to map the current atmospheric state to a
 future one, and there is mounting evidence (Rasp & Thuerey 2021; Weyn et al. 2020; Pathak
 et al. 2022; Bi et al. 2022) that such networks can rival operational numerical systems on
-medium-range forecasting while running orders of magnitude faster at inference. The pain
-points that shape the architecture question:
+medium-range forecasting while running orders of magnitude faster at inference. Several
+facts about the setting shape the architecture question:
 
-- **The variable axis is treated as a channel axis, which hard-wires the variable set.**
-  In every standard image model, the `V` physical fields are simply stacked as the input
-  channels of a `V × H × W` tensor. The very first layer — a convolution or a patch
-  projection — has its input dimension fixed to exactly `V`. Change which variables you
-  feed, and that layer no longer fits; the model is welded to one variable set. This is the
-  single fact that blocks pretraining across heterogeneous data sources and blocks ingesting
-  a subset of variables at finetune time.
+- **The variable axis is treated as a channel axis.** In standard image models, the `V`
+  physical fields are stacked as the input channels of a `V × H × W` tensor. The first layer
+  — a convolution or a patch projection — has its input dimension set to exactly `V`.
 - **Heterogeneous physical groundings.** The variables are not interchangeable channels like
   the R, G, B of a photograph. Geopotential at 500 hPa, specific humidity at 925 hPa, and
   10 m wind live on different scales, carry different units, and obey different dynamics.
   After normalization they coexist numerically, but a token that summarizes "temperature
-  here" and a token that summarizes "humidity here" are semantically very different objects.
-- **Sequence-length / cost pressure if variables become tokens.** The flexibility one wants
-  comes from treating data as a *set of tokens* rather than a fixed-channel image, because a
-  token sequence can be any length. But if every variable contributes its own tokens at
-  every spatial patch, the token count multiplies by `V`. With attention as the sequence
-  model and its quadratic cost in sequence length, multiplying the length by `V` multiplies
-  the cost by `V²`. Realistic inputs reach a few dozen variables, so this is not a constant
-  factor one can ignore.
-- **The foundation-model paradigm raises the stakes.** Pretraining one large Transformer on
-  broad data with a self-supervised objective and finetuning it to many downstream tasks
-  (Bommasani et al. 2021; Devlin et al. 2018; He et al. 2022) has reshaped language and
-  vision. To bring it to this domain, the single architecture must be able to *consume* the
-  broad, heterogeneous data — which is exactly what the fixed-channel input layer forbids.
+  here" and a token that summarizes "humidity here" are semantically distinct objects.
+- **Set-of-tokens view and cost.** A token sequence can be any length, so treating the data
+  as a *set of tokens* rather than a fixed-channel image admits an arbitrary variable set. If
+  every variable contributes its own tokens at every spatial patch, the token count is `V`
+  times the number of patches. With attention as the sequence model and its quadratic cost in
+  sequence length, multiplying the length by `V` multiplies the cost by `V²`. Realistic
+  inputs reach a few dozen variables.
+- **The foundation-model paradigm.** Pretraining one large Transformer on broad data with a
+  self-supervised objective and finetuning it to many downstream tasks (Bommasani et al. 2021;
+  Devlin et al. 2018; He et al. 2022) has reshaped language and vision, motivating a single
+  architecture that can consume broad, heterogeneous data in this domain.
 
 Two background frames are load-bearing.
 
@@ -75,10 +63,10 @@ with the `1/√d_k` scale present because, for query/key components that are ind
 unit variance, the dot product `q·k = Σ_{i=1}^{d_k} q_i k_i` has mean 0 and variance `d_k`,
 so its magnitude grows like `√d_k`; left unscaled, large logits push the softmax into a
 near-one-hot regime where its gradient is tiny, and dividing by `√d_k` restores unit-variance
-logits. The decisive structural property for the present problem: the softmax runs over the
-*set of keys*, so the output is invariant to the ordering of the key-value pairs and is
-defined for *any number* of them. Multi-head attention runs `h` of these in parallel over
-learned projections to `d_k = d_model/h` dimensions and concatenates,
+logits. A structural property: the softmax runs over the *set of keys*, so the output is
+invariant to the ordering of the key-value pairs and is defined for *any number* of them.
+Multi-head attention runs `h` of these in parallel over learned projections to
+`d_k = d_model/h` dimensions and concatenates,
 `MultiHead(Q,K,V) = Concat(head_1,…,head_h) Wᴼ`,
 `head_i = Attention(Q Wᵢ^Q, K Wᵢ^K, V Wᵢ^V)`, so that different heads can pick up different
 relations at once instead of being blurred into a single averaged pattern; with
@@ -92,13 +80,10 @@ into a token sequence: cut it into non-overlapping `p × p` patches, flatten eac
 linearly project it to a `D`-dimensional embedding (a single convolution with kernel and
 stride `p`), giving `(H/p)·(W/p)` patch tokens. Because the model then operates on a token
 sequence, it accepts variable sequence lengths and variable spatial resolution (adjusted by
-interpolating a positional embedding). ViT also introduced a **learnable `[class]` token**:
-an extra trainable embedding prepended to the patch sequence whose output state, after the
+interpolating a positional embedding). ViT also uses a **learnable `[class]` token**: an
+extra trainable embedding prepended to the patch sequence whose output state, after the
 Transformer mixes it with the patches, serves as the pooled representation of the whole
-image — a single trainable vector that gathers a set of tokens into one summary. ViT still
-folds the channels `C` into the patch vector `p²·C`, so it inherits the same fixed-channel
-limitation as a CNN; its contribution here is the token-sequence view and the trainable
-summarizing token, not a way to handle a variable channel set.
+image. ViT folds the channels `C` into the patch vector `p²·C`.
 
 ## Baselines
 
@@ -108,38 +93,22 @@ These are the prior approaches a new design would be measured against and would 
 forecasting problem as image-to-image translation with `V` input channels and `V'` output
 channels (Rasp & Thuerey 2021 used a ResNet pretrained on climate simulations; Pathak et al.
 2022 and Bi et al. 2022 stack variables as channels of a single tensor). Core mechanism: the
-first layer maps `V` input channels to feature maps; everything downstream is channel-agnostic.
-This is simple and strong on a fixed variable set. **Gap:** the input layer's channel count
-is fixed at `V`, so the model is bound to exactly the variable set it was built for. It cannot
-be pretrained across sources with different variable sets, cannot accept a subset of variables,
-and cannot take in a variable absent from its original channel list — and convolutional
-variants additionally require a complete, regular grid. The variable identity is also lost the
-moment the channels are summed in the first convolution; there is no representation of "which
-variable contributed what."
+first layer maps `V` input channels to feature maps; everything downstream is
+channel-agnostic. Convolutional variants operate on a complete, regular grid.
 
 **Uniform pooling across the variable tokens.** Once each variable is given its own token at
-a spatial location, the cheapest way to collapse the `V` tokens into one is to average them:
-take the per-location mean over the variable axis. It adds no parameters and trivially accepts
-any number of variables. **Gap:** the average weights every variable identically at every
-location and in every atmospheric state, so it cannot give more weight to whichever variable
-is informative for a given place and condition; it also blends the differently-grounded
-variable tokens into one muddied vector rather than re-expressing them in a shared form.
+a spatial location, average the `V` tokens: take the per-location mean over the variable axis.
+It adds no parameters and accepts any number of variables.
 
-**Fixed learned weighting across the variable tokens.** A small step up: attach one trainable
-scalar per variable, normalize the scalars across variables with a softmax, and take that
-weighted sum over the variable axis. More expressive than the plain mean and still cheap.
-**Gap:** the weights are *static* — once trained they are the same regardless of the actual
-token contents at a location or the current state of the atmosphere — so the combination
-remains content-independent, and like the mean it only rescales-and-adds the raw variable
-tokens without re-projecting them into a common representation.
+**Fixed learned weighting across the variable tokens.** Attach one trainable scalar per
+variable, normalize the scalars across variables with a softmax, and take that weighted sum
+over the variable axis. More expressive than the plain mean and still cheap; once trained the
+weights are the same regardless of the token contents at a location.
 
 **Self-attention over the full variable-and-space token sequence.** Keep every variable's
 tokens at every patch and let the Transformer's self-attention mix the whole `V·h·w`-length
-sequence directly. This is maximally expressive and content-dependent. **Gap:** the sequence
-length carries the `V` factor, so attention cost is `O((V·h·w)²)` — quadratic in the variable
-count on top of the spatial cost — which is impractical at the few-dozen variables of real
-inputs, and it leaves the backbone to sort out the heterogeneous-token soup with no prior
-reduction.
+sequence directly. This is maximally expressive and content-dependent; the sequence length
+carries the `V` factor, so attention cost is `O((V·h·w)²)`.
 
 ## Evaluation settings
 

@@ -8,29 +8,20 @@ hold across three environments with different control geometries.
 
 The one transferable component this task isolates is the *constraint-handling update rule*: given a
 fixed PPO backbone that already produces a reward advantage `adv_r` and a cost advantage `adv_c` per
-transition, what rule for (a) updating the cost-penalty controller and (b) combining the two
-advantage streams best keeps episode cost at or below 25 while retaining as much reward as possible.
+transition, how should the cost budget be enforced while retaining as much reward as possible?
 The success metric `budget_success_rate` is binary per run — 1 if the final episode cost is ≤ 25,
-else 0 — so a method that lowers cost on average but never crosses under the budget scores zero on
-the thing the task actually measures.
+else 0.
 
 ## Prior art / Background / Baselines
 
 - **Constrained MDPs (Altman).** Core idea: augment an MDP with a cost function and a threshold `d`, so
-  the feasible set is `Π_C = {π : J_c(π) ≤ d}` and the goal is `argmax_{π∈Π_C} J_r(π)`. Gap: the
-  framework defines what to solve but does not specify a practical update rule for a partially
-  converged deep policy optimizer.
+  the feasible set is `Π_C = {π : J_c(π) ≤ d}` and the goal is `argmax_{π∈Π_C} J_r(π)`.
 - **Policy-gradient backbones (TRPO, PPO).** Core idea: stable policy updates through a KL trust region
-  or a clipped surrogate objective reused for multiple epochs. Gap: both optimize a single scalar
-  objective with no constraint mechanism, so a cost budget has to be folded into the advantage that
-  the surrogate ascends.
+  or a clipped surrogate objective reused for multiple epochs.
 - **Lagrangian duality for CMDPs.** Core idea: convert the constrained problem into an unconstrained
-  one via the penalty `λ·(J_c − d)` and update `λ` by dual ascent. Gap: the zero-duality-gap result
-  holds in occupancy-measure space, while neural policy optimization is nonconvex and approximate,
-  so the dual update can overshoot, oscillate, or suppress reward before the budget is met.
+  one via the penalty `λ·(J_c − d)` and update `λ` by dual ascent.
 - **Unconstrained PPO baseline.** Core idea: run the fixed PPO backbone and ignore the cost signal
-  entirely. Gap: it establishes the floor that any constraint-handling rule must beat, but provides
-  no budget control.
+  entirely.
 
 ## Fixed substrate / Code framework
 

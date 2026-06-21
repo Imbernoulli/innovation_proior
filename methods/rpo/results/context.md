@@ -1,61 +1,39 @@
 ## Research question
 
-On-policy actor-critic methods for continuous control have a recurring, quiet failure: the
-stochasticity of the policy collapses too fast. A Gaussian policy `pi_theta(a|s) = N(mu_theta(s),
-sigma_theta)` starts diffuse and, as the surrogate objective rewards committing to whichever action
-currently looks best, the learned standard deviation `sigma` shrinks and the mean `mu` sharpens. Once
-that happens early — before the agent has actually seen enough of the action space to know the optimum
-— exploration dies and the policy locks into a sub-optimal basin it can no longer escape, because the
-gradient it now produces only reinforces what it already does. Entropy regularization (an explicit
-bonus on `H[pi]`) is the usual patch, but the right coefficient is task-dependent and a fixed one
-either barely moves the policy or floods it with noise; swapping the Gaussian for a heavier-tailed or
-otherwise reshaped distribution helps on some environments and hurts on others and needs its own
-tuning. The precise goal is an on-policy update that *keeps the policy exploratory* — maintains a
-useful level of action-space entropy across training — without a hand-tuned entropy schedule, without
-changing the action distribution family, and without changing the network or the surrogate objective
-that already make the base method stable. It must hold across continuous-control environments with
-very different dynamics rather than being tuned to one.
+On-policy actor-critic methods for continuous control use a parametric Gaussian policy
+`pi_theta(a|s) = N(mu_theta(s), sigma_theta)`. As training proceeds, the surrogate objective
+rewards committing to high-advantage actions, and the learned standard deviation `sigma` shrinks
+while the mean `mu` sharpens. Entropy regularization (an explicit bonus on `H[pi]`) and alternative
+action-distribution families are available tools for managing this. The question is how to shape
+the policy-update rule for on-policy Gaussian actor-critics in continuous control so that
+action-space exploration is maintained across a range of environments with varied dynamics.
 
 ## Background
 
 The base learner this question sits on is PPO, itself the resolution of a line of policy-optimization
-methods, and the failure being attacked is a property of how that line trains a *parametric*
-distribution.
+methods, and the question concerns how that line trains a *parametric* distribution.
 
 **Vanilla policy gradients (Williams 1992; Sutton et al. 1999).** Parameterize `pi_theta(a|s)` and
 ascend `J(pi) = E_{tau~p_pi}[ sum_t gamma^t r_t ]` with the score-function estimator
 `g = E_t[ grad log pi_theta(a_t|s_t) A_t ]`. General and simple, but each batch feeds a single
 gradient step (data-inefficient) and a large step can collapse the policy irrecoverably. For a Gaussian
 policy the estimator pushes the mean toward high-advantage actions and, through the log-prob, also
-shrinks the variance around them — so the gradient itself drives the policy deterministic over time.
-**Gap:** no mechanism resists the entropy collapse that the estimator induces.
+shrinks the variance around them.
 
 **Trust-region / proximal methods (TRPO, Schulman et al. 2015; PPO, Schulman et al. 2017).** Maximize
 the advantage surrogate `E_t[ r_t(theta) A_t ]`, `r_t = pi_theta/pi_old`, inside a trust region —
 TRPO with a hard KL constraint solved by natural gradient, PPO with the cheaper clipped surrogate
 `L^CLIP = E_t[ min(r_t A_t, clip(r_t,1-eps,1+eps) A_t) ]`, `eps=0.2`, so one batch is safely reused
-for several epochs. Reliable, first-order, the standard base for continuous control with GAE
-advantages (`lambda=0.95`) and a clipped value loss. **Gap:** the clipped surrogate controls only *how
-far* the policy moves per update, not *in which way the distribution sharpens*. Across the multi-epoch
-updates the optimizer is free to drive `sigma` down and `mu` to a sharp peak; PPO's own entropy decays,
-often before the agent has explored enough, and the trust region does nothing to stop it.
+for several epochs. Reliable and first-order, and the standard base for continuous control with GAE
+advantages (`lambda=0.95`) and a clipped value loss.
 
 **Entropy regularization (A3C, Mnih et al. 2016).** Add a bonus `c_2 H[pi_theta(.|s)]` to the
-objective to slow premature determinism. **Gap:** `c_2` is a single global knob fighting the
-advantage scale; too small and the policy still collapses, too large and the policy is permanently
-noisy and never commits. The coefficient that works on one environment is wrong on the next, so it
-needs per-task tuning — exactly the fragility the research question wants to remove.
+objective to slow premature determinism. The coefficient `c_2` is a single global knob that interacts
+with the advantage scale; tuning it is task-dependent.
 
 **Alternative action distributions / data augmentation.** Replacing the diagonal Gaussian with a
 Beta, a normalizing flow, or a mixture, or augmenting observations, can improve exploration or
-robustness on some tasks. **Gap:** each adds its own parameters and assumptions, changes the network,
-and helps unevenly across environments — again task-specific.
-
-The load-bearing observation underneath all of these: a Gaussian policy's exploration is entirely
-controlled by `(mu, sigma)`, and the on-policy update sharpens both. If exploration could be kept alive
-by *perturbing the distribution that the policy-likelihood is evaluated under during the update* —
-rather than by an extra loss term or a different distribution family — it would cost no new
-parameters, leave the surrogate and the network untouched, and be the same one knob on every task.
+robustness on some tasks. Each option introduces its own parameters and assumptions.
 
 ## Evaluation settings
 
@@ -67,10 +45,9 @@ The yardsticks already in use for on-policy continuous control:
   evaluation episodes within a fixed interaction budget, averaged across several random seeds; a
   learning curve of return vs. environment steps.
 - **Protocol:** matched interaction budgets and matched network architecture across algorithms, so the
-  comparison isolates the update rule (and, for this method, a single perturbation coefficient).
-  Comparisons read off final-policy returns and learning curves averaged over seeds. The relevant
-  baseline to beat is PPO under the identical harness; the additional baselines are entropy
-  regularization, alternative distributions, and data augmentation, each with its own tuning.
+  comparison isolates the update rule. Comparisons read off final-policy returns and learning curves
+  averaged over seeds. The relevant baseline is PPO under the identical harness; additional baselines
+  include entropy regularization, alternative distributions, and data augmentation.
 
 ## Code framework
 

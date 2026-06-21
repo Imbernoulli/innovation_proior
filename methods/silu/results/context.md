@@ -3,12 +3,9 @@
 The activation function `f(·)` that follows each linear transformation strongly affects how well a deep
 network trains, yet the field has effectively standardized on one hand-designed choice — ReLU
 `max(x,0)` — because every proposed replacement gives gains that are *inconsistent* across models and
-datasets, so practitioners stick with ReLU's simplicity and reliability. The question is whether,
-instead of hand-designing yet another curve from a list of properties someone believes matter, one can
-*automatically search* the space of scalar activation functions (one scalar in, one scalar out, so any
-candidate is a drop-in ReLU replacement requiring no architecture change), select candidates by a
-validation signal, and then reason from the selected shape about which "properties" of ReLU were actually
-essential.
+datasets. The question is whether one can *automatically search* the space of scalar activation functions
+(one scalar in, one scalar out, so any candidate is a drop-in ReLU replacement requiring no architecture
+change) and select candidates by a validation signal.
 
 ## Background
 
@@ -18,14 +15,11 @@ derivative is exactly 1, so gradients flow undiminished, whereas saturating unit
 deep stacks. Its commonly cited virtues are simplicity, sparsity, and this "gradient-preserving"
 property on the positive half-line.
 
-Hand-designed alternatives each fix one perceived flaw and each fail to displace ReLU: Leaky ReLU
-(Maas et al. 2013) replaces the dead negative half with a small slope `αx` (`α=0.01`); PReLU (He et al.
-2015) makes that slope a learned per-channel parameter; ELU (Clevert et al. 2015) uses `α(eˣ−1)` for
-`x<0` to push mean activations toward zero; SELU (Klambauer et al. 2017) scales ELU with fixed
-constants for a self-normalizing fixed point; softplus `log(1+eˣ)` is a smooth, strictly positive,
-monotonic approximation to ReLU. The recurring observation is that none of these wins *consistently* —
-the best non-ReLU baseline changes from model to model — which is exactly why a search, rather than
-another hand-design, is attractive.
+Hand-designed alternatives each fix one perceived flaw: Leaky ReLU (Maas et al. 2013) replaces the
+negative half with a small slope `αx` (`α=0.01`); PReLU (He et al. 2015) makes that slope a learned
+per-channel parameter; ELU (Clevert et al. 2015) uses `α(eˣ−1)` for `x<0` to push mean activations
+toward zero; SELU (Klambauer et al. 2017) scales ELU with fixed constants for a self-normalizing fixed
+point; softplus `log(1+eˣ)` is a smooth, strictly positive, monotonic approximation to ReLU.
 
 Two background results make an automated search plausible. First, search/meta-learning had recently been
 shown to discover traditionally hand-designed components that beat human designs — RNN/CNN architectures
@@ -38,21 +32,14 @@ reinforcement learning, motivated by the expected-energy of a restricted Boltzma
 
 ## Baselines
 
-- **ReLU** `max(x,0)`: cheap, sparse, derivative 1 on `x>0`. Gap: dead/zero on the whole negative half
-  (dying units), non-differentiable kink at 0, piecewise-linear (no curvature), monotonic.
+- **ReLU** `max(x,0)`: cheap, sparse, derivative 1 on `x>0`.
 - **Leaky ReLU** `x` if `x≥0` else `αx`, `α=0.01`; **PReLU**, same with learned per-channel `α`
-  (init 0.25): leak a little gradient on the negative side. Gap: still piecewise-linear and monotonic;
-  gains inconsistent across settings.
+  (init 0.25): leak a little gradient on the negative side.
 - **ELU** `x` if `x≥0` else `α(eˣ−1)`, `α=1`; **SELU**, `λ·ELU` with `α≈1.6733, λ≈1.0507`: negative
-  saturation toward `−α`, mean-centering / self-normalizing. Gap: extra constants, monotonic, gains not
-  reliably portable; SELU sensitive to initialization.
-- **Softplus** `log(1+eˣ)`: smooth, monotonic, strictly positive, ReLU-like. Gap: strictly positive and
-  monotonic, and empirically inconsistent across domains (e.g. strong on large image models, weak on
-  translation).
-- **GELU** `x·Φ(x)` (Hendrycks & Gimpel 2016): smooth, non-monotonic. Gap: at the time, one more
-  proposed curve among many; the question of *consistent* superiority across many models was open.
-- **SiL** `x·σ(x)` (Elfwing et al. 2017): a non-monotonic unit from RL function approximation. Gap:
-  introduced in a narrow RL setting; its generality across large supervised models was not established.
+  saturation toward `−α`, mean-centering / self-normalizing.
+- **Softplus** `log(1+eˣ)`: smooth, monotonic, strictly positive, ReLU-like.
+- **GELU** `x·Φ(x)` (Hendrycks & Gimpel 2016): smooth, non-monotonic.
+- **SiL** `x·σ(x)` (Elfwing et al. 2017): a non-monotonic unit from RL function approximation.
 
 ## Evaluation settings
 

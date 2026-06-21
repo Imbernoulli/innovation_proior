@@ -1,19 +1,13 @@
 ## Research question
 
 Large language models can reason — solve competition mathematics, write code, work
-through STEM problems — but the prevailing way to make them reason well leans heavily on
-*human-annotated reasoning demonstrations*: chain-of-thought exemplars, supervised
-fine-tuning on curated multi-step solutions. That dependence is the pain. It does not
-scale (high-quality reasoning traces are expensive to write), it injects the
-annotators' cognitive biases, and — most fundamentally — it *caps* the model at human
-ability: by training the model to imitate human thought processes, it can never explore
-reasoning strategies that no human wrote down. The question: can a model's reasoning
+through STEM problems — and the prevailing way to make them reason well relies on
+*human-annotated reasoning demonstrations*: chain-of-thought exemplars and supervised
+fine-tuning on curated multi-step solutions. The question: can a model's reasoning
 ability be *incentivized* directly, by reinforcement learning against a reward that only
-checks whether the final answer is correct, with no supervised reasoning traces at all —
-letting the model discover its own reasoning behaviors (reflection, verification,
-backtracking) through trial and error? And if pure RL produces strong but rough reasoning
-(poor readability, language mixing), how should a full training pipeline be staged so the
-final model is both a strong reasoner and a well-aligned general assistant?
+checks whether the final answer is correct, with no supervised reasoning traces at all?
+And how should a full training pipeline be staged so the final model is both a strong
+reasoner and a well-aligned general assistant?
 
 ## Background
 
@@ -22,15 +16,12 @@ by supervised fine-tuning (SFT) on curated input–output pairs (minimizing cros
 to human-written targets), then by reinforcement learning from human/AI feedback to
 align with preferences. SFT gives precise task grounding and is sample-efficient; RL then
 optimizes broader objectives (helpfulness, brevity) that fixed targets cannot capture, as
-in the InstructGPT recipe. The diagnostic limitation for reasoning-focused post-training:
-human SFT targets often *omit* the very components good reasoning needs — explicit
-reflection, verification, dead-end recovery — and being fixed, they cap exploration. So
-SFT may actively impede a model's discovery of effective reasoning.
+in the InstructGPT recipe.
 
 **Chain-of-thought and emergent reasoning.** Prompting a model to produce intermediate
 steps ("Let's think step by step") substantially improves performance on complex tasks,
 and reasoning ability emerges as models scale. Letting a model generate a long chain of
-thought before answering is the behavior we want to *learn to produce*, not hand-engineer.
+thought before answering is a behavior that improves complex-task performance.
 
 **Reinforcement learning for LLMs and PPO.** The standard RL algorithm for LLM
 post-training is Proximal Policy Optimization. For each prompt the policy samples an
@@ -38,35 +29,22 @@ output; a learned *value model* (critic) of comparable size to the policy estima
 per-token baseline, and Generalized Advantage Estimation (GAE) combines rewards and the
 value estimates into per-token advantages; the policy is updated with a clipped
 importance-ratio surrogate, and a per-token KL-to-reference penalty is added as a dense
-reward to keep the policy near a reference. The costs that matter here:
-(i) the critic doubles memory and compute; (ii) the critic must predict expected
-future reward from a *partial* response, which is intrinsically hard when only a final
-outcome reward exists — and harder still for long chains of thought, where early text may
-later be revised or contradicted, so a partial-response value is barely meaningful; and
-(iii) folding the KL penalty into the per-token reward penalizes the cumulative KL,
-which implicitly discourages longer responses — exactly the wrong pressure if we want the
-model to think longer.
+reward to keep the policy near a reference.
 
 **Verifiable rewards.** For tasks with deterministic answers — math with a final numeric
 result, code judged by a compiler against test cases — correctness can be checked by a
 *rule*, not a learned model. Rule-based rewards are cheap and reliable. Neural reward
-models, in contrast, are susceptible to *reward hacking*: over a long RL run the policy
-finds shortcuts that fool the reward model rather than genuinely improving. Reliable
-rules are the preferred signal wherever the task allows automatic verification.
+models are trained to score responses or reasoning steps and provide a generalizable
+signal for tasks without a rule.
 
 ## Baselines
 
 **SFT on human reasoning traces.** Fine-tune the base model on curated chain-of-thought
-solutions with cross-entropy. Core idea: teach reasoning by imitation. Gap: expensive to
-annotate, injects human bias, and caps performance at the demonstrations — no exploration
-of non-human reasoning.
+solutions with cross-entropy. Core idea: teach reasoning by imitation.
 
 **PPO-based RLHF (Schulman et al. 2017; Ouyang et al. 2022).** Policy + value model,
 GAE advantages, clipped surrogate, per-token KL-to-reference penalty as dense reward.
 Core idea: optimize a (possibly learned) reward while staying near a reference policy.
-Gaps: the value model's memory/compute overhead; the difficulty of value estimation from
-partial long-CoT responses; and the length-discouraging effect of penalizing cumulative
-per-token KL.
 
 **Group Relative Policy Optimization (Shao et al. 2024, GRPO).** For each question,
 sample a *group* of `G` outputs from the old policy; compute each output's reward;
@@ -78,10 +56,8 @@ advantage of an output is how much better its reward is than its group-mates'. T
 removes the value model entirely.
 
 **Neural reward models (outcome- or process-based).** Train a model to score responses
-or reasoning steps. Core idea: a learned, generalizable reward for tasks without a rule.
-Gap: vulnerable to reward hacking under large-scale RL, especially process reward models;
-costly to retrain. Hence rules are preferred for verifiable reasoning, and neural reward
-models are reserved for genuinely subjective tasks (helpfulness, safety).
+or reasoning steps. Core idea: a learned, generalizable reward for tasks without a rule;
+used for subjective tasks (helpfulness, safety).
 
 ## Evaluation settings
 

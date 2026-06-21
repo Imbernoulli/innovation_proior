@@ -2,15 +2,13 @@
 
 Diffusion probabilistic models (DPMs) produce excellent samples, but generating a single sample
 requires running a large neural network sequentially hundreds or thousands of times. Each step removes
-a little noise; the chain is long because each step is a small, first-order correction. This sampling
-cost is the dominant bottleneck for using DPMs in practice — orders of magnitude slower than the
-single-pass generators (GANs, VAEs) they otherwise match or beat on sample quality.
+a little noise; the chain is long because each step is a small, first-order correction. By contrast,
+single-pass generators (GANs, VAEs) that DPMs match or beat on sample quality produce a sample in one
+network evaluation.
 
-The precise problem: given an already-trained DPM — a noise-prediction network that we may not retrain —
-produce high-quality samples in as few sequential network evaluations as possible, ideally on the order
-of ten. A solution must be *training-free* (work for any pre-trained model, plug-and-play), must not
-degrade sample quality relative to the slow sampler, and should come with some guarantee that taking
-fewer, larger steps actually converges rather than diverging.
+The setting: given an already-trained DPM — a noise-prediction network — produce high-quality samples
+in as few sequential network evaluations as possible, on the order of ten, using the model as-is
+(training-free, plug-and-play).
 
 ## Background
 
@@ -35,64 +33,52 @@ the scaled score −σ_t ∇_x log q_t(x_t); equivalently, ε_θ predicts the Ga
 
 **Sampling as solving a differential equation.** Substituting −ε_θ/σ_t for the score gives a parameterized
 reverse-time SDE; the standard ancestral sampler (Ho et al. 2020) is a first-order discretization of it.
-But discretizing an SDE is hard: the step size is limited by the randomness of the Wiener process
-(Kloeden & Platen 1992, Ch. 11), and large steps in high dimension cause non-convergence — hence hundreds
-to thousands of steps. The deterministic alternative is the *probability flow ODE* (Song et al. 2020),
-which shares the SDE's marginals at every t but has no Brownian term:
+For SDE discretizations, the step size is limited by the randomness of the Wiener process
+(Kloeden & Platen 1992, Ch. 11), and the samplers use hundreds to thousands of steps. The deterministic
+alternative is the *probability flow ODE* (Song et al. 2020), which shares the SDE's marginals at every t
+but has no Brownian term:
 
   dx_t/dt = f(t) x_t + (g²(t) / 2σ_t) ε_θ(x_t, t),   solved from t=T down to t=0.
 
-With no randomness, an ODE can in principle be solved with much larger steps, and one can bring in
-off-the-shelf numerical ODE solvers.
+With no randomness, an ODE admits larger steps in principle, and one can bring in off-the-shelf numerical
+ODE solvers. Song et al. (2020) ran a high-order adaptive black-box solver (the RK45 Runge–Kutta pair of
+Dormand & Prince 1980) on this ODE and reached quality comparable to a 1000-step SDE solver in about 60
+network evaluations.
 
-**Motivating observation about existing ODE solvers.** Song et al. (2020) ran a high-order adaptive
-black-box solver (the RK45 Runge–Kutta pair of Dormand & Prince 1980) on this ODE and reached quality
-comparable to a 1000-step SDE solver in about 60 network evaluations. That is far faster, but in the
-few-step regime (~10 steps) general-purpose ODE solvers empirically fail to produce satisfactory samples.
-The right-hand side above is handed to such a solver as one opaque vector field; the numerical-ODE
-literature (Hochbruck & Ostermann 2005, 2010) studies how black-box solvers behave on right-hand sides
-with particular structure and at large step size.
-
-**Derived schedule quantities.** Because the SNR α_t²/σ_t² is monotone in t, the quantity
-log(α_t/σ_t) (one half of the log-SNR) is a strictly decreasing, invertible function of t. For the
-variance-preserving schedules used in practice, α_t² + σ_t² = 1, and both this quantity and its inverse
-have closed forms for the common linear and cosine schedules.
+**Schedule quantities.** Because the SNR α_t²/σ_t² is monotone in t, the quantity log(α_t/σ_t) is a
+strictly decreasing, invertible function of t. For the variance-preserving schedules used in practice,
+α_t² + σ_t² = 1, and both this quantity and its inverse have closed forms for the common linear and
+cosine schedules.
 
 ## Baselines
 
 **DDPM ancestral sampling (Ho et al. 2020).** A discrete-time Markov chain trained by a variational bound;
 sampling reverses it one small step at a time and is a first-order discretization of the reverse SDE.
-Excellent quality but needs roughly 1000 sequential network evaluations.
+Needs roughly 1000 sequential network evaluations.
 
 **Probability-flow ODE with a black-box solver (Song et al. 2020).** Writes sampling as the integral
 x_t = x_s + ∫_s^t (f(τ)x_τ + (g²(τ)/2σ_τ) ε_θ) dτ and hands the whole integrand to a generic high-order
-Runge–Kutta solver (RK45). Gap: it treats the integrand as a single opaque function; it needs ~60
-evaluations and degrades badly below ~10 steps.
+Runge–Kutta solver (RK45), using ~60 evaluations.
 
 **DDIM (Song et al. 2020, denoising diffusion implicit models).** A deterministic, non-Markovian sampler.
 For adjacent steps t_{i-1} → t_i, given a value x̃_{t_{i-1}},
 
   x̃_{t_i} = (α_{t_i}/α_{t_{i-1}}) x̃_{t_{i-1}} − α_{t_i} ( σ_{t_{i-1}}/α_{t_{i-1}} − σ_{t_i}/α_{t_i} ) ε_θ(x̃_{t_{i-1}}, t_{i-1}).
 
-Empirically the fastest training-free option (~50 steps, deterministic). Gaps: it is motivated by a
-non-Markovian inference construction rather than by the ODE structure, it is only first order, and it comes
-with no convergence-order analysis and no principled route to higher order.
+A first-order deterministic sampler derived from a non-Markovian inference construction, run at ~50 steps.
 
 **Analytic-DPM (Bao et al. 2022) and learned/distilled samplers (Salimans & Ho 2022; Lam et al. 2021;
 Watson et al. 2021).** Either estimate optimal reverse variances analytically, or learn noise levels /
-trajectories, or distill the model into a few-step student. The distillation route can reach ~4 steps but
-needs an extra, possibly expensive training stage, must be redone per model/dataset/step-budget, and loses
-the ability to query the score at arbitrary times. Analytic and trajectory-learning samplers still need
-~50 evaluations.
+trajectories, or distill the model into a few-step student. The distillation route can reach ~4 steps with
+an extra training stage, redone per model/dataset/step-budget. Analytic and trajectory-learning samplers
+use ~50 evaluations.
 
 **Adaptive-step ODE/SDE solver (Jolicoeur-Martineau et al. 2021).** An adaptive step-size controller for
 diffusion differential equations, comparing a lower- and higher-order estimate to size the next step.
-It is a relevant prior design for deciding step sizes in diffusion samplers.
 
 **Exponential integrators / exponential Runge–Kutta (Hochbruck & Ostermann 2005, 2010).** A family of
-numerical-ODE methods developed in the general-purpose ODE literature, used as an alternative to plain
-explicit Runge–Kutta on certain problem classes at large step size. They are part of the standard
-numerical-ODE toolbox available off the shelf.
+numerical-ODE methods from the general-purpose ODE literature, part of the standard numerical-ODE toolbox
+available off the shelf.
 
 ## Evaluation settings
 
@@ -101,10 +87,9 @@ on which DPMs were already evaluated: CIFAR-10 (32×32), CelebA 64×64, LSUN bed
 64×64 and 256×256 (the last with classifier guidance). Both pre-training regimes are in scope: continuous-
 time DPMs (e.g. variance-preserving models with linear / cosine schedules) and discrete-time DPMs trained
 at a fixed number of steps (e.g. 1000 or 4000). Sample quality is measured by Fréchet Inception Distance
-(FID). The cost axis — and the whole point — is the number of sequential network evaluations (NFE); a fast
-sampler is judged by the FID it reaches at a fixed small NFE, especially around 10. For a training-free
-solver, the protocol is to reuse a model trained by others without modification, varying only the solver
-and its step schedule.
+(FID). The cost axis is the number of sequential network evaluations (NFE); a fast sampler is judged by the
+FID it reaches at a fixed small NFE, especially around 10. For a training-free solver, the protocol is to
+reuse a model trained by others without modification, varying only the solver and its step schedule.
 
 ## Code framework
 
@@ -124,7 +109,7 @@ class NoiseSchedule:
         return torch.exp(self.marginal_log_mean_coeff(t))
     def marginal_std(self, t):             # sigma_t
         ...
-    # The monotone half-log-SNR lambda_t = log(alpha_t) - log(sigma_t) and its inverse.
+    # The monotone quantity lambda_t = log(alpha_t) - log(sigma_t) and its inverse.
     # These are available schedule coordinates because SNR is monotone in t.
     def marginal_lambda(self, t):
         ...

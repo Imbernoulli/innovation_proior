@@ -1,18 +1,16 @@
 ## Research question
 
-Offline continuous control: learn a policy from a *fixed* dataset of transitions with no environment interaction and beat the behavior policy that collected the data. The central failure to engineer around is **Q-value overestimation on out-of-distribution actions**. Bootstrapped Q-learning builds its target from the value of the next action proposed by the policy; offline, that next action can lie far from the data, and the critic—having never seen those actions—extrapolates upward. The inflated target propagates through the Bellman recursion, the policy (defined by maximizing the critic) drifts toward the over-valued actions, and the error feeds on itself. The design target is the **offline RL algorithm itself**—its losses, target construction, behavior regularization, and policy-extraction rule—subject to fixed capacity. The contribution must be algorithmic, not architectural.
+Offline continuous control: learn a policy from a *fixed* dataset of transitions with no environment interaction and beat the behavior policy that collected the data. The design target is the **offline RL algorithm itself**—its losses, target construction, behavior regularization, and policy-extraction rule—subject to fixed capacity. The contribution must be algorithmic, not architectural.
 
 ## Prior art / Background / Baselines
 
-These are the main existing answers to the overestimation problem and the gap each leaves.
+- **Naive off-policy actor-critic on a static buffer.** Run a standard continuous-control actor-critic with replay and target networks on a fixed offline dataset. The actor proposes actions and the critic values them via Bellman bootstrapping; without new environment interaction, training proceeds entirely from the fixed replay buffer.
 
-- **Naive off-policy actor-critic on a static buffer.** Run a standard continuous-control actor-critic with replay and target networks on a fixed offline dataset. The actor quickly proposes actions outside the data distribution; the critic over-values them, and with no new experience the errors accumulate. Gap: unconstrained bootstrapping diverges offline.
+- **Generative-model constraints (BCQ, BEAR).** Fit a model of the dataset's action distribution and restrict the policy to actions the model deems in-support, or bound the policy's distance to the behavior actions. They avoid proposals far outside the data distribution and add a generative/density model, extra sampling, and several hyperparameters.
 
-- **Generative-model constraints (BCQ, BEAR).** Fit a model of the dataset's action distribution and restrict the policy to actions the model deems in-support, or bound the policy's distance to the behavior actions. They avoid some OOD proposals but add a generative/density model, extra sampling, and several hyperparameters that are difficult to tune without environment interaction. Gap: heavy machinery and hard-to-tune components.
+- **Conservative value penalties (CQL).** Add a critic-loss term that pushes Q-values down on OOD actions and up on dataset actions, combining standard Bellman backup with an explicit conservatism term. It introduces an additional temperature/coefficient and explicitly samples and queries OOD actions during training.
 
-- **Conservative value penalties (CQL).** Add a critic-loss term that pushes Q-values down on OOD actions and up on dataset actions. It lowers overestimation, but it must explicitly sample and query OOD actions and introduces an additional temperature/coefficient. Gap: still requires OOD queries and another sensitive hyperparameter.
-
-- **Behavior-regularized actor-critic (BRAC, AWAC).** Keep standard value learning and penalize the policy's divergence from the behavior policy, or extract the policy via advantage-weighted regression so it stays near the data. The divergence estimate again requires a behavior model, and a single global penalty trades exploitation against caution across all states. Gap: behavior-policy estimation plus a global regularization dial.
+- **Behavior-regularized actor-critic (BRAC, AWAC).** Keep standard value learning and penalize the policy's divergence from the behavior policy, or extract the policy via advantage-weighted regression so it stays near the data. The divergence estimate requires a behavior model; the policy update uses a global penalty or reweighting term.
 
 ## Fixed substrate / Code framework
 

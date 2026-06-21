@@ -4,10 +4,10 @@ A small causal Transformer can copy, repeat, or reverse a symbol string at the l
 
 ## Prior art / Background / Baselines
 
-- **Recurrent encoder-decoder.** Read the source with an RNN, compress it into one fixed-size vector, then decode from that. Order is supplied by the recurrence itself, with no explicit positional code. Gap: the constant-size summary is an information bottleneck, so quality degrades on long sequences and is worst beyond training lengths.
-- **Additive-attention seq2seq.** Keep every encoder state and let the decoder read a content-weighted blend at each step, removing the bottleneck. It is still recurrent and still has no positional encoding — recurrence carries order. Gap: recurrence carries order in principle, but the hidden state is a fixed-width channel and serial computation is slow under length stress.
-- **Sinusoidal absolute positional encoding.** Self-attention is permutation-equivariant, so a fixed `d_model` vector of geometrically spaced sines/cosines is added to each token embedding before layer one. The formula is closed-form and defined at any index. Gap: the model only learns to interpret these phase patterns over the training range; past that the joint configuration is out of distribution and behaviour is uncalibrated.
-- **Learned absolute positional embedding.** A trainable table with one vector per slot. Gap: there is no entry past the training range, so the model cannot even represent an unseen length; it is ruled out for OOD by inspection.
+- **Recurrent encoder-decoder.** Read the source with an RNN, compress it into one fixed-size vector, then decode from that. Order is supplied by the recurrence itself, with no explicit positional code.
+- **Additive-attention seq2seq.** Keep every encoder state and let the decoder read a content-weighted blend at each step. It is still recurrent and still has no positional encoding — recurrence carries order.
+- **Sinusoidal absolute positional encoding.** Self-attention is permutation-equivariant, so a fixed `d_model` vector of geometrically spaced sines/cosines is added to each token embedding before layer one. The formula is closed-form and defined at any index.
+- **Learned absolute positional embedding.** A trainable table with one vector per slot.
 
 ## Fixed substrate / Code framework
 

@@ -1,13 +1,13 @@
 ## Research question
 
-A fixed-capacity network trains on a sequence of contexts, one at a time, and must keep performing on all earlier ones. During training on a context, the learner sees only that context's loss; the data of earlier contexts is gone, and replaying it would cost memory growing with the number of contexts. Ordinary SGD on the current context drags the shared weights wherever the new loss demands, and those same weights encoded the old contexts, so old accuracy collapses—catastrophic forgetting. The design task is a **regularization strategy**: an *importance estimator* (which parameters mattered for each finished context) and a *penalty form* (how their changes are penalized while later contexts train), added on top of an otherwise-fixed training loop.
+A fixed-capacity network trains on a sequence of contexts, one at a time, and must keep performing on all earlier ones. During training on a context, the learner sees only that context's loss; the data of earlier contexts is gone, and replaying it would cost memory growing with the number of contexts. The design task is a **regularization strategy**: an *importance estimator* (which parameters mattered for each finished context) and a *penalty form* (how their changes are penalized while later contexts train), added on top of an otherwise-fixed training loop.
 
 ## Prior art / Background / Baselines
 
-- **Catastrophic interference.** A backprop network trained on a second set of associations abruptly loses the first, because the representation is shared and distributed—any weight move that helps the new context tends to corrupt the old one. Gap: it names the problem, not a solution.
-- **Joint / replay training.** Interleave all contexts' data and forgetting vanishes, because the weights are jointly fit. Gap: forbidden here—the old data is gone, and storing it costs memory linear in the number of contexts.
-- **Uniform-stiffness L2 anchor.** After a context finishes, snapshot `theta*` and add `sum_i (theta_i - theta*_i)^2` while later contexts train. No data, constant memory. Gap: one global stiffness cannot be right—large enough to hold the old context freezes the network so the new one cannot be learned; small enough to learn the new one fails to hold the old.
-- **Curvature framing.** Near a context's optimum, the loss locally approximates a quadratic whose Hessian describes which directions are stiff and which are free. The diagonal Fisher gives a cheap, positive-semidefinite proxy for that Hessian. Gap: it is a local description of one optimum, not yet a prescription for how to estimate, accumulate, or apply importance across a long sequence of contexts with changing data.
+- **Catastrophic interference.** A backprop network trained on a second set of associations abruptly loses the first, because the representation is shared and distributed—any weight move that helps the new context tends to corrupt the old one.
+- **Joint / replay training.** Interleave all contexts' data and forgetting vanishes, because the weights are jointly fit. This requires access to all prior data simultaneously.
+- **Uniform-stiffness L2 anchor.** After a context finishes, snapshot `theta*` and add `sum_i (theta_i - theta*_i)^2` while later contexts train. No data, constant memory.
+- **Curvature framing.** Near a context's optimum, the loss locally approximates a quadratic whose Hessian describes which directions are stiff and which are free. The diagonal Fisher gives a cheap, positive-semidefinite proxy for that Hessian.
 
 ## Fixed substrate / Code framework
 

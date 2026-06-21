@@ -9,21 +9,13 @@ matrices from DRAM into the on-chip accelerator's SRAM is a memory-bandwidth bot
 that grows with model size, and on a power-limited chip the energy of those FP multiplies is
 the hard ceiling. The standard lever for this is quantization — represent weights (and
 sometimes activations) in fewer bits — but the prevailing recipe quantizes a model that was
-*trained in floating point*, and that recipe falls apart below about 4 bits.
+*trained in floating point*.
 
-The precise goal is a linear layer whose forward weights are *natively* drawn from a tiny
-discrete set on **every** forward pass — during training and inference alike, with no
+The question is how to design a linear layer whose forward weights are *natively* drawn from
+a tiny discrete set on **every** forward pass — during training and inference alike, with no
 separate float forward path — so that the projection's matmul becomes (almost) integer
-add/subtract and the weight memory collapses by an order of magnitude, without giving up
-the scaling behavior expected from a decoder-only language model. Achieving that means
-confronting two coupled problems at once: (1) the forward operator (sign / round / clip
-onto the discrete set) is non-differentiable, so ordinary backprop has nothing to flow
-through; and (2) the model optimized for the discrete representation must be found *by
-training*, not by snapping a finished float model onto a grid. A solution has to specify the
-discretizer, the scale that keeps the discrete tensor a faithful stand-in for the real one,
-how activations are handled, how gradients are obtained, and how the whole thing stays
-numerically stable when scaled to billions of parameters. None of the methods on the table
-below does all of this for a decoder-only LLM.
+add/subtract and the weight memory collapses by an order of magnitude, while maintaining the
+scaling behavior expected from a decoder-only language model.
 
 ## Background
 
@@ -37,74 +29,54 @@ gated feed-forward (Shazeer 2020), rotary position embeddings (Su et al.), and n
 terms. These choices are load-bearing only in that any new layer wants to slot into that
 ecosystem (HuggingFace, vLLM, llama.cpp) with minimal friction.
 
-The relevant pain points and prior findings:
+Relevant prior findings:
 
-- **Sub-4-bit post-training quantization breaks.** Post-training quantization (PTQ) is
+- **Sub-4-bit post-training quantization.** Post-training quantization (PTQ) is
   attractive because it touches nothing in the training pipeline, but it can only move
-  weights to grid points *near* the trained float values — and there is no reason the good
-  low-bit solution lives near the float optimum. Empirically, PTQ holds up at 8 and 4 bits
-  but degrades sharply at 2 bits and collapses at 1 bit (perplexities exploding by many
-  orders of magnitude).
+  weights to grid points *near* the trained float values. Empirically, PTQ holds up at
+  8 and 4 bits but degrades sharply at 2 bits and collapses at 1 bit.
 
-- **Quantization-aware training (QAT) helps but gets harder as precision drops.** Training
-  the model to account for reduced precision from the start gives better accuracy than PTQ
-  and supports continued training/fine-tuning, but the optimization becomes harder to
-  converge as the bit-width falls, and it is an open question whether a QAT'd model even
-  obeys the neural-LM scaling law.
+- **Quantization-aware training (QAT).** Training the model to account for reduced precision
+  from the start gives better accuracy than PTQ and supports continued training/fine-tuning.
 
-- **The discrete forward operator has no gradient.** Mapping a real weight onto a discrete
-  set with sign / round / clip is piecewise-constant, so its derivative is zero almost
-  everywhere — backprop through it transmits nothing. The standard workaround is the
-  *straight-through estimator* (STE; Bengio, Léonard & Courville 2013, formalizing Hinton's
-  lecture-15b idea): in the backward pass, treat the hard threshold as if it were the
-  identity. It is a biased estimator, but for a single layer it has the right sign, and it
-  is what makes training through a non-differentiable quantizer possible at all.
+- **The discrete forward operator.** Mapping a real weight onto a discrete set with sign /
+  round / clip is piecewise-constant, so its derivative is zero almost everywhere — backprop
+  through it transmits nothing. The standard workaround is the *straight-through estimator*
+  (STE; Bengio, Léonard & Courville 2013, formalizing Hinton's lecture-15b idea): in the
+  backward pass, treat the hard threshold as if it were the identity. It is a biased
+  estimator, but for a single layer it has the right sign, and it is what makes training
+  through a non-differentiable quantizer possible at all.
 
-- **A tiny latent-weight update often does not change the discrete weight.** If you keep
-  only the discrete weights, the small steps SGD takes are usually too small to flip any of
-  them, so the discrete weights — and the gradients estimated from them — stagnate. The fix
-  inherited from the binary-network literature (Courbariaux et al. 2015) is to keep a
-  *real-valued latent weight* that accumulates the updates and is discretized on the fly in
-  each forward pass; the latent copy is discarded at inference.
+- **Real-valued latent weights.** The practice inherited from the binary-network literature
+  (Courbariaux et al. 2015) is to keep a *real-valued latent weight* that accumulates the
+  updates and is discretized on the fly in each forward pass; the latent copy is discarded
+  at inference.
 
-- **Activations carry large-magnitude outlier features.** Beyond roughly the 6.7B scale, a
-  small fraction (~0.1%) of activation feature dimensions develop systematically large
-  magnitudes that appear in every layer (Dettmers et al. 2022). With a single per-tensor
-  scale, one such outlier compresses every other value into a sliver of the range and
-  destroys their precision — which argues for scaling activations at a finer granularity
-  (per row / per token) rather than per whole tensor.
+- **Activation outlier features.** Beyond roughly the 6.7B scale, a small fraction (~0.1%)
+  of activation feature dimensions develop systematically large magnitudes that appear in
+  every layer (Dettmers et al. 2022). Per-row / per-token scaling of activations addresses
+  this at finer granularity than per whole tensor.
 
-- **Quantizing the matmul perturbs the output variance, which controls stability.** With
-  standard initialization the output of a full-precision projection has variance on the
-  order of 1, and keeping it there is a known prerequisite for stable deep-Transformer
-  training. Replacing the weights with a discrete approximation changes that variance, so
-  some normalization has to be reintroduced to restore it. Sub-LayerNorm (Wang et al. 2022,
+- **Output variance after quantization.** With standard initialization the output of a
+  full-precision projection has variance on the order of 1. Sub-LayerNorm (Wang et al. 2022,
   "Magneto") — an extra normalization placed *inside* each sublayer, before the projections
-  — is the stabilizer of record for large-scale Transformers and the natural tool for this.
+  — is a stabilizer for large-scale Transformers.
 
 ## Baselines
 
-These are the prior methods a native low-bit linear layer would be measured against and
-reacts to.
+These are the prior methods a native low-bit linear layer would be measured against.
 
 **Absmax / vector-wise 8-bit quantization (Dettmers et al., "LLM.int8()", 2022).** Quantize
 a tensor to the signed `b`-bit range by scaling with `Qb / ||x||_∞`, where `Qb = 2^{b-1}`
 (`Qb = 128` for 8 bits), then round and clip to the implementable int8 range `[-128, 127]`;
-dequantize by the inverse scale. For 8-bit (W8A8) this is nearly lossless. **Gap:**
-a single per-tensor scale lets one outlier feature crush the precision of the rest, so the
-authors must peel the outlier dimensions out into a separate FP16 matmul; and the scheme is
-a post-hoc compression of a float-trained model, not a layer whose weights are *inherently*
-low-bit. At 4-bit weights-and-activations and below it degrades badly (the activation side
-is the harder one), and at 1-bit weights it is catastrophic.
+dequantize by the inverse scale. For 8-bit (W8A8) this is nearly lossless. The authors
+handle outlier dimensions by peeling them into a separate FP16 matmul.
 
 **Weight-only PTQ: GPTQ and QuIP (Frantar et al. 2023; Chee et al. 2023).** Keep activations
 in FP16 and quantize only the weights, using second-order/error-feedback machinery (GPTQ
 greedily quantizes columns while updating the rest to compensate; QuIP adds incoherence
 processing with guarantees) to push weights to 4 or even 2 bits. These are the strongest
-sub-8-bit baselines. **Gap:** still post-training — they snap weights to grid points around
-the trained float values; W4A16 holds, W2A16 is already lossy (QuIP recovers some of it),
-and they do not touch activations, so the matmul stays a float operation. They cannot reach
-1-bit weights without collapse.
+sub-8-bit baselines, with activations left in float.
 
 **Sign-based binary weight networks with an absmean scale (Rastegari et al., "XNOR-Net",
 2016).** For a real weight tensor `W`, approximate it as `W ≈ α·B` with `B ∈ {-1, +1}` and a
@@ -113,25 +85,19 @@ positive scalar `α`, chosen to minimize the L2 error `||W − α·B||²`. Expan
 `B ∈ {±1}ⁿ` is `B* = sign(W)`, and setting `∂J/∂α = 0` gives `α* = Wᵀsign(W)/n = (1/n)Σ|Wᵢ| =
 mean(|W|)`. So the L2-optimal binary approximation is the sign of the weights scaled by their
 mean absolute value, and a matmul against a `{-1,+1}` tensor needs no multiplies — only
-additions and subtractions, with one scalar multiply by `α` at the end. **Gap:** this line
-was developed and validated on convolutional vision networks; the two-valued `{-1,+1}` set
-forces every weight to participate at full magnitude, and it had not been shown to train, or
-to follow the scaling law, for a billion-parameter decoder-only language model.
+additions and subtractions, with one scalar multiply by `α` at the end. This line was
+developed and validated on convolutional vision networks.
 
 **Centralized binarization for Transformers (Liu et al., "BiT", 2022).** Before taking the
 sign, subtract the mean of the real weights so the binarized set is zero-centered:
 `W_B = (||W_R||₁/n)·sign(W_R − W̄_R)`; that work also explores a learnable "elastic"
 quantizer that fits a scale and threshold per layer to the data. Centralizing is shown to
-increase the information-carrying capacity of the binary weights. **Gap:** demonstrated on
-BERT-style encoders and machine translation, not on large autoregressive LLMs; the elastic
-(learnable-scale) variant adds parameters and is observed to be less stable than a
-parameter-free scale, which matters when the goal is to train at a large learning rate.
+increase the information-carrying capacity of the binary weights. Demonstrated on BERT-style
+encoders and machine translation.
 
 **Binary/low-bit Transformers for translation and BERT (e.g. binarized NMT; binary-BERT
 lines).** Binarization had been carried into Transformers, but for encoder (BERT) or
-encoder-decoder (translation) architectures, at modest scale. **Gap:** a decoder-only LLM is
-a different regime — unidirectional, scaled to billions of parameters — and these results do
-not transfer directly; whether 1-bit training follows the LLM scaling law was unknown.
+encoder-decoder (translation) architectures, at modest scale.
 
 ## Evaluation settings
 

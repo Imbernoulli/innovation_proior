@@ -87,8 +87,7 @@ stated; needs a multiclass extension.
 The natural multiclass extensions of Platt scaling work on the full logit vector $\mathbf z$:
 **matrix scaling** applies an affine map $\mathbf W\mathbf z+\mathbf b$ before the softmax, with
 $\mathbf W,\mathbf b$ fit by NLL; and **vector scaling** restricts $\mathbf W$ to be diagonal.
-Matrix scaling's parameter count grows as $K(K+1)$ with the number of classes $K$ — a gap that
-matters for large-$K$ problems, where there are enough parameters to overfit the held-out set.
+Matrix scaling's parameter count grows as $K(K+1)$ with the number of classes $K$.
 
 ## Evaluation settings
 

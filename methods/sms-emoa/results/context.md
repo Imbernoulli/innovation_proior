@@ -5,17 +5,13 @@ A multi-objective minimization problem asks for decisions whose objective vector
 output is a finite approximation to the Pareto front: it should move close to the true
 front and cover its trade-off surface without losing extremes.
 
-The practical tension in early elitist EMOAs is that survival already has two jobs.
-It must respect Pareto dominance, because a dominated solution should not survive ahead
-of a nondominated one, and it must maintain diversity among solutions that dominance
-cannot separate. The common algorithms solve the second part with density surrogates:
-crowding distance, nearest-neighbour density, clustering, or grid occupancy. Those
-surrogates are cheap, but they are only indirect proxies for the set quality ultimately
-reported by many studies.
+Elitist EMOAs handle survival in two parts: respecting Pareto dominance and maintaining
+diversity among solutions that dominance cannot separate. The common algorithms address
+the second part with density surrogates: crowding distance, nearest-neighbour density,
+clustering, or grid occupancy.
 
-The open design question is whether a simple elitist EMOA can keep the dependable
-dominance ranking while making its within-front survival pressure agree with a set
-quality indicator, without turning every generation into an intractable subset search.
+The open design question is how a simple elitist EMOA can use a set quality indicator
+to guide within-front survival decisions.
 
 ## Background
 
@@ -39,34 +35,28 @@ the same dominated region from being counted redundantly. It also depends on a r
 point, and that dependence is concentrated at boundary points whose dominated boxes reach
 toward `r`.
 
-The computational obstacle is real. Exact hypervolume routines are efficient in two
-objectives and still manageable in three, but the cost grows sharply with the objective
-dimension. A survival rule that repeatedly evaluates large subsets would be far more
-expensive than the density passes used by NSGA-II and SPEA2.
+Exact hypervolume routines are efficient in two objectives and still manageable in three,
+but the cost grows sharply with the objective dimension.
 
 ## Baselines
 
 NSGA-II uses fast nondominated sorting and fills the next generation front by front. If
 the last accepted front does not fit, it keeps points with high crowding distance: for
 each objective, neighbouring gaps are normalized and summed, while boundary points are
-protected. The method is parameter-light and robust, but its diversity estimate is an
-axis-aligned local density surrogate rather than a set-quality measure.
+protected. The method is parameter-light and robust.
 
 SPEA2 assigns each individual a strength based on how many other individuals it dominates,
 adds a k-th-nearest-neighbour density term, and uses an archive truncation procedure to
 preserve spread when the archive is too large. It improves on the first strength-Pareto
-archive, especially when many individuals are nondominated, but the diversity term remains
-a nearest-neighbour proxy.
+archive, especially when many individuals are nondominated.
 
 IBEA makes the indicator idea explicit through binary indicators. It assigns fitness from
 pairwise indicator values, often an epsilon indicator or a hypervolume-difference indicator,
-with an exponential scaling constant. This brings indicators into selection, but the scalar
-fitness is pairwise and parameterized rather than a direct set-level survival decision.
+with an exponential scaling constant. This brings indicators into selection through a scalar
+fitness derived from pairwise comparisons.
 
 Adaptive archiving methods show that retaining a bounded nondominated archive can be tied
-to dominated-volume arguments. They also expose a limitation for a fixed-size evolutionary
-population: keeping only nondominated archive members can shrink the active population or
-separate the archive from the variation pool.
+to dominated-volume arguments.
 
 ## Evaluation Settings
 

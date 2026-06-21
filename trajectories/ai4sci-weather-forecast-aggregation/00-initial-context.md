@@ -4,15 +4,15 @@ A weather forecasting model tokenizes each input physical field independently, p
 
 ## Prior art / Background / Baselines
 
-The standard image-model approach treats the `V` variables as input channels of a single field; the first projection welds its input dimension to exactly `V`. This is fast but hard-wires the variable set and destroys variable identity in the first layer.
+The standard image-model approach treats the `V` variables as input channels of a single field; the first projection welds its input dimension to exactly `V`.
 
 ClimaX instead tokenizes each variable's `H × W` map separately and adds a learnable per-variable embedding, so the variable set becomes a runtime argument. This makes the backbone sequence `V` times longer, so self-attention costs `O((V·h·w)²)`, and the sequence mixes geopotential, humidity, wind, and surface constants. The remaining task is to reduce those `V` tokens at each location to one token before the backbone.
 
 The baselines are three set-to-vector reductions:
 
-- **Mean pooling.** Take the uniform average over the `V` tokens at each location. It preserves scale and needs no parameters, but it gives equal weight to every variable everywhere, diluting informative fields with near-inert ones.
-- **Learned weighted sum.** Learn one scalar weight per variable and combine by softmax. It beats uniform weighting where a fixed global split helps, but a single global weighting must serve every target and every location; it cannot react to the local state and regresses on targets where the right variables differ.
-- **Cross-attention (ClimaX default).** A single learned query attends to the `V` variable tokens with content-dependent multi-head attention. The weight assigned to one variable at a location is unaffected by the values of the other variables at that same location.
+- **Mean pooling.** Take the uniform average over the `V` tokens at each location. It preserves scale and needs no parameters.
+- **Learned weighted sum.** Learn one scalar weight per variable and combine by softmax, producing a single global weighting over the variable set.
+- **Cross-attention (ClimaX default).** A single learned query attends to the `V` variable tokens with content-dependent multi-head attention.
 
 ## Fixed substrate / Code framework
 

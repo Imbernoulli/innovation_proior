@@ -11,42 +11,34 @@ minimizes total distance. The same flavor of problem pervades scheduling, layout
 design of computers (partitioning gates between chips, placing components, routing wires), where
 the number of variables runs into the tens of thousands.
 
-The difficulty is structural. The decision version of the traveling-salesman problem is
-NP-complete, and the optimization version is NP-hard: every known exact method needs effort that
-grows exponentially with `N`, so exact solution is feasible only up to modest sizes. For problems of
-practical size there is no hope of enumerating or exactly solving; one must settle for heuristics
-that find good configurations with effort that scales as a small power of `N`. A solution would have
-to (1) work on a generic cost function presented as a black box — evaluate `f`, propose
-rearrangements — without bespoke problem-specific theory; (2) reliably avoid being trapped in the
-poor local minima that defeat the obvious heuristic; and (3) scale to very large `N`. No existing
-heuristic meets all three at once: the standard ones either get stuck or are narrowly tailored to one
-problem.
+The decision version of the traveling-salesman problem is NP-complete, and the optimization version
+is NP-hard: every known exact method needs effort that grows exponentially with `N`, so exact
+solution is feasible only up to modest sizes. For problems of practical size one must settle for
+heuristics that find good configurations with effort that scales as a small power of `N`. The
+question is how to design a heuristic for a generic cost function presented as a black box —
+evaluate `f`, propose rearrangements — that works across large instances and across problem types.
 
 ## Background
 
 The prevailing approach to such problems is *heuristics*, of which there are two broad strategies.
 The first is **divide-and-conquer**: split the problem into manageable subproblems, solve each, and
-patch the solutions together. This works well only when the subproblems are naturally disjoint and
-the division is a good one, so that errors made at the seams do not eat the gains — for an
-intertwined problem the right division is itself unclear. The second is **iterative improvement**,
-also called local search or hill-climbing.
+patch the solutions together. The second is **iterative improvement**, also called local search or
+hill-climbing.
 
 The field state, framed by these heuristics, rests on a few load-bearing facts:
 
 - **The cost is a function of a discrete configuration, and its landscape is rugged.** For
   combinatorial problems `f` typically has enormous numbers of local minima — configurations from
   which no single allowed rearrangement lowers the cost, yet which are far above the global
-  minimum. This is not incidental; it is why naive search fails.
+  minimum.
 
-- **Iterative improvement gets stuck in local, not global, minima — this is the central observed
-  failure mode.** One starts from a configuration, applies a standard rearrangement to each part of
-  the system in turn, and *accepts only rearrangements that lower the cost*; when no neighboring
-  rearrangement improves `f`, the search halts. Because it only ever moves downhill, it halts at a
-  local minimum. The customary patch is to run it many times from different random starting
-  configurations and keep the best result, which mitigates but does not solve the problem. On the
-  traveling-salesman problem a purely greedy construction (from each city, go to the nearest
-  not-yet-visited city) gives tours whose length-per-step is about `1.12` on average, well above
-  optimal.
+- **Iterative improvement works by accepting only rearrangements that lower the cost.** One starts
+  from a configuration, applies a standard rearrangement to each part of the system in turn, and
+  accepts only rearrangements that lower the cost; when no neighboring rearrangement improves `f`,
+  the search halts. Running it many times from different random starting configurations and keeping
+  the best result is a common practice. On the traveling-salesman problem a purely greedy
+  construction (from each city, go to the nearest not-yet-visited city) gives tours whose
+  length-per-step is about `1.12` on average.
 
 - **A system at temperature `T` in thermal equilibrium occupies its configurations with Boltzmann
   probabilities.** From statistical mechanics, the probability of a configuration `{r_i}` of energy
@@ -101,25 +93,17 @@ The field state, framed by these heuristics, rests on a few load-bearing facts:
 - **Iterative improvement / local search (hill-climbing).** Start from a configuration; repeatedly
   apply a standard rearrangement operator to each part of the system, accepting a rearrangement
   only if it strictly lowers `f`; stop when no single rearrangement improves the cost. It is a
-  downhill walk in configuration space. *Gap:* it terminates at the first local minimum it reaches,
-  which for a rugged `f` is generically far from the global minimum; it has no mechanism to climb
-  out. The standard mitigation — restart from many random initial configurations and keep the best
-  — buys some robustness but no escape from the basins themselves, and its cost grows with the
-  number of restarts.
+  downhill walk in configuration space.
 
 - **Greedy / nearest-neighbor construction (for routing/tour problems).** Build a solution by
   always taking the locally cheapest next step (from the current city, go to the nearest unvisited
-  city). *Gap:* myopic — early greedy choices force expensive later ones; the resulting tour is
-  systematically above optimal (length-per-step about `1.12` on average for random instances), and
-  there is no way to revisit a bad early commitment.
+  city). The resulting tour has length-per-step about `1.12` on average for random instances.
 
 - **Divide-and-conquer.** Partition the problem, solve subproblems independently, patch together.
-  *Gap:* only as good as the partition; for problems whose parts interact strongly there is no
-  clean way to divide them, and errors introduced at the seams can negate the gains.
+  Works well when subproblems are naturally disjoint.
 
 - **Specialized exact methods (branch-and-bound, cutting planes, exact tour solvers).** Guarantee
-  the true optimum. *Gap:* exponential worst-case effort; usable only on small instances (a few
-  hundred cities), and each is engineered for one problem rather than for a generic black-box cost.
+  the true optimum; each is engineered for one problem rather than for a generic black-box cost.
 
 ## Evaluation settings
 

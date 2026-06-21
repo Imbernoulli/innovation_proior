@@ -1,4 +1,4 @@
-# Context: the n = 29 maximal-determinant record (Gram-space construction)
+# Context: the n = 29 maximal-determinant record
 
 ## Research question
 
@@ -35,22 +35,22 @@ The `342` sits above the record multiplier `320` and below the Barba ceiling
 | Rank-one flip annealing (this scaffold's prior rung) | 184.60 | 0.5398 |
 | Symmetric-design baseline (Jacobsthal `Q + I`) | 49 | 0.1433 |
 
-## Why local search cannot reach the record
+## Searching the space of ±1 matrices
 
 The earlier rungs of this ladder search the space of `±1` matrices directly: simulated annealing on
 single-entry sign flips, made cheap by a rank-one (matrix-determinant-lemma / Sherman–Morrison)
-update so it can run millions of flips from several structured seeds. That search genuinely plateaus
-near multiplier `184.6` — the band of the best reported program-evolution results. The plateau is
-structural, not a budget shortfall: `|det|` is a brutally rugged function of `841` coupled signs, and
-the gains that matter require coordinated changes across many entries that a single-entry walk can
-only reach through long, improbable corridors of neutral-or-worse moves.
+update so it can run millions of flips from several structured seeds. From the best structured seeds
+this search settles near multiplier `184.6`, in the band of the best reported program-evolution
+results. `|det|` is a function of `841` coupled signs, and each single-entry flip changes one sign at
+a time.
 
-The record is found in a **different space**. The maximal-determinant problem at `n ≡ 1 (mod 4)` is
-solved over the *Gram matrix* `G = R Rᵀ`: a symmetric integer design with `29` on the diagonal,
-restricted off-diagonal inner products (the residue constraints the Barba analysis permits), and
-`det(R)² = det(G)`. The dedicated search optimizes `G` in this far smaller, rigid space, then
-decomposes the optimal `G` into a `±1` factor `R`. The determinant is decided in Gram space; the sign
-matrix is recovered afterward — which is exactly why entry-flip annealing on `R` cannot find it.
+## Gram-matrix formulation
+
+The maximal-determinant problem at `n ≡ 1 (mod 4)` has a standard reformulation through the *Gram
+matrix* `G = R Rᵀ` of a candidate `±1` matrix `R`. `G` is a symmetric integer design with `29` on the
+diagonal and off-diagonal inner products restricted to the residues the Barba analysis permits, and
+`det(R)² = det(G)`. The dedicated maximal-determinant searches work in this space: they enumerate
+admissible Gram matrices `G` and decompose an optimal `G` into a `±1` factor `R`.
 
 ## Prior art
 
@@ -60,11 +60,11 @@ matrix is recovered afterward — which is exactly why entry-flip annealing on `
   (multiplier `49`); the rigid parameter-free baseline.
 - **Gram-matrix maximal-determinant search (Orrick, Solomon, Brent; 2000s).** Records for
   non-Hadamard orders come from searching admissible Gram matrices and decomposing them into `±1`
-  factors. At `n = 29`, Bruce Solomon found the conjectured-optimal Gram matrix `G` on 6 July 2002,
-  with `det(G) = (2^28 · 7^12 · 320)²`; Will Orrick tabulated it, and R. P. Brent's order-29 page
+  factors. At `n = 29`, Bruce Solomon found a Gram matrix `G` on 6 July 2002, with
+  `det(G) = (2^28 · 7^12 · 320)²`; Will Orrick tabulated it, and R. P. Brent's order-29 page
   published the compressed `G` and, by randomised decomposition, `4918` Hadamard-equivalence classes
   of explicit `±1` solutions `R` (`s29allsofar.txt`). The record `m = 320` is *conjectured* optimal,
-  not proven, and no program-evolution system has matched it.
+  not proven.
 
 ## The fixed substrate
 
@@ -118,3 +118,5 @@ Every valid output must satisfy shape `(29, 29)` and entries exactly `−1` or `
 A single deterministic instance: `n = 29`, scored by `score(H)`. The reference multipliers —
 record `320`, Barba ceiling `369.94`, machine frontier `~197`, rank-one annealing `184.60`, baseline
 `49` — are the fixed yardsticks. No partial credit beyond the determinant itself.
+</content>
+</invoke>

@@ -12,10 +12,10 @@ Find a spanning tree $T$ that minimizes this value, and output its edges.
 
 ```python
 def mst(n, edges, weight_fn):
-    """Minimize sum over a spanning tree of a LINEAR per-edge weight.
+    """Minimum spanning tree helper.
     n: number of vertices (0-indexed); edges: list of (u, v, t, c).
-    weight_fn(t, c) -> number: the per-edge weight to minimize over spanning trees.
-    Returns (sum_t, sum_c, chosen_edge_indices) for the resulting tree."""
+    weight_fn(t, c) -> number: per-edge weight; returns the spanning tree of
+    minimum total weight, as (sum_t, sum_c, chosen_edge_indices)."""
     # TODO
     pass
 

@@ -2,17 +2,17 @@
 
 ## Research question
 
-By 2021, the usual backbone comparison in visual recognition has become hard to interpret. A hierarchical vision Transformer can beat a conventional residual ConvNet on classification, detection, and segmentation, but it differs from that ConvNet along many axes at once: optimizer, schedule length, augmentation, regularization, stage layout, input stem, downsampling rule, normalization, activation placement, channel expansion, and spatial mixing primitive.
+By 2021, a hierarchical vision Transformer and a conventional residual ConvNet differ along many axes at once: optimizer, schedule length, augmentation, regularization, stage layout, input stem, downsampling rule, normalization, activation placement, channel expansion, and spatial mixing primitive. Reported accuracy gaps between the two on classification, detection, and segmentation therefore bundle all of these differences together.
 
-The question is therefore not "which system wins?" but "which design differences account for the gap?" A useful reconstruction has to separate attention from the rest of the Transformer-era bundle. It should keep compute in the same regime, change one design family at a time, and ask whether the non-attention choices already explain most of the observed advantage.
+The question is how each of these design axes, taken individually, contributes to a vision backbone's accuracy at a fixed compute budget — that is, how to study them one design family at a time while holding compute in the same regime.
 
 ## Background
 
 Convolutional networks bring locality, translation equivariance, and shared sliding-window computation. These properties are especially useful when an image backbone must support dense prediction at high resolution, because the same spatial operator can be reused across positions and resolutions. Through the 2010s, the main ConvNet line refined how to allocate that computation: VGG favored repeated small kernels, ResNet made very deep stacks trainable with residual mappings, ResNeXt exposed grouped-convolution cardinality, MobileNet and Xception separated spatial and channel computation with depthwise separable convolutions, MobileNetV2 used inverted residuals, and EfficientNet/RegNet studied scalable design spaces.
 
-Vision Transformers changed the comparison. ViT treats non-overlapping image patches as tokens and applies a standard Transformer encoder: LayerNorm before multi-head self-attention, residual add, LayerNorm before a two-layer MLP, residual add, with GELU in the MLP and a hidden dimension commonly four times the token dimension. This greatly reduces image-specific priors, but global self-attention has quadratic cost in token count and becomes awkward for dense high-resolution tasks.
+Vision Transformers offer a different design. ViT treats non-overlapping image patches as tokens and applies a standard Transformer encoder: LayerNorm before multi-head self-attention, residual add, LayerNorm before a two-layer MLP, residual add, with GELU in the MLP and a hidden dimension commonly four times the token dimension. This reduces image-specific priors, and global self-attention has cost quadratic in token count.
 
-Hierarchical vision Transformers respond by reintroducing image-like structure: multiple stages with decreasing resolution and increasing width, local windows instead of global attention, and separate patch-merging downsampling between stages. These choices make the model usable as a generic vision backbone, but they also make the comparison with a plain residual ConvNet confounded.
+Hierarchical vision Transformers reintroduce image-like structure: multiple stages with decreasing resolution and increasing width, local windows instead of global attention, and separate patch-merging downsampling between stages. These choices let the model serve as a generic vision backbone usable for dense high-resolution tasks.
 
 ## Baselines
 

@@ -1,14 +1,14 @@
 ## Research question
 
-Partition unlabeled points into groups that reflect their underlying structure across three geometries at once: convex isotropic blobs, an interleaving non-convex pair (moons), and a high-dimensional real embedding (the 8×8 digit images, 64 features). No single classical method dominates this whole range. The contribution being designed is the clustering algorithm itself — the assignment rule, the graph/density construction, the initialization, and the cluster-extraction rule — not per-dataset tuning. Only the estimator is editable; data generation, standardization, and scoring are fixed.
+Partition unlabeled points into groups that reflect their underlying structure across three geometries at once: convex isotropic blobs, an interleaving non-convex pair (moons), and a high-dimensional real embedding (the 8×8 digit images, 64 features). The contribution being designed is the clustering algorithm itself — the assignment rule, the graph/density construction, the initialization, and the cluster-extraction rule — not per-dataset tuning. Only the estimator is editable; data generation, standardization, and scoring are fixed.
 
 ## Prior art / Background / Baselines
 
-- **Partitioning — k-means / Lloyd, k-medoids / PAM, CLARANS.** These methods pick a fixed number of representatives and assign each point to the nearest one, alternating assignment and recomputation to minimize within-group cost. They must be told `k`; the nearest-representative rule produces only convex Voronoi cells, so curved or nested shapes are impossible; every point is forced into a cluster and outliers distort the representatives.
+- **Partitioning — k-means / Lloyd, k-medoids / PAM, CLARANS.** These methods pick a fixed number of representatives and assign each point to the nearest one, alternating assignment and recomputation to minimize within-group cost. They must be told `k`; the nearest-representative rule produces convex Voronoi cells.
 
-- **Hierarchical / connectivity — agglomerative clustering with a cut threshold and connectivity variants.** They merge or split points into a dendrogram, so they need no `k` up front and can follow non-convex connectivity. They still require a termination threshold: too small fragments a loose group, too large fuses separate ones, and a single value rarely serves clusters of different tightness; the connectivity variant scales as `O(n²)`.
+- **Hierarchical / connectivity — agglomerative clustering with a cut threshold and connectivity variants.** They merge or split points into a dendrogram, so they need no `k` up front and can follow non-convex connectivity. They require a termination threshold to determine the final partition; the connectivity variant scales as `O(n²)`.
 
-- **Grid / histogram density.** They bin the space, treat high-count cells as cores, and place boundaries in histogram valleys, allowing arbitrary cluster shapes. Storage and search explode as dimension grows, and performance hinges on a guessed cell size that is either too coarse or too fine.
+- **Grid / histogram density.** They bin the space, treat high-count cells as cores, and place boundaries in histogram valleys, allowing arbitrary cluster shapes.
 
 ## Fixed substrate / Code framework
 

@@ -2,9 +2,7 @@
 
 ## Research question
 
-How should a neural network process an input that is a *set* — an unordered collection of a variable number of elements — when the target is a property of the whole set? Two requirements come straight from the definition of a set: the model must be **permutation invariant** (its output cannot change when the elements are reordered), and it must accept **sets of any size**. The harder, open part: how do we model the *interactions among elements* during the computation, so that problems whose answer genuinely depends on how the elements relate to one another (amortized clustering, set anomaly detection, counting) can be solved well — not just problems where each element can be scored in isolation and the scores summed?
-
-Set-input problems are everywhere: multiple-instance learning (a label for a bag of instances), 3D shape recognition from a point cloud, set operations and statistics, and meta-learning / few-shot classification where the input set *is* a task's support dataset. Classical feed-forward nets violate both requirements (fixed-size input, order-sensitive); RNNs are sensitive to order. A solution has to be permutation-symmetric by construction and size-agnostic, while still being expressive enough to capture inter-element structure.
+How should a neural network process an input that is a *set* — an unordered collection of a variable number of elements — when the target is a property of the whole set? Two requirements come straight from the definition of a set: the model must be **permutation invariant** (its output cannot change when the elements are reordered), and it must accept **sets of any size**. Set-input problems arise throughout machine learning: multiple-instance learning (a label for a bag of instances), 3D shape recognition from a point cloud, set operations and statistics, and meta-learning / few-shot classification where the input set *is* a task's support dataset. Classical feed-forward nets have fixed-size input and are order-sensitive; RNNs are also order-sensitive. A solution must be permutation-symmetric by construction and size-agnostic.
 
 ## Background
 
@@ -20,16 +18,12 @@ where `φ` is a per-element feed-forward encoder applied independently to each e
 
 **Inducing-point / low-rank approximations.** Sparse Gaussian processes (Snelson & Ghahramani 2005) and Nyström methods (Williams & Seeger 2001; Fowlkes et al. 2004) summarize a large set of points through a small set of `m` representative "inducing points", reducing the cost of an otherwise `O(n²)` interaction (a full kernel / Gram matrix over `n` points) to `O(nm)`. This is the standard trick when full pairwise computation over a large set is too expensive but its low-rank structure can be captured by a small bottleneck.
 
-**Motivating limitation of pooling.** Because `φ` processes each element *independently*, all information about inter-element interactions is discarded before pooling. For some problems this makes the mapping unnecessarily hard. The sharp example is **amortized clustering**: learn a map from a point set to its cluster centers. The map must assign each point to a cluster while modeling *explaining-away* — clusters should not compete to explain overlapping subsets — which is why clustering is normally done by iterative refinement (EM). A set-pooling net can only learn to *quantize* space, and crucially that quantization is fixed: it cannot depend on the contents of the particular input set. The failure mode is **under-fitting** on tasks whose solution depends on the current set's internal geometry.
-
 ## Baselines
 
-- **Set-pooling / Deep Sets** (`ρ(sum(φ(·)))`, Zaheer et al. 2017; Edwards & Storkey 2017): permutation invariant, size-agnostic, provably universal. Gap: independent per-element encoding discards interactions; fixed, content-independent aggregation under-fits interaction-heavy tasks like clustering.
-- **Pooling variants** — mean-pooling, max-pooling, and feature-augmented per-element nets (`rFFp-mean`, `rFFp-max`, where each element is combined with a pooled summary before further processing): still a fixed symmetric reduction; the aggregation rule cannot be learned from the current set's contents.
-- **Simple dot-product attention pooling** (a non-parameterized attention readout): a content-dependent readout at aggregation time, but the encoding upstream still embeds each element in isolation.
-- **Recurrent set models** (e.g. order-augmented RNN readouts, Vinyals et al. 2016): can in principle attend over a set, but are order-sensitive unless carefully symmetrized, and do not give a clean permutation-invariant guarantee.
-
-Across these baselines the same wall recurs: each element is embedded before any combination happens, and the combination itself is a fixed symmetric reduction — so on interaction-heavy tasks they under-fit, while staying permutation invariant, size-agnostic, and tractable on large sets remains a hard constraint to satisfy simultaneously.
+- **Set-pooling / Deep Sets** (`ρ(sum(φ(·)))`, Zaheer et al. 2017; Edwards & Storkey 2017): permutation invariant, size-agnostic, provably universal.
+- **Pooling variants** — mean-pooling, max-pooling, and feature-augmented per-element nets (`rFFp-mean`, `rFFp-max`, where each element is combined with a pooled summary before further processing).
+- **Simple dot-product attention pooling** (a non-parameterized attention readout at aggregation time).
+- **Recurrent set models** (e.g. order-augmented RNN readouts, Vinyals et al. 2016): can attend over a set.
 
 ## Evaluation settings
 
@@ -42,7 +36,7 @@ Across these baselines the same wall recurs: each element is embedded before any
 
 ## Code framework
 
-The pieces that already exist: PyTorch `nn.Linear`, `softmax`, `LayerNorm`, multi-head projection bookkeeping (split a `d`-dim representation into `h` heads), Adam, and the encoder→pool→decoder set-pooling template. A practical tensor implementation can apply the same module to any set length, while mixed-length padded batches need an ordinary masking extension. How to fill in the encoder and decoder so the model overcomes the limitations above is open. The slots below are empty.
+The pieces that already exist: PyTorch `nn.Linear`, `softmax`, `LayerNorm`, multi-head projection bookkeeping (split a `d`-dim representation into `h` heads), Adam, and the encoder→pool→decoder set-pooling template. A practical tensor implementation can apply the same module to any set length, while mixed-length padded batches need an ordinary masking extension.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F, math

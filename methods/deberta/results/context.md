@@ -1,20 +1,16 @@
 ## Research question
 
 Transformer-based masked-language models pre-trained on large corpora are the engine of
-modern NLP, and the prevailing way to improve them is to scale data and parameters. But
-there is a structural question underneath the scaling: how should a Transformer encode
-*word position*, and how should position interact with *content* when computing
-attention? In the standard recipe, each input token is represented by a single vector
-formed by *adding* its content embedding and its position embedding, and attention is
-computed on these summed vectors. The pain points: (i) adding content and position
-entangles two things that play different roles — the attention between two words depends
-on their contents *and* on their relative positions, and on how those two interact, but
-a single summed vector blurs this; (ii) existing relative-position schemes inject order
-through a single distance-keyed bias term; and (iii) absolute position, which
-is genuinely needed to disambiguate some predictions, has to be supplied somewhere — and
-the usual place (the input layer) may interfere with learning relative structure. Can a
-better parameterization of content and position — and of where absolute position enters
-— improve pre-training efficiency and downstream accuracy at a fixed model scale?
+modern NLP, and the prevailing way to improve them is to scale data and parameters.
+Underneath the scaling sits a structural question: how should a Transformer encode *word
+position*, and how should position interact with *content* when computing attention? In
+the standard recipe, each input token is represented by a single vector formed by
+*adding* its content embedding and its position embedding, and attention is computed on
+these summed vectors. Order can also be injected as a distance-keyed bias on the
+attention score, and absolute position must be supplied somewhere in the model. The
+question is how to parameterize content and position — and where absolute position
+enters — to improve pre-training efficiency and downstream accuracy at a fixed model
+scale.
 
 ## Background
 
@@ -39,10 +35,7 @@ understanding and generation tasks than absolute ones.
 **What existing relative schemes actually compute.** Existing relative-position methods
 add, into the attention logit between a query at position `i` and a key at position `j`,
 a bias that depends on the query's content and the relative distance from `i` to `j` (a
-query-content vector dotted with a relative-position key vector). The attention between a
-word pair depends on their contents and on their relative positions and on how those
-interact, but it is not obvious that a single distance-keyed bias of this form captures
-all of that interaction.
+query-content vector dotted with a relative-position key vector).
 
 **Masked language modeling.** Pre-training corrupts a sequence `X` into `X̃` by masking
 ~15% of tokens and trains `θ` to maximize `Σ_{i∈C} log p_θ(x̃_i = x_i | X̃)` over the
@@ -62,29 +55,23 @@ model otherwise built on content and relative position.
 regularizer: perturb the input slightly to form an adversarial example and require the
 model to produce the same output distribution on the perturbation as on the clean input.
 For text, the perturbation is applied to word embeddings. Embedding vector norms vary
-widely across words and grow with model size, which destabilizes the perturbation scale
-for any embedding-space adversarial scheme.
+widely across words and grow with model size.
 
 ## Baselines
 
 **Absolute-position MLM encoder (Devlin et al. 2018; Liu et al. 2019, RoBERTa).** Sum
 content + absolute-position embeddings at the input, stack Transformer blocks, pre-train
 with MLM (RoBERTa drops next-sentence prediction, uses dynamic masking, larger batches,
-more data). Core idea: a single strong general encoder. Gaps: content and position are
-entangled by summation at the input; position information is absolute, which is
-empirically weaker than relative for many tasks.
+more data). Core idea: a single strong general encoder.
 
 **Relative-position Transformers (Shaw et al. 2018; Huang et al. 2018; Transformer-XL,
 Dai et al. 2019).** Add a learned relative-position bias into the attention logits,
 depending on the query–key distance. Core idea: model order by distance, which
-generalizes across positions and sequence lengths. Gap: order enters only through a
-single distance-keyed bias added to the content dot product. Storing
-a distinct relative-position embedding per query naively costs `O(N²d)` memory.
+generalizes across positions and sequence lengths. Storing a distinct relative-position
+embedding per query naively costs `O(N²d)` memory.
 
 **ALBERT (Lan et al. 2019).** Reduce parameters via cross-layer weight sharing and
-factorized embeddings. Core idea: parameter efficiency. Gap: orthogonal to how content
-and position interact in attention; does not address the entanglement or the missing
-interaction term.
+factorized embeddings. Core idea: parameter efficiency.
 
 ## Evaluation settings
 

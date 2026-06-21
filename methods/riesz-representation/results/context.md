@@ -2,13 +2,13 @@
 
 A continuous linear functional on `C(X, R)` is an abstract rule: it takes a continuous real-valued function on a space `X` and returns a number. In finite-dimensional linear algebra, a linear functional is a dot product with a vector. In analysis, the analogous question is sharper: when the input objects are functions, is a positive functional secretly integration against a spatial object?
 
-The setting is a compact Hausdorff space `X` and the Banach space `C(X, R)` with the uniform norm. A functional `I:C(X, R)->R` is positive if `f>=0` pointwise implies `I(f)>=0`. Positivity is much stronger than a norm estimate: it says the functional respects the order structure of functions. The problem is to determine whether that order-respecting rule comes from a unique regular Borel measure `mu` satisfying
+The setting is a compact Hausdorff space `X` and the Banach space `C(X, R)` with the uniform norm. A functional `I:C(X, R)->R` is positive if `f>=0` pointwise implies `I(f)>=0`. Positivity is an order condition: it says the functional respects the order structure of functions. The question is whether such an order-respecting rule comes from a unique regular Borel measure `mu` satisfying
 
 `I(f) = integral_X f dmu`
 
 for every continuous `f`.
 
-The difficulty is that a measure is normally defined on sets, while `I` only sees continuous functions. Indicator functions of rough sets are not continuous. A solution has to recover set mass using only continuous tests, explain why open and compact approximation are the right replacements for indicators, and prove that the resulting set function is countably additive and regular.
+A measure is normally defined on sets, while `I` only sees continuous functions, and indicator functions of rough sets are not continuous.
 
 ## Background
 
@@ -30,17 +30,17 @@ Together they say that rough measurable sets are determined by topologically tam
 
 ## Baselines
 
-- **Point evaluation.** For each `x in X`, the rule `I(f)=f(x)` is positive and continuous. It behaves like a unit mass at one point. Gap: point evaluations explain atoms but not spread-out mass or arbitrary positive functionals.
+- **Point evaluation.** For each `x in X`, the rule `I(f)=f(x)` is positive and continuous. It behaves like a unit mass at one point.
 
-- **Finite weighted sums.** Rules of the form `I(f)=sum_i a_i f(x_i)` with `a_i>=0` are positive and continuous. They correspond to finite atomic measures. Gap: many natural functionals average over continua and cannot be reduced to finitely many samples.
+- **Finite weighted sums.** Rules of the form `I(f)=sum_i a_i f(x_i)` with `a_i>=0` are positive and continuous. They correspond to finite atomic measures.
 
-- **Riemann and Riemann-Stieltjes integration on intervals.** On `[a,b]`, continuous functions can be integrated against length or against a function of bounded variation. Gap: the interval order and partition structure are special; a compact Hausdorff space may have no coordinates, no intervals, and no canonical mesh.
+- **Riemann and Riemann-Stieltjes integration on intervals.** On `[a,b]`, continuous functions can be integrated against length or against a function of bounded variation.
 
-- **Hahn-Banach duality.** General bounded linear functionals can be extended and separated by abstract linear methods. Gap: those methods preserve norm bounds but do not reveal a positive set function or explain why continuous tests should determine measurable geometry.
+- **Hahn-Banach duality.** General bounded linear functionals can be extended and separated by abstract linear methods.
 
-- **Finitely additive set functions.** One can try to assign values to sets directly and integrate simple functions. Gap: without countable additivity and regularity, different set functions can agree on continuous tests, and pathological boundary behavior is invisible to `C(X, R)`.
+- **Finitely additive set functions.** One can try to assign values to sets directly and integrate simple functions.
 
-- **Daniell-style integration.** One can start from a positive functional on a lattice of functions and extend it to a measure. Gap: the theorem still has to identify which sets are recovered and why topological regularity is forced by the continuous-function domain.
+- **Daniell-style integration.** One can start from a positive functional on a lattice of functions and extend it to a measure.
 
 ## Evaluation settings
 

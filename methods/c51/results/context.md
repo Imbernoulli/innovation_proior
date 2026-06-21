@@ -10,16 +10,11 @@ with respect to the optimal value $Q^*$.
 
 The return is genuinely random — stochastic rewards, stochastic transitions, and (in the
 control case) a policy that is itself shifting as it is learned. Its distribution can be
-multimodal (a "win" branch and a "lose" branch), skewed, or heavy-tailed. Collapsing it to a
-single scalar mean discards all of that structure. The question this raises: is there value in
-predicting the *entire distribution of returns* rather than only its mean — and if so, does the
-machinery that makes mean-based value learning work (a Bellman recursion, a contraction giving a
-unique fixed point, a bootstrap target trainable from sampled transitions) survive when the
-object being learned is a probability distribution instead of a number? A solution would have to
-(i) state a recursion the return distribution obeys, (ii) establish whether iterating it
-converges, (iii) choose a representation of a distribution that a neural network can output, and
-(iv) supply a sample-based, SGD-trainable loss that moves the predicted distribution toward its
-bootstrapped target.
+multimodal (a "win" branch and a "lose" branch), skewed, or heavy-tailed; the value
+$Q^\pi$ is a single scalar summary of it. The question this raises: what is gained by
+predicting more of the *return's distribution* rather than only its mean, within the same
+off-policy, bootstrapped, deep-function-approximation setting that mean-based value learning
+uses?
 
 # Background
 
@@ -36,21 +31,20 @@ geometrically to the unique $Q^\pi$ (resp. $Q^*$) (Bertsekas & Tsitsiklis, 1996)
 theoretical backbone behind SARSA and Q-learning: a single contraction guarantees convergence
 to a single fixed point.
 
-**The distribution of returns is older than it is used.** Recursions for quantities of the
-return beyond the mean go back nearly as far as Bellman's equation. Jaquette (1973) studied a
-*moment optimality* criterion that imposes a total ordering on distributions and showed it
-admits a stationary optimal policy. Sobel (1982) is usually credited with the first Bellman-style
-equations for the higher moments (notably the variance) of the return. Chung & Sobel (1987)
-analyzed convergence of the distribution of the return in total-variation distance. White (1988)
-studied "nonstandard MDP criteria" from the occupancy perspective. Despite this lineage, the
-return distribution had only ever been used for *specific* downstream purposes rather than as the
-central learning target: to represent *parametric uncertainty* about the environment (Dearden et
-al., 1998, with a Gaussian value model and a Normal-Gamma prior; Engel et al., 2005, with a
-Gaussian process; Geist & Pietquin, 2010, with unscented Kalman filters), or to build
-*risk-sensitive* algorithms (Morimura et al., 2010, parametric and nonparametric models of the
-return's CDF; Tamar et al., 2016, learning the return variance under linear approximation;
-Prashanth & Ghavamzadeh, 2013, a risk-sensitive actor-critic). Mannor & Tsitsiklis (2011) give
-negative results on computing variance-constrained optimal solutions.
+**Recursions beyond the mean.** Recursions for quantities of the return beyond the mean go back
+nearly as far as Bellman's equation. Jaquette (1973) studied a *moment optimality* criterion that
+imposes a total ordering on distributions and showed it admits a stationary optimal policy. Sobel
+(1982) is usually credited with the first Bellman-style equations for the higher moments (notably
+the variance) of the return. Chung & Sobel (1987) analyzed convergence of the distribution of the
+return in total-variation distance. White (1988) studied "nonstandard MDP criteria" from the
+occupancy perspective. The return distribution has been used for specific downstream purposes: to
+represent *parametric uncertainty* about the environment (Dearden et al., 1998, with a Gaussian
+value model and a Normal-Gamma prior; Engel et al., 2005, with a Gaussian process; Geist &
+Pietquin, 2010, with unscented Kalman filters), and to build *risk-sensitive* algorithms (Morimura
+et al., 2010, parametric and nonparametric models of the return's CDF; Tamar et al., 2016,
+learning the return variance under linear approximation; Prashanth & Ghavamzadeh, 2013, a
+risk-sensitive actor-critic). Mannor & Tsitsiklis (2011) give negative results on computing
+variance-constrained optimal solutions.
 
 **Metrics between distributions.** Several established notions of distance between probability
 distributions are available off the shelf. Transport-based distances such as the Wasserstein
@@ -58,21 +52,18 @@ distributions are available off the shelf. Transport-based distances such as the
 $$d_p(F,G)=\inf_{U,V}\|U-V\|_p=\Big(\int_0^1\big|F^{-1}(u)-G^{-1}(u)\big|^p\,du\Big)^{1/p},$$
 the infimum over couplings, attained by the inverse-CDF (quantile) coupling. Overlap-based
 discrepancies — total variation, Kullback-Leibler divergence, the Kolmogorov sup-CDF distance —
-compare probability mass at matched locations. Chung & Sobel (1987) already exhibited that the
-distribution-level operator fails to contract in total variation.
+compare probability mass at matched locations.
 
-**Instability of greedy updates.** Independently of distributions, it is known that the greedy
-(control) update can be poorly behaved under approximation: Tsitsiklis & Van Roy (1996) and
+**Greedy updates under approximation.** Independently of distributions, the greedy
+(control) update under approximation has been studied: Tsitsiklis & Van Roy (1996) and
 Gordon (1995) document oscillation/"chattering" of greedy policies, and Harutyunyan et al. (2016)
-revisit related instabilities.
+revisit related behavior.
 
 **Empirical motivation.** Veness et al. (2015) obtained very fast learning on Atari by directly
-predicting Monte-Carlo returns with a density model (Compress and Control), leaving open whether
-a *Bellman-based* (bootstrapped, not Monte-Carlo) distributional algorithm could be made
-practical. The supervised-learning view also nags: when targets are given, one routinely fits a
-whole output distribution rather than a point estimate — but in RL the target is itself a guess
-("learn a guess from a guess", Sutton & Barto, 1998), which is exactly what makes the
-distributional version nontrivial.
+predicting Monte-Carlo returns with a density model (Compress and Control). In supervised
+learning, when targets are given, one routinely fits a whole output distribution rather than a
+point estimate; in RL the target is itself a guess ("learn a guess from a guess", Sutton &
+Barto, 1998).
 
 # Baselines
 
@@ -83,29 +74,21 @@ $|\mathcal{A}|$). It is trained off-policy from a replay buffer by regressing th
 target with a squared loss
 $\big(r+\gamma\max_{a'}Q_{\tilde\theta}(x',a')-Q_\theta(x,a)\big)^2$, where $\tilde\theta$ is a
 periodically-copied *target network*; actions are $\epsilon$-greedy on $Q_\theta$; rewards are
-clipped to $[-1,1]$. **Gap:** it learns only the *mean* return. A state whose return is "either
-0 or 200" and one whose return is "always 100" are indistinguishable to it, even though their
-risk profiles and their interaction with function approximation differ sharply; and reward/value
-clipping that helps the scalar loss is a blunt instrument. It also offers no mechanism to
-represent the multimodality created by state aliasing or a shifting policy.
+clipped to $[-1,1]$. It learns the *mean* return.
 
 **Double DQN (van Hasselt et al., 2016).** Decouples action selection from evaluation in the
 target ($r+\gamma Q_{\tilde\theta}(x',\arg\max_{a'}Q_\theta(x',a'))$) to reduce the maximization
-bias of the scalar target. Still mean-only.
+bias of the scalar target.
 
 **Dueling architecture (Wang et al., 2016).** Splits the head into a state-value stream and an
-advantage stream, $Q=V+(A-\overline A)$, improving credit assignment across actions. Still
-mean-only.
+advantage stream, $Q=V+(A-\overline A)$, improving credit assignment across actions.
 
 **Prioritized replay (Schaul et al., 2016).** Samples high-TD-error transitions more often to
-speed propagation of learning signal. Orthogonal to what is being predicted (still the mean).
+speed propagation of the learning signal.
 
-**Gaussian return models (Morimura et al., 2010; Tamar et al., 2016).** The closest prior
-attempts to model the return *distribution* directly. They restrict the distribution to a
-parametric Gaussian (or learn only its variance) for policy evaluation / risk sensitivity.
-**Gap:** a Gaussian is unimodal and cannot represent the "win-branch vs lose-branch" structure
-that arises naturally; the analyses are confined to the policy-evaluation setting and to
-risk-specific uses, not to improving general control under deep function approximation.
+**Gaussian return models (Morimura et al., 2010; Tamar et al., 2016).** Prior attempts to model
+the return *distribution* directly. They restrict the distribution to a parametric Gaussian (or
+learn only its variance) for policy evaluation / risk sensitivity.
 
 # Evaluation settings
 

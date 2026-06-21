@@ -12,20 +12,17 @@ Euclidean group `E(n)` — translations `g ∈ R^n`, plus the orthogonal group `
 and reflections (the matrices `Q` with `Q^T Q = I`) — together with arbitrary permutations of
 the point set.
 
-The goal is an architecture whose predictions respect these symmetries *exactly, by
+The goal is an architecture whose predictions respect these symmetries *by
 construction*, rather than approximately, by hoping the network learns them from augmented data.
-Two flavours of "respect" are needed depending on the target. Some targets are **invariant**: a
-scalar like energy or a class label must be completely unchanged when the input is rotated,
+Two flavours of "respect" arise depending on the target. Some targets are **invariant**: a
+scalar like energy or a class label is unchanged when the input is rotated,
 translated, reflected, or its points relabelled. Other targets are **equivariant**: a predicted
-displacement, an updated set of coordinates, or a velocity must rotate and translate *the same
+displacement, an updated set of coordinates, or a velocity rotates and translates *the same
 way the input did* — rotate the input by `Q` and the output vectors come out rotated by the same
-`Q`. A solution has to deliver both, on the same graph, cheaply, and ideally without being
-pinned to three dimensions: some uses (embedding a graph into a continuous latent geometry) want
-the same machinery in `n > 3` dimensions, so any construction that hard-codes 3D is a dead end
-there. The precise problem is to build a message-passing network on a point set that is
-permutation equivariant (as graph networks already are) *and* exactly `E(n)`-equivariant on the
-coordinates and `E(n)`-invariant on the scalar features, with no expensive per-datapoint
-geometric precomputation and no restriction to `n = 3`.
+`Q`. Some uses (embedding a graph into a continuous latent geometry) work in `n > 3` dimensions.
+The question is how to build a message-passing network on a point set that respects the
+permutation symmetry that graph networks already have together with the Euclidean group `E(n)`
+acting on the coordinates and scalar features.
 
 ## Background
 
@@ -40,15 +37,15 @@ wasted model capacity and the need to learn the symmetry from data. The missing 
 point sets in space is the continuous one: rotation and reflection, i.e. the orthogonal group,
 extended by translation to `E(n)`.
 
-The load-bearing facts about that symmetry are elementary but decisive. An orthogonal matrix
+The basic facts about that symmetry are elementary. An orthogonal matrix
 preserves inner products and hence norms: `(Qa)^T(Qb) = a^T Q^T Q b = a^T b`. A translation
 shared by two points cancels in their difference: `(a + g) - (b + g) = a - b`. Consequently the
 pairwise relative differences `x_i - x_j` are unchanged by translation, and the pairwise
 distances `||x_i - x_j||` are unchanged by translation *and* by rotation/reflection. These are
-the only "free" invariants of the geometry, and they are the raw material every method below
-reaches for. Quantities that are *not* invariant — an absolute coordinate, a single difference
-vector treated as a feature — change under the group and therefore must be handled with care: a
-network that consumes a raw coordinate as a scalar input is not rotation invariant, full stop.
+the "free" invariants of the geometry, and they are the raw material the methods below
+reach for. Quantities that are *not* invariant — an absolute coordinate, a single difference
+vector treated as a feature — change under the group; a network that consumes a raw coordinate
+as a scalar input is not rotation invariant.
 
 Geometric vectors also come in graded "types". A scalar that is unaffected by rotation (energy,
 temperature, a distance) is called type-0; a vector that rotates with the input (velocity,
@@ -68,77 +65,51 @@ h_i^{l+1} = phi_h(h_i^l, m_i)               # node update
 
 with `phi_e`, `phi_h` small MLPs. This is permutation equivariant — permute the nodes and the
 `h_i^{l+1}` permute the same way, because the aggregation is a symmetric sum over neighbours.
-What it is emphatically *not* is translation or rotation aware: nothing in it references the
-points' positions in space, and if you smuggle the raw coordinate in as a feature, a rotation of
-the input scrambles the output. That is the hole the field is trying to fill.
+It references nothing about the points' positions in space.
 
-A diagnostic phenomenon that recurs and motivates a chunk of the design space: on
+A phenomenon that recurs in this setting: on
 featureless graphs (graphs given only by their adjacency, with no distinguishing node
 attributes), a plain GNN assigns *identical* embeddings to nodes with identical neighbourhood
 topology. A cycle graph is the sharp example — every node sees the same local structure, so every
-embedding is the same, and the original edges cannot be recovered from the embeddings. Adding
-i.i.d. noise to the input node features is a known ad-hoc fix (Liu et al. 2019): it breaks the
-symmetry so distinct embeddings emerge, at the cost of forcing the network to generalize over a
-fresh noise distribution.
+embedding is the same. Adding
+i.i.d. noise to the input node features is one approach (Liu et al. 2019): it breaks the
+symmetry so distinct embeddings emerge.
 
 ## Baselines
 
-These are the prior methods a new geometric architecture would be measured against and would
-react to.
+These are the prior methods a new geometric architecture would be measured against.
 
-**Message-passing GNN / MPNN (Gilmer et al., ICML 2017).** The neutral substrate above:
+**Message-passing GNN / MPNN (Gilmer et al., ICML 2017).** The substrate above:
 permutation-equivariant message passing with MLP edge and node functions, originally for quantum
-chemistry. *Gap:* it has no notion of Euclidean geometry at all. It is invariant to nothing
-spatial; feeding coordinates as node features makes it sensitive to the arbitrary global pose of
-the input, so it either fails to respect rotation/translation or must learn the symmetry from
-exhaustive augmentation. It also has no channel that *produces* a geometric vector output — it
-emits only relabel-equivariant scalars.
+chemistry. It references no spatial geometry; feeding coordinates as node features makes it
+sensitive to the global pose of the input, and it emits relabel-equivariant scalars.
 
 **SchNet (Schütt et al., NeurIPS 2017).** Make the message depend only on the rotation- and
 translation-invariant interatomic distance. Distances are expanded in a Gaussian radial basis,
 `e_k(r_ij) = exp(-gamma (r_ij - mu_k)^2)` over a grid of centres `mu_k`, and a continuous-filter
 convolution multiplies neighbour embeddings by a filter generated from that expansion:
 `m_ij = phi_cf(||x_i - x_j||) ⊙ phi_s(h_j)`, then `h_i^{l+1} = phi_h(h_i, sum_j m_ij)`. Because
-only the invariant distance enters, every layer's output is `E(n)`-**invariant**, which is
-exactly right for predicting a scalar like energy and is cheap and dimension-agnostic. *Gap:*
-the network is invariant *everywhere* — it can only ever emit invariant scalars. It has no way to
-output an equivariant geometric quantity (an updated position, a velocity, a displacement field),
-because it never represents or transforms a type-1 vector; the spatial information collapses to
-scalars at the first layer and the vector structure is gone.
+only the invariant distance enters, every layer's output is `E(n)`-**invariant**, which suits
+predicting a scalar like energy and is cheap and dimension-agnostic.
 
 **Tensor Field Networks (Thomas et al., 2018) and the SE(3)-Transformer (Fuchs et al., NeurIPS
-2020).** Achieve true rotation equivariance by working with higher-type (steerable)
+2020).** Achieve rotation equivariance by working with higher-type (steerable)
 representations. The filters are built from spherical harmonics and Clebsch–Gordan coefficients,
 giving learnable kernels `W^{lk}: R^3 -> R^{(2l+1)×(2k+1)}` that map between a type-`k` input
 irrep and a type-`l` output irrep while commuting with `SO(3)`; the SE(3)-Transformer adds
-attention on top. These are expressive and genuinely equivariant (rotation, and translation by
-using relative positions). *Gaps:* the spherical harmonics must be evaluated for every datapoint
-(every distinct relative geometry), which is computationally heavy; the whole construction is
-tied to `SO(3)` in three dimensions and has no known extension to arbitrary `n`; and the
-Clebsch–Gordan / irrep bookkeeping is intricate to implement and tune.
+attention on top. These are expressive and equivariant to rotation, and to translation by
+using relative positions.
 
 **Radial Field / equivariant flow update (Köhler et al., 2019/2020).** An `E(n)`-equivariant
-update that acts directly and only on coordinates: `m_ij = phi_rf(||x_i - x_j||) (x_i - x_j)`,
+update that acts directly on coordinates: `m_ij = phi_rf(||x_i - x_j||) (x_i - x_j)`,
 then `x_i^{l+1} = x_i + sum_{j≠i} m_ij`, with `phi_rf` an MLP of the scalar distance. This is
-cheap, equivariant for any `n`, and needs no spherical harmonics. *Gap:* it operates *only* on
-the coordinates `x`; it carries no learnable node-feature channel `h` and never propagates such
-features between nodes. Its strong geometric bias helps in the small-data regime but caps its
-flexibility — it cannot absorb the rich, learned per-node information that a full GNN feature
-channel provides, so it underfits once data is plentiful.
+cheap, equivariant for any `n`, and needs no spherical harmonics. It operates on
+the coordinates `x` and carries no node-feature channel `h`.
 
 **Angle/directional and `SO(3)`-irrep message passing (Cormorant, Anderson et al. 2019; DimeNet,
 Klicpera et al. 2020).** Enrich invariant message passing with bond angles and directional
-information (DimeNet) or carry `SO(3)`-equivariant intermediate activations (Cormorant). More
-expressive than distance-only invariant nets. *Gap:* the angular/Bessel-and-spherical-harmonic
-basis (DimeNet) and the irrep machinery (Cormorant) reintroduce the same cost and 3D-specificity
-that the steerable methods carry.
-
-The shape of the landscape: invariant methods (SchNet) are cheap and dimension-free but can only
-emit scalars; equivariant methods that can emit vectors (TFN, SE(3)-Transformer) pay with
-spherical-harmonic cost and 3D-only scope; the one cheap equivariant method (Radial Field) throws
-away the learnable feature channel that makes GNNs flexible. No single method is simultaneously
-cheap, dimension-agnostic, equipped with a full feature channel, and able to emit both invariant
-scalars and equivariant vectors.
+information (DimeNet) or carry `SO(3)`-equivariant intermediate activations (Cormorant), using an
+angular Bessel-and-spherical-harmonic basis (DimeNet) and irrep machinery (Cormorant).
 
 ## Evaluation settings
 

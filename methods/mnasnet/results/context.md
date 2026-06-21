@@ -2,41 +2,28 @@
 
 ## Research question
 
-Deploying convolutional networks on phones is a tug-of-war: a model must be **accurate**,
-yet also **small and fast enough** to run on a battery-powered, memory-constrained device
-with tight latency budgets. Hand-designing such a model means balancing many architectural
-knobs — kernel sizes, channel widths, which cheap operation to use where, where to add skip
-connections — across a huge design space, by hand, by experts. Neural architecture search
-can automate the design, but as it stands it has two problems for the mobile setting.
-First, it optimizes a *single* objective (accuracy) and treats efficiency only indirectly:
-when efficiency is considered at all, it is through a *proxy* like FLOPS/multiply-adds,
-which is not what actually determines whether a model is fast on a given phone. Second, to
-keep the search tractable, it searches for one or a few *cells* and then stacks identical
-copies of them throughout the network — which forbids the network from using *different*
-structure at different depths, exactly the layer diversity that matters for the
-accuracy-vs-latency trade-off.
-
-The precise goal: an automated search that (1) optimizes accuracy and **real, measured**
-inference latency on the actual target device *jointly*, returning models on or near the
-accuracy-latency Pareto front; and (2) searches over a space rich enough to let different
-parts of the network differ, while staying small enough to be searchable.
+Deploying convolutional networks on phones requires balancing accuracy against the
+constraints of a battery-powered, memory-constrained device with tight latency budgets.
+Hand-designing such a model means tuning many architectural knobs — kernel sizes, channel
+widths, which cheap operation to use where, where to add skip connections — across a huge
+design space. Neural architecture search can automate the design, but applying it to the
+mobile setting raises questions about what objective to optimize and how to define the
+search space. The broad question is: how to use automated search to find convolutional
+networks that are both accurate and fast on real mobile hardware?
 
 ## Background
 
-- **The FLOPS-is-a-bad-proxy observation (motivating diagnostic).** Multiply-add count is
-  the usual stand-in for "speed," but it is a poor predictor of real latency: two models
-  with nearly equal FLOPS can have very different wall-clock latency on the same phone
-  (e.g. ~575M vs ~564M multiply-adds, yet 113ms vs 183ms on the same device), because real
+- **FLOPS and real latency.** Multiply-add count is the usual stand-in for "speed." Real
   latency depends on memory-access patterns, kernel implementations, parallelism, and other
-  hardware/software idiosyncrasies that FLOPS ignores. This is a pre-method fact about the
-  world and it motivates measuring latency directly on-device rather than approximating it.
+  hardware/software idiosyncrasies, so two models with nearly equal FLOPS can have very
+  different wall-clock latency on the same phone (e.g. ~575M vs ~564M multiply-adds, yet
+  113ms vs 183ms on the same device).
 
 - **The cost structure of a layer.** For a depthwise-separable convolution with kernel
   `(K, K, M, N)` mapping an `(H, W, M)` input to `(H, W, N)`, the multiply-adds are
-  `H·W·M·(K·K + N)`. So at fixed compute there is a real trade between kernel size `K` and
-  output width `N`, and — because `H·W` shrinks with depth — early (high-resolution) layers
-  cost far more per unit of `K·K + N` than late layers. Different layers therefore *want*
-  different choices, which is the argument for layer diversity.
+  `H·W·M·(K·K + N)`. At fixed compute there is a trade between kernel size `K` and output
+  width `N`, and — because `H·W` shrinks with depth — early (high-resolution) layers cost
+  far more per unit of `K·K + N` than late layers.
 
 - **Mobile building blocks.** Depthwise-separable convolution (a per-channel spatial filter
   + a 1×1 channel-mixing convolution) drastically cuts compute versus a full convolution.
@@ -67,35 +54,26 @@ parts of the network differ, while staying small enough to be searchable.
 **Hand-crafted mobile CNNs.** SqueezeNet (1×1 convs, fewer filters); MobileNetV1 (depthwise
 separable convolutions throughout); ShuffleNet (grouped convs + channel shuffle);
 CondenseNet (learned grouped-conv connectivity); **MobileNetV2** (inverted residuals with
-linear bottlenecks, state-of-the-art among mobile-size models). **Gap:** each is the
-product of large manual effort exploring a vast space by hand; they don't *learn* novel
-operation compositions, and tuning them per latency target is more manual work.
+linear bottlenecks, state-of-the-art among mobile-size models).
 
 **Cell-based RL/evolutionary NAS (NASNet, AmoebaNet, PNASNet).** Search a convolutional
 cell (+ reduction cell) on a small proxy task (CIFAR-10), stack identical copies, transfer
-to ImageNet. Strong accuracy. **Gap (two):** (1) the objective is accuracy only — latency
-is not in the loop, so the resulting mobile-size models can be slow (e.g. NASNet-A at 183ms
-on a phone); and (2) stacking *identical* cells forbids layer diversity, removing exactly
-the freedom that the per-layer cost analysis says is valuable for efficiency. Differentiable
-search (DARTS) shares both gaps.
+to ImageNet. Differentiable search (DARTS) follows the same cell-stacking paradigm.
 
-**Multi-objective NAS on proxy tasks (MONAS, DPP-Net, Pareto-NASH, RNAS).** These do put
-multiple objectives (e.g. model size + accuracy) into the search. **Gap:** they optimize
-*proxy* efficiency metrics (params/FLOPS, not measured device latency) and search on small
-tasks like CIFAR, not directly under real mobile-latency constraints on a large task.
+**Multi-objective NAS on proxy tasks (MONAS, DPP-Net, Pareto-NASH, RNAS).** These put
+multiple objectives (e.g. model size + accuracy) into the search, optimizing proxy
+efficiency metrics such as parameter count or FLOPS on small tasks like CIFAR.
 
-**Compression/pruning (quantization, filter pruning, NetAdapt).** Shrink a *given* baseline
-model post hoc, sometimes using platform-aware metrics. **Gap:** tied to a fixed baseline
-architecture; they don't discover new compositions of operations.
+**Compression/pruning (quantization, filter pruning, NetAdapt).** Shrink a given baseline
+model post hoc, sometimes using platform-aware metrics.
 
 ## Evaluation settings
 
 - **ImageNet** classification (ILSVRC 2012): ~1.28M training images, 1000 classes; metrics
   top-1 / top-5 accuracy on the validation set. The natural large-scale target task.
-- **Real on-device latency**: inference time measured by *running the model on an actual
-  phone* (single large CPU core, batch size 1) — the direct efficiency metric, replacing
-  the FLOPS proxy. A target latency `T` (e.g. ~75ms, matching an existing mobile model)
-  defines the operating point.
+- **Real on-device latency**: inference time measured by running the model on an actual
+  phone (single large CPU core, batch size 1). A target latency `T` (e.g. ~75ms, matching
+  an existing mobile model) defines the operating point.
 - **COCO** object detection: the searched backbone plugged into the SSD/SSDLite detector;
   metric mean Average Precision (mAP). Input size 320×320 in the mobile detection setting.
 - Standard ImageNet training recipe of the time: RMSProp (decay 0.9, momentum 0.9),
@@ -110,9 +88,8 @@ The search machinery already exists as a sample-eval-update loop: an RNN control
 token sequence describing a model, a trainer turns the model into an accuracy, and the
 controller's parameters are nudged toward higher reward by a policy-gradient update. Two
 things are unspecified and are the slots to fill: **what reward the loop optimizes** (the
-existing reward is accuracy alone, evaluated however the trainer measures it) and **what
-space the controller samples over** (the existing space stacks identical cells). Everything
-method-specific is left empty.
+existing reward is accuracy alone) and **what space the controller samples over** (the
+existing space stacks identical cells). Everything method-specific is left empty.
 
 ```python
 import torch
@@ -149,8 +126,7 @@ def train_and_eval_accuracy(model, train_loader, valid_loader):
 def reward(model):
     """The scalar the controller maximizes for each sampled model.
 
-    In the existing harness this is just accuracy. What it SHOULD be when we
-    also care about how fast the model runs on a real device is the open slot."""
+    In the existing harness this is just accuracy."""
     acc = train_and_eval_accuracy(model, ...)
     # TODO: combine acc with whatever else we care about
     return acc

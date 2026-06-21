@@ -1,20 +1,8 @@
 ## Research question
 
-How can we model the distribution `p(x)` of natural images so that, all at once, we can (a) compute
-the **exact** likelihood of any held-out image (a true tractable density, not a bound), (b) **sample**
-new images from the model, and (c) **scale** the whole thing to large datasets and high-dimensional
-images on modern hardware?
-
-This is the expressive/tractable/scalable trilemma of generative image modeling. Images are
-high-dimensional (a 32×32 RGB image already has 3072 strongly-correlated integer values) and highly
-structured, so the model must capture long-range and highly nonlinear dependencies. Yet the most
-expressive families of the time pay for that expressiveness with intractable likelihoods: you cannot
-say how probable a given image is under the model, which makes them hard to compare on a common
-yardstick and hard to use for tasks like inpainting, compression, or density estimation. A method
-that delivered an exact, comparable likelihood **and** stayed expressive enough to produce sharp,
-globally coherent samples — and that could benefit from larger capacity — would resolve the
-trilemma. The question is what functional form `p(x)` should take, and what neural architecture can
-realize it without smuggling in independence assumptions between pixels.
+How can we model the distribution `p(x)` of natural images so that we can compute the **exact**
+likelihood of any held-out image, **sample** new images from the model, and apply the approach to
+large datasets and high-dimensional images?
 
 ## Background
 
@@ -41,16 +29,14 @@ prediction losses, and crucially all of these can be evaluated **in parallel** o
 (the "previous pixels" are the known input), even though *generating* a fresh image is inherently
 **sequential** (each sampled value must be fed back before the next is predicted).
 
-**Why latent-variable and undirected models fall short of exact likelihood.** A variational
-autoencoder (Kingma & Welling, 2013; Rezende et al., 2014) defines `p(x) = ∫ p(x|z) p(z) dz`; this
-marginal is intractable, so training maximizes an evidence lower bound rather than the true
-likelihood, inference of `z` is only approximate, and the latent bottleneck typically forces the
-pixels to be conditionally independent given `z`. Deep undirected models (RBM/DBM; Salakhutdinov &
-Hinton, 2009) carry an intractable partition function, so exact likelihood is unavailable and must be
-estimated. Recurrent latent generators such as DRAW (Gregor et al., 2015) and deep autoregressive
-networks DARN (Gregor et al., 2014) also report bounds. None gives a clean exact number.
+**Latent-variable and undirected models.** A variational autoencoder (Kingma & Welling, 2013;
+Rezende et al., 2014) defines `p(x) = ∫ p(x|z) p(z) dz`; training maximizes an evidence lower bound
+rather than the true likelihood, and the latent bottleneck typically forces the pixels to be
+conditionally independent given `z`. Deep undirected models (RBM/DBM; Salakhutdinov & Hinton, 2009)
+carry an intractable partition function. Recurrent latent generators such as DRAW (Gregor et al.,
+2015) and deep autoregressive networks DARN (Gregor et al., 2014) also report bounds.
 
-**Autoregressive density estimators that do give exact likelihood.** NADE (Larochelle & Murray, 2011)
+**Autoregressive density estimators that give exact likelihood.** NADE (Larochelle & Murray, 2011)
 parameterizes the chain-rule conditionals with a single shared hidden layer whose weights are tied
 across positions, so it is compact and trainable, and EoNADE (Uria et al., 2014) averages over many
 orderings. MADE (Germain et al., 2015) realizes the same idea inside an autoencoder by **masking** the
@@ -59,15 +45,12 @@ all conditionals at once. On the continuous side, RNADE (Uria et al., 2013) and 
 RIDE model (Theis & Bethge, 2015) use a recurrent net to emit, per pixel, the parameters of a
 **continuous** density — a Gaussian or a mixture of Gaussian scale mixtures.
 
-**Pixels are discrete values, not continuous measurements.** Pixel intensities
-are genuinely discrete: integers in `{0, ..., 255}`. The prevailing autoregressive image models place
-a *continuous* density on them, which forces a choice of parametric shape (a mixture is only as
-multimodal as its number of components), leaks probability mass outside `[0, 255]`, and assumes
-smoothness across neighboring intensities. The standard way to make continuous-density likelihoods
-comparable across models is to dequantize by adding uniform noise in `[0, 1]` to the integer pixels
-(Theis et al., 2015), after which a discrete distribution corresponds to a piecewise-uniform density
-with the *same* likelihood — so discrete and continuous models can be put on one bits-per-dimension
-scale.
+**Pixels are discrete values, not continuous measurements.** Pixel intensities are genuinely
+discrete: integers in `{0, ..., 255}`. The prevailing autoregressive image models place a *continuous*
+density on them. The standard way to make continuous-density likelihoods comparable across models is
+to dequantize by adding uniform noise in `[0, 1]` to the integer pixels (Theis et al., 2015), after
+which a discrete distribution corresponds to a piecewise-uniform density with the *same* likelihood —
+so discrete and continuous models can be put on one bits-per-dimension scale.
 
 **Recurrent networks as sequence models.** RNNs, and LSTMs in particular (Hochreiter & Schmidhuber,
 1997), give a compact shared parameterization of a long series of conditionals and have excelled at
@@ -75,9 +58,8 @@ hard sequence tasks — handwriting generation (Graves, 2013), character-level t
 2011), translation (Kalchbrenner & Blunsom, 2013). Multidimensional LSTMs (Graves & Schmidhuber,
 2009) extend recurrence to 2-D grids, and a 2-D LSTM scanning an image top-left to bottom-right has
 shown promise on grayscale textures (Theis & Bethge, 2015); a parallel multi-dimensional LSTM also
-exists (Stollenga et al., 2015). Convolutional networks, by contrast, share weights spatially and run
-fully in parallel, but a stack of convolutions has only a **bounded** receptive field that grows
-linearly with depth.
+exists (Stollenga et al., 2015). Convolutional networks share weights spatially and run fully in
+parallel, and a stack of convolutions has a receptive field that grows linearly with depth.
 
 **Residual learning.** Very deep nets are hard to optimize; residual connections (He et al., 2015) —
 adding a layer's input to its output so the layer learns a residual — let gradients and signal
@@ -89,34 +71,25 @@ signal-propagation problem with extra gates.
 
 - **NADE / EoNADE (Larochelle & Murray, 2011; Uria et al., 2014).** Autoregressive estimator: the
   chain-rule conditionals share one hidden layer with tied weights, trained by exact likelihood.
-  Compact and tractable, but the shared single-hidden-layer parameterization limits expressiveness,
-  and it was developed mainly on small binary data; modeling the highly nonlinear, long-range,
-  full-color dependencies of natural images needs a far more expressive conditional model.
+  Compact and tractable, developed mainly on small binary data.
 
 - **MADE (Germain et al., 2015).** A single autoencoder whose weight matrices are masked so output `i`
   depends only on inputs `< i`, giving all conditionals in one pass; averaging over masks/orderings
-  improves it. But MADE is a fully-connected autoencoder with a fixed input size and no spatial weight
-  sharing, so it does not exploit the 2-D translation structure of images and does not scale to large
-  images.
+  improves it.
 
 - **RIDE / spatial LSTM, and RNADE (Theis & Bethge, 2015; Uria et al., 2013).** A 2-D recurrent net
   emits, per pixel, the parameters of a **continuous** conditional density (a mixture of Gaussian
   scale mixtures, or a Gaussian mixture). Exact likelihood, genuinely recurrent, captures long-range
-  context. The gaps: a continuous parametric head imposes a shape prior and leaks mass outside the
-  valid intensity range, and the 2-D LSTM as formulated is expensive and does not obviously parallelize
-  to large-scale training.
+  context.
 
 - **NICE / deep GMMs / deep diffusion (Dinh et al., 2014; van den Oord & Schrauwen, 2014;
   Sohl-Dickstein et al., 2015).** Other exact- or near-exact-likelihood models for natural images
   reported on CIFAR-10 in bits/dim. They establish likelihood-based image modeling as a meaningful
-  benchmark, but they do not yet combine exact likelihood, strong local image structure, and a
-  scalable conditional predictor.
+  benchmark.
 
 - **Latent / undirected generators (VAE, DBM, DBN, DLGM, DRAW; Kingma & Welling 2013; Salakhutdinov &
   Hinton 2009; Rezende et al. 2014; Gregor et al. 2015).** Strong representational models and, for
-  DRAW, attractive samples, but they report only bounds or estimates of the likelihood and impose
-  conditional-independence structure through the latent, so they are not directly comparable on exact
-  likelihood.
+  DRAW, attractive samples; they report bounds or estimates of the likelihood.
 
 ## Evaluation settings
 

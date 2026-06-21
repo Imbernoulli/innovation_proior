@@ -1,4 +1,4 @@
-# Context: existence proofs in random structures, and the limits of the first moment
+# Context: existence proofs in random structures and counting variables
 
 ## Research question
 
@@ -8,15 +8,13 @@ of prime factors. The cleanest existing tool is the probabilistic/first-moment m
 counting random variable X (the number of configurations of the desired type), compute its
 expectation E[X], and try to read off existence. This works in *one* direction. If E[X] is small —
 tending to 0 with the size parameter — then X must usually be 0, so the configuration almost surely
-does *not* appear. The hard and more interesting direction is the opposite: I want to conclude that
-when the expected count is *large*, the configuration almost surely *does* appear.
+does *not* appear.
 
 The precise goal: given a family of nonnegative integer-valued counting variables X = X(n) indexed
 by a growing parameter n, find conditions under which **Pr[X > 0] → 1**, and ideally the stronger
-**X ∼ E[X]** (the count is concentrated at its mean). The pain point is that a large — even an
-exploding — expectation does not deliver this by itself. A method that closes the gap would let one
-pin down *thresholds*: the exact rate of the underlying parameter at which a property switches from
-"almost never" to "almost always."
+**X ∼ E[X]** (the count is concentrated at its mean). The question is what conditions on X beyond a
+large mean are sufficient to pin down thresholds — the exact rate of the underlying parameter at
+which a property switches from "almost never" to "almost always."
 
 ## Background
 
@@ -62,7 +60,7 @@ They introduced this "evolution" picture and computed the first such thresholds 
 appearance of small subgraphs, etc.). The motivating phenomenon is that many natural properties do
 not fade in gradually as p grows; they switch from unlikely to likely around a definite scale.
 Establishing a threshold has exactly two halves: an "almost never below" half (first moment) and an
-"almost always above" half (which needs more than the mean).
+"almost always above" half.
 
 **The number-theory precedent (Turán 1934).** Let ν(n) be the number of distinct prime divisors of n.
 Hardy and Ramanujan (1917) showed almost all n ≤ N have ≈ ln ln N prime factors by an intricate
@@ -72,22 +70,15 @@ random x and arguing about the resulting count — a strikingly short proof comp
 ## Baselines
 
 - **First-moment / union-bound existence (probabilistic method).** Compute E[X]; conclude an object
-  with X ≥ E[X] exists, or (for a count) that E[X] → 0 ⇒ X = 0 a.a.s. *Gap*: gives nothing in the
-  appearance direction — E[X] → ∞ does not imply Pr[X > 0] → 1. It is fundamentally one-sided for
-  nonnegative counts.
+  with X ≥ E[X] exists, or (for a count) that E[X] → 0 ⇒ X = 0 a.a.s.
 
-- **Markov's inequality alone.** Pr(X ≥ α) ≤ E[X]/α. Pins the disappearance half (α = 1) but says
-  nothing about a lower tail; cannot force X > 0 from a large mean. *Gap*: no two-sided control.
+- **Markov's inequality alone.** Pr(X ≥ α) ≤ E[X]/α. Pins the disappearance half (α = 1).
 
 - **Hardy–Ramanujan (1917) for ν(n).** Establishes the "normal order ln ln n" of the number of prime
-  factors, but by a long elementary-number-theory argument specific to ν. *Gap*: not a reusable
-  method; gives the result without a transferable mechanism.
+  factors by a long elementary-number-theory argument specific to ν.
 
 - **Erdős–Rényi (1960) threshold computations.** Establish thresholds for several graph properties.
-  For the appearance of a fixed subgraph they identify the threshold and prove it. *Gap*: at this
-  stage the "almost always above threshold" direction is handled case by case; there is no single,
-  transferable criterion that mechanically yields Pr[X > 0] → 1 and X ∼ E[X] for an arbitrary
-  counting variable once the mean is large.
+  For the appearance of a fixed subgraph they identify the threshold and prove it.
 
 ## Evaluation settings
 
@@ -106,5 +97,3 @@ The natural yardsticks are existence/threshold statements one can prove and chec
 
 Metrics throughout: whether Pr[X > 0] → 1 (existence almost surely), whether X ∼ E[X]
 (concentration), and the deviation probabilities Chebyshev/Paley–Zygmund deliver.
-
-

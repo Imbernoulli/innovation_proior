@@ -4,110 +4,72 @@
 
 Stocks do not move independently. Companies in the same sector, industry, or line of business
 co-move; they react jointly to macro shocks; information flows between them through institutional
-holdings and news. A predictor that treats each stock as an isolated time series throws all of
-that cross-stock structure away. The concrete goal is a model that, given each stock's recent
-price/volume history at date `t` and a set of human-curated concepts that group stocks (sector,
-industry, main business), produces a next-day return signal that ranks the cross-section of stocks
-better than any model that looks at one stock at a time.
-
-The hard part is *how* the cross-stock structure should enter the model. Two facts make the obvious
-approaches insufficient. First, a stock's relevance to a concept is **not constant in time**: a
-company tagged with both "cloud computing" and "e-commerce" can have its price driven almost
-entirely by the e-commerce side during one regime and by the cloud side during another, so a model
-that propagates information through fixed concept memberships, with the same strength every day,
-mis-attributes the move. Second, the curated concepts are **incomplete**: emerging themes that no
-analyst has labeled yet can suddenly make otherwise-unrelated stocks co-move (a protective-equipment
-maker tracking an e-commerce firm during a pandemic), and recently-listed companies may carry no
-concept tags at all. The modeling target is therefore not just temporal prediction, but temporal
-prediction under drifting and incomplete cross-stock structure. It must fit a fixed benchmarking
-pipeline — fixed features, labels, splits, and backtest — changing only the model that maps features
-and concept membership to a prediction.
+holdings and news. The concrete goal is a model that, given each stock's recent price/volume
+history at date `t` and a set of human-curated concepts that group stocks (sector, industry, main
+business), produces a next-day return signal that ranks the cross-section of stocks. The open
+question is *how* the cross-stock structure carried by those concepts should enter a temporal
+predictor. The model must fit a fixed benchmarking pipeline — fixed features, labels, splits, and
+backtest — changing only the network that maps a day's stock features and concept membership to one
+prediction per stock.
 
 ## Background
 
 **Single-stock technical analysis.** The oldest line predicts a stock's trend from its own
 historical market data — trading price and volume. Linear, stationary models — autoregression (AR)
-and ARIMA — were standard, but stock prices are non-linear and non-stationary, which limits them.
-Deep sequence models replaced them: recurrent networks, and in particular the Long Short-Term
-Memory network (Hochreiter & Schmidhuber 1997) and the Gated Recurrent Unit (Chung et al. 2014),
-capture long-range dependencies in the price/volume series. Variants add structure: State Frequency
-Memory (Zhang et al. 2017) decomposes the hidden state into frequency components to model
-multi-frequency trading patterns; an attentive LSTM (Feng et al. 2019) aggregates over all past
-hidden states; adversarial training (the same line) simulates the stochasticity of price data.
-All of these share one ceiling: each stock is encoded in isolation, so none can use the fact that
-other stocks carry information about this one.
+and ARIMA — were standard. Deep sequence models followed: recurrent networks, and in particular the
+Long Short-Term Memory network (Hochreiter & Schmidhuber 1997) and the Gated Recurrent Unit
+(Chung et al. 2014), capture long-range dependencies in the price/volume series. Variants add
+structure: State Frequency Memory (Zhang et al. 2017) decomposes the hidden state into frequency
+components to model multi-frequency trading patterns; an attentive LSTM (Feng et al. 2019)
+aggregates over all past hidden states; adversarial training (the same line) simulates the
+stochasticity of price data. Each stock is encoded in isolation.
 
-**The dynamic, regime-dependent relevance phenomenon.** The motivating observation for moving
-beyond fixed structure is that a stock's bond to a given theme is itself time-varying and
-state-dependent. A company that a membership table assigns to several themes will have its trend
-explained by different ones at different times; the table says it belongs to all of them equally
-and always, but the market treats the membership as drifting. This is an observed property of the
-world, knowable before any model: the same fixed edge carries very different amounts of signal on
-different dates.
+**Observed cross-stock behavior.** Two properties of the market are visible before any model is
+built. A stock's relevance to a given theme is time-varying: a company that a membership table
+assigns to several themes can have its trend driven by different ones at different times, so the
+same fixed membership carries different amounts of signal on different dates. And the set of
+concepts an analyst has written down is never complete — themes emerge faster than they are
+catalogued, stocks that share no curated tag can begin to co-move when an unlabeled theme becomes
+salient, and newly listed names sit outside the curated graph until someone fills in their tags.
 
-**The incomplete-labels phenomenon.** A second observed property: the set of concepts an analyst
-has written down is never complete. Themes emerge faster than they are catalogued, and when an
-unlabeled theme becomes salient, stocks that share no curated tag nonetheless begin to co-move.
-Newly listed names sit outside the curated graph entirely until someone fills in their tags. So a
-nontrivial fraction of the genuine cross-stock structure is, at any moment, simply missing from the
-predefined relations.
-
-**Graph neural networks as the tool for relational structure.** The general machinery for letting
-entities exchange information along a relation graph had matured: the graph convolutional network
+**Graph neural networks for relational structure.** The general machinery for letting entities
+exchange information along a relation graph had matured: the graph convolutional network
 (Kipf & Welling 2017) averages each node's neighbors through a normalized adjacency, and the graph
 attention network (Veličković et al. 2018) replaces that fixed averaging with learned per-edge
 attention weights — for node `i` it computes `e_ij = a(W h_i, W h_j)` for each neighbor `j`,
-normalizes `α_ij = softmax_{j∈N_i} e_ij`, and outputs `h'_i = σ(Σ_j α_ij W h_j)`. Crucially the
-attention is **masked** to the graph: coefficients are only computed for `j` in `i`'s predefined
-neighborhood `N_i`. These were the off-the-shelf relational primitives a relation-aware stock model
-would naturally reach for.
+normalizes `α_ij = softmax_{j∈N_i} e_ij`, and outputs `h'_i = σ(Σ_j α_ij W h_j)`. The attention is
+masked to the graph: coefficients are computed only for `j` in `i`'s predefined neighborhood `N_i`.
+These are the off-the-shelf relational primitives for a relation-aware stock model.
 
-**A residual decomposition idea from time-series forecasting.** A separate, recent architectural
-idea is worth having on the table: in a deep forecasting stack (Oreshkin et al. 2020), each block
-emits *two* outputs — a forward forecast `ŷ_ℓ` and a "backcast" `x̂_ℓ`, the block's reconstruction
-of its own input. Blocks are chained by a residual on the input, `x_ℓ = x_{ℓ-1} − x̂_{ℓ-1}`, so a
-block sees only what the previous blocks could not explain, and the partial forecasts are summed,
-`ŷ = Σ_ℓ ŷ_ℓ`. This both eases the downstream blocks' job (they work on a residual) and makes the
-final prediction an additive decomposition over blocks. It was built for trend/seasonality
-decomposition of a single series, but the "subtract what you've explained, sum what you forecast"
-discipline is general.
+**Residual decomposition in time-series forecasting.** A recent architectural idea: in a deep
+forecasting stack (Oreshkin et al. 2020), each block emits *two* outputs — a forward forecast `ŷ_ℓ`
+and a "backcast" `x̂_ℓ`, the block's reconstruction of its own input. Blocks are chained by a
+residual on the input, `x_ℓ = x_{ℓ-1} − x̂_{ℓ-1}`, so a block sees only what the previous blocks did
+not reconstruct, and the partial forecasts are summed, `ŷ = Σ_ℓ ŷ_ℓ`. It was built for
+trend/seasonality decomposition of a single series.
 
 ## Baselines
 
 **LSTM / GRU single-stock encoders (Hochreiter & Schmidhuber 1997; Chung et al. 2014).** Encode a
 stock's 60-day, 6-channel price/volume window with a recurrent net and read out the last hidden
-state to predict the trend. Strong temporal encoders. **Limitation:** no path for information from
-one stock to reach another; the cross-sectional structure of a trading day is invisible to them.
+state to predict the trend.
 
 **State Frequency Memory; attentive LSTM; Transformer encoders (Zhang et al. 2017; Feng et al.
 2019; Ding et al. 2020).** More expressive single-stock encoders — frequency decomposition,
-temporal attention over hidden states, self-attention over the time axis. **Limitation:** still
-per-stock; they enrich the temporal model but never see other stocks.
+temporal attention over hidden states, self-attention over the time axis.
 
 **GCN / GAT over a predefined stock-relation graph (Kipf & Welling 2017; Veličković et al. 2018,
 applied to stocks).** Build a stock graph whose edges connect two stocks when they share a curated
 relation (e.g. the same industry), encode each stock with a GRU, then pass messages along that graph
-— GCN with fixed normalized weights, GAT with learned attention. **Limitation:** the adjacency is
-fixed by the curated relations and held constant across dates, and the attention is masked to that
-fixed neighborhood, so the model can re-weight existing stock-to-stock edges but cannot use signal
-outside that neighborhood when a different relation becomes active on a particular date. Edges that
-the curated relations omit are simply absent.
+— GCN with fixed normalized weights, GAT with learned attention masked to the curated neighborhood.
 
 **Hierarchical relation attention (Kim et al. 2019).** Stack two attention levels — one selecting
 among multiple curated *relation types*, one aggregating neighbors within a type — over a
-multi-relation predefined graph. **Limitation:** the per-type adjacencies are still stationary; the
-model chooses how much to trust each curated relation but the relations themselves, and their
-strengths, are given and fixed, and unlabeled structure is still out of reach.
+multi-relation predefined graph.
 
 **Temporal relational ranking (Feng et al. 2019, TOIS).** Couple a temporal encoder with a
 relation-graph convolution over sector and knowledge-base relations, trained with a ranking
-objective for the top-of-book. **Limitation:** the relations come from a fixed external graph; the
-edge set and its weights are not learned to be time-varying, and only the predefined relations are
-used.
-
-The shared gap across the relation-aware baselines: the stock-relation graph is **handed to the
-model and frozen**. Relevance that drifts with the market regime is not represented, and any theme
-that the curated relations do not name is unreachable.
+objective for the top-of-book.
 
 ## Evaluation settings
 

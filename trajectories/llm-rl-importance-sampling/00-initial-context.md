@@ -1,14 +1,14 @@
 ## Research question
 
-For LLM online RL, the importance-sampling granularity in the clipped policy-gradient loss is an open design axis. Everything else is fixed: the GRPO advantage estimator, the reward manager, the rollout setup, the KL configuration, the model, and the optimizer. The only variable is how the old-policy and current-policy log-probs are converted into ratios, clipped, and aggregated. The goal is higher math-reasoning accuracy and lower gradient variance. Concretely: given per-token `old_log_prob` and `log_prob` (and per-token GRPO advantages), what is the right granularity at which to form the ratio `r = exp(log_prob − old_log_prob)`, clip it, and reduce it to a scalar loss?
+For LLM online RL, the importance-sampling granularity in the clipped policy-gradient loss is an open design axis. Everything else is fixed: the GRPO advantage estimator, the reward manager, the rollout setup, the KL configuration, the model, and the optimizer. The only variable is how the old-policy and current-policy log-probs are converted into ratios, clipped, and aggregated. Given per-token `old_log_prob` and `log_prob` (and per-token GRPO advantages), what is the right granularity at which to form the ratio `r = exp(log_prob − old_log_prob)`, clip it, and reduce it to a scalar loss?
 
 ## Prior art / Background / Baselines
 
-The clipped surrogate descends from a short lineage. Each ancestor leaves a concrete gap.
+The clipped surrogate descends from a short lineage.
 
-- **Conservative policy iteration / the off-policy surrogate.** Reusing a frozen rollout batch for several gradient steps is importance sampling: with `r_t(θ) = π_θ(a_t|s_t)/π_old(a_t|s_t)`, the surrogate `E_t[r_t Â_t]` is an off-policy estimate of the new policy's expected advantage. Its observed limitation: as the policy drifts, the surrogate overestimates improvement because it is only a local model of the return.
-- **Trust-region constraint (Schulman et al., TRPO, 2015).** Leashes drift with a hard KL constraint solved by Fisher-vector products and conjugate gradient. Its observed limitation: the second-order optimization is heavy and does not fit naturally into standard multi-epoch SGD loops.
-- **Per-token clipped surrogate (Schulman et al., PPO, 2017; Shao et al., DeepSeekMath/GRPO, 2024).** Replaces the constraint with a per-token clip of `r_t` to `[1−ε, 1+ε]` and takes the pessimistic min of clipped and unclipped surrogate, giving a first-order, dropout-friendly update. Its observed limitation: the per-token ratio is a single noisy draw per next-token distribution, and accumulated per-token noise has been observed to destabilize training at scale.
+- **Conservative policy iteration / the off-policy surrogate.** Reusing a frozen rollout batch for several gradient steps is importance sampling: with `r_t(θ) = π_θ(a_t|s_t)/π_old(a_t|s_t)`, the surrogate `E_t[r_t Â_t]` is an off-policy estimate of the new policy's expected advantage.
+- **Trust-region constraint (Schulman et al., TRPO, 2015).** Leashes drift with a hard KL constraint solved by Fisher-vector products and conjugate gradient.
+- **Per-token clipped surrogate (Schulman et al., PPO, 2017; Shao et al., DeepSeekMath/GRPO, 2024).** Replaces the constraint with a per-token clip of `r_t` to `[1−ε, 1+ε]` and takes the pessimistic min of clipped and unclipped surrogate, giving a first-order, dropout-friendly update.
 
 ## Fixed substrate / Code framework
 

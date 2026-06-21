@@ -12,45 +12,34 @@ character overlap and interact within a single series.
 
 A particularly load-bearing structural fact is *multi-periodicity*. A weather series carries a
 daily cycle and a yearly cycle; an electricity-load series carries a weekly cycle and a
-quarterly cycle; these periods coexist and interfere. Worse, within any one period the signal
+quarterly cycle; these periods coexist and interfere. Within any one period the signal
 has short-term structure (how it moves from one step to the next inside the cycle), and across
 consecutive cycles it has longer-term structure (how the same phase drifts from one cycle to
-the next). A single one-dimensional sequence can only ever expose adjacency between
-consecutive time points; the cross-cycle relationships are buried far apart in the sequence.
+the next). A single one-dimensional sequence only exposes adjacency between consecutive time
+points; the cross-cycle relationships are buried far apart in the sequence.
 
 The immediate task is unsupervised anomaly detection on multivariate monitoring data: train on
 normal windows, flag the time points where the model fails to reproduce the signal. But the
-goal is not an anomaly-specific trick. The point is a backbone for temporal-variation modeling
-that (1) captures both the short-range structure inside a cycle and the long-range structure
-across cycles; (2) copes with several overlapping periods at once rather than assuming a single
-dominant one; (3) is not bottlenecked by the locality of 1D convolution or the sequential
-dependence of recurrence; and (4) is *task-general* — the same representation should serve
-forecasting, imputation, classification, and reconstruction-based anomaly detection, rather
-than being hand-built for one of them. A strong variation model gives a strong reconstruction,
-and a strong reconstruction makes the residual a clean anomaly signal.
+goal is a backbone for temporal-variation modeling that is task-general — the same
+representation should serve forecasting, imputation, classification, and reconstruction-based
+anomaly detection rather than being hand-built for one of them. A strong variation model gives
+a strong reconstruction, and a strong reconstruction makes the residual a clean anomaly signal.
 
 ## Background
 
 By this time deep models have largely displaced the classical pattern-fitting approaches —
 ARIMA (Anderson 1976), Holt-Winters (Hyndman & Athanasopoulos 2018), Prophet (Taylor &
-Letham 2017) — which assume the variation follows a small family of pre-defined templates and
-break when real variation is too complex to fit any template. The deep landscape is organized
-by how each family models temporal variation:
+Letham 2017) — which assume the variation follows a small family of pre-defined templates. The
+deep landscape is organized by how each family models temporal variation:
 
 - **Recurrence (RNN/LSTM; Hochreiter & Schmidhuber 1997; later state-space variants).** Model
-  the series as a Markov chain of hidden-state transitions. The hidden state is meant to carry
-  history forward, but in practice long-term dependencies fade, and the strictly sequential
-  computation makes both training and inference slow.
+  the series as a Markov chain of hidden-state transitions. The hidden state carries history
+  forward through sequential computation.
 - **Temporal convolution (TCN; Franceschi et al. 2019; Bai et al. 2018).** Slide 1D kernels
-  along the time axis. A kernel of width w only sees a window of w adjacent time points, so a
-  single convolution captures local variation; long-range structure needs many stacked,
-  dilated layers, and even then the model only ever sees variation as *adjacency along one
-  axis*.
+  along the time axis. Long-range structure needs many stacked, dilated layers.
 - **Attention over time points (Informer, Zhou et al. 2021; Autoformer, Wu et al. 2021;
-  FEDformer, Zhou et al. 2022).** Compute pairwise dependencies between time points directly.
-  This removes the locality constraint, but reading reliable dependencies off scattered,
-  individually-uninformative time points is hard — the genuine structure is obscured by the
-  intricate mixture of variations, and the cost is quadratic in sequence length.
+  FEDformer, Zhou et al. 2022).** Compute pairwise dependencies between time points directly,
+  with cost quadratic in sequence length.
 
 Two background frames matter especially. First, the **frequency view**: a real-valued
 length-T series can be written through the Fast Fourier Transform as a sum of sinusoidal basis
@@ -62,18 +51,15 @@ independent. Second, the **2D-locality view** familiar from vision: convolutiona
 cheap and effective precisely when the structure they must capture is *local in the grid they
 slide over*; a pattern that is non-local in the input layout is invisible to a small kernel.
 
-A practical diagnostic about real data sets the stage: fixed-length windows usually contain
-several coexisting scales rather than a single clean period, so a model that assumes one
-dominant cycle is brittle. And on the anomaly-detection side, a known failure mode anchors the
-problem: a point-wise attention encoder trained for reconstruction can let the many normal
-points dominate its similarities, washing out the rare abnormal pattern the score should keep
-sharp.
+A practical observation about real data: fixed-length windows usually contain several
+coexisting scales rather than a single clean period, so a model that assumes one dominant
+cycle is brittle.
 
 ## Baselines
 
-These are the prior backbones a new temporal-variation model would be measured against and
-reacts to. For anomaly detection they are all dropped into the same reconstruction harness:
-each plays the role of the base model whose reconstruction error is the anomaly criterion.
+These are the prior backbones a new temporal-variation model would be measured against. For
+anomaly detection they are all dropped into the same reconstruction harness: each plays the
+role of the base model whose reconstruction error is the anomaly criterion.
 
 **Autoformer (Wu et al. 2021).** Introduces an Auto-Correlation mechanism: instead of
 point-wise attention, it estimates the dominant period of the series (via the autocorrelation
@@ -81,45 +67,27 @@ function, computed efficiently through the FFT), rolls the series by those lags,
 sub-series that are one period apart — weighting the rolled copies by a softmax over their
 correlation confidences, so dependencies are captured *series-wise* at the period scale rather
 than point-wise. It also adds a deep decomposition architecture that progressively separates
-the input into trend and seasonal parts. **Gap:** the aggregation is still carried out in the
-original 1D layout — sub-series separated by a period are combined, but the short-range
-structure *inside* a period and the structure *across* periods are not represented in a single
-object that a local operator can process jointly; and it commits to essentially one period
-scale per decomposition step.
+the input into trend and seasonal parts.
 
 **FEDformer (Zhou et al. 2022).** Builds on the decomposition idea with a mixture-of-experts
 seasonal-trend decomposition and a sparse attention performed in the frequency domain (keeping
-a random subset of Fourier modes), giving linear complexity. **Gap:** like Autoformer it
-operates on 1D sequence/spectrum representations; periodicity is used to select frequency modes
-but the intraperiod-versus-interperiod structure is never laid out so that a single local
-operator sees both, and the frequency-mode subsampling is a fixed heuristic.
+a random subset of Fourier modes), giving linear complexity.
 
 **TCN-based backbones (Franceschi et al. 2019; Bai et al. 2018).** Stacked dilated 1D
-convolutions over the time axis; efficient and parallel. **Gap:** each kernel is local along
-the single temporal axis, so capturing variation between points that are a full period apart
-requires very deep or very dilated stacks, and the cross-period relationship is never made
-adjacent to the kernel — it is always "p steps away" in the 1D layout.
+convolutions over the time axis; efficient and parallel.
 
 **MLP-temporal backbones (N-BEATS, Oreshkin et al. 2019; DLinear/LightTS, Zeng et al. 2022;
-Zhang et al. 2022).** Apply MLPs along the temporal dimension, baking the temporal dependency
-into fixed weights; DLinear splits the window into a moving-average trend and a residual
-seasonal part and applies a separate linear layer to each. **Gap:** the temporal-mixing pattern
-is fixed by the learned weight matrix and tied to a fixed input length; it represents variation
-as a flat function of absolute position and has no explicit handle on which periodicities a
-given series carries, so it cannot separate the within-cycle and across-cycle components.
+Zhang et al. 2022).** Apply MLPs along the temporal dimension. DLinear splits the window into
+a moving-average trend and a residual seasonal part and applies a separate linear layer to each.
 
 **Transformer (Vaswani et al. 2017) applied to reconstruction.** A plain encoder over the
-window, trained to reconstruct it; reconstruction error is the anomaly score. **Gap (observed
-on anomaly detection):** vanilla attention compares every pair of time points, and the
-similarity is dominated by the many *normal* points, so the rare abnormal pattern the task
-cares about can get washed out.
+window, trained to reconstruct it; reconstruction error is the anomaly score.
 
 The reusable vision pieces on the table: the **Inception block** (Szegedy et al. 2015), which
 runs several 2D convolution kernels of different sizes in parallel and combines them, giving a
 multi-scale receptive field in a single layer; and **residual connections** (He et al. 2016),
 which let deep stacks of blocks be optimized stably. Both are mature, well-understood 2D-vision
-primitives — but nothing has yet connected a *1D time series* to them in a way that lets a 2D
-kernel do useful work.
+primitives.
 
 A further reusable component is **Series Stationarization** (Liu et al. 2022): normalize each
 input window by subtracting its mean and dividing by its standard deviation before the model,

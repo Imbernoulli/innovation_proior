@@ -1,12 +1,11 @@
 ## Research question
 
-Train one shared model across 100 clients whose data never leaves them and is **non-IID** — a Dirichlet(0.1) split of CIFAR-10 and FEMNIST, and a naturally per-speaker split of Shakespeare. Each round the server reaches only 10 of the 100 clients; each runs 5 local epochs of plain SGD, then ships its model back. The object of study is the **federated learning recipe**: how each client shapes its local objective and how the server combines the returned models. The binding constraint is that clients' local optima sit far from the global optimum, so naive averaging suffers **client drift**. Everything else (data partition, local-loop scaffolding, client sampling, the 200-round loop, evaluation) is fixed.
+Train one shared model across 100 clients whose data never leaves them and is **non-IID** — a Dirichlet(0.1) split of CIFAR-10 and FEMNIST, and a naturally per-speaker split of Shakespeare. Each round the server reaches only 10 of the 100 clients; each runs 5 local epochs of plain SGD, then ships its model back. The object of study is the **federated learning recipe**: how each client shapes its local objective and how the server combines the returned models. Everything else (data partition, local-loop scaffolding, client sampling, the 200-round loop, evaluation) is fixed.
 
 ## Prior art / Background / Baselines
 
-- **FedSGD / naive distributed SGD.** Each selected client computes one gradient on its local data, the server averages the gradients, and the global model takes one SGD step. **Gap:** one communication round buys only one global gradient step; convergence requires tens of thousands of rounds, which is impractical when communication is scarce.
-- **Local-update averaging (FedAvg).** Each selected client runs many local SGD steps before sending back its updated model, and the server averages the returned models sample-count-weighted. **Gap:** under non-IID data, many local steps push each client toward its own optimum, so the averaged model is pulled toward the average of client optima rather than the global optimum — client drift grows with the number of local steps.
-- **Stationary-point mismatch.** A global optimum satisfies `(1/m) sum_k grad L_k(theta^*) = 0` while individual client gradients are generally non-zero; a client minimizing its own loss rests where `grad L_k = 0`. **Gap:** these two stationary conditions are incompatible under heterogeneity, so local training alone does not make the averaged update vanish at a global optimum.
+- **FedSGD / naive distributed SGD.** Each selected client computes one gradient on its local data, the server averages the gradients, and the global model takes one SGD step.
+- **Local-update averaging (FedAvg).** Each selected client runs many local SGD steps before sending back its updated model, and the server averages the returned models sample-count-weighted.
 
 ## Fixed substrate / Code framework
 

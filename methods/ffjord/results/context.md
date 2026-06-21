@@ -2,43 +2,39 @@
 
 ## Research question
 
-We want a generative model that simultaneously (1) computes **exact log-likelihoods** (so it can be trained by maximum likelihood and evaluated by held-out likelihood), (2) **samples efficiently in a single pass**, and (3) places **no restriction on the neural-network architecture** of its transformation. Change-of-variables (flow) models give (1) and (2) but only by paying for a tractable Jacobian determinant — and the standard way to make the determinant cheap is to *constrain the architecture* (partition dimensions, force a triangular Jacobian, use rank-one layers). The open problem: can we keep exact likelihood and one-pass sampling while letting the transformation be a **free-form** neural net, and at a cost that scales gracefully with dimension `D`?
+We want a generative model that simultaneously (1) computes **exact log-likelihoods** (so it can be trained by maximum likelihood and evaluated by held-out likelihood), (2) **samples efficiently in a single pass**, and (3) places few restrictions on the neural-network architecture of its transformation. Change-of-variables (flow) models give (1) and (2) by warping a base density through an invertible map, at the cost of a Jacobian determinant. The question: how to specify such a flow so that the transformation `f` can be a free-form neural net while exact likelihood and one-pass sampling are retained, at a cost that scales with dimension `D`.
 
 ## Background
 
 **Change of variables.** A complex normalized density can be specified implicitly by warping a simple base `p_z` through an invertible `f: R^D → R^D`. If `z ∼ p_z` and `x = f(z)`,
 `log p_x(x) = log p_z(z) − log |det (∂f(z)/∂z)|`.
-The log-determinant of the `D×D` Jacobian costs `O(D³)` in general — the central bottleneck. "Reversible generative models" are those that use this formula while keeping *both* density evaluation and sampling efficient in a single pass.
+The log-determinant of the `D×D` Jacobian costs `O(D³)` in general. "Reversible generative models" are those that use this formula while keeping *both* density evaluation and sampling efficient in a single pass.
 
-**The three ways prior flows make the determinant cheap (all constrain `f`).**
-- *Restricted functional forms / normalizing flows* (Rezende & Mohamed 2015 planar flows; Berg et al. 2018 Sylvester): pick `f` so a determinant identity applies. Planar flow is literally a one-layer net with a *single* hidden unit per layer — very low capacity per step. They typically lack a tractable analytic inverse, so they cannot both train on data and sample; they are used for variational posteriors.
-- *Autoregressive transforms* (IAF, Kingma et al. 2016; MAF, Papamakarios et al. 2017; TAN, Oliva et al. 2018): impose an ordering on dimensions so the Jacobian is triangular and `det = ∏ diagonal`. Excellent density estimation, but inverting (sampling) needs `D` *sequential* evaluations — prohibitive for large `D`.
-- *Partitioned / coupling layers* (NICE, Dinh et al. 2014; Real NVP, Dinh et al. 2016; Glow, Kingma & Dhariwal 2018): split the dimensions and affinely transform one block conditioned on the other, giving a cheap triangular determinant and an inverse that costs the same as the forward map. Convolution-friendly, strong on images — but each layer is constrained, so many must be stacked.
-
-The common cost: tractable determinants are bought with hand-engineered, low-capacity-per-layer architectures.
+**The ways prior flows make the determinant cheap.**
+- *Restricted functional forms / normalizing flows* (Rezende & Mohamed 2015 planar flows; Berg et al. 2018 Sylvester): pick `f` so a determinant identity applies. A planar flow is a one-layer net with a single hidden unit per layer. They are typically used as variational posteriors.
+- *Autoregressive transforms* (IAF, Kingma et al. 2016; MAF, Papamakarios et al. 2017; TAN, Oliva et al. 2018): impose an ordering on dimensions so the Jacobian is triangular and `det = ∏ diagonal`. Inverting (sampling) proceeds through `D` sequential evaluations.
+- *Partitioned / coupling layers* (NICE, Dinh et al. 2014; Real NVP, Dinh et al. 2016; Glow, Kingma & Dhariwal 2018): split the dimensions and affinely transform one block conditioned on the other, giving a triangular determinant and an inverse that costs the same as the forward map. Convolution-friendly; many layers are stacked.
 
 **Continuous normalizing flows (Chen et al. 2018, Neural ODEs).** Replace the discrete stack of layers with continuous-time dynamics: sample `z(t_0) ∼ p_{z0}`, define an ODE `∂z(t)/∂t = f(z(t), t; θ)` with `f` a neural net, and integrate the initial-value problem to `z(t_1) = x`. The change in log-density along the trajectory obeys the **instantaneous change of variables**:
 `∂ log p(z(t))/∂t = − Tr(∂f/∂z(t))`,
-so `log p(z(t_1)) = log p(z(t_0)) − ∫_{t_0}^{t_1} Tr(∂f/∂z(t)) dt`. In continuous time the per-step object to evaluate is a `Tr(∂f/∂z)` rather than a log-determinant. Existence and uniqueness of the ODE solution require `f` and its first derivatives to be Lipschitz, satisfied by smooth Lipschitz activations. Computing the trace exactly still costs `O(D²)` (each diagonal entry is a separate derivative of `f`), so cost goes from `O(D³)` per layer to `O(D²)` per solver step.
+so `log p(z(t_1)) = log p(z(t_0)) − ∫_{t_0}^{t_1} Tr(∂f/∂z(t)) dt`. In continuous time the per-step object is `Tr(∂f/∂z)` rather than a log-determinant. Existence and uniqueness of the ODE solution require `f` and its first derivatives to be Lipschitz, satisfied by smooth Lipschitz activations. Computing the trace exactly costs `O(D²)` (each diagonal entry is a separate derivative of `f`), so per-step cost is `O(D²)` rather than the `O(D³)` per-layer log-determinant.
 
 **Backprop through the ODE: the adjoint method** (Pontryagin; Chen et al. 2018). For a scalar loss `L(z(t_1))`, the adjoint `a(t) = −∂L/∂z(t)` and the parameter gradient
 `dL/dθ = − ∫_{t_1}^{t_0} (∂L/∂z(t))ᵀ (∂f/∂θ) dt`
 are obtained by solving a second ODE backward in time. This is the continuous-time analog of backpropagation and uses `O(1)` memory (no stored activations), so very large batch sizes become feasible.
 
 **Stochastic trace estimation (Hutchinson 1989).** For any `D×D` matrix `A` and any distribution `p(ε)` with `E[ε]=0`, `Cov(ε)=I`,
-`Tr(A) = E_{p(ε)}[ εᵀ A ε ]`,
-an unbiased Monte-Carlo estimator of the trace. Typical `ε`: standard Gaussian or Rademacher (`±1` entries). Separately, reverse-mode autodiff computes a vector-Jacobian product `vᵀ(∂f/∂z)` for about the cost of one evaluation of `f`, without materializing the `D×D` Jacobian.
+`Tr(A) = E_{p(ε)}[ εᵀ A ε ]`.
+Typical `ε`: standard Gaussian or Rademacher (`±1` entries). Reverse-mode autodiff computes a vector-Jacobian product `vᵀ(∂f/∂z)` for about the cost of one evaluation of `f`.
 
-**Other generative families (for contrast, not change-of-variables).** GANs (Goodfellow et al. 2014) use unrestricted nets but have no closed-form likelihood (need a discriminator). Autoregressive models (MADE, PixelRNN) give exact likelihood but need `O(D)` passes to sample. VAEs (Kingma & Welling 2013) use unrestricted nets but only give a lower bound on the marginal likelihood.
+**Other generative families (for contrast, not change-of-variables).** GANs (Goodfellow et al. 2014) use unrestricted nets but have no closed-form likelihood (need a discriminator). Autoregressive models (MADE, PixelRNN) give exact likelihood but need `O(D)` passes to sample. VAEs (Kingma & Welling 2013) use unrestricted nets and give a lower bound on the marginal likelihood.
 
 ## Baselines
 
-- **Real NVP / Glow** (coupling-layer flows): train on data, one-pass sample, exact likelihood — but the Jacobian is constrained to a partitioned/triangular form, requiring many stacked coupling layers and special invertible `1×1` convolutions; cannot model some densities well (e.g. cleanly separated multimodal / near-discontinuous 2D densities — coupling flows struggle in the low-probability regions between disconnected modes). Gap: constrained architecture.
-- **Autoregressive flows (MAF, IAF, TAN, MAF-DDSF)**: exact likelihood, strong on tabular density estimation, but sampling/inversion is `O(D)` sequential (and MAF-DDSF has no analytic inverse). Gap: no efficient one-pass sampling.
-- **Planar / Sylvester normalizing flows**: cheap determinants via functional-form restriction, used as variational posteriors; very low capacity per transform and no usable inverse for sampling from data. Gap: restricted form, used only for inference.
-- **Planar CNF** (Chen et al. 2018): continuous flow with the trace formula, free-er `f`, one-pass sampling and exact likelihood — but exact trace costs `O(D²)`, so `f` is still kept relatively restricted/low-width.
-
-The shared gap: no existing change-of-variables model has *all* of {train on data, one-pass sampling, exact likelihood, **free-form Jacobian**} at a per-step cost better than `O(D²)`.
+- **Real NVP / Glow** (coupling-layer flows): train on data, one-pass sample, exact likelihood; the Jacobian is partitioned/triangular, with many stacked coupling layers and invertible `1×1` convolutions.
+- **Autoregressive flows (MAF, IAF, TAN, MAF-DDSF)**: exact likelihood, strong on tabular density estimation; sampling/inversion is `O(D)` sequential.
+- **Planar / Sylvester normalizing flows**: cheap determinants via functional-form restriction, used as variational posteriors.
+- **Planar CNF** (Chen et al. 2018): continuous flow with the trace formula, one-pass sampling and exact likelihood, exact trace at `O(D²)`.
 
 ## Evaluation settings
 

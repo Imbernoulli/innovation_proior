@@ -15,15 +15,11 @@ phi(C) = sum_{x in X} min_{c in C} || x - c ||^2 .
 
 A small `phi` means every point sits near some center, i.e. the centers compactly summarize the data;
 the center set implicitly defines the clustering (each point joins its nearest center). The goal is to
-choose `C` to make `phi` small. Two facts make this hard. First, minimizing `phi` exactly is NP-hard —
-even for `k = 2` clusters in the plane — so for any realistic `n, k, d` an exact solution is out of
-reach and I am forced to a heuristic. Second, `phi` viewed as a function of the center locations is not
-convex: it is a minimum (over centers) of convex pieces, riddled with local minima, so a local-search
-heuristic can settle into a poor configuration and there is no a-priori bound on how poor. The pain
-point is exactly this gap: a fast local search for `phi` exists and is used everywhere, but its output
-quality is unpredictable and can be arbitrarily far from optimal. A solution would need to keep the
-speed of local search while gaining some guarantee — ideally a provable bound — on the quality of the
-clustering it returns, across blob-like, oddly-shaped, and high-dimensional data.
+choose `C` to make `phi` small. Minimizing `phi` exactly is NP-hard — even for `k = 2` clusters in the
+plane — so for any realistic `n, k, d` an exact solution is out of reach and I am forced to a heuristic.
+`phi` viewed as a function of the center locations is not convex: it is a minimum (over centers) of
+convex pieces, so a local-search heuristic settles into a fixed point that depends on its starting
+configuration. The practical question is how to initialize and run such a search.
 
 ## Background
 
@@ -60,19 +56,14 @@ two necessary conditions for an optimum are (i) `q_alpha = ` center of mass of c
 the cells are the nearest-quantum regions with midpoint boundaries. So the compactness objective and
 its two stationarity conditions were understood decades before they were a clustering tool.
 
-**Empirically observed failure modes that frame the problem.** Three pre-existing facts about the
-squared-error objective and its local search shape everything: (a) the objective is non-convex in the
-center locations, so where the search starts determines where it ends — the same data with two
-different initializations yields two different clusterings, and the quality gap between them can be
-large; (b) starting the centers uniformly at random from the data can place several initial centers
-inside one true group while leaving other true groups with no nearby center, so the search locks into a
-configuration that merges and splits the wrong groups — and on adversarial instances the returned
-`phi` can be an unbounded multiple of `phi_OPT` even with `n` and `k` fixed; (c) the squared-error /
-Euclidean-mean criterion implicitly assumes clusters are roughly convex and isotropic (equal-spread
-balls), so it responds poorly to elongated or non-convex shapes, and in high dimension Euclidean
-distances concentrate (all pairwise distances become similar), eroding the contrast the assignment step
-relies on — a known reason to reduce dimension (e.g. by PCA) before clustering. These are properties of
-the objective and its standard search, knowable before any fix is proposed.
+**Properties of the squared-error objective.** The objective is non-convex in the center locations, so
+where the search starts determines where it ends — the same data with two different initializations
+yields two different clusterings. Starting centers uniformly at random from the data can place several
+initial centers inside one true group while leaving other true groups with no nearby center. The
+squared-error / Euclidean-mean criterion implicitly assumes clusters are roughly convex and isotropic
+(equal-spread balls), and in high dimension Euclidean distances concentrate (all pairwise distances
+become similar), eroding the contrast the assignment step relies on — a known reason to reduce
+dimension (e.g. by PCA) before clustering.
 
 ## Baselines
 
@@ -87,21 +78,13 @@ identity — and because `phi >= 0` and there are only finitely many partitions,
 fixed point in finitely many sweeps. It is simple, near-linear per sweep, and usually converges in few
 sweeps. In quantizer language this is Lloyd's "Method I": impose the centroid condition and the
 midpoint-partition condition alternately, producing a monotonically decreasing noise sequence
-`N(rho^(1)) >= N(rho^(2)) >= ...`. **Gap:** the fixed point it lands on is only a local minimum (or
-even a saddle) of `phi`, and which fixed point depends entirely on the starting centers; the method
-itself offers no control over, and no bound on, the quality of that local minimum.
+`N(rho^(1)) >= N(rho^(2)) >= ...`.
 
 **Uniform random seeding.** The default way to start the loop: pick the `k` initial centers uniformly
-at random from the data points. **Gap:** with several true groups, uniform sampling frequently draws
-two or more starting centers from the same dense group and none from a sparse or distant group, so the
-loop converges with that distant group swallowed into a neighbor; the loss relative to optimal has no
-upper bound, and the failure is intrinsic to uniform sampling, not to any adversarial placement.
+at random from the data points.
 
-**Deterministic farthest-point / maximin seeding.** A natural attempt to force the centers apart: pick
-the first center arbitrarily, then repeatedly add the data point that is farthest from the centers
-chosen so far. This does spread the centers across the data. **Gap:** "farthest point" is exactly where
-an outlier lives, so the procedure preferentially seeds centers on outliers; a single anomalous point
-distorts the entire initialization, and the spread it buys is bought at the cost of robustness.
+**Deterministic farthest-point / maximin seeding.** A natural way to spread centers: pick the first
+center arbitrarily, then repeatedly add the data point that is farthest from the centers chosen so far.
 
 **The online / sequential mean update (MacQueen, 1967).** The original `k`-means as MacQueen defined
 it processes points one at a time: keep running means and counts for `k` groups; for each incoming
@@ -109,10 +92,7 @@ point, assign it to the nearest current mean and update that mean incrementally,
 `x_i <- (x_i * w_i + z) / (w_i + 1)`, `w_i <- w_i + 1`. The name "`k`-means" comes from this: at every
 stage the `k` representatives are literally the means of the groups they currently represent, a
 generalization of the ordinary sample mean. MacQueen proved asymptotic convergence of the within-class
-variance for this sequential process. **Gap:** it is single-pass and order-dependent — the partition it
-yields depends on the order points arrive — and it is a heuristic with no guarantee of reaching even a
-local optimum of the batch objective, let alone the global one; like the batch loop, it inherits full
-sensitivity to where the initial means are placed.
+variance for this sequential process.
 
 ## Evaluation settings
 
@@ -138,9 +118,7 @@ The natural yardsticks already in use for clustering, all pre-existing:
 The procedure plugs into a standard estimator harness: a class with `fit(X)` that sets integer
 `labels_`, and `predict(X)` that assigns new points to the learned centers. Everything the harness
 needs already exists — the data matrix, a Euclidean distance, the arithmetic mean, a way to draw random
-points, and the generic "assign, then recompute" alternation used by squared-error local search. What
-is not settled is how the centers are first placed. The only empty slot below is the initial-center
-rule.
+points, and the generic "assign, then recompute" alternation used by squared-error local search.
 
 ```python
 import numpy as np
@@ -194,6 +172,3 @@ class CustomClustering(BaseEstimator, ClusterMixin):
         _, labels = _sq_dist_to_nearest(X, self.cluster_centers_)
         return labels
 ```
-
-The refine loop is the standard alternation; the unfilled `_init_centers` is where the design effort
-goes.

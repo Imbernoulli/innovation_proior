@@ -9,23 +9,13 @@ judgments: for many contexts, two candidate generations were shown to a rater
 who said which one they preferred, `y_w ≻ y_l`. We want to turn that dataset
 into a better policy: one that produces the generations humans prefer, while
 staying close to a known reference policy `π_ref` (the base / supervised
-model), so that it does not drift, collapse onto a few high-scoring outputs, or
-lose fluency. The closeness-to-reference constraint is usually expressed as a KL
-penalty with a coefficient that is supposed to control *how far* the learned
-policy may move from `π_ref`.
+model). The closeness-to-reference constraint is usually expressed as a KL
+penalty with a coefficient `τ` that controls how far the learned policy may
+move from `π_ref`.
 
-The precise problem: design an *offline* training objective — a loss computed
+The question is: how can an offline training objective — a loss computed
 directly on the recorded `(x, y_w, y_l)` pairs, with no reward model and no
-online RL rollouts — whose optimum is the KL-regularized preference-maximizing
-policy, and whose regularization coefficient actually does what it claims:
-genuinely keep the solution near `π_ref` by a controllable amount. The hard part
-is that the preference signal in real data is frequently *near-deterministic* —
-for a given pair one generation almost always wins, and in the finite-sample
-regime the empirical preference for a pair is often exactly 0 or 1. An objective
-that behaves well on soft preferences but lets the regularization quietly
-evaporate on hard, deterministic ones is not good enough, because for
-large-vocabulary, large-context models the deterministic / sparsely-observed
-regime is the common case.
+online RL rollouts — optimize the KL-regularized preference-maximizing policy?
 
 ## Background
 
@@ -77,46 +67,18 @@ the collected data generalizes to the out-of-distribution generations the policy
 will later sample. Direct, reward-model-free methods (below) remove the second
 approximation but still lean entirely on the first.
 
-**Diagnostic facts about deterministic preferences (knowable before any new
-method).** Two observations about the Bradley–Terry / pointwise-reward route are
-load-bearing here, because they are facts about the *prior art*, not about
-anything new:
-
-- *Deterministic preferences push Elo scores to infinity.* If a pair has
-  `p*(y ≻ y') = 1`, the Bradley–Terry model can only represent it by sending the
-  reward gap `r(y) − r(y') → +∞`. Plug an unbounded reward gap into the
-  closed-form optimal policy `π*(y) ∝ π_ref(y) exp(τ⁻¹ r(y))` and the
-  dispreferred action is driven to probability zero, `π*(y') = 0`, *no matter
-  how large `τ` is*. The strength of the KL term, as the preferences approach
-  determinism, effectively goes to zero.
-- *Finite data manufactures determinism.* Even when the true preference is soft,
-  e.g. `p*(y ≻ y') = 0.8`, a handful of samples can give an empirical estimate of
-  exactly `1`, which then triggers the same collapse. For large action and
-  context spaces — language models — many pairs are observed once or never, so
-  empirical preferences land in `{0, 1}` constantly.
-- *Why the reward-model route is, in practice, partly shielded.* When empirical
-  preferences are in `{0,1}` the Bradley–Terry reward MLE has infinite optima
-  that practical training never reaches; the reward function ends up *underfit*,
-  and reward regularization is a known, deliberate part of RL-from-feedback
-  training (Christiano et al. 2017). That underfitting is what keeps the eventual
-  policy regularized toward `π_ref`. A method that fits no explicit reward forgoes
-  this incidental shielding.
-
 ## Baselines
 
 These are the methods a new offline preference objective would be compared
-against and would react to. For each: its mechanism, its math, and the specific
-place it stalls.
+against.
 
 **Three-stage RLHF with PPO** (Stiennon et al. 2020; Ouyang et al. 2022; Bai et
 al. 2022). Stage 1: supervised fine-tune to `π_SFT`. Stage 2: fit a
 Bradley–Terry reward model `r_φ` by minimizing `−E[log σ(r_φ(x,y_w) −
 r_φ(x,y_l))]`. Stage 3: maximize the KL-regularized objective `J(π)` above with
-PPO (Schulman et al. 2017), against the learned `r_φ`. **Gap:** three coupled
-models, on-policy sampling of a multi-billion-parameter LM inside the loop, a
-value baseline to learn, and sensitivity to reward normalization and to `τ` —
-complex and unstable to run at scale. It also rests on the first approximation
-(pairwise preferences ↦ pointwise reward).
+PPO (Schulman et al. 2017), against the learned `r_φ`. Reward normalization and
+`τ` tuning are important parts of the pipeline. The method also rests on the
+first approximation (pairwise preferences ↦ pointwise reward).
 
 **Direct Preference Optimisation (DPO)** (Rafailov et al. 2023). Removes the
 reward model and the RL loop. Its move is a change of variables: substitute the
@@ -127,39 +89,25 @@ likelihood, which expresses the implicit reward as `r(x,y) = τ log(π(y|x) /
 loss over `π` alone,
 
   L_DPO(π) = −E_{(x,y_w,y_l)~D} [ log σ( τ log(π(y_w|x)/π_ref(y_w|x))
-                                       − τ log(π(y_l|x)/π_ref(y_l|x)) ) ].
+                                     − τ log(π(y_l|x)/π_ref(y_l|x)) ) ].
 
 Its gradient up-weights pairs the implicit reward currently mis-ranks, scaled by
-`σ` of the mis-ranking. Simpler, stable, competitive with RLHF. **Gap:** it
-still relies on the first approximation — the Bradley–Terry substitution lives
-inside the `log σ`, whose argument is an *unbounded* logit. So DPO inherits the
-deterministic-preference pathology in full: where the empirical preference for a
-pair is `1`, the loss keeps rewarding ever-larger log-ratios `log(π(y_w)/π(y_l))`
-with no finite resting point, the term that should hold the policy near `π_ref`
-stops binding, and — having fit no explicit reward — DPO lacks even the
-incidental underfitting shield that the RLHF reward model provides. The failure
-mode to watch is a policy update whose sensitivity to `τ` disappears precisely
-when empirical labels become deterministic.
+`σ` of the mis-ranking. It is simpler and more stable than the three-stage RL
+pipeline.
 
 **SLiC-HF** (Zhao et al. 2023). A reward-model-free calibration/contrastive loss
 on sequence likelihoods that, like DPO, optimizes the policy directly from
-preferences with a margin-style objective. **Gap:** same family of concerns — a
-contrastive term on log-likelihoods whose strength, relative to the
-reference-anchoring term, has no closed-form guarantee that it will keep the
-policy near `π_ref` in the deterministic regime.
+preferences with a margin-style objective.
 
 **Reward-weighted / advantage-weighted regression** (Peters & Schaal 2007; Peng
 et al. 2019). Turn the KL-regularized problem into supervised regression by
-weighting sampled actions by `exp(reward/τ)`. **Gap:** still needs reward values
-and sampling; it approximates the same closed-form optimum rather than solving
-the offline preference problem directly.
+weighting sampled actions by `exp(reward/τ)`, approximating the same closed-form
+optimum.
 
 **Preference-based / dueling-bandit theory** (Busa-Fekete et al. 2013;
 Novoseller et al. 2020; Pacchiano et al. 2023; Wang et al. 2023). Provides regret
 guarantees for learning from comparisons, and substitutes a *von Neumann winner*
-for an optimal arm when no absolute reward exists. **Gap:** these analyses live
-in the standard online bandit setting with regret bounds; they do not address
-the offline, KL-regularized, large-model practice that RLHF and DPO operate in.
+for an optimal arm when no absolute reward exists.
 
 ## Evaluation settings
 
@@ -199,8 +147,7 @@ reference `π_ref` of the same architecture, a tokenizer, a first-order optimize
 and a preference dataset yielding, per example, a prompt with a *chosen* and a
 *rejected* completion. From these we can form, per example, four
 sequence-level log-probabilities — the policy and the reference, each on the
-chosen and the rejected completion. What is missing is the training objective
-that maps a preference pair to a scalar loss on the policy.
+chosen and the rejected completion.
 
 ```python
 import torch

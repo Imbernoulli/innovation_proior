@@ -18,14 +18,10 @@ white Gaussian `n ~ N(0, sigma^2 I)` in the canonical case. We want to recover `
 the **posterior** `p(x_0 | y) ∝ p(y | x_0) p(x_0)`: use the diffusion prior as `p(x_0)` and
 condition it on the data.
 
-The precise goal is a single sampler that (1) draws from `p(x_0 | y)` using only the
-pre-trained unconditional score plus the known forward model, with no retraining per task;
-(2) is correct in the presence of **measurement noise** `n ≠ 0`, not just the idealized
-noiseless case; (3) works for a **general** forward operator — including **nonlinear** `A` —
-without requiring a special algebraic structure such as an SVD or an easily-defined
-projection; (4) needs little task-specific tuning. The existing diffusion-based solvers below
-each achieve a subset; none achieves all four at once, and in particular the noise and
-nonlinearity requirements are where they break. Closing that gap is the problem.
+The question is how to build a sampler that draws from `p(x_0 | y)` using only the
+pre-trained unconditional score plus the known forward model — across measurement noise levels
+`n` (Gaussian or signal-dependent) and forward operators `A` that may be linear or nonlinear.
+The existing diffusion-based solvers below are the starting point.
 
 ## Background
 
@@ -55,13 +51,12 @@ grad_{x_t} log p_t(x_t | y) = grad_{x_t} log p_t(x_t) + grad_{x_t} log p_t(y | x
 ```
 
 so the conditional reverse SDE is the unconditional one with an extra **likelihood-score**
-drift `grad_{x_t} log p_t(y | x_t)`. The first term is the pre-trained score; the catch is the
-second. There is an explicit measurement model only between `y` and the *clean* `x_0`
+drift `grad_{x_t} log p_t(y | x_t)`. The first term is the pre-trained score. The measurement
+model is given explicitly between `y` and the *clean* `x_0`
 (`p(y | x_0) = N(y | A(x_0), sigma^2 I)` in the Gaussian case), whereas the reverse process
 needs the likelihood at the *noised* iterate `x_t`. In the probabilistic graph
-`y <- x_0 -> x_t`, the arrow `x_0 -> y` and `x_0 -> x_t` are tractable, but there is no direct
-`x_t -> y` edge: `p_t(y | x_t)` has no closed form because `y` only depends on `x_t` through
-the unknown `x_0`. This time-level likelihood is the crux.
+`y <- x_0 -> x_t`, the arrows `x_0 -> y` and `x_0 -> x_t` are tractable, and `y` depends on
+`x_t` only through `x_0`.
 
 **Tweedie's formula — the posterior mean of `x_0` given `x_t`.** A classical empirical-Bayes
 result (Robbins 1956; Stein 1981; Efron 2011): when `x_t | x_0` is Gaussian as above, the MMSE
@@ -91,44 +86,29 @@ exp(-||u-y||^2/(2 sigma^2))`, the Euclidean gradient bound is attained at
 dimension factors, but for the normalized `q`-dimensional density the noise-scale behavior is
 the same: the constant grows as `sigma -> 0` and tends to zero as `sigma -> infinity`.
 
-**The diagnostic failure mode that motivates all of this.** It is well documented that
-diffusion solvers built on enforcing *exact* measurement consistency degrade sharply once the
-measurement is noisy: enforcing `A x = y` on a corrupted `y` overfits the noise, and for
-operators like super-resolution or deblurring the transpose `A^T` applied during a consistency
-step *amplifies* that noise, so the reconstruction accumulates error and drifts to a wrong
-solution. This is the phenomenon any noise-robust solver has to avoid reproducing.
-
 ## Baselines
 
-These are the prior diffusion-based inverse-problem solvers a general noisy solver has to improve on.
+These are the prior diffusion-based inverse-problem solvers in use.
 
 **Projection-onto-measurement-subspace solvers (Song et al. 2021 score-SDE; ILVR, Choi et al.
 2021; Chung et al. 2022b).** Drop the likelihood-score term entirely: take an unconditional
 reverse-diffusion step, then **project** the iterate onto the measurement set
-`C = { x : A x = y }` (a POCS / alternating-projection step), assuming `n ≈ 0`. Clean and
-training-free, and strong on *noiseless* linear problems. **Gap:** the projection imposes
-perfect data consistency, so when `n ≠ 0` it forces the sample to agree with corrupted
-measurements and the noise is amplified (the `A^T` in the projection step), as in the
-diagnostic failure above; and a projection onto `{ A x = y }` presupposes a linear, easily
-projectable `A` — it does not extend naturally to nonlinear forward operators.
+`C = { x : A x = y }` (a POCS / alternating-projection step), for the regime `n ≈ 0`.
+Training-free, and used on noiseless linear problems.
 
 **Spectral-domain solvers — SNIPS / DDRM (Kawar et al. 2021; 2022).** Run the diffusion in the
 basis given by the SVD of `A`, which lets the measurement-domain Gaussian noise be tied to
-spectral-domain noise and handled in closed form; this does cope with noise. **Gap:** it
-requires an explicit, cheap SVD of the forward operator. For complex operators the SVD is
-expensive or infeasible, restricting the family to cases like separable blur kernels; general
-or nonlinear `A` is out of reach.
+spectral-domain noise and handled in closed form, so it handles noise. Applied to operators
+with an explicit, cheap SVD such as separable blur kernels.
 
 **Annealed linear-likelihood Langevin — robust-CSGM (Jalal et al. 2021).** For linear
 `A(x) = A x` and Gaussian noise, use the closed-form `t=0` likelihood score
 `grad_{x} log p(y | x) = A^H (y - A x) / sigma^2` directly inside annealed Langevin dynamics.
-**Gap:** that expression is the likelihood score of the *clean* model; it is exact only at
-`t = 0` and wrong at every other noise level actually used in the reverse process. The
-denominator is patched by hand with
-`A^H (y - A x) / (sigma^2 + gamma_t^2)` with `gamma_t -> 0` a decreasing hyperparameter
-sequence — a heuristic correction, and still linear-only.
+The denominator is annealed across the trajectory with
+`A^H (y - A x) / (sigma^2 + gamma_t^2)`, where `gamma_t -> 0` is a decreasing hyperparameter
+sequence.
 
-**Manifold constrained gradient — MCG (Chung et al. 2022a).** The closest ancestor. Use the
+**Manifold constrained gradient — MCG (Chung et al. 2022a).** Use the
 Tweedie estimate `x_0_hat` and step along the gradient of a data-fidelity term evaluated at
 it, `grad_{x_i} || W (y - A x_0_hat) ||_2^2`. Its central result (Theorem 1) is geometric: in
 the diffusion setting a single denoising step acts like an orthogonal projection onto the data
@@ -136,14 +116,12 @@ manifold `M`, the score only resolves the direction normal to `M`, and the data-
 gradient through `x_0_hat` equals the projection of the fidelity term onto the tangent space
 `T_{x_0_hat} M` — i.e. it moves *along* the manifold to use the measurement to discriminate
 points the score cannot. After that gradient step MCG **additionally projects** the iterate
-onto the measurement subspace `C` to enforce data consistency. **Gap:** the extra projection
-again assumes the noiseless regime; with noisy `y` it overshoots data consistency, pushes the
-sample off the manifold, and accumulates error (the same noise-amplification pathology), so it
-degrades on noisy problems; and choosing the weighting `W` per application is a heuristic.
+onto the measurement subspace `C` to enforce data consistency. The weighting `W` is set per
+application.
 
 **Tweedie coarse-to-fine gradient (Kadkhodaie & Simoncelli 2021).** Uses a likelihood gradient
-obtained from the Tweedie-denoised estimate in a coarse-to-fine schedule. **Gap:** framed for
-specific linear restoration tasks; not a general noisy/nonlinear solver.
+obtained from the Tweedie-denoised estimate in a coarse-to-fine schedule, framed for
+specific linear restoration tasks.
 
 ## Evaluation settings
 
@@ -172,9 +150,8 @@ The sampler plugs into the EDM-style diffusion scaffold that already exists: a `
 that precomputes the noise levels and the per-step coefficients of the reverse update, a
 pre-trained denoiser/score `net` that returns the Tweedie posterior mean `E[x_0 | x_t]`, and a
 `forward_op` exposing the known measurement operator together with its gradient. The
-unconditional reverse step (the discretized reverse SDE / PF-ODE) is given. What is *not*
-settled is how — if at all — to bend each reverse step toward the measurement `y`; that
-conditioning rule is the single empty slot below.
+unconditional reverse step (the discretized reverse SDE / PF-ODE) is given. The open slot is
+the rule that conditions each reverse step on the measurement `y`.
 
 ```python
 import torch
@@ -187,7 +164,7 @@ class Solver(Algo):
     """Sample x given an observation y, using a pre-trained diffusion prior `net`
     (returns the Tweedie posterior mean E[x_0 | x_t]) and a known forward
     operator `forward_op`. The reverse-diffusion harness already exists; the
-    measurement-conditioning rule does not."""
+    measurement-conditioning rule is the open slot."""
 
     def __init__(self, net, forward_op, diffusion_scheduler_config, guidance_scale, sde=True):
         super().__init__(net, forward_op)
@@ -228,12 +205,11 @@ class Solver(Algo):
 
             # TODO: choose the measurement-conditioning rule.
             #       Given the observation, the forward operator forward_op, and
-            #       the in-loop denoised estimate, bend this reverse step toward y.
+            #       the in-loop denoised estimate, condition this reverse step on y.
             pass
 
         return x_next
 ```
 
 The harness supplies, at every reverse step, the noised iterate, its Tweedie denoised
-estimate, and the unconditional update; the `# TODO` is the one place the conditioning on `y`
-will live.
+estimate, and the unconditional update; the `# TODO` is where the conditioning on `y` lives.

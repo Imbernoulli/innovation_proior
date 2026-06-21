@@ -14,11 +14,11 @@ A related methodology is the single-GPU *speedrun*, previously used on image cla
 
 **Baselines:**
 
-- **nanoGPT-style decoder GPT.** A faithful small GPT using the standard defaults: learned absolute positions, pre-norm residual blocks, 4× GELU MLP, weight tying, AdamW with warmup and decay, and fixed sequence length and effective batch size held constant for the whole run. It reaches the ~3.8 val-loss bar, but it does so with every default left unexamined for speed. *Gap:* each unexamined default is a potential source of unnecessary compute for this specific bar.
+- **nanoGPT-style decoder GPT.** A faithful small GPT using the standard defaults: learned absolute positions, pre-norm residual blocks, 4× GELU MLP, weight tying, AdamW with warmup and decay, and fixed sequence length and effective batch size held constant for the whole run. It reaches the ~3.8 val-loss bar.
 
-- **Constant-effective-batch gradient accumulation.** The usual way to reach a large effective batch on one GPU is to accumulate gradients over a fixed number of microbatches, then step. The number is hand-tuned once for the whole run. *Gap:* a single constant cannot simultaneously match the large-gradient early regime and the small-gradient late regime.
+- **Constant-effective-batch gradient accumulation.** The usual way to reach a large effective batch on one GPU is to accumulate gradients over a fixed number of microbatches, then step. The number is hand-tuned once for the whole run.
 
-- **Fixed sequence length.** Training at one sequence length for the entire run is simple and is what every baseline does. *Gap:* attention cost is quadratic in length and is paid uniformly across a run whose needs are not uniform.
+- **Fixed sequence length.** Training at one sequence length for the entire run is simple and is what every baseline does.
 
 ## Fixed substrate / Code framework
 

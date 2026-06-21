@@ -14,11 +14,8 @@ different 350 GB model." Training is just as heavy: an adaptive optimizer such a
 running statistics (first and second moments) for every trainable parameter, roughly tripling the
 memory beyond the weights themselves, and a gradient must be produced for all of them.
 
-The problem to solve: adapt a frozen, very large pre-trained model to many downstream tasks while
-storing only a **tiny** per-task delta, **matching full-fine-tuning quality**, adding **no extra
-inference latency**, **not consuming any of the input sequence length**, and allowing **cheap
-task switching** at serving time. Earlier efficiency methods each satisfy some of these and
-violate others; the open problem is to satisfy all of them at once.
+The question is: how can a frozen, very large pre-trained model be adapted to many downstream
+tasks while drastically reducing per-task storage and training memory cost?
 
 ## Background
 
@@ -28,8 +25,8 @@ et al. 2019; RoBERTa, Liu et al. 2019; GPT-2, Radford et al. 2019; GPT-3 175B, B
 defines an autoregressive distribution P_Φ(y_t | x, y_<t). Adapting it to a task with data
 {(x_i, y_i)} means maximizing the conditional log-likelihood Σ_t log P_Φ(y_t | x, y_<t). Larger
 pre-trained models keep getting better, but each increment in size makes the per-task storage and
-the hardware barrier worse. With GPT-3, few-shot prompting is possible but leaves a large quality
-gap to actually updating the weights, so weight-level adaptation remains necessary even at 175B.
+the hardware barrier worse. With GPT-3, few-shot prompting is possible, but weight-level
+adaptation remains a common approach even at 175B.
 
 **The conventions used throughout.** d_model is the layer input/output width; the self-attention
 module has four projection matrices W_q, W_k, W_v, W_o; the MLP block uses an inner dimension
@@ -55,22 +52,11 @@ parameter vector: it needs a large (if implicit) projection matrix, is not tied 
 weight matrix, and gives no special deployment structure — the trained subspace cannot be folded
 back into the model's existing weights to recover a plain forward pass.
 
-**Why "few FLOPs" does not mean "low latency."** A recurring trap for efficiency methods is to
-count parameters or FLOPs and conclude a method is cheap at inference. But large networks are
-fast because their work is mapped onto massively parallel hardware. A module that is small in
-FLOPs but must be executed as an *extra sequential step* still costs a full kernel launch and, in
-a sharded setting, extra synchronization (AllReduce/Broadcast). This penalty is largest exactly
-where production serving lives: batch size near one and short sequences, where there is little
-parallel work to hide the extra step behind. Measured on GPT-2 medium at batch size 1, sequence
-length 128, inserting bottleneck modules raises single-pass latency by 20–30%.
-
 ## Baselines
 
 **Full fine-tuning (FT).** Initialize Φ = Φ₀, update all parameters by gradient ascent on
 Σ_{(x,y)} Σ_t log P_Φ(y_t | x, y_<t). A weaker variant trains only a subset of layers (e.g. the
-top two, FT^Top2). *Gap:* the learned delta ΔΦ has |ΔΦ| = |Φ₀|; per-task storage equals the full
-model, and the optimizer-state memory makes the hardware barrier to entry equal to that of
-pre-training.
+top two, FT^Top2). The learned delta ΔΦ has |ΔΦ| = |Φ₀|.
 
 **Adapter tuning (Houlsby et al. 2019; Lin et al. 2020; Rebuffi et al. 2017; Pfeiffer et al.
 2021).** Insert small modules *between* existing layers. The original Houlsby design (Adapter^H)
@@ -78,24 +64,17 @@ puts two adapters per Transformer block, each a down-projection d_model → r, a
 up-projection r → d_model, biases, and a residual connection. Lin et al. (Adapter^L) use one
 adapter per block plus a LayerNorm. Parameter count per adapter is 2·d_model·r + r + d_model
 (plus any LayerNorm). The bottleneck dimension r keeps the parameter count well under 1% of the
-model. *Gap:* the adapter adds *depth*. It cannot be merged into the existing weights and must be
-computed sequentially in addition to the base block, so it introduces inference latency that
-hardware parallelism cannot hide — worst at batch size 1 and short sequences (the measured
-20–30% slow-down above), and worse still under model sharding.
+model.
 
 **Prefix / prompt-style tuning (Li & Liang 2021; Lester et al. 2021; Hambardzumyan et al. 2020;
 Liu et al. 2021).** Instead of changing weights, optimize input activations. *Prefix-embedding
 tuning* (PreEmbed) prepends l_p (and optionally infixes l_i) trainable "virtual token"
 embeddings not in the vocabulary; the trainable count is d_model·(l_p + l_i). *Prefix-layer
 tuning* (PreLayer) additionally replaces the activations after every Transformer layer with
-trainable vectors; the count is L·d_model·(l_p + l_i). *Gap:* the prefix occupies positions in
-the context window, so it directly reduces the sequence length available for the actual task; and
-the method is hard to optimize — performance is non-monotonic in the number of trainable
-parameters and collapses in the low-data regime.
+trainable vectors; the count is L·d_model·(l_p + l_i).
 
 **Bias-only tuning (BitFit, Zaken et al. 2021).** Train only the bias vectors, freezing
-everything else. Extremely few parameters. *Gap:* limited capacity; the biases alone are often
-not enough to match full fine-tuning across tasks.
+everything else. Extremely few parameters.
 
 ## Evaluation settings
 

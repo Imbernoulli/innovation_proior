@@ -2,7 +2,7 @@
 
 Many neural networks must process one input under the influence of another: answer a question about an image, render an image in a chosen style, generate a sample from a requested class, or denoise an image at a particular noise level while respecting a label. The usual architecture splits the two streams. One sub-network embeds the conditioning signal, another sub-network processes the data, and the two are fused near the top before prediction or decoding.
 
-That late-fusion recipe leaves most of the data pipeline unchanged by the conditioning input. Early and middle convolutional features are computed the same way whether the question asks for red cubes or leftmost spheres, and the final classifier must recover the requested computation from a single fixed representation. A useful general mechanism should let the conditioning signal affect intermediate computation, should be cheap enough to apply repeatedly, should work for arbitrary embeddings rather than a small table of known ids, and should avoid hard-coding a task-specific reasoning module.
+The question is how a conditioning signal should enter a data-processing network: by what general mechanism a separate input (a class id, a style id, a language embedding) can shape the computation of a convolutional or residual backbone.
 
 ## Background
 
@@ -15,17 +15,17 @@ BN(F | gamma_c, beta_c) = gamma_c * x_hat + beta_c
 
 Instance Normalization uses per-example spatial statistics rather than batch statistics, but it keeps the same post-normalization affine form. In both cases, the scale and shift are shared across spatial positions, so their parameter count is tied to the number of feature maps rather than image resolution.
 
-Visual question answering makes the fusion problem concrete. Standard CNN+RNN pipelines extract image features and language features separately, then combine them with concatenation, elementwise products, bilinear pooling, or attention near the top. CLEVR was designed as a diagnostic setting for multi-step compositional questions over rendered 3D scenes; generic late-fusion models and stacked-attention models struggle there compared with systems that build in stronger compositional or relational priors.
+Visual question answering makes the fusion problem concrete. Standard CNN+RNN pipelines extract image features and language features separately, then combine them with concatenation, elementwise products, bilinear pooling, or attention near the top. CLEVR was designed as a diagnostic setting for multi-step compositional questions over rendered 3D scenes.
 
-Several earlier results show that small channel-wise controls can have large behavioral effects. Conditional Instance Normalization shares all convolutional weights across many styles and changes only the normalization affine selected by style id. Conditional Batch Normalization predicts changes to frozen BatchNorm affine parameters from a language embedding and applies them throughout a pretrained ResNet. These mechanisms show that channel-wise scaling and shifting can carry conditioning information, but they are tied to particular normalization settings or fixed lookup structures.
+Several results show that small channel-wise controls can have large behavioral effects. Conditional Instance Normalization shares all convolutional weights across many styles and changes only the normalization affine selected by style id. Conditional Batch Normalization predicts changes to frozen BatchNorm affine parameters from a language embedding and applies them throughout a pretrained ResNet. These mechanisms show that channel-wise scaling and shifting can carry conditioning information.
 
 ## Baselines
 
-**Late fusion by concatenation, product, bilinear pooling, or attention.** The image stream and conditioning stream are computed mostly independently, then combined near the classifier or decoder. This is simple and general, but the conditioning input reaches the visual pipeline after most feature extraction has already happened.
+**Late fusion by concatenation, product, bilinear pooling, or attention.** The image stream and conditioning stream are computed mostly independently, then combined near the classifier or decoder. This is simple and general.
 
-**Neural module and program-execution models.** Program Generator + Execution Engine and neural module networks assemble question-dependent modules that mirror the compositional structure of a question. They give strong reasoning priors, but they may require program supervision or hand-designed modules for particular functions, which weakens their claim as general conditioning mechanisms.
+**Neural module and program-execution models.** Program Generator + Execution Engine and neural module networks assemble question-dependent modules that mirror the compositional structure of a question, giving strong reasoning priors. They may rely on program supervision or hand-designed modules for particular functions.
 
-**Relation Networks.** A Relation Network compares pairs of spatial feature vectors, concatenating question features into the pairwise MLP input and summing the resulting relation vectors. This directly encodes pairwise comparison, but its pairwise stage scales quadratically in the number of spatial locations.
+**Relation Networks.** A Relation Network compares pairs of spatial feature vectors, concatenating question features into the pairwise MLP input and summing the resulting relation vectors. This directly encodes pairwise comparison over a quadratic number of spatial-location pairs.
 
 **Conditional Instance Normalization.** A style id `s` selects rows from learned `N x C` tables:
 
@@ -33,7 +33,7 @@ Several earlier results show that small channel-wise controls can have large beh
 z = gamma_s * ((x - mu) / sigma) + beta_s
 ```
 
-The convolutional weights are shared across styles, and only the post-normalization affine is style-specific. The limitation is the discrete table: a new style or a continuous/compositional conditioning input is not handled by the same row lookup.
+The convolutional weights are shared across styles, and only the post-normalization affine is style-specific.
 
 **Conditional Batch Normalization.** A language embedding `e_q` is mapped to deltas that are added to frozen pretrained BatchNorm parameters:
 
@@ -45,7 +45,7 @@ beta_hat_c  = beta_c  + Delta_beta_c
 BN(F | gamma_hat_c, beta_hat_c)
 ```
 
-All ResNet parameters, including the original BatchNorm affine parameters, are frozen; only the small language-conditioned predictor is trained. This reaches early visual layers with few parameters, but the mechanism is framed as a modification of BatchNorm on a pretrained backbone.
+All ResNet parameters, including the original BatchNorm affine parameters, are frozen; only the small language-conditioned predictor is trained. This reaches early visual layers with few parameters.
 
 **Adaptive Instance Normalization.** A second input supplies the channel statistics:
 
@@ -53,7 +53,7 @@ All ResNet parameters, including the original BatchNorm affine parameters, are f
 AdaIN(x, y) = sigma(y) * ((x - mu(x)) / sigma(x)) + mu(y)
 ```
 
-The scale and shift come from another image's statistics rather than a learned function of an arbitrary embedding, and the operation remains attached to instance normalization.
+The scale and shift come from another image's statistics, and the operation is attached to instance normalization.
 
 **Concatenation or additive-bias conditioning.** Conditional DCGANs, WaveNet, and Conditional PixelCNN either concatenate constant conditioning maps to an input or add a conditioning-dependent bias. For a following linear map,
 
@@ -61,7 +61,7 @@ The scale and shift come from another image's statistics rather than a learned f
 W [F; z] = W_F F + W_z z
 ```
 
-the `z` term is independent of `F`, so the conditioning contribution is an additive feature-wise bias on the layer output. It can shift the output features, but it does not change the coefficient on the feature computation itself.
+the `z` term is independent of `F`, so the conditioning contribution is an additive feature-wise bias on the layer output.
 
 **Feature-wise gates.** LSTM gates and Squeeze-and-Excitation-style channel gates multiply features by a bounded factor:
 
@@ -70,11 +70,11 @@ gate = sigmoid(g(F)) in (0, 1)
 F_out = gate * F
 ```
 
-This can attenuate or pass a channel, but it has no additive component and cannot amplify or negate a feature map.
+This attenuates or passes a channel through a multiplicative factor in `(0, 1)`.
 
 ## Evaluation settings
 
-CLEVR is the natural visual-reasoning diagnostic: roughly 700K image-question-answer-program tuples over rendered 3D scenes, one-word answers from a fixed answer set, and question types including counting, existence, attribute query, attribute comparison, and number comparison. Program labels exist, but a general conditioning method is expected to learn from image-question-answer triples without relying on program supervision.
+CLEVR is the natural visual-reasoning diagnostic: roughly 700K image-question-answer-program tuples over rendered 3D scenes, one-word answers from a fixed answer set, and question types including counting, existence, attribute query, attribute comparison, and number comparison. Program labels exist; a general conditioning method is evaluated learning from image-question-answer triples without relying on program supervision.
 
 CLEVR-Humans tests transfer to free-form human questions on CLEVR images. CLEVR-CoGenT changes the train/test combinations of attributes and shapes, so it probes whether a model has learned disentangled concepts or memorized attribute-shape pairs.
 

@@ -3,7 +3,7 @@
 ## Research question
 
 Many core numerical-linear-algebra tasks on a tall matrix A ∈ R^{n×d} with n ≫ d (rank r ≤ d)
-have the same shape: there is an exact O(nd²) or O(n³) algorithm, and a much faster randomized
+have the same shape: there is an exact O(nd²) or O(n³) algorithm, and a faster randomized
 *approximate* algorithm that first compresses A to a small surrogate and then works on the surrogate.
 The four tasks of interest:
 
@@ -17,13 +17,11 @@ The four tasks of interest:
   projector onto C(A); basis-independent; measures correlation of the column space with e_i).
 - **ℓ_p regression**, 1 ≤ p < ∞: output x' with ‖Ax'−b‖_p ≤ (1+ε)·min_x ‖Ax−b‖_p.
 
-The precise goal that motivates everything below: the running times of the existing randomized
-algorithms all have a *leading term that reads the entire matrix* — Θ(nd) or Θ(nd log n) — even when
-A is very sparse. Write nnz(A) for the number of nonzero entries of A. For many real matrices
+These randomized algorithms compress A through a leading-order step whose running time scales as
+Θ(nd) or Θ(nd log n). Write nnz(A) for the number of nonzero entries of A. For many real matrices
 (document-term, graph adjacency, recommender, web) nnz(A) ≪ nd, often nnz(A) = O(n). The question
-is whether the leading term can be brought down to O(nnz(A)) — pay only for the nonzeros, plus a
-lower-order additive overhead that is polynomial in d, k, 1/ε and *not* polynomial in n. For
-regression the dream is O(nnz(A)) + poly(d/ε); for low-rank, O(nnz(A)) + n·poly(k/ε).
+studied here is how fast the four tasks above can be solved as a function of nnz(A), n, d (or rank
+r), k and 1/ε.
 
 ## Background
 
@@ -41,16 +39,13 @@ above reduce to small problems on the sketch — so the running time is dominate
 
 **The two costs of a sketch.** A sketching distribution is judged on (i) the target dimension t
 needed for the embedding guarantee, and (ii) the time to compute the matrix product S·A. Smaller t
-makes the downstream small problem cheaper; faster S·A makes the leading term cheaper. The standard
-constructions trade these off, but every one of them reads all of A.
+makes the downstream small problem cheaper; faster S·A makes the leading term cheaper.
 
 **Leverage scores as the geometry of a column space.** For A = UΣVᵀ, u_i = ‖U_{i,*}‖₂² are the
-leverage scores; Σ_i u_i = r. They are exactly the importances that make row-sampling work for
+leverage scores; Σ_i u_i = r. They are the importances that make row-sampling work for
 regression and they are a fixed property of the *subspace* C(A) (independent of the chosen basis).
-A standard diagnostic fact about them: a unit vector y in the column space satisfies, coordinatewise,
+A standard fact about them: a unit vector y in the column space satisfies, coordinatewise,
 y_i² ≤ u_i (since y = Ux for a unit x and Cauchy-Schwarz gives y_i² = (U_{i,*}·x)² ≤ ‖U_{i,*}‖² ).
-So the leverage scores cap how large any single coordinate of any unit column-space vector can be,
-and because Σ_i u_i = r, only a few coordinates can be large at once.
 
 **Concentration tools available at the time.** (a) The Johnson–Lindenstrauss lemma: a dense random
 sign/Gaussian S with t = O(ε⁻² log(1/δ)) rows preserves the norm of a *fixed* vector to (1±ε) with
@@ -78,44 +73,27 @@ results.
 Fast-JL transform; with t = O(d/ε²) it is a subspace embedding, and S·A can be applied in
 O(nd log t) time when d < n^{1/2−γ}. This established the whole sketch-and-solve framework for
 regression, low-rank approximation, and approximate matrix multiplication, and gave the first
-relative-error guarantees. *Limitation:* computing S·A costs Θ(nd log n) — it processes the full
-dense array. For an A with nnz(A) = O(n) nonzeros, this pays a factor n more than the number of
-nonzeros; a dense Gaussian S is even worse, at Θ(ndt).
+relative-error guarantees.
 
 **Subsampled randomized Hadamard transform / leverage-score sampling
 (Drineas–Mahoney–Muthukrishnan; Drineas–Mahoney–Muthukrishnan–Sarlós, Numer. Math. 2011).**
 Precondition A with a randomized Hadamard transform H_nD_n (which approximately equalizes the
 leverage scores), then uniformly sample O(d log d/ε²) rows and solve the induced problem; or sample
 rows directly with probabilities ∝ u_i. Running time O(nd log d) for least squares; this line
-introduced leverage scores as the correct sampling importances. *Limitation:* the Hadamard
-preconditioning multiplies the full n×d matrix (Θ(nd log n)); and computing leverage scores exactly
-needs an SVD/QR (O(nd²)). Approximate leverage scores were known in O(nd log n + d³ log d log n)
-(Drineas–Magdon-Ismail–Mahoney–Woodruff, ICML 2012) — again with an nd leading term.
+introduced leverage scores as the correct sampling importances.
 
 **Sparse Johnson–Lindenstrauss transforms (Dasgupta–Kumar–Sarlós, STOC 2010;
 Kane–Nelson, SODA 2012).** Random hashing matrices with few nonzeros per column that preserve the
 norm of a *fixed* vector; the analysis crucially needs the input vector to have small ∞-norm
 (no single coordinate carrying too much mass), and KN12 give a tight version via Hanson–Wright.
-*Limitation:* these are JL statements for a fixed vector or an arbitrary finite set of vectors —
-they say nothing, by themselves, about preserving every vector of an entire d-dimensional subspace,
-where the standard net argument needs e^{−Ω(d)} per-point failure that these sparse maps do not
-provide for worst-case vectors.
 
 **Streaming CountSketch data structure (Charikar–Chen–Farach-Colton, ICALP 2002 / TCS 2004).**
 For frequency estimation: t hash tables of b counters each, with h_j mapping items to [b] and a
 random sign s_j; an item q updates C[j, h_j(q)] += s_j(q), and its frequency is estimated as
-median_j s_j(q)·C[j, h_j(q)], which is unbiased because of the random signs. *Limitation:* this is a
-per-coordinate frequency estimator analyzed in the streaming model; it was never analyzed as a
-norm-preserving map on a linear subspace, and the proof technique (per-item median over independent
-tables) does not give a simultaneous all-vectors guarantee.
+median_j s_j(q)·C[j, h_j(q)], which is unbiased because of the random signs.
 
 **Iterative / Krylov methods (CG, Lanczos; e.g. Trefethen–Bau; Zouzias–Freris 2012).** Repeatedly
-form matrix-vector products Ax (each Θ(nnz(A))). *Limitation:* the number of iterations N depends on
-the condition number and spectral properties of A and can be large (surveys report N = Θ(k) for
-Krylov methods to get k leading singular vectors), with no a-priori condition-independent bound.
-
-The common gap across all baselines: the leading term reads all nd entries (or depends on the
-conditioning of A), even though the information content of a sparse A is only nnz(A) numbers.
+form matrix-vector products Ax (each Θ(nnz(A))).
 
 ## Evaluation settings
 

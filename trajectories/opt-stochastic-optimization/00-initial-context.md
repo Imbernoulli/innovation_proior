@@ -4,10 +4,10 @@ Stochastic first-order optimization for non-convex machine-learning models. Each
 
 ## Prior art / Background / Baselines
 
-- **SGD.** Core idea: take a fixed-size step in the negative mini-batch gradient direction. Gap: a single global step size serves all coordinates, so flat directions move slowly and steep directions oscillate.
-- **Classical momentum.** Core idea: maintain a running average of past gradients to smooth the trajectory and accelerate along consistent directions. Gap: it still uses a single global step size, and accumulated velocity can persist along a direction after the gradient has changed, causing overshoot.
-- **AdaGrad.** Core idea: accumulate per-coordinate squared gradients and normalize each update by the square root of that history. Gap: the accumulated denominator grows monotonically, so the effective step size shrinks toward zero and training can stall before the problem is solved.
-- **RMSprop.** Core idea: replace AdaGrad's cumulative sum with an exponential moving average of squared gradients so the effective step size does not vanish. Gap: the moving-average denominator is a noisy local estimate of gradient scale, so per-coordinate step sizes can fluctuate with mini-batch noise and the method is sensitive to the decay hyperparameter.
+- **SGD.** Take a fixed-size step in the negative mini-batch gradient direction using a single global step size.
+- **Classical momentum.** Maintain a running average of past gradients to smooth the trajectory and accelerate along consistent directions.
+- **AdaGrad.** Accumulate per-coordinate squared gradients and normalize each update by the square root of that history, giving each coordinate its own effective step size.
+- **RMSprop.** Replace AdaGrad's cumulative sum with an exponential moving average of squared gradients, adapting the per-coordinate step size to recent gradient scale.
 
 ## Fixed substrate / Code framework
 

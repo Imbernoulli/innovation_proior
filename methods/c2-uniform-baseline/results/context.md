@@ -9,11 +9,10 @@ smooth, bump-shaped object. Hölder's inequality bounds the ratio
 R(f) = ||f*f||_2^2 / ( ||f*f||_inf · ||f*f||_1 )  ≤  1,
 ```
 
-with equality only if `f*f` is an indicator — which it never is, since the autoconvolution of a
-non-negative function is continuous and spread out. Barnard and Steinerberger (arXiv:1903.08731) asked how
-large `C2 := sup_f R(f)` can be made; every advance since is a constructive lower bound — an explicit `f`
-with a measured `R(f)`. The question here is the very first one on this problem: what is the simplest legal
-construction, and what does it score? It fixes the floor that every subsequent construction must beat.
+with equality only if `f*f` is an indicator. Barnard and Steinerberger (arXiv:1903.08731) asked how large
+`C2 := sup_f R(f)` can be made; each advance is a constructive lower bound — an explicit `f` with a
+measured `R(f)`. The question here is to construct a non-negative `f` from the standard class that achieves
+as large an `R(f)` as possible.
 
 ## Construction class and scoring
 
@@ -34,6 +33,6 @@ and `R = ||f*f||_2^2 / (||f*f||_inf·||f*f||_1)`. The score is this ratio; highe
 
 ## Known reference points
 
-Flat indicator → `2/3 ≈ 0.6667` (the floor). Matolcsi–Vinuesa 20-step → `0.88922`. AlphaEvolve 50-step →
-`0.89628` (arXiv:2506.13131). Boyer–Li 575-step → `0.901564` (arXiv:2506.16750). AlphaEvolve-V2 record →
-`0.96102` (~50000-step irregular). Hölder ceiling `1.0`, unattained. This method targets only the floor.
+Matolcsi–Vinuesa 20-step → `0.88922`. AlphaEvolve 50-step → `0.89628` (arXiv:2506.13131). Boyer–Li
+575-step → `0.901564` (arXiv:2506.16750). AlphaEvolve-V2 record → `0.96102` (~50000-step irregular).
+Hölder ceiling `1.0`, unattained.

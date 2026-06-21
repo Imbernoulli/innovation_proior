@@ -1,8 +1,8 @@
 # Research question
 
-Almost all recent convolutional-network research chases one number: accuracy on ImageNet. But for a fixed accuracy level there are usually *many* architectures that reach it, and they are not equally cheap. The unexplored axis is the *parameter count* of a network that hits a given accuracy. Why does it matter? Three concrete pain points. (1) Distributed data-parallel training is bottlenecked by communication, and that communication is proportional to the number of parameters — fewer parameters, faster training. (2) Pushing model updates over the air to deployed devices (e.g. cars receiving new vision models) means transferring the parameters; a 240MB AlexNet is a heavy update. (3) FPGAs and other embedded accelerators often have under 10MB of on-chip memory and no off-chip storage; a model that fits entirely on-chip can stream video through it in real time with no external memory traffic.
+Almost all recent convolutional-network research chases one number: accuracy on ImageNet. But for a fixed accuracy level there are usually *many* architectures that reach it, and they are not equally cheap. The question is whether it is possible to find a convolutional architecture that matches the accuracy of a well-known reference model (AlexNet-level on ImageNet) with drastically fewer parameters — an order of magnitude or more. Two concrete motivations: (1) distributed data-parallel training requires communicating gradients whose size is proportional to the number of parameters; (2) pushing model updates over the air to deployed devices means transferring the parameters, so a smaller model is a lighter transfer. Additionally, FPGAs and embedded accelerators often have under 10MB of on-chip memory, and a model that fits entirely on-chip can stream video in real time with no external memory traffic.
 
-So the goal: find a convolutional architecture that matches the accuracy of a well-known reference model (AlexNet-level on ImageNet) with *drastically* fewer parameters — an order of magnitude or more — and ideally a model small enough (single-digit MB, or under 1MB after compression) to live on constrained hardware. And do it in a principled way, by understanding *which* architectural choices drive parameter count, rather than by black-box search.
+The goal is to understand *which* architectural choices drive parameter count, so that a small architecture can be designed from scratch in a principled way.
 
 # Background
 
@@ -10,7 +10,7 @@ So the goal: find a convolutional architecture that matches the accuracy of a we
 
 **1×1 convolutions and Network-in-Network (Lin et al., 2013).** A 1×1 convolution performs pure cross-channel mixing at each pixel, with no spatial extent. NiN introduced using 1×1 convolutions as learned per-pixel channel transforms and replaced the parameter-heavy fully-connected classifier with global average pooling over the final feature maps — removing the single largest block of parameters in classic architectures (AlexNet/VGG fully-connected layers hold the bulk of their weights).
 
-**Modules as a unit of design (GoogLeNet / Inception, Szegedy et al., 2014–2015).** Rather than hand-pick the dimensions of every layer, recent architectures define a small reusable *module* (e.g. the Inception module, which mixes 1×1, 3×3, and sometimes 5×5 filters) and stack many copies. This makes a large network describable by a handful of module hyperparameters. The proportion of 1×1 vs larger filters inside these modules was chosen without systematic analysis of how it trades off model size against accuracy.
+**Modules as a unit of design (GoogLeNet / Inception, Szegedy et al., 2014–2015).** Rather than hand-pick the dimensions of every layer, recent architectures define a small reusable *module* (e.g. the Inception module, which mixes 1×1, 3×3, and sometimes 5×5 filters) and stack many copies. This makes a large network describable by a handful of module hyperparameters.
 
 **Depth and bypass connections.** VGG (Simonyan & Zisserman, 2014) showed accuracy rises with depth using only 3×3 filters; ResNet (He et al., 2015) and Highway Networks showed that *bypass* (skip) connections that add an earlier activation to a later one let much deeper networks train and improve accuracy (ResNet reported ~2 points top-5 from adding bypass to a 34-layer net). Bypass connections add little or no parameters but change the optimization and regularization of the layers they wrap.
 
@@ -20,11 +20,11 @@ So the goal: find a convolutional architecture that matches the accuracy of a we
 
 # Baselines
 
-**AlexNet (Krizhevsky et al., 2012).** The reference accuracy target: ~57.2% top-1 / ~80.3% top-5 on ImageNet, with ~60M parameters (~240MB at 32-bit). Most parameters sit in its fully-connected layers. The yardstick for "AlexNet-level accuracy" and the model that compression papers start from. Its gap: enormous parameter count for that accuracy.
+**AlexNet (Krizhevsky et al., 2012).** The reference accuracy target: ~57.2% top-1 / ~80.3% top-5 on ImageNet, with ~60M parameters (~240MB at 32-bit). Most parameters sit in its fully-connected layers. The yardstick for "AlexNet-level accuracy" and the model that compression papers start from.
 
-**Model-compression results on AlexNet.** SVD compresses AlexNet ~5× (top-1 drops to 56.0%); Network Pruning ~9× while maintaining accuracy; Deep Compression ~35× (to ~6.9MB) while maintaining accuracy. These define the parameter-reduction frontier a from-scratch small architecture is measured against. Their limitation: they require first training the large model, and the compressed model is a derivative of a heavy architecture rather than a small architecture in its own right.
+**Model-compression results on AlexNet.** SVD compresses AlexNet ~5× (top-1 drops to 56.0%); Network Pruning ~9× while maintaining accuracy; Deep Compression ~35× (to ~6.9MB) while maintaining accuracy. These define the parameter-reduction frontier a from-scratch small architecture is measured against.
 
-**VGG / GoogLeNet.** Strong, deeper accuracy leaders, but parameter-heavy (VGG especially, due to large fully-connected layers and many 3×3 filters). They motivate the question of how to keep accuracy while removing the parameter bloat.
+**VGG / GoogLeNet.** Deeper accuracy leaders with strong ImageNet results, but with large parameter counts (VGG especially, due to large fully-connected layers and many 3×3 filters).
 
 # Evaluation settings
 
@@ -35,7 +35,7 @@ So the goal: find a convolutional architecture that matches the accuracy of a we
 
 # Code framework
 
-The primitives below already exist: Conv2d (with a kernel size and channel counts), ReLU, MaxPool2d, Dropout, AdaptiveAvgPool2d, and channel-dimension concatenation. A network is a stack of these. What does not yet exist is the reusable *module* that achieves accuracy with few parameters; the scaffold leaves that as the empty slot.
+The primitives below already exist: Conv2d (with a kernel size and channel counts), ReLU, MaxPool2d, Dropout, AdaptiveAvgPool2d, and channel-dimension concatenation. A network is a stack of these. The reusable *module* that achieves accuracy with few parameters is the empty slot to be filled.
 
 ```python
 import torch
@@ -43,9 +43,7 @@ import torch.nn as nn
 
 
 class FeatureModule(nn.Module):
-    """TODO: the reusable building block. The whole contribution lives here —
-    how to arrange convolution filters so the module is cheap in parameters
-    while preserving representational power. Tunable channel dimensions only."""
+    """TODO: the reusable building block. Tunable channel dimensions only."""
     def __init__(self, in_channels, *dims):
         super().__init__()
         raise NotImplementedError

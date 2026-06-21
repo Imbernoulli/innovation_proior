@@ -2,13 +2,13 @@
 
 The flip-flop language `FFL(T, p)` is a minimal state-tracking task: a stream of `(instruction, bit)` pairs over `Sigma = {w0, w1, i0, i1, r0, r1}`, where `w b` writes bit `b` into a single-bit memory, `i b` is an ignore token (random visible bit, memory unchanged), and `r b` is a read whose bit `b` must equal the current memory state. The model is graded only on predicting read bits. The only design choice is the causal sequence-model architecture; everything else — the data distribution, the AdamW optimizer, the 3000-step training loop, and the read-only evaluation — is fixed.
 
-Trained on `FFL(p_i=0.8, T=512)`, the default vanilla Transformer is tested OOD on `FFL(p_i=0.98)`, where long ignore stretches push the last relevant write often more than 100 positions before the read. It exhibits persistent read errors whose probability does not vanish with scale or data. The goal is an architecture that eliminates those errors under the fixed substrate.
+Trained on `FFL(p_i=0.8, T=512)`, the model is tested OOD on `FFL(p_i=0.98)`, where long ignore stretches push the last relevant write often more than 100 positions before the read. The goal is an architecture that handles these longer-range dependencies under the fixed substrate.
 
 ## Prior art / Background / Baselines
 
-- **Recurrent nets with BPTT.** A hidden state carried step to step and trained by backpropagation through time. The gradient through the recurrence is a product of per-step factors, so it vanishes or explodes exponentially in long lags. Gap: long-range dependencies are unreliable.
-- **Causal convolutional / windowed models.** Stacked causal convolutions widen the receptive field in parallel and stably, but the reach is fixed by depth and kernel size. Gap: dependencies longer than the receptive field are invisible.
-- **Attention over an encoder plus recurrent decoder.** A decoder reads a content-weighted combination of all encoder positions, so any position is one hop away. Gap: the decoder is still recurrent, so sequential bottlenecks and gradient pathologies remain.
+- **Recurrent nets with BPTT.** A hidden state carried step to step and trained by backpropagation through time. The gradient through the recurrence is a product of per-step factors.
+- **Causal convolutional / windowed models.** Stacked causal convolutions widen the receptive field in parallel and stably, with the reach determined by depth and kernel size.
+- **Attention over an encoder plus recurrent decoder.** A decoder reads a content-weighted combination of all encoder positions, so any position is one hop away.
 - **Self-attention-only Transformer.** Causal scaled dot-product attention attends to all earlier positions, with positional encodings restoring order. Fully parallel and one-hop across positions, this is the scaffold's default fill and the starting baseline.
 
 ## Fixed substrate / Code framework

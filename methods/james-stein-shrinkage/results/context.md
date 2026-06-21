@@ -8,7 +8,7 @@ $$L(\theta, d) = \|\theta - d\|^2 = \sum_{i=1}^p (\theta_i - d_i)^2,$$
 
 and an estimator $\delta$ is judged by its risk $R(\theta,\delta) = E_\theta \|\delta(X) - \theta\|^2$. The coordinates carry physically unrelated quantities — there is no assumption that the $\theta_i$ are near each other or share anything.
 
-The obvious estimate is $\delta_0(X) = X$: report each coordinate as itself. Its risk is exactly $p$ in the unit-variance normalization, flat in $\theta$. The question is whether this obvious estimator is the best one can do — precisely, whether it is **admissible**: whether there exists any estimator $\delta$ with $R(\theta,\delta) \le R(\theta,\delta_0)$ for all $\theta$ and strict somewhere. A solution that improves on $X$ would have to lower the *total* risk uniformly in $\theta$, with no prior knowledge tying the coordinates together. It matters because $X$ is the maximum-likelihood estimate, the minimum-variance unbiased estimate, and the answer every classical optimality principle endorses; if it can be uniformly beaten, those principles are not the last word for simultaneous estimation.
+The obvious estimate is $\delta_0(X) = X$: report each coordinate as itself. Its risk is exactly $p$ in the unit-variance normalization, flat in $\theta$. The question is whether this obvious estimator is the best one can do — precisely, whether it is **admissible**: whether there exists any estimator $\delta$ with $R(\theta,\delta) \le R(\theta,\delta_0)$ for all $\theta$ and strict somewhere. A solution that improves on $X$ would have to lower the *total* risk uniformly in $\theta$, with no prior knowledge tying the coordinates together. It matters because $X$ is the maximum-likelihood estimate, the minimum-variance unbiased estimate, and the answer every classical optimality principle endorses.
 
 ## Background
 
@@ -24,21 +24,21 @@ Each of the $p$ coordinates of $X-\theta$ is standard normal, so $E\|X-\theta\|^
 
 $$E_\theta\|X\|^2 = \|\theta\|^2 + p,$$
 
-and more sharply $\|X\|^2 = \|\theta\|^2 + p + O_p\!\big(\sqrt{p+\|\theta\|^2}\big)$: as the dimension grows the squared length of $X$ concentrates around $\|\theta\|^2 + p$. The observed vector is therefore *systematically longer* than the truth by an amount that grows with $p$ — its squared length overshoots $\|\theta\|^2$ by about $p$. In high dimension this places $X$, with high confidence, outside the ball where $\theta$ actually sits.
+and more sharply $\|X\|^2 = \|\theta\|^2 + p + O_p\!\big(\sqrt{p+\|\theta\|^2}\big)$: as the dimension grows the squared length of $X$ concentrates around $\|\theta\|^2 + p$.
 
 **Random walks and dimension three.** A symmetric random walk on the integer lattice is recurrent in dimensions 1 and 2 — it returns to its start with probability 1 — but transient in dimension $\ge 3$ (Pólya). This makes dimension a plausible structural variable rather than just a count of unrelated coordinates: a multidimensional accumulation of independent fluctuations can behave differently once enough coordinates are present.
 
 ## Baselines
 
-**The usual estimator $\delta_0(X) = X$ (MLE / sample mean).** Core idea: report each coordinate as observed. Math: risk $R(\theta,\delta_0) = E\|X-\theta\|^2 = p\sigma^2$ (equal to $p$ when $\sigma^2=1$), constant in $\theta$. It is unbiased, minimum-variance-unbiased, minimax, best invariant, and MLE. Gap it leaves open: all of those properties are about *unbiasedness* or *invariance* or *single-coordinate* optimality; none of them is a statement that the **total** risk over $p$ coordinates cannot be lowered by a biased, coordinate-coupling rule. The credentials guarantee nothing about admissibility once $p$ is large.
+**The usual estimator $\delta_0(X) = X$ (MLE / sample mean).** Core idea: report each coordinate as observed. Math: risk $R(\theta,\delta_0) = E\|X-\theta\|^2 = p\sigma^2$ (equal to $p$ when $\sigma^2=1$), constant in $\theta$. It is unbiased, minimum-variance-unbiased, minimax, best invariant, and MLE.
 
-**Coordinatewise / one-at-a-time estimation.** Treat the $p$ problems separately and solve each by its own best estimate $X_i$. For a single coordinate this is admissible (Blyth 1951; Hodges–Lehmann 1951). Gap: a procedure that handles each coordinate in isolation cannot make use of anything that only emerges when the $p$ coordinates are viewed jointly; whether the total-risk problem has such joint structure to exploit is left open.
+**Coordinatewise / one-at-a-time estimation.** Treat the $p$ problems separately and solve each by its own best estimate $X_i$. For a single coordinate this is admissible (Blyth 1951; Hodges–Lehmann 1951).
 
 **Bayes / shrinkage-toward-a-point estimators.** Put a prior $\theta_i \sim N(0, A)$. The Bayes estimate under squared-error loss is the posterior mean,
 $$\delta^{\text{Bayes}}(X) = \Big(1 - \tfrac{1}{A+1}\Big) X,$$
-a fixed fraction shrink toward $0$. Core idea: a prior that says "the means cluster near a point" rationally pulls estimates toward that point. Math/algorithm: linear shrinkage by a constant factor determined by $A$. Gap: it requires knowing the prior variance $A$; if $A$ is wrong the estimator can be worse than $X$; and as a frequentist procedure with $\theta$ fixed and unrelated, there is no prior, so it is unclear whether this Bayes rule has any frequentist standing at all against $X$ uniformly in $\theta$.
+a fixed fraction shrink toward $0$. Core idea: a prior that says "the means cluster near a point" rationally pulls estimates toward that point. Math/algorithm: linear shrinkage by a constant factor determined by $A$.
 
-**Minimax / invariant estimators.** Restrict to estimators invariant under translation (or under the orthogonal group, for spherically symmetric estimators that act on $X$ through $\|X\|$ alone). Core idea: invariance is a reasonable symmetry to demand, and the best invariant rule has lowest constant risk. Math: such estimators move $X$ along its own ray by a length depending only on $\|X\|$. Gap: invariance is a *constraint*; nothing guarantees the best invariant estimator is admissible against rules that break the symmetry.
+**Minimax / invariant estimators.** Restrict to estimators invariant under translation (or under the orthogonal group, for spherically symmetric estimators that act on $X$ through $\|X\|$ alone). Core idea: invariance is a reasonable symmetry to demand, and the best invariant rule has lowest constant risk. Math: such estimators move $X$ along its own ray by a length depending only on $\|X\|$.
 
 ## Evaluation settings
 

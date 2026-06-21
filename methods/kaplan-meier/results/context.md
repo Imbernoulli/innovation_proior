@@ -12,23 +12,21 @@ for the unobserved event time `T`.
 
 ## Denominator Risk
 
-The hard part is not sorting times. It is deciding who belongs in each denominator. A subject whose event is observed before a time point is no longer at risk. A subject whose follow-up stopped before that time point is also no longer informative about that time point. But before follow-up stops, that same subject is real evidence of survival.
+The hard part is not sorting times. It is deciding who belongs in each denominator. A subject whose event is observed before a time point is no longer at risk. A subject whose follow-up stopped before that time point is also no longer informative about that time point. Before follow-up stops, that same subject is real evidence of survival.
 
-Any estimator must therefore use partial information without turning censoring into failure and without pretending that censored subjects remain observed forever. It also needs an explicit assumption that stopping observation is not itself carrying hidden information about the event time.
+The standard assumption is that stopping observation carries no hidden information about the event time — censoring is uninformative.
 
 ## Existing Baselines
 
-A complete-data empirical survival curve works when every event time is observed. It fails under censoring because the original sample size stops being the right denominator.
+A complete-data empirical survival curve works when every event time is observed. It uses the full sample size as the denominator at each time.
 
-Grouped life-table calculations estimate survival interval by interval. They are natural for coarse follow-up records, but the grouping choice can hide the exact event times and can mix deaths and withdrawals inside broad bins.
+Grouped life-table calculations estimate survival interval by interval. They are natural for coarse follow-up records and accumulate counts of deaths and withdrawals within each broad bin.
 
-Parametric survival models impose a distributional shape. They can be efficient when the shape is credible, but the desired object here is a distribution-free step curve determined by the observed follow-up table.
+Parametric survival models impose a distributional shape. They can be efficient when the shape is credible.
 
-## Required Behavior
+## Research Question
 
-The curve should start at one and never increase. It should change only when observed events occur. Censoring marks may appear on a plot, but censoring alone should not create a downward step.
-
-Tied times require grouped bookkeeping. Records with the same observed age must be handled as one group, because an arbitrary order inside a tie would change denominators without adding information. With no censoring, the procedure should reduce to the ordinary empirical survivor fraction.
+How can a nonparametric survival curve be estimated from right-censored follow-up data?
 
 ## Code Surface
 

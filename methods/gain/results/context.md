@@ -7,30 +7,24 @@ patient's respiratory rate because it was never measured, or a biopsy-derived fe
 procedure was too invasive to perform; a survey has non-responses; a sensor drops readings. The
 practical task is to fill those holes — to produce, from a partially observed feature vector, a
 completed vector whose filled-in entries are as faithful as possible to the values that would have
-been there. Two things make this hard at once. First, the entries are not independent: a feature's
-missing value is informative about, and informed by, the *other* features of the same record, and
-a good filler has to exploit those dependencies rather than collapse each column to a single
-summary. Second — and this is the constraint that rules out a whole class of methods — in many
-settings missingness is part of the inherent structure of the problem, so a fully observed
-("complete") version of the data does not exist *anywhere*, not even as a training set. Whatever
-learns to impute has to learn from the incomplete data itself.
+been there. The entries are not independent: a feature's missing value is informative about, and
+informed by, the *other* features of the same record. And in many settings missingness is part of
+the inherent structure of the problem, so a fully observed ("complete") version of the data does
+not exist anywhere, not even as a training set; whatever does the imputation learns from the
+incomplete data itself.
 
-There is a deeper version of the goal than "guess each missing number." For a record with observed
-part `x̃`, the principled object to recover is the *conditional distribution* `P(X | X̃ = x̃)` of the
-complete vector given what was seen — not merely its mean. Modeling the distribution rather than
-the point estimate is what lets one draw several different completions of the same record (multiple
-imputation) and so represent the genuine uncertainty about the missing values, instead of pretending
-a single number is certain. A method that recovers only the conditional expectation throws that
-uncertainty away and tends to shrink imputations toward an average, distorting downstream analyses.
-So the target is: a way to sample plausible completed vectors from `P(X | X̃)`, learned from data
-that is itself incomplete, that respects cross-feature structure and works for mixed
-continuous/binary features.
+One can state the goal more broadly than "guess each missing number." For a record with observed
+part `x̃`, the conditional distribution `P(X | X̃ = x̃)` of the complete vector given what was seen is
+a richer object than its mean. Modeling the distribution rather than the point estimate lets one
+draw several different completions of the same record (multiple imputation) and so represent the
+uncertainty about the missing values, rather than committing to a single number. The setting is
+mixed continuous/binary tabular features, and the broad question is how to recover completed
+vectors for the records.
 
 To make the theory tractable, the standard simplifying assumption is **MCAR** — missing completely
 at random — meaning the mask `M` (which entries are present) is statistically independent of the
-data `X`. (The weaker assumptions, MAR — missingness depends only on observed values — and MNAR —
-missingness depends on the unobserved values themselves — are the realistic generalizations, but
-the clean guarantees are proved under MCAR.)
+data `X`. The weaker assumptions are MAR — missingness depends only on observed values — and MNAR —
+missingness depends on the unobserved values themselves; the clean guarantees are proved under MCAR.
 
 ## Background
 
@@ -39,7 +33,7 @@ distribution `P(X)`, and `M = (M_1, …, M_d) ∈ {0,1}^d` for the *mask*, with 
 component `i` is observed. The partially observed vector is `X̃`, where `X̃_i = X_i` if `M_i = 1` and
 `X̃_i = *` (a special "unobserved" symbol) otherwise; the mask is recoverable from `X̃`. Missingness
 is **MCAR** if `M ⟂ X`; **MAR** if the missingness depends only on observed entries; **MNAR**
-otherwise. The dataset is `{(x̃^i, m^i)}_{i=1}^n`. A central modeling choice is whether to target the
+otherwise. The dataset is `{(x̃^i, m^i)}_{i=1}^n`. A modeling choice is whether to target the
 conditional *mean* of the missing entries or their full conditional *distribution* `P(X | X̃)`; the
 latter, of dimension equal to the number of missing coordinates `‖1 − M‖_1`, supports multiple
 imputation (drawing several distinct completions) and uncertainty quantification.
@@ -48,8 +42,7 @@ imputation (drawing several distinct completions) and uncertainty quantification
 *Discriminative* methods directly predict each missing entry from the others (chained regressions,
 random forests, low-rank matrix completion). *Generative* methods posit a model of the data
 distribution and sample missing values from it (Expectation-Maximization on a parametric family,
-and the newer deep-learning approaches). Each camp has a characteristic weakness that a better
-method would need to overcome (detailed under Baselines).
+and the newer deep-learning approaches).
 
 **Adversarial training of generative models (Goodfellow et al. 2014).** A pair of networks is
 trained against each other: a generator `G` maps a noise prior `p_z(z)` into data space, inducing a
@@ -60,7 +53,7 @@ data rather than from `G`. They play the two-player minimax game
 min_G max_D  V(D, G) = E_{x ~ p_data}[ log D(x) ] + E_{z ~ p_z}[ log(1 − D(G(z))) ].
 ```
 
-The load-bearing facts of this framework, which any adaptation rests on:
+The load-bearing facts of this framework:
 - *Optimal discriminator.* For a fixed `G`, the best `D` is `D*(x) = p_data(x) / (p_data(x) + p_g(x))`.
   This follows from a single pointwise fact: the map `y ↦ a log y + b log(1 − y)` is maximized on
   `[0, 1]` at `y = a/(a + b)` for `a, b ≥ 0` not both zero.
@@ -82,16 +75,13 @@ to a distribution over outputs.
 
 **Autoencoders for reconstruction.** A denoising autoencoder (Vincent et al. 2008) corrupts its
 input, encodes it to a bottleneck, and decodes back, training the reconstruction to match the clean
-input; it learns to fill in / denoise corrupted entries. This reconstruction idea — force the
-network's output on the *observed* coordinates to match what was actually observed — is a natural
-supervisory signal whenever part of the input is known.
+input; it learns to fill in / denoise corrupted entries. Forcing the network's output on the
+*observed* coordinates to match what was actually observed is a natural supervisory signal whenever
+part of the input is known.
 
-**Representational limits in the design space.** Two observations frame the problem. (1)
-Mean/median filling, which replaces a column's holes by that column's average, is fast
-but discards every cross-feature dependency, so it systematically distorts correlations and the
-joint distribution. (2) Methods that learn a *point* predictor of each missing entry recover (at
-best) the conditional mean and therefore cannot express the spread of plausible values — they
-cannot do multiple imputation.
+**Two reference points in the design space.** (1) Mean/median filling replaces a column's holes by
+that column's average. (2) Methods that learn a *point* predictor of each missing entry recover the
+conditional mean.
 
 ## Baselines
 
@@ -99,15 +89,12 @@ These are the prior imputation methods commonly used as comparators for this tas
 
 **Mean (column-mean) imputation.** Replace each missing entry in a column by the mean of that
 column's observed entries (estimated on training data). *Idea/math:* `x̂_{ij} = mean_i` for missing
-`(i, j)`. **Gap:** ignores all feature correlations; every record gets the same fill for a given
-column, collapsing the conditional distribution to a constant and biasing downstream covariances.
+`(i, j)`.
 
 **k-Nearest-Neighbors imputation (Troyanskaya et al., Bioinformatics 2001).** For each record with a
 missing entry, find the `k` most similar records using only the features both records have observed,
 and impute the missing entry as the (distance-weighted) average of those neighbors' values; default
-`k = 5`. *Idea/math:* a local, nonparametric conditional-mean estimate. **Gap:** distance computed
-on observed features degrades as missingness grows; it still produces an averaged point estimate, so
-no uncertainty; and it scales poorly (a neighbor search per query) on large datasets.
+`k = 5`. *Idea/math:* a local, nonparametric conditional-mean estimate.
 
 **MICE — Multivariate Imputation by Chained Equations (van Buuren & Groothuis-Oudshoorn, JSS 2011).**
 Initialize the holes (e.g. by column means), then cycle: for each variable with missingness, fit a
@@ -115,44 +102,30 @@ regression of that variable on all the others using the current filled-in values
 missing entries with draws from the fitted predictive model; repeat for several rounds (default
 `max_iter = 10`). *Idea/math:* a Gibbs-like sweep over per-variable conditional models; sampling
 from each conditional (rather than taking the mean) lets MICE produce multiple imputations.
-`sklearn.impute.IterativeImputer` is the de facto implementation. **Gap:** the conditionals are
-modeled separately and (typically) linearly, so the implied joint may be incoherent and complex
-nonlinear interactions are missed; quality hinges on the choice of per-variable model.
+`sklearn.impute.IterativeImputer` is the de facto implementation.
 
 **MissForest (Stekhoven & Bühlmann, Bioinformatics 2012).** The same chained-equations skeleton as
 MICE, but each per-variable predictor is a Random Forest. *Idea/math:* iteratively regress each
-variable on the rest with a forest, iterating until the change in imputations stops decreasing.
-**Gap:** captures nonlinearities and mixed types well, but it is a *discriminative* point predictor
-fit per variable — it returns the forest's conditional-mean estimate, so it does not model the joint
-distribution and cannot natively express imputation uncertainty; cost grows with the number of
-features (a forest per feature per iteration).
+variable on the rest with a forest, iterating until the change in imputations stops decreasing. It
+captures nonlinearities and mixed types and returns the forest's conditional-mean estimate per
+variable.
 
 **Low-rank matrix completion (Mazumder, Hastie & Tibshirani 2010).** Treat the data table as a
 partially observed matrix and recover it by minimizing a nuclear-norm-regularized fit to the
 observed entries (soft-thresholded SVD). *Idea/math:* assumes the complete matrix is approximately
-low rank. **Gap:** the low-rank/linear-subspace assumption is restrictive; it does not model a
-distribution and struggles with strongly nonlinear feature relationships and mixed variable types.
+low rank.
 
 **Expectation-Maximization on a parametric family (e.g. a joint Gaussian).** Fit a parametric joint
 distribution to the incomplete data by EM, then impute missing entries from the fitted conditionals.
 *Idea/math:* alternate computing expected sufficient statistics given current parameters (E) with
-re-estimating parameters (M). **Gap:** commits to a parametric form for `P(X)` and degrades badly
-when that form is wrong — in particular for datasets mixing categorical and continuous variables.
+re-estimating parameters (M).
 
 **Deep autoencoder imputation (denoising autoencoders; Gondara & Wang 2017; Vincent et al. 2008).**
 Train an autoencoder to reconstruct records, using its decoder output on the missing coordinates as
 the imputation. *Idea/math:* learn a nonlinear encode-decode of the data manifold and read off the
-reconstructed holes. **Gap:** the classic denoising-autoencoder recipe needs *complete* data during
-training (it corrupts clean inputs to create the (corrupted, clean) pairs it learns from), which is
-exactly what is unavailable when missingness is intrinsic; variants that train on incomplete data
-only use the observed components and learn no model of the full joint distribution.
-
-The shape of the open problem these leave: the discriminative methods (kNN, MICE, MissForest, matrix
-completion) are point predictors that recover at most a conditional mean and so cannot represent
-imputation uncertainty; the generative ones either commit to a parametric family that fails on mixed
-data (EM) or require complete training data (denoising autoencoders). None offers a way to learn a
-flexible, nonparametric model of the full conditional distribution `P(X | X̃)` directly from data
-that is itself incomplete.
+reconstructed holes. The classic denoising-autoencoder recipe corrupts clean inputs to create the
+(corrupted, clean) training pairs; variants that train on incomplete data use the observed
+components.
 
 ## Evaluation settings
 

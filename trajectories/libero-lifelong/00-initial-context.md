@@ -1,18 +1,18 @@
 ## Research question
 
-Lifelong robot manipulation in LIBERO-Spatial: the agent learns ten pick-and-place tasks **one at a time, in sequence**. Every task shares the same action goal (pick up a black bowl, place it on a plate) and differs only in spatial layout. It trains on task 0 to convergence, then task 1, and so on through task 9; only after the last task is it evaluated on **all ten**. The single design freedom is the *lifelong learning strategy* layered on a fixed behavior-cloning learner — the mechanism that stops task k's training from erasing what tasks 0..k−1 learned. The pain is **catastrophic forgetting**: plain sequential fine-tuning rewrites the weights earlier tasks rely on, so by the final task early tasks have collapsed. Everything else is frozen: the transformer policy, the BC loss, AdamW, the cosine schedule, and the 50-epochs-per-task budget.
+Lifelong robot manipulation in LIBERO-Spatial: the agent learns ten pick-and-place tasks **one at a time, in sequence**. Every task shares the same action goal (pick up a black bowl, place it on a plate) and differs only in spatial layout. It trains on task 0 to convergence, then task 1, and so on through task 9; only after the last task is it evaluated on **all ten**. The single design freedom is the *lifelong learning strategy* layered on a fixed behavior-cloning learner — the mechanism that governs how task k's training interacts with what tasks 0..k−1 learned. Everything else is frozen: the transformer policy, the BC loss, AdamW, the cosine schedule, and the 50-epochs-per-task budget.
 
 ## Prior art / Background / Baselines
 
-The available continual-learning options and the gaps they leave are:
+Available continual-learning approaches include:
 
-- **Joint / multi-task training.** Train on all ten tasks' data interleaved. Forgetting vanishes because the weights are jointly fit, but the sequential regime forbids storing every past dataset; memory grows with the number of tasks. Gap: remembers by hoarding data, violating the streaming constraint.
+- **Joint / multi-task training.** Train on all ten tasks' data interleaved. Forgetting is avoided because the weights are jointly fit across all tasks.
 
-- **Uniform L2 anchoring.** After a task, snapshot the weights θ* and add `(λ/2)||θ − θ*||²` while training the next task; constant memory, no old data. Gap: a single global λ cannot keep old task performance high without also preventing the new task from being learned; no single stiffness works for both.
+- **Uniform L2 anchoring.** After a task, snapshot the weights θ* and add `(λ/2)||θ − θ*||²` while training the next task; constant memory, no old data required.
 
-- **Plain dropout / weight decay.** These only encourage generic capacity and do not protect any specific task's knowledge. Gap: forgetting appears after a couple of sequential tasks.
+- **Plain dropout / weight decay.** These encourage generic capacity regularization across the network.
 
-- **Progressive Networks.** Give each task its own column and freeze the rest, so forgetting is literally zero. Gap: parameters and test-time memory grow with each new task.
+- **Progressive Networks.** Give each task its own column and freeze the rest, so earlier representations are not overwritten.
 
 ## Fixed substrate / Code framework
 

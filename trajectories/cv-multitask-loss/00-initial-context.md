@@ -1,16 +1,16 @@
 ## Research question
 
-CIFAR-100 ships its 100 fine classes pre-grouped into 20 coarse superclasses, so a single image carries two labels at two granularities. The single design object is the **multi-task loss combination strategy** — how the fine-head loss and the coarse-head loss are folded into one scalar that the optimizer descends — with one objective only: maximize **fine-class test accuracy**. The coarse task is purely auxiliary; the coarse label is a free, semantically structured extra signal, and the question is whether and how it can be made to help the fine objective rather than steal capacity from it. Everything else — the backbone, the two heads, the data pipeline, the optimizer, the schedule — is fixed. Only the combination rule moves.
+CIFAR-100 ships its 100 fine classes pre-grouped into 20 coarse superclasses, so a single image carries two labels at two granularities. The single design object is the **multi-task loss combination strategy** — how the fine-head loss and the coarse-head loss are folded into one scalar that the optimizer descends — with one objective only: maximize **fine-class test accuracy**. The coarse task is purely auxiliary; the coarse label is a free, semantically structured extra signal. Everything else — the backbone, the two heads, the data pipeline, the optimizer, the schedule — is fixed. Only the combination rule moves.
 
 ## Prior art / Background / Baselines
 
-- **Hard parameter sharing (Caruana, 1997).** A shared trunk with small task-specific heads is trained on the summed loss `L = Σ_i L_i`, under the premise that related tasks provide a useful inductive bias. Gap: the bare sum is acutely sensitive to the implicit relative weighting, and equal weighting rarely puts the primary task at its peak.
+- **Hard parameter sharing (Caruana, 1997).** A shared trunk with small task-specific heads is trained on the summed loss `L = Σ_i L_i`, under the premise that related tasks provide a useful inductive bias.
 
-- **Hand-tuned / grid-searched weighting `L = Σ_i w_i L_i`.** Static task weights are set by search and kept for the whole run. Gap: one full training run per grid point, combinatorial in the number of tasks, and a fixed weight cannot adapt to where training currently is.
+- **Hand-tuned / grid-searched weighting `L = Σ_i w_i L_i`.** Static task weights are set by search and kept for the whole run.
 
-- **Loss-magnitude balancing.** Per-task losses are rescaled so that tasks at different magnitudes or difficulties contribute comparably to the shared gradient. Gap: scaling changes how much each task counts but does not alter how their gradients interact on the shared trunk.
+- **Loss-magnitude balancing.** Per-task losses are rescaled so that tasks at different magnitudes or difficulties contribute comparably to the shared gradient.
 
-- **Gradient-interference accounts.** When task gradients on shared parameters partially oppose each other, the summed gradient can cancel information and joint training can underperform single-task training. Gap: the observed cancellation lowers fine-task accuracy when the auxiliary gradient conflicts with the primary gradient on shared parameters, and existing combination rules do not address it.
+- **Gradient-interference accounts.** When task gradients on shared parameters partially oppose each other, the summed gradient can cancel information and joint training can underperform single-task training.
 
 ## Fixed substrate / Code framework
 

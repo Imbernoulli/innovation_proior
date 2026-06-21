@@ -46,13 +46,12 @@ feasible comparator. If the feasible set has bounded diameter and gradients are
 bounded, then squared distances and gradient norms can become finite terms in a
 regret proof.
 
-## Earlier Pieces That Do Not Yet Compose
+## Earlier Work
 
 Blackwell's approachability theorem and Hannan's consistency results show that
 adversarial repeated interaction can be controlled through average performance
 and hindsight comparison. These results establish the right game-theoretic
-ambition but do not by themselves give a simple general-purpose convex
-optimization update.
+ambition for no-regret learning in general convex settings.
 
 The experts and multiplicative-weights line gives a concrete adversarial
 algorithm for a finite action set. A learner plays a distribution over experts,
@@ -63,22 +62,12 @@ based on an entropic or weight potential and is specialized to finite experts.
 Online prediction and regression supply gradient-style updates with relative
 loss bounds, but those analyses are tied to particular losses or divergences.
 Infinitesimal gradient ascent in games supplies another nearby object: in a
-two-player, two-action game, players move their mixed strategies by gradient
-ascent and average payoffs converge in the special `2 x 2` geometry. Its proof
-depends on low-dimensional game dynamics rather than a general convex-set
-argument.
+two-player game, players move their mixed strategies by gradient ascent and
+average payoffs converge. Its proof is based on the geometry of the specific
+game dynamics.
 
-## Constraints On A Satisfactory Resolution
+## Research Question
 
-A satisfactory resolution must preserve the adversarial nature of the problem:
-no distribution over costs, no stationarity, and no relation between successive
-rounds. It must work for any closed bounded convex feasible set for which
-projection can be computed, and for any convex differentiable round cost with
-bounded gradients.
-
-It should also explain the older examples rather than merely coexist with them.
-On a simplex with linear costs it should look like an experts problem. On a
-mixed-strategy simplex with utility revealed through an opponent's action it
-should give a no-regret repeated-game strategy beyond the `2 x 2` case. Its
-analysis should reveal why the regret comparator, convex tangent inequality,
-projection geometry, and step-size schedule fit together.
+How can a learner achieve sublinear regret against the best fixed feasible point
+in hindsight, over any adversarial sequence of convex costs, for an arbitrary
+closed bounded convex feasible set?

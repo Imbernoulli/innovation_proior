@@ -6,7 +6,7 @@ Transformer language models trained with pre-norm residual blocks reliably devel
 - **Massive activations**: a few coordinates of special tokens reach magnitudes far above the surrounding activations.
 - **Fixed-dimension residual outliers**: the same feature dimensions carry persistently large activations across most tokens and inputs.
 
-These values are difficult to dismiss as harmless artifacts. They dominate activation dynamic range, damage low-bit quantization, and increase numerical error. But directly clipping them, or replacing the normalization layers associated with them, often hurts optimization and quality. The central question is what role these outliers serve during training, whether the attention-side and residual-side phenomena share one mechanism, and whether that role can be preserved without leaving large activations in the residual stream.
+The central question is what role these outliers serve during training, and whether the attention-side and residual-side phenomena share one mechanism.
 
 ## Background
 
@@ -44,15 +44,15 @@ A measured detail about the residual stripe is that the post-normalization weigh
 
 - **StreamingLLM / attention sinks (Xiao et al. 2023).** Sliding-window attention fails unless the first few key-value pairs are retained, because those early tokens act as attention sinks. The work establishes that sinks are functionally load-bearing for long-context inference, but mainly explains them as a consequence of softmax needing to allocate probability mass.
 
-- **Massive activations (Sun et al. 2024).** A few constant, input-agnostic coordinates of special tokens act like implicit biases and can be replaced by explicit learnable attention bias or sink keys. This addresses attention-side massive activations but does not explain fixed residual dimensions that persist when attention sinks are removed.
+- **Massive activations (Sun et al. 2024).** A few constant, input-agnostic coordinates of special tokens act like implicit biases and can be replaced by explicit learnable attention bias or sink keys.
 
-- **Gated Attention (Bondarenko et al. 2023; Qiu et al. 2025).** A head-wise or element-wise sigmoid gate scales the attention output before `o_proj`. In Qwen3-style code, the gate logits are split out of `q_proj`, reshaped to head-wise or element-wise scores, and applied as `attn_output * sigmoid(gate_score)` after attention and before the output projection. This lets a head reduce its output without parking mass on a sink token. The limitation is scope: it acts on attention output, not on residual-stream normalization.
+- **Gated Attention (Bondarenko et al. 2023; Qiu et al. 2025).** A head-wise or element-wise sigmoid gate scales the attention output before `o_proj`. In Qwen3-style code, the gate logits are split out of `q_proj`, reshaped to head-wise or element-wise scores, and applied as `attn_output * sigmoid(gate_score)` after attention and before the output projection. This lets a head reduce its output without parking mass on a sink token.
 
 - **RMSNorm (Zhang and Sennrich 2019).** RMSNorm is the residual-side normalizer used by the transformer stack. Its shared denominator is exactly what allows a fixed large dimension to rescale the other dimensions.
 
-- **Dynamic Tanh / normalization-free transformer variants (Zhu et al. 2025; Chen et al. 2025).** Dynamic Tanh replaces normalization with the pointwise function `tanh(alpha*x)*weight + bias`. It can suppress outliers because no coordinate controls another, but that same pointwise nature removes RMSNorm's cross-dimensional rescaling.
+- **Dynamic Tanh / normalization-free transformer variants (Zhu et al. 2025; Chen et al. 2025).** Dynamic Tanh replaces normalization with the pointwise function `tanh(alpha*x)*weight + bias`. No coordinate controls another through a shared denominator.
 
-- **Outlier-feature mitigation by removing normalization (He et al. 2024 and related work).** These approaches identify normalization as a source of outlier features and redesign blocks to avoid them. They reduce outliers but also remove the rescaling behavior tied to the shared normalizer.
+- **Outlier-feature mitigation by removing normalization (He et al. 2024 and related work).** These approaches identify normalization as a source of outlier features and redesign blocks to avoid them.
 
 - **SwiGLU / GLU variants (Shazeer 2020).** `down(act(gate(x)) * up(x))` is the standard FFN form. Swish and related unbounded activations produce larger intermediate values than sigmoid GLU; this makes the FFN a natural source of residual outliers.
 

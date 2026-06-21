@@ -8,21 +8,21 @@ The task is almost entirely **memory- and parse-bound**: a billion delimiter sea
 
 ## Prior art / Background / Baselines
 
-Current entries apply these techniques; each leaves a concrete gap:
+Current entries apply these techniques:
 
-- **Java streams + collections.** Core idea: express the pipeline idiomatically with `Files.lines()`, `String.split(";")`, `Double.parseDouble`, and `Collectors.groupingBy` into a `TreeMap`. Gap: it allocates a `String`, a `String[]`, and a boxed `Double` per row, plus `TreeMap` sorting. The reference implementation finishes in **04:49.679** (m:ss.mmm); every entry must beat this number.
+- **Java streams + collections.** Express the pipeline idiomatically with `Files.lines()`, `String.split(";")`, `Double.parseDouble`, and `Collectors.groupingBy` into a `TreeMap`. The reference implementation finishes in **04:49.679** (m:ss.mmm); every entry must beat this number.
 
-- **Memory-mapped I/O.** Core idea: map the file with `FileChannel.map` or `MemorySegment` so threads read directly from the page cache without `read()` syscalls or intermediate buffers. Gap: once syscalls are gone, per-byte scanning, parsing, and aggregation dominate.
+- **Memory-mapped I/O.** Map the file with `FileChannel.map` or `MemorySegment` so threads read directly from the page cache without `read()` syscalls or intermediate buffers.
 
-- **Multithreading.** Core idea: split the file into segments, run one per core, then merge partial results. Gap: the merge step and segment load imbalance become visible as per-core aggregation speeds up.
+- **Multithreading.** Split the file into segments, run one per core, then merge partial results.
 
-- **Vector API.** Core idea: use `ByteVector` to load 16–32 bytes and compare against `';'` in one SIMD instruction, producing a bitmask of delimiter positions. Gap: it requires `--add-modules jdk.incubator.vector` / `--enable-preview`, and the scalar parsing and aggregation stages remain.
+- **Vector API.** Use `ByteVector` to load 16–32 bytes and compare against `';'` in one SIMD instruction, producing a bitmask of delimiter positions. Requires `--add-modules jdk.incubator.vector` / `--enable-preview`.
 
-- **SWAR.** Core idea: find delimiter bytes in a 64-bit `long` with the bit-twiddling identity `(w - 0x0101…01) & ~w & 0x8080…80` and `Long.numberOfTrailingZeros`. Gap: it processes only eight bytes per operation and leaves the surrounding parse and aggregate pipeline unchanged.
+- **SWAR.** Find delimiter bytes in a 64-bit `long` with the bit-twiddling identity `(w - 0x0101…01) & ~w & 0x8080…80` and `Long.numberOfTrailingZeros`.
 
-- **Raw off-heap access.** Core idea: read mapped memory directly with `sun.misc.Unsafe.getLong` or `java.lang.foreign.MemorySegment`, avoiding bounds checks and object headers. Gap: it removes access overhead but does not reduce the work done per row.
+- **Raw off-heap access.** Read mapped memory directly with `sun.misc.Unsafe.getLong` or `java.lang.foreign.MemorySegment`, avoiding bounds checks and object headers.
 
-- **GraalVM `native-image`.** Core idea: compile the program ahead of time to a standalone binary, eliminating JVM startup and JIT warmup. Gap: parsing and aggregation still account for most of the wall-clock.
+- **GraalVM `native-image`.** Compile the program ahead of time to a standalone binary, eliminating JVM startup and JIT warmup.
 
 ## Fixed substrate / Code framework
 
@@ -74,7 +74,7 @@ public class CalculateAverage {
 }
 ```
 
-This scaffold is correct and runnable, but it is only a structural starting point.
+This scaffold is correct and runnable.
 
 ## Editable interface
 

@@ -6,10 +6,10 @@ Train an `AutoencoderKL` from `diffusers` on CIFAR-10 32×32 images. The only de
 
 These objectives are the relevant reference points for the loss design.
 
-- **Plain autoencoder.** Map input through an encoder-decoder bottleneck and minimize pixel reconstruction error. The latent space has no probabilistic structure, so the model cannot sample new data and learned codes do not interpolate well.
-- **Denoising / sparse autoencoders.** Augment reconstruction with a hand-set corruption process or sparsity penalty to shape the latent code. The extra term is chosen by hand rather than derived from a likelihood, so its effect depends heavily on tuning and it provides no direct generative principle.
-- **Mean-field variational Bayes.** Approximate an intractable posterior with a tractable variational distribution and optimize a lower bound. Coordinate-ascent updates require analytic expectations under conjugate families, which breaks when the decoder is a neural network, and fitting a separate variational distribution per datapoint does not scale to image datasets.
-- **Pixel reconstruction distances (L2 / L1).** Treat reconstruction as an independent Gaussian (L2) or Laplace (L1) likelihood over pixels. Both assume pixel independence, so the optimum under reconstruction uncertainty is the conditional mean and the result tends to be blurry.
+- **Plain autoencoder.** Map input through an encoder-decoder bottleneck and minimize pixel reconstruction error.
+- **Denoising / sparse autoencoders.** Augment reconstruction with a hand-set corruption process or sparsity penalty to shape the latent code.
+- **Mean-field variational Bayes.** Approximate an intractable posterior with a tractable variational distribution and optimize a lower bound. Coordinate-ascent updates require analytic expectations under conjugate families.
+- **Pixel reconstruction distances (L2 / L1).** Treat reconstruction as an independent Gaussian (L2) or Laplace (L1) likelihood over pixels.
 
 ## Fixed substrate / Code framework
 

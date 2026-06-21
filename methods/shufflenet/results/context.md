@@ -2,27 +2,25 @@
 
 The problem is to build a basic convolutional image-recognition architecture for a very small compute envelope: roughly tens to hundreds of MFLOPs, the range where a phone, drone, or small robot can plausibly run a model repeatedly. The goal is not to prune, quantize, or distill a large network after training. The goal is to choose the building block itself so the network is accurate at the target budget from the start.
 
-The hard constraint is not only parameter count. The model must be compared by multiply-adds at matched budgets and by actual latency on an ARM-class mobile CPU, because a layer that is cheap in FLOPs can still be slow if it has poor memory access behavior. The target task is standard ImageNet classification, with object detection transfer as a check that the representation is not overfit to classification.
+The model must be compared by multiply-adds at matched budgets and by actual latency on an ARM-class mobile CPU, because a layer that is cheap in FLOPs can still be slow if it has poor memory access behavior. The target task is standard ImageNet classification, with object detection transfer as a check that the representation is not overfit to classification.
 
 ## Background
 
 Residual networks give a reliable template: a shortcut plus a bottleneck residual branch. In the bottleneck version, the branch is `1x1 reduce -> 3x3 spatial -> 1x1 expand`, so if the input/output width is `c`, the bottleneck width is `m`, and the feature map is `h x w`, the dense block costs `hw(2cm + 9m^2)`. The two `1x1` layers are the `2cm` channel-mixing cost; the `3x3` layer is the `9m^2` spatial cost.
 
-Grouped convolution is also available. It divides channels into groups and performs independent convolutions inside each group, cutting the cost of that layer by about the number of groups. ResNeXt uses this idea on the `3x3` bottleneck layer, making a block cost `hw(2cm + 9m^2/g)`. That improves large residual networks, but it leaves the two `1x1` pointwise layers dense.
+Grouped convolution is also available. It divides channels into groups and performs independent convolutions inside each group, cutting the cost of that layer by about the number of groups. ResNeXt uses this idea on the `3x3` bottleneck layer, making a block cost `hw(2cm + 9m^2/g)`.
 
 Depthwise separable convolution takes the opposite extreme for spatial filtering: one `3x3` filter per channel, followed by a dense `1x1` pointwise convolution for channel mixing. Xception and MobileNet make this pattern practical for efficient networks. The important warning is that depthwise convolution is not automatically fast on mobile hardware because it has a weak compute-to-memory-access ratio. Xception also supplies a useful implementation detail: avoid putting a ReLU immediately after the depthwise operation.
 
-The diagnostic pressure in the tiny-network regime is that once the spatial term has been reduced, dense pointwise convolutions dominate the remaining work. In the grouped-`3x3` residual setting with cardinality 32, the pointwise layers account for 93.4% of the unit's multiply-adds. Under a fixed MFLOP budget that dominance forces thin feature maps, and thin feature maps are a bad bargain for a small network that already has too little representational capacity.
-
 ## Baselines
 
-**Residual bottleneck.** Reliable optimization and an identity shortcut, but the unit cost `hw(2cm + 9m^2)` is too high when the budget is only tens of MFLOPs. Both channel mixing and spatial filtering remain dense.
+**Residual bottleneck.** Reliable optimization and an identity shortcut. The unit cost is `hw(2cm + 9m^2)`, with both channel mixing and spatial filtering remaining dense.
 
-**Cardinality-style grouped residual block.** Grouping the `3x3` term gives `hw(2cm + 9m^2/g)`, but the unchanged `2cm` pointwise term becomes the dominant cost at small scale. It saves compute in the wrong place for the mobile budget.
+**Cardinality-style grouped residual block.** Grouping the `3x3` term gives `hw(2cm + 9m^2/g)`, leaving the `2cm` pointwise term unchanged.
 
-**Depthwise-separable lightweight block.** Depthwise spatial filtering is extremely cheap, and MobileNet shows this can be a strong lightweight baseline. Its dense pointwise convolutions still do all cross-channel mixing, so at very small widths they remain the main compute bottleneck.
+**Depthwise-separable lightweight block.** Depthwise spatial filtering is extremely cheap, and MobileNet shows this can be a strong lightweight baseline. Its dense pointwise convolutions handle cross-channel mixing.
 
-**Post-training acceleration.** Pruning, low-rank factorization, quantization, and distillation can shrink an existing model, but they do not answer which basic unit should be used before compression.
+**Post-training acceleration.** Pruning, low-rank factorization, quantization, and distillation can shrink an existing model.
 
 ## Evaluation Settings
 

@@ -4,11 +4,11 @@ Train deep convolutional image classifiers with plain SGD. The optimizer, model,
 
 ## Prior art / Background / Baselines
 
-The standard ways people currently set `eta(epoch)` are listed below. Each fills the same `eta(epoch)` slot; each has an observed limitation that leaves room for improvement.
+The standard ways people currently set `eta(epoch)` are listed below. Each fills the same `eta(epoch)` slot.
 
-- **Constant rate.** Hold `eta = base_lr` for the whole run. Simple, but it does not adapt to training dynamics: a single large rate is unstable early on, when curvature is high, and it keeps oscillating near convergence because the stochastic gradient does not vanish.
-- **Step / multi-step decay.** Hold a high plateau and divide the rate by a fixed factor at hand-picked epochs (for example, multiply by 0.2 at epochs 60/120/160 of a 200-epoch run). The milestones and drop factor are free numbers tied to a pre-fixed budget; each drop is a discontinuity that shocks the dynamics, and it leaves the initial high-rate phase unchanged.
-- **Cyclical (triangular) learning rates.** Ramp the rate linearly up to a `max_lr` and back down, repeatedly, between two fixed bounds. The oscillations help escape flat plateaus, but the piecewise-linear corners and the fact that the rate never settles to a low, fine finish leave accuracy on the table.
+- **Constant rate.** Hold `eta = base_lr` for the whole run.
+- **Step / multi-step decay.** Hold a high plateau and divide the rate by a fixed factor at hand-picked epochs (for example, multiply by 0.2 at epochs 60/120/160 of a 200-epoch run). The milestones and drop factor are free numbers tied to the pre-fixed budget.
+- **Cyclical (triangular) learning rates.** Ramp the rate linearly up to a `max_lr` and back down, repeatedly, between two fixed bounds.
 
 ## Fixed substrate / Code framework
 
@@ -37,13 +37,6 @@ def get_lr(epoch, total_epochs, base_lr, config):
 
     Returns:
         float: learning rate to use for this epoch
-
-    Design considerations:
-        - Warmup phase to stabilize early training
-        - Decay shape (step, cosine, polynomial, exponential, ...)
-        - Final learning rate (decay to zero vs small constant)
-        - Architecture/dataset-aware scheduling
-        - Interaction with momentum and weight decay
     """
     return base_lr  # constant LR (no schedule)
 ```

@@ -3,23 +3,16 @@
 ## Research question
 
 Conditional diffusion models can draw samples `x ~ p(x|c)` for a class label or other
-conditioning `c`, and on likelihood and coverage they are excellent. But practitioners want one
-more thing that other generative families already give them: a *post-training knob* that trades
-sample diversity for per-sample fidelity. In a GAN you get this with truncated sampling
-(shrinking the input noise range); in a normalizing flow you get it with low-temperature
-sampling (scaling down the latent noise). Both produce a smooth tradeoff curve — sweep the knob
-and watch a perceptual-quality metric improve while coverage falls. Diffusion models had no such
-knob, and the obvious analogues do not work: scaling the model's predicted score, or shrinking
-the Gaussian noise added in the reverse process, both just yield blurry, low-quality samples.
+conditioning `c`. Other generative families offer a *post-training knob* that trades sample
+diversity for per-sample fidelity: in a GAN, truncated sampling (shrinking the input noise range);
+in a normalizing flow, low-temperature sampling (scaling down the latent noise). Both produce a
+smooth tradeoff curve — sweep the knob and watch a perceptual-quality metric improve while
+coverage falls.
 
-The precise goal is therefore a controllable diffusion sampler: a single scalar that, swept from
-"off" to "strong," moves the model along a fidelity/diversity tradeoff comparable to GAN
-truncation — and that does so (1) *after* training, without retraining the generator per setting;
-(2) ideally without bolting an extra trained component onto the pipeline; and (3) without the
-sampling procedure degenerating into something that merely games the metrics used to evaluate it
-(the Inception-based IS/FID scores are themselves classifier outputs). A method that needed an
-auxiliary network, or whose update direction looked like an adversarial perturbation of an image
-classifier, would satisfy (1) but leave (2) and (3) open.
+The question is how to give a conditional diffusion sampler the same kind of control: a single
+scalar that, swept from "off" to "strong," moves the model along a fidelity/diversity tradeoff
+comparable to GAN truncation, applied *after* training rather than by retraining the generator per
+setting.
 
 ## Background
 
@@ -55,42 +48,39 @@ gradient of the log-density of the noised data:
 eps_theta(z_lambda) ≈ - sigma_lambda * grad_{z_lambda} log p(z_lambda).
 ```
 
-This **score / noise identity** is load-bearing: it means a denoiser *is* (up to the `-sigma`
-factor) a score-function estimator, so sampling resembles Langevin dynamics on a sequence of
-noise-mollified densities `p(z_lambda)` that converges to the data distribution (Song et al.
-2020, score-based SDE; Song & Ermon 2019). One caveat sits in the background and will matter: the
-network `eps_theta` is an *unconstrained* neural map from `z_lambda` to a vector field; there need
-not exist any scalar potential whose gradient it is. A denoiser is only *approximately* a
-conservative (gradient) field.
+This **score / noise identity** means a denoiser *is* (up to the `-sigma` factor) a
+score-function estimator, so sampling resembles Langevin dynamics on a sequence of noise-mollified
+densities `p(z_lambda)` that converges to the data distribution (Song et al. 2020, score-based
+SDE; Song & Ermon 2019). The network `eps_theta` is an *unconstrained* neural map from `z_lambda`
+to a vector field; there need not exist any scalar potential whose gradient it is.
 
 Conditioning is trivial to add at the architecture level: feed `c` to the network as an extra
 input, `eps_theta(z_lambda, c)`, and train on data `(x, c)` drawn jointly. That gives a
 conditional score estimator `eps_theta(z_lambda, c) ≈ -sigma_lambda * grad log p(z_lambda | c)`.
 
-The motivating empirical facts about existing systems, knowable before any new method:
+Some empirical facts about existing systems:
 
-- **Other generative families already have a fidelity/diversity knob.** Truncated BigGAN (Brock
-  et al. 2019) traces out an FID-vs-IS tradeoff curve as truncation is varied; low-temperature
-  Glow (Kingma & Dhariwal 2018) behaves similarly. The desire is to reproduce this in diffusion.
-- **The naive diffusion analogues fail.** Scaling the model's score vectors, or decreasing the
-  variance of the Gaussian noise injected in the reverse process, both produce blurry, low-quality
-  samples rather than a clean fidelity boost. The straightforward "turn down the temperature"
-  moves do not transfer.
-- **Raising a distribution to a power sharpens it.** A general fact used throughout: `p(.)^s` for
-  `s > 1` shifts probability mass from low-density regions onto the modes — an inverse-temperature
-  operation. In score (gradient-of-log) space, raising to the power `s` is just multiplying the
-  score by `s`, because `grad log p^s = s * grad log p`.
+- **Other generative families have a fidelity/diversity knob.** Truncated BigGAN (Brock et al.
+  2019) traces out an FID-vs-IS tradeoff curve as truncation is varied; low-temperature Glow
+  (Kingma & Dhariwal 2018) behaves similarly.
+- **Naive diffusion analogues of "turning down the temperature."** Scaling the model's score
+  vectors, or decreasing the variance of the Gaussian noise injected in the reverse process, both
+  produce blurry, low-quality samples.
+- **Raising a distribution to a power sharpens it.** `p(.)^s` for `s > 1` shifts probability mass
+  from low-density regions onto the modes — an inverse-temperature operation. In score
+  (gradient-of-log) space, raising to the power `s` is just multiplying the score by `s`, because
+  `grad log p^s = s * grad log p`.
 
 ## Baselines
 
-**Classifier guidance (Dhariwal & Nichol, arXiv:2105.05233).** The first method to give diffusion
-a working fidelity/diversity knob. Train, alongside the diffusion model, an auxiliary classifier
-`p_phi(c | z_lambda)` on the *noised* latents (it must see the same noise distribution the sampler
-visits, so a standard pretrained clean-image classifier cannot be dropped in). At sampling time,
-add the classifier's input-gradient to the diffusion score. Starting from the conditional-reverse
-identity `p(z_t | z_{t+1}, c) ∝ p(z_t | z_{t+1}) * p_phi(c | z_t)` and Taylor-expanding the
-low-curvature log-classifier around the predicted mean, the guided transition is a Gaussian whose
-mean is shifted along `grad_{z} log p_phi(c | z)`. In epsilon/score form, with classifier scale `g`,
+**Classifier guidance (Dhariwal & Nichol, arXiv:2105.05233).** Gives diffusion a
+fidelity/diversity knob. Train, alongside the diffusion model, an auxiliary classifier
+`p_phi(c | z_lambda)` on the *noised* latents (it sees the same noise distribution the sampler
+visits). At sampling time, add the classifier's input-gradient to the diffusion score. Starting
+from the conditional-reverse identity `p(z_t | z_{t+1}, c) ∝ p(z_t | z_{t+1}) * p_phi(c | z_t)` and
+Taylor-expanding the low-curvature log-classifier around the predicted mean, the guided transition
+is a Gaussian whose mean is shifted along `grad_{z} log p_phi(c | z)`. In epsilon/score form, with
+classifier scale `g`,
 
 ```
 eps_hat(z_lambda, c) = eps_theta(z_lambda, c) - g * sigma_lambda * grad_{z} log p_phi(c | z_lambda),
@@ -98,32 +88,20 @@ eps_hat(z_lambda, c) = eps_theta(z_lambda, c) - g * sigma_lambda * grad_{z} log 
 
 which targets the renormalized distribution `p(z_lambda | c) * p_phi(c | z_lambda)^g`. Because
 `g * grad log p(c|z) = grad log [ (1/Z) p(c|z)^g ]`, the scale `g > 1` sharpens the classifier
-onto its high-confidence modes — exactly the inverse-temperature sharpening that yields higher
-fidelity and lower diversity, and empirically a scale above 1 was needed (at `g = 1` the samples
-scored ~50% on the target class and looked wrong; at `g = 10` they hit ~100% and looked
-class-consistent). Dhariwal & Nichol further observed that guidance applied to an already
-class-*conditional* model worked better than guidance on an unconditional one.
-
-This method works, but leaves three open issues. (i) It requires a *second* trained network, and
-that network must be trained on noisy latents, complicating the training pipeline and ruling out
-off-the-shelf classifiers. (ii) The guidance direction is the input-gradient of an image
-classifier, the same object an adversarial attack ascends; since IS and FID are themselves
-computed from a (different) image classifier, it is unclear whether the metric gains reflect real
-perceptual improvement or partly an adversarial interaction with classifier-based metrics. (iii)
-Stepping along classifier gradients also resembles GAN-style training against a discriminator,
-raising the same doubt about whether the gains are "for the right reason."
+onto its high-confidence modes — the inverse-temperature sharpening that yields higher fidelity
+and lower diversity. Empirically a scale above 1 was used (at `g = 1` the samples scored ~50% on
+the target class; at `g = 10` they hit ~100% and looked class-consistent). Dhariwal & Nichol
+observed that guidance applied to an already class-*conditional* model worked better than guidance
+on an unconditional one.
 
 **Truncation / low-temperature sampling in other model families (Brock et al. 2019; Kingma &
-Dhariwal 2018).** The external reference point for what a good knob should produce: a smooth
-FID-vs-IS frontier swept by a single scalar. These are GAN/flow techniques and do not transfer to
-diffusion (the naive analogues blur, as above), but they define the target behavior any diffusion
-knob is measured against.
+Dhariwal 2018).** A smooth FID-vs-IS frontier swept by a single scalar. These are GAN/flow
+techniques; they define the target behavior any diffusion knob is measured against.
 
-**Naive score-scaling and reverse-noise reduction.** The simplest diffusion-native attempts at a
-temperature knob — multiply the predicted score by a constant, or shrink the sampling noise. Both
-are cheap and need no auxiliary network, and both fail: they yield blurry, low-fidelity samples
-rather than the truncation-like tradeoff. They establish that a *uniform* sharpening of the
-model's own score is not the right move; whatever works has to sharpen something more specific.
+**Naive score-scaling and reverse-noise reduction.** The simplest diffusion-native temperature
+knobs — multiply the predicted score by a constant, or shrink the sampling noise. Both are cheap
+and need no auxiliary network, and both produce blurry, low-fidelity samples. They apply a
+*uniform* sharpening of the model's own score.
 
 ## Evaluation settings
 

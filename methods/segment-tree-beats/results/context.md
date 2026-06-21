@@ -13,32 +13,21 @@ each operation is too slow.
 
 ## Baseline
 
-A segment tree already gives the right traversal shape. Range `max` and range
-`sum` queries can split across children and merge answers. The unresolved part is
-the range update: a fully covered node should be handled locally only when its
-stored summary is enough to update both the aggregate values and any delayed
-state exactly.
-
-## Failure mode
-
-A cap by `x` changes precisely the entries greater than `x`. Two intervals can
-have the same length, maximum, and sum while containing different numbers of
-entries above the cap, so an ordinary sum/max summary cannot always update a
-covered node without looking inside it.
+A segment tree gives the right traversal shape. Range `max` and range `sum`
+queries split across children and merge answers. For range updates, the standard
+lazy-propagation pattern stores a pending tag at each node and pushes it down
+before visiting children.
 
 ## Target
 
-The implementation should keep the ordinary recursive segment-tree interface,
-answer the two read-only queries by merging node aggregates, and make the update
-descend only in the cases where the current node summary is genuinely
-insufficient. The worst case for one operation may still open several nodes, so
-the design also needs an amortized argument for a long operation sequence.
+Design a segment tree that supports all three operations efficiently, with an
+amortized complexity guarantee over a long sequence of operations.
 
 ## Scaffold
 
 The input loop, recursive segment tree, range splitting, and query traversal are
 ordinary infrastructure. The open part is the node summary and the range-update
-logic that decides how much of a covered node can be handled before descending.
+logic.
 
 ```python
 import sys

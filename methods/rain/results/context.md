@@ -16,15 +16,13 @@ F(x,y) = [ grad_x f(x,y) ; -grad_y f(x,y) ].
 
 The precise goal is to find an `epsilon`-stationary point — a point with small gradient operator
 norm, `||F(z)|| = ||grad f(z)|| <= epsilon` — using as few SFO calls as possible. The gradient
-norm, not the duality gap, is the target on purpose: the duality gap
+norm, not the duality gap, is the target: the duality gap
 `max_{y'} f(x,y') - min_{x'} f(x',y)` is not always finite or even well-defined (for the bilinear
 `f(x,y) = x^T y` it is infinite at every point except the saddle `(0,0)`), whereas the gradient
 operator norm is always defined for a differentiable objective, is easy to measure in practice,
-and is meaningful even without convex-concavity. What would a satisfying answer have to achieve?
-A near-optimal SFO complexity in which the statistical part (driven by `sigma^2`) and the
-optimization part (driven by `L`, the condition number, and the initial distance
-`D = ||z_0 - z*||`) appear *additively* rather than multiplied together. The state of the art for
-making the *gradient* small under noise multiplies them, and closing that gap is the problem.
+and is meaningful even without convex-concavity. How many SFO calls are needed, and can the
+statistical part (driven by `sigma^2`) and the optimization part (driven by `L`, the condition
+number, and the initial distance `D = ||z_0 - z*||`) be separated?
 
 ## Background
 
@@ -58,15 +56,12 @@ gradient-norm story: a contraction toward a chosen point that, scaled by a vanis
 account of how to make the gradient small stochastically (Allen-Zhu 2018). The relevant
 observation: regularizing `f(x)` by `(sigma/2)||x - x_0||^2` and solving the strongly convex
 surrogate makes the gradient small, but the surrogate's minimizer is displaced from the true one
-by `O(sigma)`, so `sigma` must be kept on the order of `epsilon`, and a small `sigma` makes the
-surrogate poorly conditioned and the stochastic solve expensive — capping the achievable rate. The
-escape observed there: if the regularization center `x_0` were already close to the optimum, a
-*larger* `sigma` would still keep the displacement small, and a larger `sigma` means a
-better-conditioned, cheaper surrogate; a chain of progressively warmer centers, with the center
-re-set to the current approximate minimizer and the regularization strength doubled each round,
-breaks the barrier. That account is built on the inequality `min_x f(x) <= f(x)`, an artifact of
-single-objective convexity. The same scalar-value argument has no counterpart for a saddle problem,
-where neither `min-max f <= f` nor `min-max f >= f` holds.
+by `O(sigma)`, so `sigma` must be kept on the order of `epsilon`. A chain of progressively warmer
+centers, with the center re-set to the current approximate minimizer and the regularization
+strength doubled each round, has been studied in that setting. That account is built on the
+inequality `min_x f(x) <= f(x)`, an artifact of single-objective convexity. The same
+scalar-value argument has no counterpart for a saddle problem, where neither `min-max f <= f` nor
+`min-max f >= f` holds.
 
 **The noise floor.** A complexity decomposition (Foster et al. 2019) splits the lower bound for
 finding a small-gradient point into a *statistical* part forced by oracle noise and an
@@ -88,19 +83,14 @@ z_{t+1}   = z_t - eta * F(z_{t+1/2}; xi_j)
 For SCSC `f` with `eta < 1/(4L)`, one step satisfies the telescoping bound
 `lambda E||z_{t+1/2} - z*||^2 <= (1/eta) E[ ||z_t - z*||^2 - ||z_{t+1} - z*||^2 ] + 16 eta sigma^2`,
 and averaging gives `E||z_bar - z*||^2 <= ||z_0 - z*||^2/(lambda eta T) + 16 eta sigma^2 / lambda`.
-**Limitation:** with a fixed stepsize SEG converges only to a `sigma^2`-sized ball around `z*` and
-then stalls; to shrink the ball one must shrink `eta`, which slows the optimization-error decay.
-For the gradient norm in the general CC case its complexity is `O(sigma^2 L^2 epsilon^{-4} +
-L^2 D^2 epsilon^{-2})` — the statistical term carries an `L^2` and an `epsilon^{-4}`, far above the
-`sigma^2 epsilon^{-2}` floor.
+Its gradient-norm complexity in the general CC case is `O(sigma^2 L^2 epsilon^{-4} +
+L^2 D^2 epsilon^{-2})`.
 
 **Regularized SEG, R-SEG (regularization trick, Nesterov 2012).** Run SEG not on `f` but on the
 regularized surrogate `g(x,y) = f(x,y) + (lambda/2)||x - x_0||^2 - (lambda/2)||y - y_0||^2` for a
 small `lambda`, i.e. add a fixed pull `lambda(z_0 - z)` toward the initial point at both half
-steps. The surrogate is strongly monotone, so SEG on it is better behaved. **Limitation:** the
-surrogate's saddle is displaced from the true one by `O(lambda ||z_0 - z*||)`, so `lambda` must
-stay `O(epsilon/D)`; that small `lambda` leaves the surrogate barely strongly monotone and the
-stochastic solve nearly as noise-limited as plain SEG. The pull is fixed in both strength and
+steps. The surrogate is strongly monotone, so SEG on it is better behaved. The surrogate's saddle
+is displaced from the true one by `O(lambda ||z_0 - z*||)`. The pull is fixed in both strength and
 center for the whole run.
 
 **Stochastic Extra-Anchored Gradient, SEAG (Lee & Kim 2021, the stochastic anchored extragradient
@@ -112,22 +102,13 @@ z_{t+1/2} = z_t - (1 - 1/(t+1)) * eta * F(z_t; xi_i) + (1/(t+1)) * (z_0 - z_t)
 z_{t+1}   = z_t -                  eta * F(z_{t+1/2}; xi_j) + (1/(t+1)) * (z_0 - z_t)
 ```
 
-In the deterministic case this anchoring is exactly what buys the optimal `O(L^2 D^2 / k^2)`
-squared-gradient-norm rate, i.e. `O(L epsilon^{-1})` first-order complexity. **Limitation:** the
-stochastic guarantee remains tied to the fixed initial anchor and still has complexity
-`O(sigma^2 L^2 epsilon^{-4} + L D epsilon^{-1})` — the same bad `sigma^2 L^2 epsilon^{-4}`
-statistical term as SEG. (It is also observed that SEAG can diverge under additive noise when the
-per-step noise condition `sigma_k^2 <= epsilon/(k+1)` it relies on is violated.)
+In the deterministic case this anchoring gives the optimal `O(L^2 D^2 / k^2)` squared-gradient-norm
+rate, i.e. `O(L epsilon^{-1})` first-order complexity. Its stochastic complexity is
+`O(sigma^2 L^2 epsilon^{-4} + L D epsilon^{-1})`.
 
 **Primal-dual hybrid gradient, PDHG (Zhao 2022).** An accelerated stochastic primal-dual scheme
 that is optimal in *duality gap*; for SCSC problems it reaches `Otilde(kappa sigma^2 epsilon^{-2} +
-kappa)` for the gradient norm. **Limitation:** the statistical term carries an extra factor of the
-condition number `kappa` beyond the `sigma^2 epsilon^{-2}` floor, and it is tailored to the gap
-metric rather than the gradient norm.
-
-Across these, the recurring shape of the gap is the same: the methods that make the gradient small
-(anchored extragradient) pay an `epsilon^{-4}` statistical price under noise, and the regularized
-methods that exploit strong monotonicity are held back by a small fixed regularization strength.
+kappa)` for the gradient norm.
 
 ## Evaluation settings
 

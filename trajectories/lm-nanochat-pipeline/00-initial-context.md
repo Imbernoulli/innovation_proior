@@ -6,11 +6,11 @@ What is fixed is the budget and the harness: one node, a `--depth` dial that siz
 
 ## Prior art / Background / Baselines
 
-- **GPT-2.** A 1.5B-parameter decoder-only transformer trained on WebText with Adam, which scores **0.256525** on DCLM CORE and was trained on a TPU cluster for roughly $43k. Gap: reproducing that capability on a single node at dinner-money cost is an efficiency problem it was never designed for.
+- **GPT-2.** A 1.5B-parameter decoder-only transformer trained on WebText with Adam, which scores **0.256525** on DCLM CORE and was trained on a TPU cluster for roughly $43k.
 
-- **nanoGPT / modded-nanogpt.** A minimal, hackable GPT implementation and a speedrun leaderboard that squeezes pretraining on one node with tricks like rotary embeddings, QK-normalization, Muon, ReLU² MLPs, value embeddings, logit softcapping, untied embeddings, and zero-init projections. Gap: it only covers base-model pretraining; it says nothing about tokenizer design, conversation formatting, tool use, supervised finetuning, or reinforcement learning.
+- **nanoGPT / modded-nanogpt.** A minimal, hackable GPT implementation and a speedrun leaderboard that squeezes pretraining on one node with tricks like rotary embeddings, QK-normalization, Muon, ReLU² MLPs, value embeddings, logit softcapping, untied embeddings, and zero-init projections.
 
-- **The ChatGPT recipe (pretrain → SFT → RLHF).** The standard assistant pipeline at frontier scale. Gap: it assumes large compute and human-annotation pipelines, and no published version collapses the whole tokenizer-to-assistant path onto one node with a measured per-stage report card. Its pieces also do not transfer unchanged to a 20-layer model.
+- **The ChatGPT recipe (pretrain → SFT → RLHF).** The standard assistant pipeline at frontier scale, covering pretraining, supervised finetuning, and reinforcement learning from human feedback.
 
 ## Fixed substrate / Code framework
 

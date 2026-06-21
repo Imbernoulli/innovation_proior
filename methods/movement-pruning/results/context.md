@@ -4,26 +4,26 @@ The setting is compressing large pretrained Transformer language models (BERT) f
 
 ## Research question
 
-Magnitude pruning — keep the weights with the largest absolute value, prune the rest — is the standard, and it works very well for models trained from scratch on the end task. But in the *transfer learning* regime it is much less effective, especially at high sparsity. Why, and what should replace it? The crux: when a model is trained from scratch, its final weight values are determined by the end task, so "large weight" genuinely means "important for this task." But when fine-tuning a pretrained model, the weights are *mostly inherited from pretraining* and only nudged by fine-tuning — they stay close to their pretrained values. So which weights end up large is decided largely by pretraining, not by the end task. A magnitude criterion therefore prunes based on pretraining values, and you can predict before fine-tuning even begins which weights it will discard — the keep/prune decision is largely settled before the end task is ever seen.
+What importance criterion should be used to select which weights to prune during fine-tuning of a pretrained model?
 
 ## Background
 
 - **Score-based pruning, shared notation.** For a weight matrix $\mathbf{W}\in\mathbb{R}^{n\times n}$, introduce a parallel matrix of importance scores $\mathbf{S}$ and a binary mask $\mathbf{M}\in\{0,1\}^{n\times n}$; inference is $\mathbf{a}=(\mathbf{W}\odot\mathbf{M})\mathbf{x}$. A common strategy keeps the top-$v\%$ of weights by score: $\mathrm{Top}_v(\mathbf{S})_{i,j}=1$ iff $S_{i,j}$ is in the top $v\%$, else 0. **Magnitude pruning** is the special case $\mathbf{S}=(|W_{i,j}|)$, a *zeroth-order* (value-only) criterion.
-- **Iterative magnitude pruning** (Han et al. 2015): train to convergence, remove lowest-magnitude weights, retrain with them fixed at 0, repeat — the basis of the lottery-ticket line (Frankle & Carbin 2019).
+- **Iterative magnitude pruning** (Han et al. 2015): train to convergence, remove lowest-magnitude weights, retrain with them fixed at 0, repeat — the basis of the lottery-ticket line (Frankle & Carlin 2019).
 - **Automated gradual pruning** (Zhu & Gupta 2018): instead of a hard post-hoc cut, raise the sparsity level $v$ gradually during training on a cubic schedule, $v^{(t)} = v_f + (v_i - v_f)\big(1 - \tfrac{t-t_i}{N\Delta t}\big)^3$, while letting masked weights still be updated, so the model can recover from earlier masking choices. The model is pruned and trained jointly.
 - **Higher-order saliency.** Optimal Brain Damage (LeCun et al. 1990) and Optimal Brain Surgeon (Hassibi & Stork 1993) use the Hessian of the loss to choose deletions — accurate but requires costly second-order information. Other lines use the absolute or squared value of the gradient as importance (Theis et al. 2018; Ding et al. 2019; Lee et al. 2019, SNIP).
 - **Learned masks via score matrices.** Piggyback (Mallya et al. 2018) and "What's hidden in a randomly weighted network" (Ramanujan et al. 2019) keep the weights fixed and learn a parallel score matrix to select a good sub-network, using a threshold or top-$k$ mask. They never fine-tune $\mathbf{W}$ itself.
-- **$L_0$ regularization** (Louizos et al. 2018): make the mask stochastic via a *hard-concrete* distribution so an expected-$L_0$ penalty is differentiable, and train weights and gates end-to-end to minimize $\mathcal{L}+\lambda\,\mathbb{E}(L_0)$. A first-order, learned-sparsity method, but with extra distributional machinery (Gumbel-style sampling, temperature, stretch parameters).
+- **$L_0$ regularization** (Louizos et al. 2018): make the mask stochastic via a *hard-concrete* distribution so an expected-$L_0$ penalty is differentiable, and train weights and gates end-to-end to minimize $\mathcal{L}+\lambda\,\mathbb{E}(L_0)$. A first-order, learned-sparsity method, with Gumbel-style sampling, temperature, and stretch parameters.
 - **Straight-through estimator** (Bengio et al. 2013): when a forward operation has zero or undefined gradient (like a hard top-$k$ or threshold), approximate its backward pass by passing the gradient straight through as if it were the identity.
-- **Empirical fact about fine-tuning** (observed by Gordon et al. 2020): fine-tuned weights stay close in absolute value to their pretrained values.
+- **Fine-tuning behavior** (Gordon et al. 2020): fine-tuned weights stay close in absolute value to their pretrained values.
 - **Distillation** (Bucilă et al. 2006; Hinton et al. 2015): a smaller/compressed student can be trained to match a teacher's output distribution, a complementary boost to any compression scheme.
 
 ## Baselines
 
-- **Magnitude pruning** (with automated gradual pruning + cubic schedule). The transfer-learning concern is that the keep/prune decision is essentially fixed by the pretrained values, not the end task.
-- **$L_0$ regularization.** A learned-mask method that does adapt during fine-tuning, but carries the overhead of the hard-concrete reparameterization and is harder to tune. Leaves open whether a simpler adaptive criterion suffices.
-- **Learned-score masking on frozen weights** (Piggyback, hidden-networks). Adapt a mask but keep $\mathbf{W}$ fixed — not designed for the fine-tunable-$\mathbf{W}$ transfer setting.
-- **Structured pruning / smaller pretrained models** (LayerDrop; mini-BERT). Remove whole heads/layers or pretrain a smaller model; a different size/speed trade-off than unstructured weight pruning.
+- **Magnitude pruning** (with automated gradual pruning + cubic schedule). Standard choice for selecting which weights to remove.
+- **$L_0$ regularization.** A learned-mask method that adapts during fine-tuning using the hard-concrete reparameterization.
+- **Learned-score masking on frozen weights** (Piggyback, hidden-networks). Adapts a mask while keeping $\mathbf{W}$ fixed.
+- **Structured pruning / smaller pretrained models** (LayerDrop; mini-BERT). Removes whole heads/layers or pretrains a smaller model; a different size/speed trade-off than unstructured weight pruning.
 
 ## Evaluation settings
 

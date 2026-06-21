@@ -21,9 +21,7 @@ The difficulty that makes this more than a textbook shortest path: the cost of t
 leg depends on **when** the ship traverses it, because the weather there is different at noon
 than it is two days later, and *when* the ship is at a place is itself determined by the route
 chosen up to that point. The field the ship encounters is coupled to the ship's own progress.
-A method that ignores this — that prices each leg by today's weather, or by an average — will
-plan against a sea that will not be there when the ship arrives. A solution has to propagate
-the route and the clock together.
+A solution has to propagate the route and the clock together.
 
 ## Background
 
@@ -57,16 +55,14 @@ on the sphere whose speed at each instant is V(X, t, heading) set by the field a
 curve, and passage time is the integral of arclength over that speed. Because V depends on t
 through the moving weather, this is optimisation over a **time-varying cost field**, not a static
 metric. The classical attack — calculus of variations — writes the Euler–Lagrange equations for
-the least-time track; it treats routing as a continuous problem, and is known to be brittle
-because it needs second-order derivatives of the speed field, and numerical error in those can
-grow unacceptably along a long integration.
+the least-time track; it treats routing as a continuous problem.
 
 **James's hand construction (1957).** The first study of optimal ship routing, James (1957),
 worked the problem on synoptic and prognostic wave charts entirely by hand, using tabulated
 curves relating ship speed to head/beam/following waves of varying height to pick a least-time
 track. The construction reasoned about where the ship could get to in equal sailing time and
 selected a track by eye; it is the historical starting point for the discrete, chart-based
-treatment of the problem, as opposed to the continuous calculus-of-variations attack below.
+treatment of the problem, as opposed to the continuous calculus-of-variations attack.
 
 **The time-dependent shortest path / dynamic programming view.** Discretise the ocean into a
 grid of nodes and let c_arc(i, j, t) be the time to sail from node i to a neighbour j when
@@ -81,45 +77,29 @@ two-dimensional dynamic program over a great-circle-referenced grid (Bijlsma 197
 Calvert 1991) solves the same recursion stage by stage. The time index on the arc cost is what
 keeps this from collapsing to an ordinary static shortest path.
 
-**The computer-implementation failure mode.** When a chart-based least-time construction of the
-James type is programmed directly rather than drawn by hand, the boundary it builds can fold
-over itself, producing spurious self-crossing "isochrone loops" that corrupt the boundary and
-the recovered route. This is a reported pathology of the naive computerised construction; later
-refinements were aimed at removing it.
-
 ## Baselines
 
 **Hand construction on weather charts (James 1957).** The original method: reason on
 synoptic/prognostic wave charts, using tabulated speed-vs-wave curves, about how far the ship can
-get in equal sailing time, and select an approximate least-time track by hand. Gap: manual,
-low-resolution, not reproducible, and it offers no clean computable rule for collapsing the cloud
-of reachable points — that selection is done by eye.
+get in equal sailing time, and select an approximate least-time track by hand.
 
 **Calculus of variations (Bijlsma 1975).** Treats routing as a continuous least-time problem and
 solves the Euler–Lagrange / characteristic equations for the optimal track in the time-varying
-field. Core math: stationarity of the time integral ∫ ds/V(X,t,heading). Gap: requires
-second-order derivatives of the speed field; numerical errors in those compound along a long
-voyage and can reach unacceptable levels, and handling land/safety constraints and discrete
-weather grids is awkward in the continuous formulation.
+field. Core math: stationarity of the time integral ∫ ds/V(X,t,heading).
 
 **Grid dynamic programming, 2DDP (De Wit 1990; Calvert 1991).** Lay a grid of stage lines
 perpendicular to the great circle; at each stage keep a set of grid points; apply Bellman's
 principle to find, for each grid point, the best predecessor. Core algorithm: the forward/backward
 recursion f*(i,t) above on a fixed grid, with heading as the control and engine power held
-constant. Gap: with the propeller setting fixed it optimises only heading; accuracy is bounded by
-grid fineness, and treating time as merely a by-product of progress (the usual 2D reduction)
-assumes a one-to-one progress↔time map that the speed-loss coupling does not strictly honour.
+constant.
 
 **Isopone method (Klompstra; Spaans 1995).** A three-dimensional "isopone" — a surface bounding
 the attainable region in (position, time) space, allowing engine power to be varied rather than
-held fixed. Gap: reported as mathematically elegant but hard for shipboard operators to understand
-and operate, so in practice it was set aside in favour of simpler approaches.
+held fixed.
 
 **Generic Dijkstra/A* on a weather graph (Padhy 2008).** Build a graph over ocean grid nodes with
 time-priced edges and run a shortest-path search. Core: label-setting search with the time-varying
-edge cost. Gap: a vanilla static-graph search prices edges without honouring that the cost depends
-on arrival time, and an unstructured node graph spreads search effort far from the great circle
-where the route does not live, costing memory and time.
+edge cost.
 
 ## Evaluation settings
 

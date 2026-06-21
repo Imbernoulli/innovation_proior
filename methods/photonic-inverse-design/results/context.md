@@ -5,22 +5,18 @@
 Silicon photonics patterns sub-wavelength silicon waveguides on a chip, so that
 optical functions which once needed bulky separate components can be integrated
 alongside CMOS electronics, cutting cost, energy and size. Straight silicon
-waveguides transport light with very low loss. The trouble is everything in
-between: splitters, waveguide crossings, multimode interferometers, fiber-to-chip
-couplers. At these functional elements the mode is reshaped, and evanescent
-fields leak outside the core while the abrupt silicon/oxide interfaces reflect —
-both produce scattering loss that degrades the whole system.
+waveguides transport light with very low loss. At functional elements such as
+splitters, waveguide crossings, multimode interferometers, and fiber-to-chip
+couplers the mode is reshaped, and evanescent fields interact with silicon/oxide
+interfaces.
 
 The concrete goal: given a device footprint (an input waveguide, an output
 waveguide, and a small region of chip in between where the silicon pattern is
 free to be anything), choose the permittivity distribution ε(r) over that region
 so as to maximize a figure of merit F — typically the optical power coupled into
-a specified mode at the output port. A solution method has to cope with a design
-space of enormous dimension (the permittivity at every point, or every pixel of
-a grid, is a free variable), under a forward model — Maxwell's equations — whose
-single evaluation already costs a full electromagnetic simulation. Brute-force
-exploration of that many degrees of freedom is out of reach; what is needed is a
-way to improve the whole pattern systematically and cheaply.
+a specified mode at the output port. The design space has one free variable per
+pixel of the grid, and the forward model is Maxwell's equations, whose single
+evaluation is a full electromagnetic simulation.
 
 ## Background
 
@@ -47,26 +43,24 @@ surface, ultimately a function of ε through the field.
 
 **Why high-dimensional design is the hard part.** A continuous, point-by-point
 permittivity gives essentially unlimited design freedom — recent structural
-topology-optimization work has handled upward of a billion variables. The same
-freedom is the obstacle: with N free pixels, no method that treats the simulator
-as a black box and probes it can scale, because the number of probes grows with
-N. A finite-difference gradient — perturb pixel i, re-simulate, read the change
-in F — needs one extra simulation per pixel, i.e. N+1 forward solves for a single
-gradient. With N from thousands to millions and each solve a full Maxwell
-problem, that is hopeless.
+topology-optimization work has handled upward of a billion variables. With N free
+pixels, a finite-difference gradient — perturb pixel i, re-simulate, read the
+change in F — needs one extra simulation per pixel, i.e. N+1 forward solves for a
+single gradient. With N from thousands to millions and each solve a full Maxwell
+problem, this is a significant cost.
 
 **Diagnostic facts about naive pixel optimization.** Two phenomena are well
-documented for density-based topology optimization and bound any practical
-scheme. First, an unregularized pixel grid develops single-pixel and
-checkerboard features — a solid/void checkerboard is a numerical artifact that
-low-order finite elements report as artificially stiff/efficient, so an optimizer
-left unconstrained will exploit it; such patterns are also unmanufacturable.
-Second, the optimizer tends to settle on intermediate, "gray" permittivity values
-ε between the two real materials, because a continuum of index lets it tune phase
-locally. Gray material is not a fabricable material. Simply thresholding a
-converged gray design at the midpoint to recover a black/white pattern can
-collapse the figure of merit (in a reported metalens example the merit fell from
-≈18.2 to ≈4.7), because the thresholded structure is a different device.
+documented for density-based topology optimization. First, an unregularized pixel
+grid develops single-pixel and checkerboard features — a solid/void checkerboard
+is a numerical artifact that low-order finite elements report as artificially
+stiff/efficient, so an optimizer left unconstrained will exploit it; such patterns
+are also unmanufacturable. Second, the optimizer tends to settle on intermediate,
+"gray" permittivity values ε between the two real materials, because a continuum
+of index lets it tune phase locally. Gray material is not a fabricable material.
+Simply thresholding a converged gray design at the midpoint to recover a
+black/white pattern can collapse the figure of merit (in a reported metalens
+example the merit fell from ≈18.2 to ≈4.7), because the thresholded structure is
+a different device.
 
 **Sensitivity analysis and shape representations in neighboring fields.** Shape
 and topology optimization in mechanical engineering and fluid mechanics, and
@@ -86,24 +80,18 @@ shape parameters is chosen, a population of random parameter sets is simulated,
 and the population is evolved using the collected figure-of-merit values until a
 satisfactory member appears. Particle swarm optimization, for instance, drove the
 prior state-of-the-art silicon Y-splitter (Zhang et al. 2013), reaching a low
-insertion loss after on the order of a thousand-plus full simulations. Core
-limitation: these methods take no advantage of the underlying physics — they only
-sample F — so they need a *limited* parameterization to stay affordable, and the
-number of simulations explodes with design complexity. They are fine for simple
-geometries with few parameters but fail to reach a good design in reasonable time
-once the geometry is rich.
+insertion loss after on the order of a thousand-plus full simulations. These
+methods only sample F and use a limited parameterization to stay affordable.
 
 **Finite-difference gradient descent.** Conceptually one could compute a gradient
-and descend. But estimating ∂F/∂ε_i by perturbing each pixel and re-simulating
+and descend. Estimating ∂F/∂ε_i by perturbing each pixel and re-simulating
 costs one Maxwell solve per pixel. For a pixelated permittivity this is N+1
-solves per gradient step — the cost that makes direct gradient-based design of a
-high-dimensional permittivity a non-starter without a better gradient.
+solves per gradient step.
 
 **Continuous-permittivity penalization (e.g. Seliger/Levi-type aperiodic
 dielectric optimization).** Optimizes a continuously variable permittivity
 directly. It can use gradients but yields gray, intermediate-index structures
-that are not directly manufacturable in a two-material process, leaving the
-binarization/fabrication gap open.
+that are not directly manufacturable in a two-material process.
 
 ## Evaluation settings
 
@@ -123,8 +111,8 @@ iterations. Cost is counted in number of Maxwell simulations.
 
 ## Code framework
 
-The forward simulation and the readout primitives exist; what is missing is the
-parameterization of the permittivity, the gradient, and the loop that uses it.
+The forward simulation and the readout primitives exist; the parameterization of
+the permittivity, the gradient, and the optimization loop remain to be built.
 
 ```python
 import numpy as np
@@ -157,9 +145,8 @@ def forward_F(design_weights):
 
 # --- the gradient of F w.r.t. EVERY design variable --------------------------
 def grad_F(design_weights):
-    """Return dF/d(design variable) for all variables at once. The naive route
-    (finite differences) costs one solve per variable and is infeasible."""
-    pass  # TODO  -- N+1 solves is hopeless
+    """Return dF/d(design variable) for all variables at once."""
+    pass  # TODO
 
 # --- optimization loop -------------------------------------------------------
 def main():
@@ -167,7 +154,7 @@ def main():
     for it in range(num_iters):          # gradient-based update
         w = map_design(rho)
         F = forward_F(w)
-        g = grad_F(w)                    # <- the missing cheap gradient
+        g = grad_F(w)
         rho = update(rho, g)             # ascent + bounds/constraints
         pass  # TODO
 

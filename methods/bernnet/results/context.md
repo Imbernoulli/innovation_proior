@@ -11,16 +11,9 @@ where `L = U Lambda U^T` and `g(lambda) = sum_k w_k lambda^k` is the *spectral r
 applies to each eigen-component. The eigenvalues of `L` lie in `[0, 2]`; small `lambda` is the
 smooth / low-frequency end, large `lambda` the oscillatory / high-frequency end.
 
-The precise goal is a single polynomial filter that simultaneously: (1) can approximate an
-*arbitrary* response shape over `[0, 2]` — not only low-pass, but high-pass, band-pass,
-band-rejection, comb — to any precision as the order `K` grows; (2) is *valid*, meaning its
-response stays in the legal range a propagation/energy filter is allowed to take, rather than
-producing negative responses that have no meaning as a filter; (3) is *interpretable*, so that
-after training one can read off what shape was learned and, before training, dial in a desired
-shape by hand; and (4) is end-to-end learnable from `(x, z)` pairs or from node labels, dropping
-into the same "transform features with an MLP, then propagate" pipeline already used by the
-strongest baselines. Each existing filter below achieves a subset; none achieves all four.
-Closing that gap is the problem.
+The question is how to choose / parameterize a single polynomial graph filter — the coefficients of
+`g(lambda) = sum_k w_k lambda^k` — and learn it end-to-end from `(x, z)` pairs or node labels,
+inside the same "transform features with an MLP, then propagate" pipeline the baselines use.
 
 ## Background
 
@@ -31,14 +24,12 @@ sparse matrix-vector products (`O(K|E|)` work, `K`-hop localized) and never form
 design question becomes: how to choose / parameterize the coefficients `w_k` so that the induced
 `g(lambda) = sum_k w_k lambda^k` has the response shape you want.
 
-Two facts from the period frame the difficulty. First, the **homophily/heterophily split** in the
+Two facts from the period frame the setting. First, the **homophily/heterophily split** in the
 data. On homophilic graphs (citation networks: connected nodes share labels) the useful signal is
 smooth, so a low-pass response — keep small `lambda`, suppress large `lambda` — is what helps; the
 classical models were built for exactly this. On heterophilic graphs (web-page graphs, certain
 Wikipedia graphs: connected nodes often differ) the discriminative signal lives at *higher*
-frequencies, so a filter locked to low-pass actively throws away the information, and a plain MLP
-that ignores the graph can beat a low-pass GNN. A filter that works across both regimes cannot be
-hard-wired to one frequency band.
+frequencies, and a plain MLP that ignores the graph is competitive with a low-pass GNN.
 
 Second, the **graph-optimization view of propagation** (Zhou, Bousquet, Lal, Weston & Schölkopf,
 NeurIPS 2004; unified by Zhu, Wang, Shi, Ji & Cui, WWW 2021). Many propagations are the minimizer
@@ -50,71 +41,44 @@ a fit-to-input term plus a smoothness penalty `gamma(L)` acting on the spectrum.
 `gamma(L) = L` the optimum is `z* = alpha (I - (1-alpha)P)^{-1} x = sum_k alpha(1-alpha)^k P^k x`,
 whose truncation is exactly Personalized-PageRank propagation; a heat-kernel `gamma` gives the
 diffusion / heat-kernel propagations. This says propagation = solving a regularized smoothing
-problem, and the *response* `g` is then a function of the chosen `gamma`. Two diagnostic
-observations about this design space are load-bearing. (a) For the energy to be a well-posed
-(convex, bounded-below) smoothing problem, `gamma(L)` must be positive semidefinite, i.e.
-`gamma(lambda) >= 0` on `[0, 2]`; otherwise `f(z)` has no minimum (it runs to `-infinity` along an
-eigenvector with negative `gamma`) and its stationary point is a saddle. (b) Under
+problem, and the *response* `g` is then a function of the chosen `gamma`. Two facts about this
+design space are load-bearing. (a) For the energy to be a convex, bounded-below smoothing problem,
+`gamma(L)` is positive semidefinite, i.e. `gamma(lambda) >= 0` on `[0, 2]`. (b) Under
 `gamma(lambda) >= 0`, the induced response `h(lambda) = alpha / (alpha + (1-alpha) gamma(lambda))`
-satisfies `0 < h(lambda) <= 1` for `lambda in [0, 2]` — it never leaves `(0, 1]`. So a filter that
-is meant to approximate a propagation of this form should itself land in `[0, 1]` across the whole
-spectrum; a polynomial that dips negative or overshoots is approximating something that is not a
-valid smoothing at all. This is the diagnostic that flags some learned filters as "ill-posed."
+satisfies `0 < h(lambda) <= 1` for `lambda in [0, 2]` — it stays in `(0, 1]`.
 
 The Laplacian convention also matters: GCN's renormalization trick `tilde P = (I + D)^{-1/2}
-(I + A)(I + D)^{-1/2}` shrinks the spectrum and softens the negative-response problem, but the
-top eigenvalue of `tilde L = I - tilde P` still exceeds 1, so the corresponding response can still
-go negative. Shrinking the spectrum is a patch, not a guarantee.
+(I + A)(I + D)^{-1/2}` shrinks the spectrum, though the top eigenvalue of `tilde L = I - tilde P`
+still exceeds 1.
 
 ## Baselines
 
-These are the prior polynomial filters a new design would be measured against and react to.
+These are the prior polynomial filters a new design would be measured against.
 
 **GCN (Kipf & Welling, ICLR 2017).** Propagate one hop with the renormalized adjacency, `z = P x =
 (I - L) x`, a fixed first-order filter. Its response is `g(lambda) = 1 - lambda`, a fixed linear
 *low-pass*: it weights small `lambda` near 1 and suppresses large `lambda`. Stacking layers raises
-the order but ties the coefficients to a single shape, and the response `1 - lambda` becomes
-*negative* once `lambda > 1` — half the spectrum gets a sign-flipped weight, which is the
-ill-posed regime above; deep stacks also oversmooth (everything collapses toward the dominant
-low-frequency component). **Gap:** one fixed low-pass shape, and not even a valid one on the upper
-half of the spectrum.
+the order with the coefficients tied to a single shape.
 
 **APPNP (Klicpera, Bojchevski & Günnemann, ICLR 2019).** Decouple the feature transform from
 propagation: run an MLP to get predictions, then propagate them with truncated Personalized
 PageRank, `z = sum_{k=0}^K alpha(1-alpha)^k P^k x`, with teleport probability `alpha`. This is the
 `gamma(L) = L` optimum above, so its response is the monotone decreasing
 `h(lambda) = alpha / (alpha + (1-alpha) lambda)`-shaped curve — a *fixed low-pass* with one tunable
-knob `alpha`. **Gap:** the shape is pinned to low-pass; there is no setting of `alpha` that turns
-it into a high-pass or band filter, so it cannot serve heterophilic data.
+knob `alpha`.
 
 **ChebNet (Defferrard, Bresson & Vandergheynst, NeurIPS 2016).** Learn the filter in the Chebyshev
 basis: `g(L) = sum_{k=0}^{K-1} theta_k T_k(tilde L)`, where `tilde L = 2L/lambda_max - I` rescales
 the spectrum into `[-1, 1]` and the Chebyshev polynomials obey the stable recurrence
 `T_k(y) = 2 y T_{k-1}(y) - T_{k-2}(y)`, `T_0 = 1`, `T_1 = y`. The `theta_k` are free trainable
 coefficients, computed by repeated sparse products (`O(K|E|)`), and the orthogonality of the
-Chebyshev basis controls approximation error. In principle the free `theta_k` can fit many shapes.
-**Gap:** the coefficients are unconstrained, so the learned `g(lambda)` can take negative values
-(ill-posed), and a Chebyshev coefficient `theta_k` is an abstract projection onto `T_k` — it does
-not tell you what response the filter applies at any particular frequency, so what was learned is
-opaque.
+Chebyshev basis controls approximation error.
 
 **GPR-GNN (Chien, Peng, Li & Milenkovic, ICLR 2021).** Learn the filter directly in the
 *monomial* basis: `h(P) = sum_{k=0}^K gamma_k P^k`, with the `gamma_k` ("Generalized PageRank"
-weights) trained by gradient descent. The key theorem is about the non-negative monomial regime:
+weights) trained by gradient descent. A theorem characterizes the non-negative monomial regime:
 when the weights are normalized (`sum_k gamma_k = 1`), non-negative, and nontrivial, the resulting
-filter is low-pass. To become high-pass and so handle heterophily, this basis has to allow some
-negative weights. **Gap:** precisely because the `gamma_k` are unconstrained (and must be allowed
-negative to be expressive), the learned filter has no validity guarantee — it can produce negative
-spectral responses — and the monomial basis is both numerically delicate (powers of `P` on a wide
-spectrum) and uninterpretable: the work can only show that a small subset of learned weight
-sequences corresponds to recognizable low/high-pass filters, so in general one cannot read the
-learned shape off the `gamma_k`.
-
-The common thread: the *fixed* filters (GCN, APPNP) have clear smoothing interpretations but are
-stuck on one low-pass shape;
-the *learned* filters (ChebNet, GPR-GNN) gain expressiveness only by letting their coefficients
-roam unconstrained, which buys flexibility at the cost of validity and interpretability. Nobody has
-a parameterization where expressiveness, validity, and interpretability hold at once.
+filter is low-pass; allowing negative weights makes it high-pass.
 
 ## Evaluation settings
 

@@ -4,47 +4,33 @@
 
 We have a set of expert demonstrations — pairs of observation and action — and we want a policy
 that reproduces the demonstrated behavior. In its simplest form this is supervised regression: learn
-a map from the current observation `O` to an action `a`. The trouble is that robot actions are not a
-well-behaved regression target. Three properties make them hard.
+a map from the current observation `O` to an action `a`. Several properties of robot actions shape
+how the policy class must be chosen.
 
-First, the demonstrations are **multimodal**: for the same observation there are often several
-genuinely correct actions. To push a block toward a goal a person may go around it from the left or
-from the right; both are valid, and the data contains both. A model that has to commit to one number
-per observation is structurally wrong here — fit it with a squared-error loss and it will place the
-prediction at the *average* of the demonstrated actions, which may be an action no expert ever took
-and which can be exactly the wrong thing to do (drive straight into the block).
+For the same observation there are often several genuinely correct actions: the demonstrations are
+**multimodal**. To push a block toward a goal a person may go around it from the left or from the
+right; both are valid, and the data contains both. Actions are also **sequentially correlated** —
+good behavior is smooth and temporally consistent over a horizon, and the right action now depends on
+a commitment to a plan, not just on the instantaneous observation. And many tasks demand **high
+precision** — millimeter-scale insertion, careful pouring — so the action distributions involved can
+be sharp.
 
-Second, actions are **sequentially correlated**. Good behavior is smooth and temporally consistent
-over a horizon; the right action now depends on a commitment to a plan, not just on the instantaneous
-observation. A policy that decides each step in isolation can flip between two valid plans on
-consecutive steps and produce jittery, self-defeating motion.
-
-Third, many tasks demand **high precision** — millimeter-scale insertion, careful pouring — so the
-policy class must be able to represent sharp, confident action distributions, not just blurry means.
-
-The precise goal: a policy class that (1) can represent an *arbitrary* conditional action
-distribution `p(a | O)`, including sharp multimodal ones, so it never has to average incompatible
-modes; (2) can produce temporally consistent action *sequences* rather than one myopic step; (3)
-trains stably and reliably enough that we can pick a checkpoint without re-evaluating dozens of them
-on hardware; and (4) is cheap enough at inference to run a closed loop in real time, including from
-raw images. Each prior approach below buys a subset of these and pays for it somewhere else.
+The question is what **form of policy** to use: how to represent and supervise the conditional action
+distribution `p(a | O)` so that it can be learned from demonstrations and queried for an action at
+inference, including from raw image observations and in a closed loop. The methods below give the
+existing repertoire of policy classes.
 
 ## Background
 
 The dominant framing is behavior cloning: treat policy learning as supervised learning on
 `<observation, action>` pairs and predict actions at test time. It has carried a surprising amount of
-real-world manipulation and driving. The open question is the **form of the policy** — how the action
-(or distribution over actions) is represented and supervised — because that form is what decides
-whether multimodality, sequence structure, and precision can be captured at all.
+real-world manipulation and driving. A central design choice is the **form of the policy** — how the
+action (or distribution over actions) is represented and supervised.
 
-Two field-wide observations about *existing* systems frame the problem. (a) A direct
-observation→action regressor trained with an L2 loss behaves as if the action given the observation
-were a single Gaussian; on demonstrations that branch into several modes it collapses to the mean of
-the branches, and this shows up as the policy stalling at decision points or producing invalid
-in-between actions. (b) Policies that model each timestep's action independently — even when each
-step's distribution is itself multimodal — produce temporally inconsistent rollouts: consecutive
-steps can be drawn from different modes, so the executed trajectory alternates between two otherwise
-valid plans and never commits to either.
+Two properties of the standard choices are worth stating. A direct observation→action regressor
+trained with an L2 loss corresponds to a single Gaussian over the action given the observation.
+Policies that model each timestep's action independently produce rollouts in which consecutive steps
+are drawn step-by-step from the per-step distribution.
 
 A separate body of work, developed for image and audio synthesis, is relevant as *machinery*. A
 generative model can be defined by a **forward noising process** that gradually corrupts a clean data
@@ -70,38 +56,30 @@ to. Conditioning machinery exists too: **FiLM** (Perez et al. 2018) modulates a 
 map channel-wise from a conditioning vector, and sinusoidal/positional embeddings inject the scalar
 step index `k` into the network.
 
-These generative tools were built to draw images. Whether and how they bear on representing a robot
-*policy* — what plays the role of `x`, whether the observation enters the noising process or only
-conditions it, what is even being generated — is open at this point.
+These generative tools were built to draw images, where `x` is the image being synthesized.
 
 ## Baselines
 
-These are the prior policy classes a new method would be measured against and would react to.
+These are the prior policy classes a new method would be measured against.
 
 **Explicit regression policy (ALVINN, Pomerleau 1988; and most behavior cloning).** Map observation
 directly to action with a feedforward network, supervised by L2 regression on the demonstrated
-action. One forward pass per step, trivial to train. *Limitation:* the L2 objective corresponds to a
-unimodal Gaussian likelihood, so it cannot represent multimodal demonstrations — it averages the
-modes — and it struggles on high-precision tasks where the conditional action distribution is sharp.
+action. One forward pass per step, trivial to train. The L2 objective corresponds to a unimodal
+Gaussian likelihood over the action.
 
 **Discretized-action / classification policies (e.g. Transporter-style, Zeng et al. 2021).** Quantize
-the action space into bins and predict a categorical distribution; a categorical *can* be multimodal.
-*Limitation:* the number of bins needed to cover a continuous action space grows exponentially with
-the action dimension, so this does not scale beyond low-dimensional or hand-designed action
-primitives.
+the action space into bins and predict a categorical distribution; a categorical can place mass on
+several bins. The number of bins covers the action space along each dimension.
 
 **Mixture-density / LSTM-GMM policies (robomimic, Mandlekar et al. 2021; MDN, Bishop 1994).** Predict
 the parameters of a Gaussian mixture over the next action (optionally with a recurrent backbone for
-history). A mixture is multimodal by construction. *Limitation:* the number of mixture components must
-be chosen in advance; training is prone to mode collapse and is sensitive to hyperparameters; and
-because each step's mixture is predicted independently, rollouts are temporally inconsistent — they
-jitter between modes across consecutive steps.
+history), with the number of mixture components fixed in advance. A mixture is multimodal by
+construction, and each step's mixture is predicted from the current observation/history.
 
 **Clustering-plus-offset transformer policies (BET, Shafiullah et al. 2022).** k-means-cluster the
-demonstrated actions, then predict a cluster and a continuous offset with a transformer. Handles
-multimodality via the discrete cluster choice and scales to longer histories. *Limitation:* the
-number of clusters must be specified, and the per-step modeling again leaves the executed sequence
-without temporal action consistency, so it produces jittery actions that fail to commit to one plan.
+demonstrated actions into a fixed number of clusters, then predict a cluster and a continuous offset
+with a transformer. Multimodality is carried by the discrete cluster choice, and the transformer
+scales to longer histories.
 
 **Implicit (energy-based) policy (IBC, Florence et al. 2021).** Represent the action distribution
 implicitly with an energy `E_θ(o,a)`:
@@ -111,29 +89,20 @@ p_θ(a | o) = e^{-E_θ(o,a)} / Z(o,θ),     Z(o,θ) = ∫ e^{-E_θ(o,a)} da   (i
 ```
 
 An action is produced by *minimizing* the energy over `a` (by sampling or gradient descent at
-inference). Because several actions can share low energy, an implicit policy naturally represents
-multimodal and even set-valued maps, and it can express sharp, discontinuous decision boundaries that
-an explicit regressor cannot. It is trained by an InfoNCE-style loss that equals the negative
-log-likelihood of the EBM,
+inference). Because several actions can share low energy, an implicit policy can represent multimodal
+and even set-valued maps, and it can express sharp, discontinuous decision boundaries. It is trained
+by an InfoNCE-style loss that equals the negative log-likelihood of the EBM,
 
 ```
 L_InfoNCE = -log [ e^{-E_θ(o,a)} / ( e^{-E_θ(o,a)} + Σ_{j=1}^{N_neg} e^{-E_θ(o, ã_j)} ) ],
 ```
 
 where the negative samples `{ã_j}` are used to approximate the intractable normalizer `Z(o,θ)`.
-*Limitation:* the quality of that approximation hinges on drawing good negatives, and inaccurate
-negative sampling is a known cause of unstable EBM training — training error spikes and the
-evaluation success rate oscillates throughout training. The practical cost of this instability is
-that checkpoint selection becomes unreliable: one ends up evaluating many checkpoints on hardware to
-choose a final policy.
 
 **Trajectory-diffusion planner (Diffuser, Janner et al. 2022).** Applies the denoising-diffusion
 machinery to *planning* by learning a diffusion model over the **joint** trajectory of states and
-actions `p(A, O)`, and conditioning on goals via image-style inpainting of the trajectory. It
-demonstrates that diffusion can model trajectory-level structure. *Limitation:* because the
-observation/state is part of the modeled variable, the full (encoder and decoder) model must be run
-at *every* denoising iteration, which is prohibitively expensive for real-time visuomotor control;
-and inpainting-based goal conditioning is incompatible with a receding-horizon execution scheme.
+actions `p(A, O)`, and conditioning on goals via image-style inpainting of the trajectory. The
+observation/state is part of the modeled variable, and goal conditioning is done by inpainting.
 
 ## Evaluation settings
 
@@ -153,9 +122,8 @@ The natural yardsticks already in use at this time:
   camera observations; success rate / coverage over repeated trials from matched initial conditions.
 - Protocol points that matter for a fair comparison: action representation (position vs. velocity
   control; for rotations, axis-angle or a continuous 6D parameterization), action normalization,
-  the observation horizon, and how a checkpoint is selected (a method that needs per-checkpoint
-  hardware evaluation is at a real disadvantage). Inference latency is itself a constraint for any
-  closed-loop real-time deployment.
+  the observation horizon, and how a checkpoint is selected. Inference latency is a constraint for
+  any closed-loop real-time deployment.
 
 ## Code framework
 

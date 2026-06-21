@@ -6,18 +6,13 @@ Mathematical models of lithium-ion cells are needed for cell design, for battery
 systems (BMS) that estimate state-of-charge and state-of-health in real time, for parameter
 estimation, for optimal-charging and optimization loops, and for pack-scale simulations where
 many cells (and thermal coupling) must be advanced together. The standard physics-based model
-captures the chemistry faithfully but is far too expensive for these jobs: it is a stiff,
-strongly coupled system of partial differential equations that takes many seconds to integrate
-a single discharge and that can fail to converge when the current is stepped. The cheap
-alternative used in the control community is fast but only trusted at low currents, where it
-agrees with the full model; at fast charge/discharge it visibly disagrees.
+captures the chemistry faithfully; it is a stiff, strongly coupled system of partial differential
+equations discretized into an index-1 DAE with on the order of a thousand states. A simpler
+model used in the control community runs much faster with a handful of states and a non-stiff
+problem.
 
-The goal is a reduced-order, physics-based cell model that (i) is dramatically cheaper than the
-full model — few states, non-stiff, robust to current steps — yet (ii) stays accurate up to
-higher C-rates by accounting for the electrolyte, and crucially (iii) is derived *systematically*,
-so the terms kept and dropped are justified and the modelling error can be estimated from the
-input parameters *before* running any comparison, rather than chosen by hand and validated only
-after the fact.
+The goal is a reduced-order, physics-based cell model suitable for BMS, control, optimization,
+and pack simulation.
 
 ## Background
 
@@ -55,15 +50,13 @@ potential `φ_e`. The full dimensional system is:
   `η_k = φ_s − φ_e − U_k(c_s|_{r=R_k})`, with `U_k` the open-circuit potential (OCP).
 - Terminal voltage `V = φ_{s,p}|_{x=L} − φ_{s,n}|_{x=0}`.
 
-This is the reference for accuracy. Its cost is structural: after a finite-volume (or
-finite-element / orthogonal-collocation) discretisation, the mixed parabolic (diffusion) and
-elliptic (charge-conservation) PDEs become a stiff index-1 system of differential-algebraic
-equations (DAEs). With, e.g., 30 points in each electrode, 20 in the separator and 15 in each
-particle, it carries on the order of a thousand internal states — about 900 for the particle
-concentrations alone, plus electrolyte concentration, electrolyte potential and electrode
-potentials — that must be stored and advanced every step, and the DAE form is prone to
-convergence failure on inconsistent initial conditions or large current steps (switching
-charge↔discharge). It is solved with implicit DAE solvers (e.g. SUNDIALS/IDA).
+After a finite-volume (or finite-element / orthogonal-collocation) discretisation, the mixed
+parabolic (diffusion) and elliptic (charge-conservation) PDEs become a stiff index-1 system of
+differential-algebraic equations (DAEs). With, e.g., 30 points in each electrode, 20 in the
+separator and 15 in each particle, it carries on the order of a thousand internal states — about
+900 for the particle concentrations alone, plus electrolyte concentration, electrolyte potential
+and electrode potentials — that must be stored and advanced every step. It is solved with
+implicit DAE solvers (e.g. SUNDIALS/IDA).
 
 **Asymptotic methods.** Perturbation/asymptotic analysis — nondimensionalise, identify a small
 parameter `δ`, expand each unknown as `f ~ f0 + δ f1 + …`, and solve order by order (Hinch,
@@ -75,22 +68,12 @@ cell carries several physical processes — discharge, solid diffusion, electrol
 reaction — each with its own timescale, and several Ohmic drops whose size relative to the thermal
 voltage `RT/F` varies with operating current.
 
-**Established empirical facts about the existing reduced model.** The simplest reduced model
-(below) is well documented to be accurate only at low currents: it is commonly accepted as valid
-below roughly 1C–2C, where electrolyte concentration gradients are negligible, and its terminal-
-voltage error grows with C-rate, reaching tens of millivolts (exceeding ~50 mV) at high C-rate.
-The cause is understood: it discards electrolyte concentration and potential gradients, which
-become significant at high C-rate and shift the local ionic conductivity, overpotential and
-reaction distribution. These are pre-existing observations about the cheap model.
-
 ## Baselines
 
 **The full physics-based model (Doyle–Fuller–Newman / P2D / Newman).** The complete system above.
 *Core idea:* resolve everything — a particle diffusion problem at every `x`, full concentrated-
 solution electrolyte transport, Butler–Volmer coupling. *Math/algorithm:* the coupled PDE/DAE
-system listed under Background. *Gap it leaves:* accurate but expensive and stiff; ~10³ states;
-DAE convergence issues on current steps; too slow and heavy for BMS, control, optimization and
-pack simulations. This is the accuracy reference a reduced model is measured against.
+system listed under Background. This is the accuracy reference a reduced model is measured against.
 
 **The single-particle model (SPM).** *Core idea:* in the low-current limit every particle in an
 electrode behaves identically, so each electrode is represented by ONE particle with a uniform
@@ -98,10 +81,7 @@ reaction current; the electrolyte is taken spatially uniform and the solid/elect
 flat. *Math/algorithm:* solve one spherical diffusion equation per electrode,
 `C_k ∂c_s/∂t = (1/r²)∂_r(r² ∂_r c_s)` with surface flux `∝ ±I/L_k`; the terminal voltage is the
 difference of the two OCPs minus two reaction overpotentials `−2 sinh⁻¹(I/(j_{0,k} L_k))`. Drops
-to a handful of states and a non-stiff problem. *Gap it leaves:* it has no electrolyte. The
-uniform-reaction / constant-electrolyte assumption holds only at low current; above ~1–2C the
-neglected electrolyte concentration and potential gradients drive the voltage error up to tens of
-millivolts, so the SPM is unreliable at fast charge.
+to a handful of states and a non-stiff problem.
 
 **Ad-hoc extended SPMs (SPM + electrolyte).** A family of models (Kemper & Kum 2013; Perez/Hu/
 Moura 2016; Prada et al. 2012; Han et al. 2015; Rahimian et al. 2013; Tanim et al. 2015) that
@@ -112,12 +92,6 @@ diffusion PDE, then add to the SPM voltage a *pointwise* concentration overpoten
 `2(1−t⁺) log((1+C_e c_{e,p}¹|_{x=1})/(1+C_e c_{e,n}¹|_{x=0}))` and a *pointwise* electrolyte
 Ohmic loss; some keep a nonlinear electrolyte diffusivity `D_e(c_e)`, some take exchange-current
 densities constant.
-*Gaps they leave:* the terms kept/dropped are chosen by hand (one such model needs six assumptions
-that can only be checked *after* comparing to the full model, e.g. assuming the current profile
-takes a prescribed shape); the modelling error cannot be bounded a-priori from the parameters; and
-they mix electrode-averaged and pointwise quantities in the voltage, which implicitly assumes the
-local reaction current equals its electrode average — true only at the lowest order — so a
-consistent error order cannot be guaranteed and over- or under-correction is observed.
 
 ## Evaluation settings
 

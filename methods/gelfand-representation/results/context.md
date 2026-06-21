@@ -1,10 +1,8 @@
 ## Research question
 
-Let `A` be a complex commutative Banach algebra, and suppose first that it has an identity. The algebraic operations of `A` look internal: addition, scalar multiplication, multiplication, norm, and perhaps an involution. The question is whether these operations are hiding an external space on which the elements of `A` are functions.
+Let `A` be a complex commutative Banach algebra, and suppose first that it has an identity. The algebraic operations of `A` are internal: addition, scalar multiplication, multiplication, norm, and perhaps an involution. The question is whether an abstract `A` of this kind can be realized as an algebra of functions on some space built out of `A` itself, with multiplication in `A` corresponding to pointwise multiplication of values.
 
-The target is not to decompose `A` into smaller algebras or to recombine known examples. The target is to find points from `A` itself. If the right notion of point exists, each element `a in A` should have values at those points, multiplication in `A` should become pointwise multiplication of values, and the topology of the point set should be forced by continuity of all these value functions.
-
-For a commutative `C^*`-algebra, the standard should be stronger. The representation should preserve the norm and the involution, so the algebra should become exactly a continuous-function algebra on a compact Hausdorff space in the unital case.
+A companion question is what happens in the commutative `C^*` case, where the involution and the `C^*` norm relation are also present.
 
 ## Background
 
@@ -18,25 +16,25 @@ The spectrum of an element `a` is
 
 This is the intrinsic substitute for the range of a function. In `C(X)`, `lambda 1-f` is invertible exactly when `lambda` is not in the range of `f`. In a general commutative Banach algebra, the maximal-ideal test gives the same shape: `lambda in sigma(a)` precisely when some character takes the value `lambda` on `a`.
 
-The norm alone is too large for a general Banach algebra representation. The stable quantity is the spectral radius
+A norm-related quantity that is algebraic and asymptotic is the spectral radius
 
-`r(a)=lim_n ||a^n||^(1/n)`.
+`r(a)=lim_n ||a^n||^(1/n)`,
 
-The spectral radius is algebraic and asymptotic: it measures what multiplication by repeated powers reveals. For a general commutative Banach algebra the function representation naturally records `r(a)`, not necessarily `||a||`.
+which measures what multiplication by repeated powers reveals and is determined by the spectrum.
 
-The `C^*` identity changes the situation. In a `C^*`-algebra, normal elements have norm equal to spectral radius, and in a commutative `C^*`-algebra every element is normal. The involution also forces characters to respect complex conjugation. This is the extra structure that can turn a spectral-radius representation into an isometric `*`-representation.
+In a `C^*`-algebra, normal elements have norm equal to spectral radius, and in a commutative `C^*`-algebra every element is normal. The involution relates characters to complex conjugation.
 
 ## Baselines
 
-- **Concrete function algebras.** For `C(X)`, points are already given and evaluation maps explain ideals, spectra, multiplication, and the norm. The gap is that an abstract algebra may arrive with no underlying set `X`.
+- **Concrete function algebras.** For `C(X)`, points are given and evaluation maps explain ideals, spectra, multiplication, and the norm.
 
-- **Pure ideal theory.** Maximal ideals organize algebraic vanishing and quotients. The gap is that ideal theory alone does not supply a topology or a norm-preserving function representation.
+- **Pure ideal theory.** Maximal ideals organize algebraic vanishing and quotients.
 
-- **Spectrum of a single element.** The spectrum detects the possible values of one element. The gap is that one spectrum at a time does not explain how all elements should be evaluated on the same set of points.
+- **Spectrum of a single element.** The spectrum detects the possible values of one element.
 
-- **Linear duality.** The Banach-space dual `A^*` is topological and compactness can be obtained from weak-* compactness of norm-bounded sets. The gap is that most linear functionals do not respect multiplication, so they are not points of a function algebra.
+- **Linear duality.** The Banach-space dual `A^*` is topological, and compactness can be obtained from weak-* compactness of norm-bounded sets.
 
-- **Stone-Weierstrass.** A closed self-adjoint subalgebra of `C(X)` that contains constants and separates points must be all of `C(X)`. The gap is that one first needs a canonical candidate subalgebra of continuous functions and a canonical compact space on which it lives.
+- **Stone-Weierstrass.** A closed self-adjoint subalgebra of `C(X)` that contains constants and separates points must be all of `C(X)`.
 
 ## Evaluation settings
 
@@ -44,9 +42,9 @@ The artifact is a theorem and proof. The analytic setting is a unital complex co
 
 The stronger setting is a unital commutative `C^*`-algebra. Success means producing a compact Hausdorff space `X` and an isometric `*`-isomorphism from `A` onto `C(X)`.
 
-Stress cases include Banach algebras with nonzero radical, where the transform can lose information; algebras without identity, where the correct space is locally compact and functions vanish at infinity; and abstract `C^*`-algebras with no preassigned point set.
+Cases of interest include Banach algebras with nonzero radical, algebras without identity where the natural space is locally compact and functions vanish at infinity, and abstract `C^*`-algebras with no preassigned point set.
 
-The proof should account for the correspondence between maximal ideals and characters, the spectral description of the transformed element, the spectral-radius norm formula, and the upgrade from a Banach-algebra homomorphism to a full `C(X)` representation in the `C^*` case.
+The proof should account for the correspondence between maximal ideals and characters, the spectral description of the represented element, the spectral-radius norm formula, and the passage from a Banach-algebra homomorphism to a full `C(X)` representation in the `C^*` case.
 
 ## Code framework
 

@@ -11,11 +11,10 @@ decision-maker can choose a trade-off afterward.
 
 A population-based evolutionary algorithm is the natural tool because it carries many
 candidates at once. By the time this problem is sharp, two- and three-objective problems are
-handled well by the dominant elitist EAs. The open difficulty is **many objectives** — four
+handled well by the dominant elitist EAs. The open setting is **many objectives** — four
 or more, often ten to fifteen — which arise constantly in real applications with several
-stakeholders. The precise question: keep the elitist, fast-sorting framework that already
-works at two and three objectives, but make it actually *select* and actually *stay spread*
-when `M` is large, where the existing diversity machinery quietly stops doing either.
+stakeholders. The question is how to extend the elitist, fast-sorting framework that already
+works at two and three objectives to this regime.
 
 ## Background
 
@@ -50,33 +49,25 @@ blocks taken as given:
   `delta_q (x_U - x_L)`; `eta_m` sets the perturbation scale and `p_m = 1/n` mutates about
   one of `n` variables per individual on average.
 
-Several observed facts about how this template behaves *as `M` grows* frame the design
-space:
+Several observed facts about how this template behaves as `M` grows frame the design space:
 
 - **Almost everything becomes non-dominated.** It is well documented that in a randomly
   generated population the fraction of non-dominated members grows roughly exponentially with
   the number of objectives. For large `M`, nearly the entire population already lands in the
-  first Pareto front. Since a domination-based EA selects by rank, having almost all members
-  at rank 1 leaves rank with almost nothing to discriminate on: the selection pressure that
-  drives convergence collapses, and the search slows.
-- **Diversity estimation becomes expensive and uninformative.** Identifying the neighborhood
-  of a solution to gauge crowding gets computationally heavy in high-dimensional objective
-  space, and the density estimate itself loses meaning when the points are sparse and almost
-  all mutually non-dominated.
-- **Recombination loses bite.** When only a handful of solutions populate a large objective
-  space, candidate parents tend to be widely separated; recombining two distant parents
-  produces offspring that are themselves distant from both, so the recombination operator —
-  considered a key search operator in an EA — becomes far less effective.
+  first Pareto front.
+- **Diversity estimation in many-objective space.** Identifying the neighborhood of a solution
+  to gauge crowding becomes computationally heavier in high-dimensional objective space, and
+  the density estimate itself is sparser when the points are spread over a large space and
+  almost all mutually non-dominated.
+- **Recombination in sparse populations.** When only a handful of solutions populate a large
+  objective space, candidate parents tend to be widely separated; recombining two distant
+  parents produces offspring that are themselves distant from both.
 - **A weighted-sum scalarization does not spread evenly.** It was shown (Das & Dennis 1998)
   that minimizing uniformly spaced weighted combinations of the objectives does *not* yield
   uniformly spaced points on the Pareto front: where the obtained points land depends on the
-  curvature of the front, and entire non-convex regions are missed altogether. So a
-  many-objective method cannot rely on the simple idea that evenly spaced scalarization
-  weights automatically produce evenly spaced trade-off solutions.
+  curvature of the front, and entire non-convex regions are missed altogether.
 
 ## Baselines
-
-Available prior approaches and their gaps:
 
 **NSGA-II (Deb, Pratap, Agarwal & Meyarivan 2002) — the framework.** The elitist template
 above, with one specific split rule for the overflowing last front `F_l`: a **crowding
@@ -85,11 +76,7 @@ objective-wise normalized gaps to its two neighbors; boundary solutions (the ext
 objective) are given infinite crowding distance so they are always kept. Members with the
 *largest* crowding distance — the ones in the least crowded regions — are selected to fill
 `K`. This is a cheap, approximate density estimate that maintains a good spread at two and
-three objectives. **Gap:** the crowding distance is a per-axis neighbor-gap density estimate,
-and in many-objective space it degrades — neighbors in one objective are not neighbors in the
-full vector, the estimate flattens toward near-uniform when almost everything is
-non-dominated, and computing it is costly in high `M`. So the very mechanism that supplies
-diversity stops distinguishing solutions exactly where diversity is hardest to maintain.
+three objectives.
 
 **MOEA/D (Zhang & Li 2007).** Decompose the multi-objective problem into `N` scalar
 subproblems, one per weight vector `w` drawn from a spread set, and solve them cooperatively:
@@ -99,19 +86,12 @@ scalarizing function of the weight vector — Tchebycheff `max_i w_i |f_i(x) - z
 utopian point `z^*`, or a penalty-boundary-intersection (PBI) form
 `d_1 + theta·d_2` combining distance along and perpendicular to the reference direction. Each
 offspring updates whichever neighboring subproblems it improves. The structured weight set
-gives MOEA/D an explicit, predefined notion of where on the front to aim. **Gap:** it leans
-on a chosen scalarizing function and the extra knobs that come with it — the neighborhood
-size `T`, and for PBI the penalty parameter `theta` (a value of 5 is suggested) — and the
-weight-to-Pareto-point mapping again depends on the scalarization and the front's geometry.
-It is a different paradigm from a dominance-ranked elitist EA, not a drop-in fix for the
-last-front split.
+gives MOEA/D an explicit, predefined notion of where on the front to aim.
 
 **Earlier diversity-by-sharing schemes (the prior wave).** Rank the population into Pareto
 layers, then within each layer spread the population by fitness sharing — degrade an
 individual's fitness in proportion to a niche count of neighbors within radius
-`sigma_share`. **Gap:** the spread depends sharply on the user-set `sigma_share`, presupposes
-a distance metric and an implicit guess at how many niches the front supports, and computing
-niche counts compares every pair at `O(N^2)`; there is no parameter-free recipe.
+`sigma_share`. The degree of spread depends on the user-set `sigma_share`.
 
 ## Evaluation settings
 

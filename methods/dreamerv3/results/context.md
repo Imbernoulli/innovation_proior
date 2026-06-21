@@ -2,34 +2,24 @@
 
 ## Research question
 
-The goal is a single reinforcement-learning algorithm that, with **one fixed set
-of hyperparameters**, masters a wide range of domains — visual and proprioceptive
+The setting is a single reinforcement-learning algorithm applied, with **one fixed set
+of hyperparameters**, across a wide range of domains — visual and proprioceptive
 control, discrete-action arcade games, procedurally generated 3D worlds, and a
-sparse-reward open-world game — without any per-task reconfiguration. Formally the
+sparse-reward open-world game — without per-task reconfiguration. Formally the
 agent interacts with a partially observable Markov decision process: at each step it
 receives an observation $x_t$ (a $64\times64\times3$ image, or a vector of sensor
 readings, or both) and a scalar reward $r_t$, emits an action $a_t$ (continuous or
 discrete), and seeks to maximize the expected discounted return
 $\mathbb{E}\!\left[\sum_{\tau\ge 0}\gamma^\tau r_{t+\tau}\right]$.
 
-The binding constraint is **robustness across domains**, not raw performance on any
-one. The practical wall is that applying an RL algorithm to a genuinely new task —
-moving from a video game to a robot, say — requires substantial expertise and compute
-to re-tune its hyperparameters. That brittleness is what blocks RL from being applied
-out of the box, and it is especially crippling when each tuning run is expensive. A
-method that worked on a new domain *with the settings already chosen* would change
-what is practical.
-
-Why is fixed-hyperparameter learning hard? Because the quantities an agent must fit
-vary across domains by **orders of magnitude and in distribution shape**. Rewards
-might be dense and in the hundreds (an arcade score) or sparse and binary (reach a
-milestone). Returns can be unimodal or multimodal. Observations can be pixels where
-fine detail matters or 3D scenes full of irrelevant texture. A loss scale, a KL
-weight, an entropy coefficient, or a value-prediction parameterization that is correct
-for one regime is wrong for another. The question is whether a fixed algorithm can be
-made robust enough that the same numbers work everywhere — and whether that can be done
-on top of a world-model agent, which already promises strong sample efficiency but has
-historically been the *most* fragile family to get working.
+Across these domains the quantities an agent must fit vary by **orders of magnitude and
+in distribution shape**. Rewards might be dense and in the hundreds (an arcade score) or
+sparse and binary (reach a milestone). Returns can be unimodal or multimodal.
+Observations can be pixels where fine detail matters or 3D scenes full of irrelevant
+texture. The question is how to build a world-model agent — a family that promises strong
+sample efficiency — whose fixed configuration of loss scales, KL weights, entropy
+coefficients, and value parameterizations applies uniformly across this heterogeneous
+battery.
 
 ## Background
 
@@ -37,14 +27,14 @@ historically been the *most* fragile family to get working.
 (Sutton 1991, *Dyna*) interleaves three processes: learn a dynamics model from
 collected experience, improve behavior using the model, and act to collect more
 experience. Once a model exists, the expensive real environment can be replaced for
-behavior improvement by cheap imagined rollouts. The catch is that imagination is only
-as good as the model, so the model must be accurate enough that a policy trained
-entirely in it transfers back to reality.
+behavior improvement by cheap imagined rollouts. Imagination is as good as the model, so
+the model must be accurate enough that a policy trained entirely in it transfers back to
+reality.
 
-**Latent recurrent state-space models for pixels.** Predicting forward in pixel space
-is wasteful; the useful object is a compact *latent* state. The recurrent state-space
+**Latent recurrent state-space models for pixels.** Rather than predict forward in pixel
+space, one predicts forward in a compact *latent* state. The recurrent state-space
 model (RSSM; Hafner et al. 2018, *PlaNet*) splits the latent into a deterministic
-recurrent component $h_t$ that carries memory cleanly and a stochastic component $z_t$
+recurrent component $h_t$ that carries memory and a stochastic component $z_t$
 that captures uncertainty. A sequence model advances $h_t=f(h_{t-1},z_{t-1},a_{t-1})$;
 a *prior* (dynamics predictor) proposes $z_t\sim p(z_t\mid h_t)$ without seeing the
 observation, while a *posterior* (encoder) folds in the current frame,
@@ -53,8 +43,7 @@ construction, so anything trained on it inherits a clean MDP. The model is fit a
 latent-variable sequence model: reconstruct observations and rewards from the model
 state while a KL term keeps the posterior and prior close, so that rollouts of the
 prior alone — the imagination used to train behavior — land where the posterior would.
-PlaNet itself derived behavior by online cross-entropy-method planning over a fixed
-horizon, which is expensive at action time and shortsighted beyond the horizon.
+PlaNet derives behavior by online cross-entropy-method planning over a fixed horizon.
 
 **Actor and critic in imagination.** Rather than re-plan at every step, one can learn
 an explicit actor $\pi(a\mid s)$ and a critic $v(s)$ that both operate on latent model
@@ -74,27 +63,21 @@ softmax over a fixed set of value bins, trained by cross-entropy. For continuous
 targets the *twohot* encoding (Schrittwieser et al. 2019, *MuZero*) generalizes the
 one-hot target to a two-bin linear interpolation, so a scalar maps to a soft label and
 the readout (a probability-weighted average of bin positions) can land between bins.
-The appeal is that the gradient depends only on bin *probabilities*, not on the
-magnitude of the target.
+The gradient depends on bin *probabilities*, not on the magnitude of the target.
 
-**The scale problems.** Several known failure modes sit at the heart of cross-domain
-brittleness. A squared loss on large targets can diverge; absolute/Huber losses
-(Mnih et al. 2015) cap the gradient and stagnate; normalizing targets by running
-statistics (Schulman et al. 2017) injects non-stationarity into the optimization;
-adjusting network weights when new extreme values appear (Hessel et al. 2019, *Pop-Art*)
-is intrusive. On the actor side, the entropy regularizer (Williams 1991) needs a
-coefficient whose correct value depends on the reward scale *and* frequency: normalize
-advantages (Schulman et al. 2017) and you fix the emphasis on returns regardless of
-whether reward is even reachable, which amplifies function-approximation noise under
-sparse rewards; normalize by standard deviation and sparse rewards (std near zero) blow
-the scale up arbitrarily; target a fixed average entropy by constrained optimization
-(Haarnoja et al. 2018; Abdolmaleki et al. 2018) and the agent explores too slowly under
-sparse rewards and converges lower under dense ones. Deep variational models also show
-**KL spikes** (Child 2020) when categorical posteriors collapse to near-deterministic,
-and latent models show **posterior collapse** where the dynamics become trivially
-predictable while the state carries no information. These are diagnostic facts about
-*existing* systems: each is a place where a single fixed hyperparameter would be wrong
-for some domain.
+**Scale handling in existing systems.** Several techniques address targets and returns
+that differ in scale across tasks. A squared loss on large targets can diverge;
+absolute/Huber losses (Mnih et al. 2015) cap the gradient; normalizing targets by
+running statistics (Schulman et al. 2017) rescales by online moments; adjusting network
+weights when new extreme values appear (Hessel et al. 2019, *Pop-Art*) preserves outputs
+under rescaling. On the actor side, the entropy regularizer (Williams 1991) carries a
+coefficient set against the reward scale and frequency: advantage normalization
+(Schulman et al. 2017) standardizes the emphasis on returns; normalization by standard
+deviation rescales by spread; constrained optimization to a fixed average entropy
+(Haarnoja et al. 2018; Abdolmaleki et al. 2018) targets a chosen entropy level. Deep
+variational models track KL behavior (Child 2020) when categorical posteriors approach
+near-deterministic, and latent models track posterior informativeness relative to the
+dynamics.
 
 **The score-function gradient and its baseline.** The Reinforce / likelihood-ratio
 estimator (Williams 1992) $\mathbb{E}[A\,\nabla_\theta\log\pi_\theta(a\mid s)]$ weights
@@ -105,54 +88,43 @@ multiplier leaves the gradient unchanged.
 ## Baselines
 
 **Dyna (Sutton 1991).** The learn-model / improve-in-model / act loop and the idea of
-training behavior on simulated experience. It is the scaffold; it does not say how to
-build a high-dimensional model nor how to make behavior learning robust across domains.
+training behavior on simulated experience. It is the scaffold for model-based RL.
 
 **PlaNet / RSSM (Hafner et al. 2018).** Learns the latent recurrent state-space model
 end to end and controls by online CEM planning over a fixed horizon. Provides the world
-model reused here. Gaps: planning is redone every step (expensive at action time),
-horizon-limited (shortsighted), and the representation-loss scale has to be tuned per
-domain — complex 3D scenes need a strong regularizer to discard irrelevant detail,
-static-background games need a weak one to keep fine pixels.
+model reused here. The representation-loss scale is set per domain — complex 3D scenes
+use a strong regularizer to discard irrelevant detail, static-background games use a
+weak one to keep fine pixels.
 
 **Earlier Dreamer generations (Hafner et al. 2019, 2020).** Learn actor and critic
 inside the RSSM's imagination with $\lambda$-returns; the first generation handled
 continuous control with analytic pathwise gradients, the second introduced discrete
 categorical latents with straight-through gradients and KL balancing and reached
-human-level Atari. Each still required per-domain tuning — notably the KL /
-representation-loss scale, the reward/return scale, and the entropy coefficient — so no
-single configuration spanned continuous control, discrete games, and 3D worlds at once.
-Closing exactly that gap is the open problem.
+human-level Atari. Settings such as the KL / representation-loss scale, the reward/return
+scale, and the entropy coefficient are chosen per domain.
 
-**PPO (Schulman et al. 2017).** The robust, general, on-policy yardstick: clipped
-surrogate policy-gradient with a value baseline and normalized advantages. Relatively
-robust across domains but data-hungry and typically below specialized methods; its
-advantage normalization is one of the scale heuristics that misfires under sparse
-rewards.
+**PPO (Schulman et al. 2017).** The general, on-policy yardstick: clipped surrogate
+policy-gradient with a value baseline and normalized advantages. Applies broadly across
+domains.
 
 **SAC (Haarnoja et al. 2018).** Off-policy maximum-entropy actor-critic with a learned
 action-value and an entropy term whose temperature is tuned (or auto-tuned to a target
-entropy). Data-efficient on continuous control from states, but needs tuning —
-especially the entropy scale — and struggles from high-dimensional pixel inputs.
+entropy). Data-efficient on continuous control from states.
 
 **MuZero (Schrittwieser et al. 2019).** Plans with a learned value-prediction model and
 reaches strong scores on board games and Atari, contributing the twohot value
-parameterization reused here. It is complex, with several interacting components, and
-hard to reproduce; it is not a fixed-hyperparameter, out-of-the-box learner across
-heterogeneous domains.
+parameterization reused here. It comprises several interacting components.
 
 **C51 (Bellemare et al. 2017).** Distributional value learning: predict a categorical
 distribution over a fixed value support and train by cross-entropy. Supplies the
-distributional critic idea; on its own it uses a fixed, bounded value support that does
-not span domains differing by orders of magnitude.
+distributional critic idea, with a fixed, bounded value support.
 
-**Rainbow / IMPALA (Hessel et al. 2018; Espeholt et al. 2018).** Strong value-based and
-distributed actor-critic agents for discrete domains; tuned expert points of comparison
-that are nonetheless specialized rather than fixed-configuration across all domains.
+**Rainbow / IMPALA (Hessel et al. 2018; Espeholt et al. 2018).** Value-based and
+distributed actor-critic agents for discrete domains; tuned expert points of comparison.
 
 ## Evaluation settings
 
-The natural yardsticks are a deliberately heterogeneous battery, all scored as episode
+The yardsticks are a deliberately heterogeneous battery, all scored as episode
 return (or human-normalized score) as a function of real environment steps, with no
 per-domain hyperparameter changes:
 
@@ -184,9 +156,8 @@ The pieces below already exist as standard primitives: the RSSM world model
 an observation-conditioned posterior), convolutional and MLP encoders/decoders, dense
 prediction heads, reparameterized / straight-through sampling, a routine that turns
 $k$-step returns into a $\lambda$-return, and a replay buffer with an environment loop.
-What does *not* yet exist is whatever lets one fixed configuration of this agent learn
-across all the domains above — the parts that today have to be retuned whenever the
-domain changes.
+The slot to fill is whatever lets one fixed configuration of this agent learn across all
+the domains above.
 
 ```python
 # --- existing primitives ---------------------------------------------------
@@ -215,8 +186,8 @@ optimizer = SomeOptimizer(lr)   # a standard adaptive optimizer (exists)
 # TODO: whatever it takes so that ONE fixed configuration of the agent below
 #       learns across all the domains above. The world model, its losses, the
 #       prediction/value heads, the imagined-rollout actor-critic update, and
-#       the gradient step are all in play; today each carries numbers that have
-#       to be retuned per domain.
+#       the gradient step are all in play; today each carries numbers that are
+#       set per domain.
 
 def world_model_loss(model, batch):
     # reconstruct inputs/reward/continue; KL between posterior and prior

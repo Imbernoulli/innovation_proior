@@ -14,11 +14,9 @@ Hardware is held fixed per benchmark and reported alongside the numbers (Higgs/M
 
 Two starting points define the landscape:
 
-- **Bagging and random forests.** Many trees are trained independently on bootstrap resamples of the data and averaged. This reduces variance, but no tree is directed at the mistakes the others still make, so the ensemble cannot concentrate effort where it is failing.
+- **Bagging and random forests.** Many trees are trained independently on bootstrap resamples of the data and averaged.
 
-- **The weak-learnability question.** It is known in principle that a learner only slightly better than random guessing can be boosted into one with arbitrarily high accuracy, but the existing constructions are complex and are not yet a practical training algorithm for large heterogeneous tables.
-
-The open question is how to turn the theoretical boosting guarantee into a fast, general-purpose tabular learner.
+- **The weak-learnability question.** It is known in principle that a learner only slightly better than random guessing can be boosted into one with arbitrarily high accuracy. Early constructions require knowing the weak learner's error margin in advance and use filtering schemes to draw training subsets.
 
 ## Fixed substrate / Code framework
 
@@ -72,4 +70,4 @@ Each rung is scored on the benchmark that exercises its contribution, using the 
 - **Ranking quality** on MS LTR: NDCG@10 on the test fold (higher is better), same capacity.
 - **Categorical handling** on Amazon: test log-loss (lower is better), under a tuned 5-fold protocol.
 
-Every number is the algorithm's own published benchmark figure, not a re-run. The ladder is ordered weak→strong by the evidence trail: each step must remove a limitation visible in the previous step while preserving the fixed datasets, metrics, and tree-capacity budget.
+Every number is the algorithm's own published benchmark figure, not a re-run. The ladder is ordered by the evidence trail, preserving the fixed datasets, metrics, and tree-capacity budget.

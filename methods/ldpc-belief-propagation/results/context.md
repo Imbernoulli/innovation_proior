@@ -1,6 +1,6 @@
 ## Research question
 
-Can a family of error-correcting codes be both *good* (driving the probability of decoding error toward zero at a fixed rate below channel capacity, with the error exponent of the best codes) *and* practically decodable (encoding and decoding cost growing only modestly — ideally linearly — with the block length)? Shannon's 1948 channel-coding theorem guarantees that good codes exist for any rate below capacity, and Elias's 1955 random-coding refinement shows that *almost all* long linear codes are good. But both results are existence proofs: they say nothing about how to *decode* a particular long code without searching over an exponential number of codewords. By 1960 the field has good-but-undecodable random codes on one side and decodable-but-weak short algebraic codes on the other, and no construction that is simultaneously near-capacity and cheap to decode. The goal is a class of "random-like" codes whose very structure admits a decoder whose cost per bit does not blow up with block length.
+Can a family of error-correcting codes be both *good* (driving the probability of decoding error toward zero at a fixed rate below channel capacity, with the error exponent of the best codes) *and* practically decodable (encoding and decoding cost growing only modestly with the block length)? Shannon's 1948 channel-coding theorem guarantees that good codes exist for any rate below capacity, and Elias's 1955 random-coding refinement shows that *almost all* long linear codes are good. Both results are existence proofs: they say nothing about how to decode a particular long code without searching over an exponential number of codewords. How can one construct a code family with near-capacity performance and a decoder whose cost per bit remains tractable as block length grows?
 
 ## Background
 
@@ -10,23 +10,21 @@ Can a family of error-correcting codes be both *good* (driving the probability o
 
 **Linear block codes and parity checks.** An (n, k) binary linear code is a k-dimensional subspace of GF(2)^n. It is described either by a generator matrix G (k × n), codewords c = uG, or by a parity-check matrix H (m × n) with H c^T = 0 for every codeword; H is not unique. Each row of H is a parity-check equation — a subset of code positions whose modulo-2 sum must be zero. Encoding is cheap; decoding — finding the codeword closest to a noisy received vector — is the bottleneck.
 
-**Maximum-likelihood / optimal decoding is intractable.** Given received y, the optimal decoder seeks the codeword maximizing P(y | c). For a general long code this means comparing against ~2^k codewords or solving a closest-vector problem; the cost is exponential in the code's dimension. This is exactly why Elias's "most codes are good" cannot be cashed in directly.
-
-**The diagnostic tension known at the time.** For *all* then-known explicitly constructed code families (and for a parity-check matrix filled with independent equiprobable bits), the ratio of minimum distance to block length tends to 0 as n grows — they become asymptotically weak — while the genuinely random ensemble keeps a linear minimum distance but cannot be decoded. Structure that helps decoding seems to cost distance; distance seems to require unstructured randomness that defeats decoding.
+**Maximum-likelihood / optimal decoding is intractable.** Given received y, the optimal decoder seeks the codeword maximizing P(y | c). For a general long code this means comparing against ~2^k codewords or solving a closest-vector problem; the cost is exponential in the code's dimension.
 
 **Probabilistic / soft-decision view of decoding.** Rather than first thresholding each received symbol into a hard bit and then decoding, one can keep the channel's *a posteriori* probability for each transmitted bit. Throwing away the soft information (e.g. converting a Gaussian channel to a BSC by per-symbol hard decisions) provably lowers the usable capacity, so a decoder that operates directly on per-bit a-posteriori probabilities has more to work with.
 
-**Competing decoding ideas of the era.** Wozencraft's sequential decoding of tree/convolutional codes was the leading practical method, but its rate was believed to be bounded by the computational cut-off rate R0, below capacity. Threshold decoding (Massey) was simple but limited. None offered near-capacity performance at feasible, block-length-scalable cost.
+**Competing decoding ideas of the era.** Wozencraft's sequential decoding of tree/convolutional codes was the leading practical method, but its rate was believed to be bounded by the computational cut-off rate R0, below capacity. Threshold decoding (Massey) was simple but limited.
 
 ## Baselines
 
-- **Algebraic block codes (Hamming; BCH and Reed–Solomon).** Codes built from finite-field structure with guaranteed minimum distance and bounded-distance algebraic decoders. Core idea: design H/G so that syndromes algebraically locate a bounded number of errors. Gap: their minimum-distance-to-length ratio falls toward 0 as n grows, and bounded-distance decoding corrects far fewer errors than a maximum-likelihood decoder would; they sit well short of capacity for the long block lengths capacity demands.
+- **Algebraic block codes (Hamming; BCH and Reed–Solomon).** Codes built from finite-field structure with guaranteed minimum distance and bounded-distance algebraic decoders. Core idea: design H/G so that syndromes algebraically locate a bounded number of errors.
 
-- **Random linear codes (the Shannon/Elias ensemble).** Pick H (or G) with independent random bits. Core idea / strength: by Elias, these achieve the best error exponent and linear minimum distance with high probability. Gap: no decoder better than exponential search is known — exactly the object the theory praises and cannot use.
+- **Random linear codes (the Shannon/Elias ensemble).** Pick H (or G) with independent random bits. By Elias, these achieve the best error exponent and linear minimum distance with high probability.
 
-- **Convolutional codes with sequential decoding (Wozencraft, Fano).** A linear time-varying code whose tree structure permits a sequential search decoder. Strength: soft-decision capable, the dominant practical scheme. Gap: throughput collapses (decoding effort has infinite mean) above the computational cut-off rate R0 < C, so it cannot be pushed to capacity; performance also depends on a feedback/retransmission style of operation in hard cases.
+- **Convolutional codes with sequential decoding (Wozencraft, Fano).** A linear time-varying code whose tree structure permits a sequential search decoder. Soft-decision capable and the dominant practical scheme of the era.
 
-- **Threshold decoding (Massey) and bit-by-bit majority logic.** Decide each bit from a small set of parity checks by majority/threshold. Strength: extremely simple, linear cost. Gap: weak — corrects far fewer errors than optimal, falling well short of capacity.
+- **Threshold decoding (Massey) and bit-by-bit majority logic.** Decide each bit from a small set of parity checks by majority/threshold. Extremely simple, linear cost.
 
 ## Evaluation settings
 

@@ -12,32 +12,25 @@ those into a categorical distribution over the next token.
 
 The hard part is *long-term dependency*. Many predictions hinge on information
 that appeared hundreds or thousands of tokens earlier (the subject of a clause,
-a name introduced pages ago, a topic established at the start of a document). A
-good language model has to route that distant information forward to the current
-prediction. The precise problem is therefore: how to encode an *arbitrarily
-long* context into the representation used for the current token, under a fixed
-compute and memory budget, without (a) capping the reachable dependency length
-at some small constant, (b) corrupting predictions by feeding the model context
-that has been arbitrarily truncated, and (c) paying a recomputation cost at
-evaluation that scales with how much context each prediction is allowed to see.
-A solution has to push the *effective* dependency length well past a few hundred
-tokens while keeping training and, especially, evaluation tractable.
+a name introduced pages ago, a topic established at the start of a document).
+The question is how to encode an *arbitrarily long* context into the
+representation used for the current token, under a fixed compute and memory
+budget, so that the *effective* dependency length extends well past a few hundred
+tokens while keeping training and evaluation tractable.
 
 ## Background
 
-**Recurrent models and the vanishing-context problem.** Recurrent neural
-networks, in particular the LSTM (Hochreiter & Schmidhuber 1997), have been the
-default solution. They carry a hidden state forward step by step, so in
-principle nothing bounds how far back information can travel. In practice the
-signal decays: training by backpropagation through time multiplies many
+**Recurrent models.** Recurrent neural networks, in particular the LSTM
+(Hochreiter & Schmidhuber 1997), have been the default solution. They carry a
+hidden state forward step by step, so in principle nothing bounds how far back
+information can travel. Training by backpropagation through time multiplies many
 Jacobians together, and the product either vanishes or explodes
 (Hochreiter et al. 2001), so gradients carrying long-range credit shrink toward
-zero. Gating (the LSTM cell) and gradient clipping (Graves 2013) soften this but
-do not remove it. A diagnostic measurement makes the ceiling concrete: a trained
-LSTM language model uses on average only about 200 words of context
+zero. Gating (the LSTM cell) and gradient clipping (Graves 2013) soften this.
+A diagnostic measurement makes the effective range concrete: a trained LSTM
+language model uses on average only about 200 words of context
 (Khandelwal et al. 2018) — feeding it more history beyond that barely changes
-its predictions. So even the standard recurrent solution is, empirically, a
-short-context model, and there is clear room above 200 words.
+its predictions.
 
 **Self-attention as the alternative.** Attention (Bahdanau et al. 2014;
 Vaswani et al. 2017) builds *direct* connections between any pair of positions:
@@ -45,36 +38,17 @@ the representation of one position is a weighted sum over all others, with the
 weight given by a query-key dot product. Because any two positions are one hop
 apart, the gradient path between distant tokens is short and constant-length
 rather than growing with their separation, so the vanishing-gradient pressure
-that limits recurrent models is largely absent. This is the structural reason to
-expect attention to model longer dependencies than an LSTM — *if* the
-architecture is allowed to attend over a long enough span.
+that limits recurrent models is largely absent.
 
-**The fixed-length-segment regime and its two failure modes.** To apply a
-self-attention decoder to a long corpus under a finite budget, the standard move
-is to chop the corpus into separate segments of a few hundred tokens and train
-the model independently within each segment, with no information passing across
-segment boundaries in either the forward or backward pass (Al-Rfou et al. 2018
-trained deep character-level decoders this way and beat LSTMs by a wide margin).
-Two limitations follow directly, and both are *facts about this regime*,
-knowable without any new method:
-
-- *Bounded dependency length.* The largest dependency the model can represent is
-  upper-bounded by the segment length. The constant-path-length advantage of
-  attention is real, but a model that never sees beyond its segment cannot use
-  it — the reachable context is capped at a few hundred tokens regardless.
-- *Context fragmentation.* Segments are cut as consecutive fixed-length chunks
-  that ignore sentence or any other semantic boundary. The first few tokens of
-  every segment therefore have little or no context to condition on, which makes
-  them hard to predict and makes optimization inefficient — there is simply no
-  history available for them, by construction.
-
-**The cost of evaluation in this regime.** At test time one wants each
-prediction to use the longest context the model was trained for. The way to get
-that with fixed segments is to slide the window forward by a single position at
-each step and re-encode the entire segment from scratch, so the predicted token
-always sits at the end of a full-length context and fragmentation is avoided at
-test time. This recomputes almost the same segment over and over, one shift
-apart, making evaluation extremely expensive.
+**The fixed-length-segment regime.** To apply a self-attention decoder to a
+long corpus under a finite budget, the standard move is to chop the corpus into
+separate segments of a few hundred tokens and train the model independently
+within each segment, with no information passing across segment boundaries in
+either the forward or backward pass (Al-Rfou et al. 2018 trained deep
+character-level decoders this way and beat LSTMs by a wide margin). At test
+time, one can slide the window forward by a single position at each step and
+re-encode the entire segment from scratch so the predicted token always sits at
+the end of a full-length context.
 
 **Absolute positional encoding.** A self-attention layer is permutation-
 invariant in its inputs, so order has to be injected explicitly. The standard
@@ -106,34 +80,23 @@ queries/keys/values $q,k,v$ by linear projections of the previous layer's
 hidden states, an attention score $q_i^\top k_j$ scaled by $1/\sqrt{d_k}$, a
 causal-masked softmax over $j\le i$, a weighted sum of values, a residual add
 with layer normalization, and a position-wise feed-forward sublayer. Absolute
-sinusoidal encodings are added at the input. Core idea: replace recurrence with
-attention so distant tokens connect directly. *Gap:* no information crosses
-segment boundaries, so the reachable dependency is capped at the segment length
-and the leading tokens of each segment suffer context fragmentation; evaluation
-requires per-step recomputation of a whole segment.
+sinusoidal encodings are added at the input.
 
 **LSTM language model (Hochreiter & Schmidhuber 1997).** A recurrent cell with
 input/forget/output gates carries a state $c_t,h_t$ forward;
-$h_t$ is read out into a softmax over the vocabulary. Core idea: a gated
-additive state path keeps gradients from vanishing as fast as in a plain RNN.
-*Gap:* gradients still decay over long ranges; the measured effective context is
-~200 words, well short of document-scale dependency.
+$h_t$ is read out into a softmax over the vocabulary. A gated additive state
+path keeps gradients from vanishing as fast as in a plain RNN.
 
 **Truncated BPTT for recurrent LMs (Mikolov et al. 2010).** Pass the last
-hidden state of the previous segment forward as a fixed input. Core idea: reuse
-history across segment boundaries cheaply. *Gap:* only a single summary vector is
-carried, and it is still subject to the recurrent decay; nothing here addresses
-attention models.
+hidden state of the previous segment forward as a fixed input, reusing history
+across segment boundaries cheaply.
 
 **Relative position in attention for translation/music (Shaw et al. 2018;
 Huang et al. 2018).** Inject the relative distance between query and key into the
 attention computation rather than adding absolute positions at the input. Shaw et
 al. add a learned per-distance vector to the keys, effectively keeping a content-
 content term and one content-position term while folding the position projection
-into a single trainable per-distance matrix. *Gap:* merging the projection into a
-free per-distance matrix discards the structured (sinusoidal) form, so the scheme
-does not generalize to attention spans longer than those seen in training; it
-also drops the purely position-driven and global-bias contributions to the score.
+into a single trainable per-distance matrix.
 
 ## Evaluation settings
 

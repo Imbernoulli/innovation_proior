@@ -7,7 +7,7 @@ $$f(\{x_1,\dots,x_M\}) = f(\{x_{\pi(1)},\dots,x_{\pi(M)}\}).$$
 In the **set → per-element** (transductive) regime, each element carries its own output and reordering the input must reorder the output identically — **permutation equivariance**:
 $$\mathbf f(\pi\mathbf x)=\pi\,\mathbf f(\mathbf x).$$
 
-The goal is a single architecture that (i) accepts variable-size sets, (ii) is guaranteed invariant or equivariant *by construction* rather than by data augmentation, and (iii) scales to large set counts and large sets. The hard part is not engineering one such network but knowing the *space* of admissible functions: what is the most general invariant function, and the most general equivariant linear layer? Without that characterization, any pooling heuristic is a guess that might be missing expressive power or might secretly break the symmetry.
+The question is how to learn functions on variable-size sets that respect this symmetry: a single architecture that accepts sets of any size and is invariant (or equivariant) to the order of their elements, trained end-to-end on the task.
 
 # Background
 
@@ -15,21 +15,19 @@ The goal is a single architecture that (i) accepts variable-size sets, (ii) is g
 
 **Exchangeability and de Finetti.** In Bayesian statistics an exchangeable model factors as $p(X\mid\alpha)=\int\big[\prod_m p(x_m\mid\theta)\big]\,p(\theta\mid\alpha)\,d\theta$. For an exponential family $p(x\mid\theta)=\exp(\langle\phi(x),\theta\rangle-g(\theta))$ with a conjugate prior, marginalizing $\theta$ yields a likelihood that depends on the data only through the sufficient statistic $\sum_m\phi(x_m)$.
 
-**Pooling as a recurring heuristic.** Several systems already pool a per-element feature across members to obtain order-independence: pooling across a panoramic projection or across multiple rendered views of a 3D object for classification (Shi 2015; Su 2015), pooling over a sample set for a causality decision (Lopez-Paz 2016), and exploiting the row/column permutation symmetry of a normal-form payoff matrix (Hartford 2016). In multi-agent / sensor-network models (Sukhbaatar 2016, CommNet), each agent combines its own state with a pooled summary of the others. These are effective but *ad hoc*: pooling is adopted because it happens to be invariant, with no statement of which functions it can or cannot express.
+**Pooling across members.** Several systems pool a per-element feature across members to obtain order-independence: pooling across a panoramic projection or across multiple rendered views of a 3D object for classification (Shi 2015; Su 2015), pooling over a sample set for a causality decision (Lopez-Paz 2016), and exploiting the row/column permutation symmetry of a normal-form payoff matrix (Hartford 2016). In multi-agent / sensor-network models (Sukhbaatar 2016, CommNet), each agent combines its own state with a pooled summary of the others.
 
-**Group-equivariant networks.** A parallel line builds networks equivariant to general transformation groups by weight-sharing tied to the group structure (Gens & Domingos 2014; Cohen & Welling 2016, group-equivariant CNNs; Ravanbakhsh 2017). Permutation symmetry is one instance of this program, but the precise minimal parameter-sharing for the permutation group in a plain dense layer was not pinned down.
-
-**Motivating diagnostic.** When a set is force-fed to a sequence model (LSTM/GRU) — the natural fallback when no set-native model exists — performance is order-dependent and degrades sharply as the test set grows beyond training sizes; a sum-of-digits task trained on length $\le 10$ and tested up to length 100 makes this failure visible. Kernel-on-distributions methods, the other established route, require an $N\times N$ kernel matrix and become infeasible past tens of thousands of sets.
+**Group-equivariant networks.** A parallel line builds networks equivariant to general transformation groups by weight-sharing tied to the group structure (Gens & Domingos 2014; Cohen & Welling 2016, group-equivariant CNNs; Ravanbakhsh 2017). Permutation symmetry is one instance of this program.
 
 # Baselines
 
-**Distribution / set kernels (support distribution machines).** To predict from a set treated as an i.i.d. sample from a distribution $p$, one builds $f(p)=\sum_i\alpha_i y_i K(p_i,p)+b$ with a kernel between distributions estimated from samples, $\hat K(p,q)=\frac{1}{MM'}\sum_{i,j}k(x_i,y_j)$ (Poczos 2012/2013; Muandet 2012/2013; Szabo 2016; Oliva 2013). Core idea: lift each set to a distribution embedding and run kernel regression/classification. Gap: the $N\times N$ Gram matrix and its inversion cost $O(N^2)$–$O(N^3)$, prohibitive beyond $\sim\!16{,}000$ sets; the kernel is fixed in advance rather than learned end-to-end with the task.
+**Distribution / set kernels (support distribution machines).** To predict from a set treated as an i.i.d. sample from a distribution $p$, one builds $f(p)=\sum_i\alpha_i y_i K(p_i,p)+b$ with a kernel between distributions estimated from samples, $\hat K(p,q)=\frac{1}{MM'}\sum_{i,j}k(x_i,y_j)$ (Poczos 2012/2013; Muandet 2012/2013; Szabo 2016; Oliva 2013). Core idea: lift each set to a distribution embedding and run kernel regression/classification with an $N\times N$ Gram matrix.
 
-**Sequence models on an imposed order (LSTM/GRU; "order matters").** Feed the set elements one at a time to a recurrent network and read the final state. Vinyals (2015) explicitly searches for a "good" ordering to feed the set, conceding that recurrent readers are order-sensitive. Gap: not invariant by construction (different orders give different outputs), and the learned dependence on position generalizes poorly to set sizes unseen in training.
+**Sequence models on an imposed order (LSTM/GRU; "order matters").** Feed the set elements one at a time to a recurrent network and read the final state. Vinyals (2015) searches for a "good" ordering in which to feed the set.
 
-**Voxel / multi-view pipelines for 3D shapes.** Convert an unordered point cloud into a voxel grid or a stack of rendered 2D views, then apply a 3D or 2D CNN (3DShapeNets, VoxNet, MVCNN, VRN). Core idea: re-impose a regular grid so standard convolution applies. Gap: voxelization is lossy and memory-heavy ($O(\text{res}^3)$), discards the native point representation, and bakes in a particular discretization rather than operating on the set of points directly.
+**Voxel / multi-view pipelines for 3D shapes.** Convert an unordered point cloud into a voxel grid or a stack of rendered 2D views, then apply a 3D or 2D CNN (3DShapeNets, VoxNet, MVCNN, VRN). Core idea: re-impose a regular grid so standard convolution applies.
 
-**Bayesian sets / exchangeable generative models.** Score a candidate set by an exchangeable likelihood (de Finetti, exponential-family conjugate form). Core idea: high score for "coherent" sets, used for set expansion. Gap: tied to a hand-chosen likelihood family and its sufficient statistics; the per-element feature $\phi$ is fixed by the family, not learned.
+**Bayesian sets / exchangeable generative models.** Score a candidate set by an exchangeable likelihood (de Finetti, exponential-family conjugate form). Core idea: high score for "coherent" sets, used for set expansion, with the per-element feature $\phi$ fixed by the chosen likelihood family.
 
 # Evaluation settings
 

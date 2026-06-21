@@ -5,21 +5,21 @@ A pretrained LLaMA / Llama-2 model (7B–70B) is already trained and fixed. The 
 At most we have a small calibration set (a few hundred sequences) and a few hours of single-GPU compute to fit quantization parameters. The useful regimes split into two axes:
 
 - **Weight-only quantization (WxA16).** Weights are quantized to 3–4 bits while activations stay in FP16. This cuts memory footprint and speeds up batch-1 generation, which is memory-bandwidth-bound.
-- **Weight-and-activation quantization (WxAx).** Both operands are quantized so matmuls run on integer tensor cores. This speeds up compute-bound large-batch serving, but activations carry persistent outliers that weight-only methods never face.
+- **Weight-and-activation quantization (WxAx).** Both operands are quantized so matmuls run on integer tensor cores. This speeds up compute-bound large-batch serving.
 
 ## Prior art / Background / Baselines
 
-The simplest baseline and the starting point is **round-to-nearest (RTN)**: pick a per-channel or per-group scale from the maximum magnitude, divide, round, clamp. It is free and works well at 8 bits, but its low-bit quality is poor. The methods currently known try to close different parts of that gap.
+The simplest baseline and the starting point is **round-to-nearest (RTN)**: pick a per-channel or per-group scale from the maximum magnitude, divide, round, clamp. Several methods build from or around this foundation.
 
-- **Round-to-nearest (RTN).** Maps each tensor to a uniform symmetric grid using a scale from the maximum absolute value. Gap: at 3-bit per-channel on LLaMA-7B, WikiText-2 perplexity jumps to **25.54** versus an FP16 reference of **5.68**; on Llama-2-7B W4A4 it produces perplexity on the order of **2×10³**, effectively broken.
+- **Round-to-nearest (RTN).** Maps each tensor to a uniform symmetric grid using a scale from the maximum absolute value. At 8 bits, performance is strong. At lower bits, per-channel granularity uses one scale per output channel, while group-wise (g128) granularity applies one scale per contiguous block of 128 weights for finer resolution. On LLaMA-7B 3-bit per-channel, WikiText-2 perplexity is **25.54** versus an FP16 reference of **5.68**; on Llama-2-7B W4A4 perplexity is on the order of **2×10³**.
 
-- **GPTQ.** Accumulates the layer input second-moment matrix during calibration and quantizes columns one at a time, feeding the rounding residual forward through the inverse Hessian. Gap: on LLaMA-7B 3-bit per-channel it reports perplexity **8.07**, still well above FP16 **5.68**, and it is restricted to weight-only quantization.
+- **GPTQ.** Accumulates the layer input second-moment matrix during calibration and quantizes columns one at a time, feeding the rounding residual forward through the inverse Hessian. On LLaMA-7B 3-bit per-channel it reports perplexity **8.07**; FP16 reference is **5.68**.
 
-- **AWQ.** Identifies salient weight channels by activation magnitude, scales them up before rounding, and searches the scaling factor against layer output error. Gap: on Llama-2-7B INT3-g128 it reports perplexity **6.24** versus RTN-g128 **6.66** and FP16 **~5.47**, and it does not handle activation quantization.
+- **AWQ.** Identifies salient weight channels by activation magnitude, scales them up before rounding, and searches the scaling factor against layer output error. On Llama-2-7B INT3-g128 it reports perplexity **6.24** versus RTN-g128 **6.66** and FP16 **~5.47**.
 
-- **SmoothQuant.** Migrates activation outliers into the weight matrix offline with a per-channel equivalence transform so that W8A8 quantization survives. Gap: on OPT-175B W8A8 it restores zero-shot average to **66.8%**, close to FP16 **66.9%**, but at W4A4 the same approach reports perplexity **83.12** on Llama-2-7B.
+- **SmoothQuant.** Migrates activation outliers into the weight matrix offline with a per-channel equivalence transform so that W8A8 quantization survives. On OPT-175B W8A8 it achieves zero-shot average **66.8%**, close to FP16 **66.9%**; on Llama-2-7B W4A4 it reports perplexity **83.12**.
 
-- **QuaRot.** Applies computationally invariant rotations to spread activation outliers before quantizing weights, activations, and KV cache to 4 bits. Gap: on Llama-2-7B W4A4KV4 it reports perplexity **6.10** versus FP16 **5.47**, and the gap persists at 13B (**5.40** vs **4.88**) and 70B (**3.79** vs **3.32**).
+- **QuaRot.** Applies computationally invariant rotations to spread activation outliers before quantizing weights, activations, and KV cache to 4 bits. On Llama-2-7B W4A4KV4 it reports perplexity **6.10** versus FP16 **5.47**, with similar reported gaps at 13B (**5.40** vs **4.88**) and 70B (**3.79** vs **3.32**).
 
 ## Fixed substrate / Code framework
 

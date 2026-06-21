@@ -4,12 +4,10 @@ In a GPT-style language model, every transformer block alternates two sublayers:
 
 ## Prior art / Background / Baselines
 
-- **ReLU FFN.** `max(0, xW1)W2`, two matrices, `d_ff ≈ 4d`. Core idea: pass the input through one linear projection and a hard on/off threshold. Gap: the only input-dependence is the single projection `xW1`, and the gate is hard, zero-valued and zero-gradient on the whole negative half-line.
-- **GELU.** `GELU(z) = z·Φ(z)`, Φ the standard-normal CDF — a smooth, stochastic-step relaxation of ReLU. This is the **default** activation in the scaffold's MLP. Gap: smoother than ReLU, but structurally identical — one projection followed by one fixed pointwise map.
-- **Swish / SiLU.** `Swish_β(z) = z·σ(βz)`, found by an automated activation search whose winners all had the form `z · g(z)`. Gap: same two-matrix shape as ReLU and GELU; still one projection through one fixed pointwise function.
-- **Multiplicative / gating models.** A separate line couples two learned linear views of the input multiplicatively rather than passing one through a fixed map (e.g. log-bilinear models, gated convolutional language models). Core idea: a product of two linear maps of `x` can express interactions a single-projection-then-pointwise map cannot. Gap: this shape has not been adopted inside the transformer FFN, where every activation above is still `f(one linear map of x)`.
-
-Across all of these the hidden activation at each unit is `f(one linear map of x)`.
+- **ReLU FFN.** `max(0, xW1)W2`, two matrices, `d_ff ≈ 4d`. Pass the input through one linear projection and a hard on/off threshold.
+- **GELU.** `GELU(z) = z·Φ(z)`, Φ the standard-normal CDF — a smooth, stochastic-step relaxation of ReLU. This is the **default** activation in the scaffold's MLP.
+- **Swish / SiLU.** `Swish_β(z) = z·σ(βz)`, found by an automated activation search whose winners all had the form `z · g(z)`.
+- **Multiplicative / gating models.** A separate line in the literature couples two learned linear views of the input multiplicatively (e.g. log-bilinear language models, gated convolutional language models).
 
 ## Fixed substrate / Code framework
 
@@ -19,7 +17,7 @@ A nanoGPT-style GPT-2 Medium pretraining loop is frozen and must not be touched:
 
 Exactly two regions of `nanoGPT/custom_pretrain.py` are editable, and every method on the ladder is a fill of the same contract:
 
-1. The **`MLP` class** (the only architectural slot): it must accept `(B, T, n_embd)` and return the same shape, depend on nothing outside the FFN, and — when its shape differs from the default two-matrix `4d` FFN — keep parameters and FLOPs matched by re-sizing the hidden width (the common convention for a 3-matrix gated FFN is `hidden = 8/3 · n_embd`, rounded to a multiple of 64).
+1. The **`MLP` class** (the only architectural slot): it must accept `(B, T, n_embd)` and return the same shape, depend on nothing outside the FFN, and — when its shape differs from the default two-matrix `4d` FFN — keep parameters and FLOPs matched by re-sizing the hidden width accordingly (rounded to a multiple of 64 for matmul-friendly shapes).
 2. A **`CONFIG_OVERRIDES` dict** that may override training hyperparameters from a fixed whitelist (`learning_rate`, `weight_decay`, `warmup_iters`, `min_lr`, `grad_clip`). The baselines leave it empty; they change only the MLP.
 
 The starting point is the scaffold default — the standard two-layer GELU MLP at 4× expansion. Each method replaces exactly the `MLP` class (and, if it chooses, `CONFIG_OVERRIDES`) and nothing else.

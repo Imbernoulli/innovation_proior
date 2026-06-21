@@ -14,9 +14,7 @@ The architectural knob most implicated in this behavior is how the model represe
 order**. Self-attention is a set operation; absent some position signal it cannot tell `a b`
 from `b a`. The precise question is: *what way of injecting (or not injecting) position
 information lets a small causal Transformer extrapolate to lengths it never saw during
-training?* A good answer has to fit the training lengths (everyone does that) and, crucially,
-keep working when the sequence is longer than anything in training — without retraining and,
-ideally, without paying extra compute in the attention.
+training?*
 
 ## Background
 
@@ -31,29 +29,22 @@ The load-bearing prior facts:
   non-parametric vector
   `p_j = [sin(ω_1 j), cos(ω_1 j), …, sin(ω_{d/2} j), cos(ω_{d/2} j)]` with
   `ω_i = 1/10000^{2i/d}`, added to the word embedding before layer 1. Because it is a closed
-  form it is defined at any index, but it has been observed to extrapolate poorly on
-  structured downstream tasks (Ontañón et al. 2022).
-- **Learned absolute PE (used in GPT-3, OPT).** A trainable embedding per position. It has
-  no value at positions never seen in training, so the context window is effectively capped —
-  it cannot even produce a representation for an unseen length.
+  form it is defined at any index.
+- **Learned absolute PE (used in GPT-3, OPT).** A trainable embedding per position.
 - **T5 relative bias (Raffel et al. 2020).** Add a learned scalar `b_{bucket(t−i)}` to the
   query–key score `q_t^T k_i`. Distances are mapped through a logarithmic bucketing function
   that lumps all large distances into one bucket (in T5, 32 buckets, max distance 128), so
-  unseen distances reuse a learned parameter. This is widely regarded as the strongest PE for
-  length generalization, but it adds a learned bias term to every attention score; Press et
-  al. (2022) report this can roughly double training/inference time relative to absolute PE.
+  unseen distances reuse a learned parameter.
 - **Rotary PE (Su et al. 2021), used in PaLM and LLaMA.** Rotate `q_t` and `k_i` by an angle
   proportional to their absolute positions; because `(R^{tθ})^T R^{iθ} = R^{(i−t)θ}`, the
   dot product depends only on the relative offset `i − t`. It is usually classed as relative.
 - **ALiBi (Press et al. 2022), used in BLOOM.** Subtract a distance-proportional penalty from
   the score: `q_t^T k_i - (t-i) m_h`; for a power-of-two head count `n`,
   `m_h = start^(h+1)` with `start = 2^(-2^(-(log2(n)-3)))`, so for 8 heads the slopes are
-  `1/2, 1/2^2, ..., 1/2^8`. The linear penalty creates a strong
-  preference for nearby tokens (recency bias). It was introduced to make language-model
-  perplexity extrapolate to longer inputs.
+  `1/2, 1/2^2, ..., 1/2^8`. The linear penalty creates a recency bias. It was introduced to
+  make language-model perplexity extrapolate to longer inputs.
 
-Two diagnostic facts about *existing* systems set up the problem and are knowable before any
-new method:
+Two diagnostic facts about *existing* systems are knowable before any new method:
 
 - **Self-attention's order-sensitivity depends on masking (Tsai et al. 2019).** Viewing
   attention through a kernel lens, an *encoder* (bidirectional) self-attention layer with no
@@ -65,10 +56,7 @@ new method:
   all yields perplexity competitive with sinusoidal, learned, and ALiBi models across
   datasets, sizes, and lengths. Probing those models recovers an implicit notion of *absolute*
   position spread through the network; Haviv et al. conjecture the causal mask lets each token
-  infer *how many predecessors* it has, thereby approximating its absolute index. This is a
-  measured phenomenon, but only about in-distribution language-model perplexity — whether it
-  helps on *length generalization* of downstream algorithmic tasks, and *how* the position is
-  represented, is left open.
+  infer *how many predecessors* it has, thereby approximating its absolute index.
 - **In-distribution perplexity does not distinguish PEs and does not transfer.** At training
   length, the different PEs (and the no-PE model) reach very similar perplexity / near-perfect
   accuracy, so an IID metric cannot separate them (Haviv et al. 2022; Scao et al. 2022); and
@@ -84,34 +72,18 @@ it possible to exhibit an explicit weight setting rather than argue abstractly.
 
 - **Recurrent attention seq2seq (Bahdanau, Cho & Bengio 2015).** An encoder–decoder LSTM
   with a learned attention over encoder states. Order is handled by recurrence, so there is
-  no PE question. Its weakness for these tasks is the fixed-size recurrent state: copying or
-  reversing a long string forces every input symbol through a bounded hidden vector, which
-  becomes the bottleneck as length grows.
+  no PE question.
 
 - **Decoder-only Transformer with sinusoidal absolute PE (Vaswani et al. 2017).** Add the
   fixed `p_j` vectors to the embeddings; attention is plain `q_t^T k_i`. Closed-form so it is
-  defined at any length, but the periodic absolute code seen only up to `L` does not place
-  longer-position vectors where the trained attention expects them: the model latches onto
-  absolute indices it saw and degrades on unseen ones.
+  defined at any length.
 
 - **Decoder-only Transformer with ALiBi (Press et al. 2022).** Score `q_t^T k_i − (t−i)·m_h`
-  with fixed geometric per-head slopes. The linear recency penalty extends to any distance, so
-  it extrapolates language-model perplexity; but the same penalty hard-codes a preference for
-  nearby tokens, and on tasks whose dependencies are not purely local the recency prior is the
-  wrong shape — it cannot freely attend to a far token (e.g. the start of the input while
-  emitting the end of the output).
+  with fixed geometric per-head slopes. The linear recency penalty extends to any distance.
 
-- **Decoder-only Transformer with T5 relative bias (Raffel et al. 2020).** The bucketed
-  learned bias is the strongest of the explicit schemes at extrapolation because the bucketing
-  ties together unseen large distances. Its limitations are cost (an extra learned bias added
-  to every attention score, materially slowing training and inference) and that it still bakes
-  a *fixed, hand-designed* distance parameterization (the bucketing) into the architecture.
-
-Across these, the explicit-PE baselines share a structural property: they *prescribe* how
-position enters attention. Each prescription is a fixed inductive bias — a periodic absolute
-code, a linear recency slope, a log-bucketed distance table — chosen before training. Where
-the prescribed bias matches the task it helps; where it does not, it caps how the model can
-use position at lengths it never saw.
+- **Decoder-only Transformer with T5 relative bias (Raffel et al. 2020).** A bucketed
+  learned bias is added to every attention score, tying together large distances via the
+  bucketing scheme.
 
 ## Evaluation settings
 

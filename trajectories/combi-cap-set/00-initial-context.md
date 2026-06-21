@@ -12,9 +12,9 @@ The values through `n = 7` are proven optima. At `n = 8` the best known construc
 
 ## Prior art / Background / Baselines
 
-- **Affine and product constructions.** Small caps lift to larger ones by taking products and unions across coordinates, giving many of the classical lower bounds. *Gap:* they require a separate algebraic construction for each `n` and stall far below the upper-bound constant; the exact optima at `n ≤ 7` reflect exhaustive or dedicated computer search, not a closed form.
-- **Croot–Lev–Pach / Ellenberg–Gijswijt cap-set theorem.** The polynomial method proves `|cap| ≤ O(2.756^n)`. *Gap:* it bounds how large a cap can be but constructs nothing; matching lower-bound constructions at finite `n` remain the open, search-driven side.
-- **Greedy and priority-based search.** Order the `3^n` vectors by some priority and add each one greedily if it does not close a line; the order can be fixed, random, or symmetric. *Gap:* hand-designed priorities plateau below the known optima, and finding an order that reaches the strong constructions is the central difficulty.
+- **Affine and product constructions.** Small caps lift to larger ones by taking products and unions across coordinates, giving many of the classical lower bounds. The exact optima at `n ≤ 7` reflect exhaustive or dedicated computer search.
+- **Croot–Lev–Pach / Ellenberg–Gijswijt cap-set theorem.** The polynomial method proves `|cap| ≤ O(2.756^n)`.
+- **Greedy and priority-based search.** Order the `3^n` vectors by some priority and add each one greedily if it does not close a line; the order can be fixed, random, or symmetric.
 
 ## Fixed substrate / Code framework
 

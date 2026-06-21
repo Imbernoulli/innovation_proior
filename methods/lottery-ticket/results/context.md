@@ -2,7 +2,7 @@
 
 Modern neural networks are routinely larger than the functions they ultimately need. Post-training pruning shows this directly: after dense training has succeeded, one can remove most of the weights and recover essentially the same accuracy after additional tuning. That makes inference cheaper, and sometimes the smaller model generalizes better.
 
-The unresolved training question is sharper than ordinary compression. If the final function can be represented by a much smaller parameter set, why did training require the larger model in the first place? A sparse model that exists only after the dense model has already solved the task does not save the cost of finding it.
+The open question is whether a sparse subnetwork of comparable size can be trained from scratch—without first training the dense model—to match the dense model's accuracy and training speed.
 
 ## Background
 
@@ -14,7 +14,7 @@ Initialization is also part of the training problem, not just a bookkeeping deta
 
 The main compression baseline is train-prune-fine-tune. It demonstrates that a sparse endpoint can represent the learned function, but it starts the sparse model from values already shaped by dense training.
 
-A second baseline keeps the sparse pattern but draws fresh random weights before training. When this learns more slowly or reaches lower accuracy, the failure is ambiguous: the pattern may lack capacity, the optimizer may struggle on that pattern, or the successful fine-tuning run may have depended on weight values inherited from dense training.
+A second baseline keeps the sparse pattern but draws fresh random weights before training. It tests whether the mask structure alone, without any information from the dense training run, is sufficient.
 
 Random sparse subnetworks of comparable size are another baseline. They test whether sparsity at the same parameter count is enough, without using a mask selected by a trained dense model.
 
@@ -49,7 +49,6 @@ def search_sparse_candidate(train_fn, prune_per_layer, rounds):
 
     for _ in range(rounds):
         masks = prune_by_percent(prune_per_layer, masks, final)
-        # TODO: choose which presets should be used under the updated mask.
         presets = choose_presets(initial, final, masks)
         _, final = train_fn(presets=presets, masks=masks)
 

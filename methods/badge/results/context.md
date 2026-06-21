@@ -9,38 +9,30 @@ retrains the model on the enlarged labeled set and repeats. The goal is to reach
 accuracy with as few total labels as possible — to spend the label budget on the examples
 that teach the model the most.
 
-The precise difficulty is the *batch*. Classical active-learning theory selects one point at
-a time, refitting after each label. For deep nets that is doubly impossible: a single example
-has negligible effect on a network with millions of parameters, and retraining a deep net to
-convergence after every single query is computationally intractable. So labels must be
-acquired `B` at a time. But a batch acquired by scoring each example *independently*
-introduces a new failure that the one-at-a-time setting never had — the `B` points can be
-redundant with each other, all carrying the same information, so the batch teaches the model
-far less than `B` independent labels should.
+The setting is the *batch*. Classical active-learning theory selects one point at a time,
+refitting after each label. For deep nets, labels are instead acquired `B` at a time: a single
+example has negligible effect on a network with millions of parameters, and retraining a deep
+net to convergence after every single query is computationally heavy.
 
-There is a second, sharper constraint that is special to active learning and easy to miss. In
-ordinary supervised learning you tune hyperparameters on a validation set for free. In active
-learning, *every* change of a hyperparameter generally causes the algorithm to query a
-*different* set of examples, and you have to pay for those labels. A hyperparameter sweep is
-therefore a label-budget sweep — ruinously expensive. So a deployable batch acquisition rule
-must "just work" at fixed hyperparameters, to a degree supervised learning never demands.
+A second constraint is special to active learning. In ordinary supervised learning one tunes
+hyperparameters on a validation set for free. In active learning, every change of a
+hyperparameter generally causes the algorithm to query a *different* set of examples, whose
+labels must be paid for. A hyperparameter sweep is therefore a label-budget sweep.
 
-What a solution would have to achieve: a single batch-selection rule that is robust across
-network architecture (a small MLP, a deep ResNet, a VGG), across batch size (from a hundred
-to tens of thousands), and across dataset, **without** any hyperparameter that has to be
-re-tuned per setting — because tuning it would itself cost labels.
+The broad question is how to design a single batch-selection rule that operates across network
+architecture (a small MLP, a deep ResNet, a VGG), across batch size (from a hundred to tens of
+thousands), and across dataset, at fixed hyperparameters.
 
 ## Background
 
-The field at this point has split active learning into two broad strategies, and the central
-pre-method fact is that *each works only in part of the space*.
+The field at this point has split active learning into two broad strategies.
 
 **Uncertainty sampling.** Query the examples the current model is least sure about, on the
 intuition that confidently-classified points teach nothing new. With a `K`-class softmax model
 producing class probabilities `p = f(x; theta)`, the standard per-example scores are:
 least-confidence `1 - max_i p_i`; margin `p_(1) - p_(2)` (gap between the top two class
 probabilities, smaller = more uncertain); and entropy `H(p) = -sum_i p_i log p_i` (larger =
-more uncertain). These are cheap and often strong with linear models and at small batch.
+more uncertain). These are cheap, and strong with linear models and at small batch.
 
 **Representative / diversity sampling.** Pick a batch that *covers* the unlabeled
 distribution, so that fitting the model on the batch is a good surrogate for fitting it on the
@@ -48,23 +40,13 @@ whole pool, independent of any label. Concretely this is done in the network's
 *penultimate-layer* feature space — the `d`-dimensional representation `z(x)` just before the
 final linear classifier — selecting a geometrically spread-out set of `z`'s.
 
-The design pressure is that these two families are complementary and fragile. Uncertainty
-methods have no within-batch interaction, so their failure should worsen as the batch grows:
-they can spend the budget on many versions of the same ambiguous point. Diversity /
-representative methods have the opposite blind spot: they can cover the pool while ignoring
-whether the covered points would actually change the classifier, and their success depends on
-the penultimate representation already being meaningful. Which regime you are in is itself a
-function of the data statistics and the architecture, so a practitioner has no reliable way to
-pick the right family in advance. Worse, deep-net softmax outputs are known to be
-overconfident and poorly calibrated, which undermines uncertainty scores directly.
-
-Two further pre-method facts about *how* deep nets learn frame the design space. First, deep
-nets are trained by gradient descent, so the natural currency of "how much will this example
-change the model" is the *gradient of the loss* the example induces — a large induced gradient
-means a large parameter update. Second, for a softmax network with cross-entropy loss there is
-a clean closed form for the last-layer gradient, which makes the last layer a cheap and
-analytically convenient place to measure that induced change (the full-parameter gradient is
-enormous; the last-layer gradient is not).
+Two pre-method facts about *how* deep nets learn are part of the design space. First, deep nets
+are trained by gradient descent, so the natural currency of "how much will this example change
+the model" is the *gradient of the loss* the example induces — a large induced gradient means a
+large parameter update. Second, for a softmax network with cross-entropy loss there is a clean
+closed form for the last-layer gradient, which makes the last layer a cheap and analytically
+convenient place to measure that induced change (the full-parameter gradient is enormous; the
+last-layer gradient is not).
 
 ## Baselines
 
@@ -73,12 +55,8 @@ These are the prior methods a new batch rule would be measured against and would
 **Least-confidence / margin / entropy uncertainty sampling** (Lewis & Gale 1994; Tong & Koller
 2001; Roth & Small 2006 for margin; Wang & Shang 2014). Score every pool example by a
 predictive-uncertainty functional of `p = f(x; theta)` and take the top `B`. Core idea: the
-model learns most from points near its decision boundary. **Limitation:** the score is a
-function of one example in isolation, with no term coupling the chosen points to each other, so
-in a batch it repeatedly selects examples from the *same* uncertain region — a cluster of
-near-identical points where a single label would have resolved the model's uncertainty about
-all of them. The redundancy grows with batch size, so the method's edge erodes as `B` grows,
-and overconfident deep-net probabilities make the raw scores unreliable.
+model learns most from points near its decision boundary. The score is a function of one example
+in isolation, with no term coupling the chosen points to each other.
 
 **Core-Set / representative sampling** (Sener & Savarese 2018). Frame active learning as
 *core-set selection*: choose a labeled subset such that a model trained on it is competitive
@@ -87,30 +65,20 @@ model by (training error) + (generalization error) + a *core-set loss* — the g
 average loss over the full pool and over the selected subset — and show that minimizing the
 core-set loss reduces to the `k`-Center objective: pick `B` centers minimizing the largest
 distance from any pool point to its nearest center, in penultimate-layer feature space. They
-solve it with a greedy furthest-first traversal. **Limitation:** the criterion is purely
-geometric in the representation — it has no notion of model uncertainty or label
-informativeness, so it can spend the budget covering regions the model already classifies
-correctly. It hinges entirely on the penultimate representation being meaningful; when it is
-not (hard data, weak architecture), the chosen "representative" batch is no better, and can be
-worse, than uniform random. Effectiveness also decays as the number of classes and the feature
-dimension grow.
+solve it with a greedy furthest-first traversal. The criterion is purely geometric in the
+representation.
 
 **Expected gradient length (EGL)** (Settles, Craven & Ray 2008; Huang et al. 2016; Zhang et al.
 2017). Score an example by the expected magnitude of the gradient it would induce, averaging
 over the unknown label under the model's own predictive distribution:
 `EGL(x) = sum_y p(y | x) * || grad_theta L(x, y; theta) ||`. A large expected gradient means a
-large expected model update, hence an informative example. **Limitation:** it is still a
-per-example score with no batch-diversity term, so it inherits the duplicate-batch pathology;
-it averages a gradient over all `K` candidate labels (more computation), and empirical studies
-report it selects quite different points than entropy without a principled way to also enforce
-diversity within a batch.
+large expected model update, hence an informative example. It is a per-example score, averaging
+a gradient over all `K` candidate labels.
 
 **Active Learning by Learning (ALBL)** (Hsu & Lin 2015). A bandit-style meta-strategy that, at
 each round, chooses *which* of several base acquisition rules (e.g. a representative one and an
-uncertainty one) to run, treating the choice as a sequential decision problem. **Limitation:**
-it can only pick among the base rules it is given — it does not build a single criterion that
-captures both properties at once, and it inherits whatever weakness the active base rule has in
-the current regime.
+uncertainty one) to run, treating the choice as a sequential decision problem. It picks among
+the base rules it is given.
 
 **Determinantal point processes (`k`-DPP)** (Kulesza & Taskar 2011; survey 2012). A
 probabilistic model over *sets*: draw a size-`k` subset `Y` with probability proportional to
@@ -119,10 +87,9 @@ Gram matrix equals the squared product of the vectors' lengths times the squared
 span, so it is large exactly when the chosen vectors are both *long* (high quality) and
 *mutually near-orthogonal* (diverse) — a single object that rewards quality and diversity
 together, with no tradeoff coefficient. As the batch size shrinks, length dominates; as it
-grows, the volume (linear-independence) term dominates. **Limitation:** sampling from a `k`-DPP
-is computationally heavy — exact samplers are high-order polynomial in the batch size and
-feature dimension, and MCMC samplers face slow mixing — so it does not scale to large pools and
-large batches (it runs out of memory at the largest batch sizes of interest).
+grows, the volume (linear-independence) term dominates. Sampling from a `k`-DPP uses exact
+samplers that are high-order polynomial in the batch size and feature dimension, or MCMC
+samplers.
 
 **`k`-means++ seeding** (Arthur & Vassilvitskii 2007). Not an active-learning method but a
 classic seeding primitive: to initialize `k`-means, pick the first center uniformly at random,
@@ -130,8 +97,8 @@ then iteratively sample each next center from the ground set with probability pr
 its *squared distance to the nearest already-chosen center* (`D^2` weighting). It comes with a
 guarantee that the resulting potential is within `8(ln k + 2)` of optimal in expectation. The
 `D^2` rule pulls new centers toward points that are far from those already picked, i.e. it
-produces a spread-out, diverse set of seeds, and it does so cheaply (a few passes over the
-data, no matrix algebra) and with no tunable knob.
+produces a spread-out set of seeds, in a few passes over the data with no matrix algebra and no
+tunable knob.
 
 ## Evaluation settings
 

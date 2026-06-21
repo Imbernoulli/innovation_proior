@@ -2,7 +2,7 @@
 
 A study observes units that receive one of two treatment conditions, call them `E` and `C`, and then records an outcome `Y`. The scientific question is not just whether the observed `E` group has a different average outcome from the observed `C` group. The question is what it would mean for `E` rather than `C` to cause a different outcome for the same kind of unit at a specified time.
 
-The hard part is that the study design exposes each unit to one treatment condition, not both. A useful causal framework must therefore say what the causal contrast is before the data analysis begins, what part of that contrast is missing after treatment assignment, and what kind of assignment or control argument makes an observed comparison informative.
+The study design exposes each unit to one treatment condition, not both. How should a causal framework define the treatment contrast, account for what is unobserved after treatment assignment, and characterize what kind of assignment process makes an observed comparison informative?
 
 ## Background
 
@@ -14,15 +14,15 @@ Observational studies create the same conceptual need with less protection. Trea
 
 ## Baselines
 
-- **Raw observed difference.** Compare the mean observed outcome among units assigned `E` with the mean observed outcome among units assigned `C`. This is easy to compute, but by itself it does not say whether treatment or preexisting differences produced the contrast.
+- **Raw observed difference.** Compare the mean observed outcome among units assigned `E` with the mean observed outcome among units assigned `C`. This is easy to compute.
 
-- **Before-after comparison.** Compare the same unit before and after treatment. This keeps the unit fixed, but time, maturation, and other events can change the outcome, so the earlier measurement is not automatically the untreated outcome at the later time.
+- **Before-after comparison.** Compare the same unit before and after treatment. This keeps the unit fixed across measurements.
 
-- **Perfect matching.** Pair units so closely that either member would respond the same way under either treatment. This would make the pair contrast compelling, but exact equality is rarely defensible outside tightly controlled physical settings.
+- **Perfect matching.** Pair units so closely that either member would respond the same way under either treatment. This approach is most compelling in tightly controlled physical settings.
 
-- **Regression adjustment.** Fit a model using treatment labels and prior variables. This can be a useful estimator, but the model has to be attached to a prior causal argument; otherwise it can adjust for irrelevant variables, post-treatment variables, or variables selected after seeing the result.
+- **Regression adjustment.** Fit a model using treatment labels and prior variables as predictors of the outcome.
 
-- **Randomized assignment.** Assign treatments by a known random device. This protects against systematic assignment bias over the randomization set and gives exact reference distributions, but it still leaves the unit-level alternative treatment outcome unobserved.
+- **Randomized assignment.** Assign treatments by a known random device. This protects against systematic assignment bias over the randomization set and gives exact reference distributions.
 
 ## Evaluation Settings
 
@@ -41,8 +41,6 @@ The artifact is a statistical scaffold, not a software implementation. The avail
 The framework must provide:
 
 1. A treatment definition with mutually exclusive conditions and a specified initiation time.
-2. A way to name the two treatment-specific outcome values attached to each trial.
-3. A rule saying which one of those values becomes observed.
-4. A finite-study and, when needed, population-level causal estimand.
-5. An assignment-mechanism statement: randomized, randomized within blocks, or nonrandomized but defended by matching and prior-variable control.
-6. A rule that keeps estimand, assignment assumption, and estimator separate.
+2. A finite-study causal estimand and, when needed, a population-level analogue.
+3. An assignment-mechanism statement: randomized, randomized within blocks, or nonrandomized but defended by matching and prior-variable control.
+4. A rule that keeps estimand, assignment assumption, and estimator separate.

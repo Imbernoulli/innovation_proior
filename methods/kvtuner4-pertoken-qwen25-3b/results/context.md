@@ -8,20 +8,11 @@ The cache size grows linearly with batch size and sequence length, so in long
 context and large-batch serving the KV cache — not the model weights — becomes the
 memory and bandwidth bottleneck: at every decode step the GPU must stream the whole
 cache from main memory to SRAM while the compute units sit nearly idle. Quantizing
-the cache to low bit-width is the most deployable way to shrink it, but the precise
-problem is sharper than "compress the cache." Round-to-nearest INT8 KV quantization
-is essentially lossless; INT4 is usually fine; but at INT2 — and, on some models,
-already at INT4 *key* quantization — accuracy collapses. The goal is a KV-cache
-quantizer that pushes the *effective* bit-width well below 4 while staying nearly
-lossless on hard generation tasks (multi-step math, long-context retrieval, code),
-and that does so in a way an existing inference stack can actually run: it must be
-hardware-friendly (no per-token or per-head precision differences inside a layer
-that break FlashAttention / vLLM paged caches), must add no online control-flow
-overhead at decode time, and must adapt to the fact that different models — and
-different layers within a model — tolerate quantization very differently. A method
-that achieves the average bit-width budget on paper but corrupts a few critical
-attention computations, or that needs an online critical-token search at every
-step, does not solve the problem.
+the cache to low bit-width is the most deployable way to shrink it. Round-to-nearest
+INT8 KV quantization is essentially lossless; INT4 is usually fine; but at INT2 —
+and, on some models, already at INT4 *key* quantization — accuracy collapses. The
+question is how to push the *effective* bit-width well below 4 while keeping
+accuracy on hard generation tasks (multi-step math, long-context retrieval, code).
 
 ## Background
 
@@ -105,10 +96,7 @@ key quantization.
 **Uniform low-bit round-to-nearest (per-token-asym / per-channel-asym).** Quantize
 every layer's KV to the same target bit-width with one quantization mode. INT8 is
 near-lossless; INT4 per-token is usually fine; INT2 collapses, and on sensitive
-models INT4 key already collapses. Gap: a single global bit-width ignores that
-layers differ by more than an order of magnitude in sensitivity and that key and
-value differ in importance, so a uniform budget either overpays (8-bit everywhere)
-or breaks the few layers that cannot take the cut.
+models INT4 key already collapses.
 
 **KIVI (Liu et al., ICML 2024).** Tuning-free 2-bit KV quantization that quantizes
 the **key cache per-channel** and the **value cache per-token** with group size
@@ -118,30 +106,19 @@ tokens quantized) and a *residual* part (the most recent `R <= 128` tokens kept 
 fp16); attention is computed as `A = concat(A_grouped from Q(K_g), A_residual from
 fp K_r)`, and a recent token is folded into the quantized block only once the
 residual queue fills. The fp16 sliding window is shown to be crucial on hard tasks
-like GSM8K. Gap: KIVI is **uniform precision across all layers** and assumes the
-static prefix/recent blocks are the important ones — an assumption that fails on the
-non-sparse retrieval heads of sensitive models (where low-precision key quantization
-still shifts the attention distribution), and per-channel key quantization needs
-specially designed GPU operators and careful cache management.
+like GSM8K.
 
 **KVQuant (Hooper et al., NeurIPS 2024).** Per-channel key quantization applied
 *before* RoPE (since the outlier channels are more consistent pre-RoPE), a
 sensitivity-weighted non-uniform datatype (nuqX) derived offline on a calibration
 set, and per-vector dense-and-sparse isolation of ~1% numerical outliers stored in a
 separate sparse representation, reaching ~3-bit with <0.1 perplexity loss via custom
-CUDA kernels. Gap: it targets a single shared precision per tensor rather than
-allocating different bit-widths to different layers by sensitivity, and the
-pre-RoPE/non-uniform/sparse-outlier machinery needs bespoke kernels that are hard to
-fuse with FlashAttention and vLLM paged caches.
+CUDA kernels.
 
 **Online fine-grained mixed precision (QAQ, Dong et al. 2024; MiKV, Yang et al.
 2024; ZipCache, He et al. 2024).** Dynamically identify critical KV entries at decode
 time and keep them at higher precision while quantizing the rest aggressively,
-improving accuracy at a given average budget. Gap: intra-layer per-token (or
-per-page) precision differences cannot be fused with FlashAttention or vLLM paged
-attention, and the online critical-token identification adds control-flow overhead
-that does not fit static-graph acceleration (torch.compile); the extra per-step
-logic erodes the throughput the quantization was meant to buy.
+improving accuracy at a given average budget.
 
 ## Evaluation settings
 

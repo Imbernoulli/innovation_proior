@@ -12,16 +12,9 @@ done in the states the learner itself visits.
 
 The object we actually care about is a **policy**: a mapping from states to
 a distribution over actions that reproduces the expert's behavior, and that
-generalizes to states the learner reaches on its own. The pain point is that the
-two established routes to this goal each pay a heavy, distinct price — one fits
-single-timestep decisions and drifts off the expert's trajectory distribution at
-test time; the other recovers a cost function through an optimization that runs
-reinforcement learning in its inner loop, which is slow and, at the end,
-produces a cost rather than the actions we wanted. A solution would have to
-match what the expert *does* over whole trajectories (no single-step drift)
-while avoiding any nested reinforcement-learning loop, and it would have to scale
-to high-dimensional continuous-control environments with neural-network function
-approximation.
+generalizes to states the learner reaches on its own. The question is how to
+extract such a policy from the demonstrations, in high-dimensional
+continuous-control environments with neural-network function approximation.
 
 ## Background
 
@@ -55,35 +48,28 @@ its convex conjugate is $f^*(x)=\sup_y x^\top y - f(y)$. For a convex-concave
 saddle function on convex sets, minimax duality lets the inner $\min$ and outer
 $\max$ be exchanged (Millar 1983; Boyd & Vandenberghe 2004).
 
-**The motivating diagnostic about single-step fitting.** It is known (Ross &
-Bagnell 2010; Ross, Gordon & Bagnell 2011) that fitting a policy to expert
-decisions one timestep at a time suffers *compounding error from covariate
-shift*: a classifier trained on the expert's state distribution makes small
-mistakes that move the agent into states the expert never visited; off that
-distribution the errors grow, and the per-step error rate $\varepsilon$ inflates
-into a regret that grows quadratically in the horizon. Methods that instead score
-*whole trajectories* do not have this failure mode, which is the standard
-explanation for why cost-function-based imitation has succeeded on problems from
-taxi-route prediction (Ziebart et al. 2008) to quadruped footstep planning
-(Ratliff et al. 2009).
+**Single-step fitting under covariate shift.** Ross & Bagnell (2010) and Ross,
+Gordon & Bagnell (2011) analyze fitting a policy to expert decisions one timestep
+at a time: a classifier trained on the expert's state distribution that makes a
+per-step error at rate $\varepsilon$ incurs a regret that grows quadratically in
+the horizon, since errors move the agent into states off the expert's
+distribution. Cost-function-based imitation, which scores *whole trajectories*,
+has been applied to problems from taxi-route prediction (Ziebart et al. 2008) to
+quadruped footstep planning (Ratliff et al. 2009).
 
 **Generative adversarial networks.** Goodfellow et al. (2014) train a generator
 $G$ against a discriminator $D$ that tries to tell generated samples from real
 data; at the optimum of the inner classification problem the objective equals (up
 to a constant) the Jensen-Shannon divergence between the generated and true data
 distributions, so driving the generator to fool $D$ matches the two
-distributions. This is a tool for matching distributions of samples, originally
-applied to images.
+distributions. The tool was originally applied to images.
 
 ## Baselines
 
 **Behavioral cloning (Pomerleau 1991).** Treat imitation as supervised learning:
 collect the expert's $(s,a)$ pairs and fit $\pi(a\mid s)$ by maximum likelihood
-(or regression for continuous actions). Simple and requires no environment
-interaction. Its gap: it optimizes a single-timestep loss under the *expert's*
-state distribution, so at deployment the inevitable small errors drive the agent
-into unseen states where errors compound — the covariate-shift problem above.
-It tends to need large amounts of data to work.
+(or regression for continuous actions). It optimizes a single-timestep loss under
+the *expert's* state distribution and requires no environment interaction.
 
 **Inverse reinforcement learning, maximum causal entropy form (Russell 1998;
 Ng & Russell 2000; Ziebart et al. 2008, 2010).** Rather than copy actions,
@@ -91,12 +77,11 @@ recover a cost function under which the expert is optimal, from a family
 $\mathcal C$:
 $$\max_{c\in\mathcal C}\Big(\min_{\pi\in\Pi} -H(\pi)+\mathbb E_\pi[c]\Big)-\mathbb E_{\pi_E}[c].$$
 The inner $\min_\pi -H(\pi)+\mathbb E_\pi[c]$ is itself an (entropy-regularized)
-reinforcement-learning problem, $\mathrm{RL}(c)=\arg\min_\pi -H(\pi)+\mathbb E_\pi[c]$.
-Because cost ranks entire trajectories, IRL avoids compounding error. Its gaps:
-(1) it is expensive — every update to the cost requires (approximately) solving
-RL in an inner loop, which is the bottleneck for scaling (Levine & Koltun 2012;
-Finn et al. 2016); and (2) it returns a cost, not actions, so a separate
-planning/RL pass is still needed to obtain a policy.
+reinforcement-learning problem, $\mathrm{RL}(c)=\arg\min_\pi -H(\pi)+\mathbb E_\pi[c]$,
+so each update to the cost requires (approximately) solving RL in an inner loop
+(Levine & Koltun 2012; Finn et al. 2016). The cost ranks entire trajectories, and
+the procedure returns a cost function from which a policy is obtained by a
+separate planning/RL pass.
 
 **Apprenticeship learning over linear cost classes (Abbeel & Ng 2004; Syed &
 Schapire 2007; Syed et al. 2008).** Find a policy that does at least as well as
@@ -109,11 +94,8 @@ simplex class gives the worst-case-feature objective of MWAL/LPAL (Syed &
 Schapire 2007; Syed et al. 2008). Ho et al. (2016) made this scale to large
 continuous-control problems by writing the gradient of the inner-maximized
 objective as a policy gradient with the maximizing cost $c^\*$ and taking a
-trust-region natural-gradient policy step. Its gap: the cost class is a
-low-dimensional linear subspace; unless a cost that truly explains the expert
-lies in $\mathcal C$, "doing at least as well as the expert on all of
-$\mathcal C$" does not pin down the expert's policy, so exact imitation generally
-fails without carefully hand-designed features.
+trust-region natural-gradient policy step. The cost class $\mathcal C$ is a
+low-dimensional linear subspace spanned by hand-designed features.
 
 **Trust region policy optimization (Schulman et al. 2015a).** Not an imitation
 method but the policy optimizer the scalable approaches rely on: a

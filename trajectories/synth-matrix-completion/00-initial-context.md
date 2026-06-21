@@ -15,16 +15,12 @@ entries, and differ in how they reach it.
 
 - **Nuclear-norm convex relaxation.** Replace the rank objective with nuclear-norm minimization
   $\|X\|_* = \sum_i \sigma_i(X)$, a convex surrogate that exactly recovers incoherent rank-$r$ matrices
-  from enough entries. Gap: it is an SDP, and the relaxation stops being tight when the observations
-  are too scarce.
+  from enough entries.
 - **Explicit low-rank factorization.** Write $X = UV^\top$ with a fixed inner dimension $d$ and fit the
-  observed entries by gradient descent or alternating minimization. Gap: it needs the true rank as a
-  hard cap — the wrong $d$ either under-fits or removes the low-rank bias entirely — and the true rank
-  is usually unknown.
+  observed entries by gradient descent or alternating minimization.
 - **Implicit regularization from depth-2 factorization.** Use a full-dimensional factorization with
   small initialization and small-step gradient descent; the dynamics bias the solution toward low rank
-  without an explicit penalty. Gap: this behaves like a nuclear-norm surrogate and fails in the same
-  data-poor regime.
+  without an explicit penalty.
 
 ## Fixed substrate / Code framework
 

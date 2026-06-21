@@ -9,24 +9,13 @@ block two regions are not fixed by anything fundamental: the **normalization rul
 activations are rescaled around each sublayer) and the **block structure** (how the attention
 sublayer, the feed-forward sublayer, the normalization, and the residual connection are wired
 together). The default is LayerNorm with a learned scale and bias, in a pre-normalization
-arrangement: `x + Attn(LN(x))`, then `x + MLP(LN(x))`. That default keeps the gradients
-well-behaved at initialization, which is why it displaced the original post-normalization
-arrangement. But the precise question here is what happens to the *forward* activations as the
-same block is stacked very deep: the residual path of a pre-normalized block is an
-un-normalized identity highway onto which every sublayer adds its raw output, and nothing in the
-block bounds how large the values on that highway can become.
+arrangement: `x + Attn(LN(x))`, then `x + MLP(LN(x))`.
 
-The goal is a block whose normalization and wiring keep deep, large-scale pretraining robust —
-preventing forward-scale overflow without sacrificing final modeling quality — while leaving the
-dataset, tokenizer, optimizer, schedule, and the
-attention and feed-forward computations themselves untouched. Two sub-questions sit underneath.
-First, which part of the standard normalization is actually responsible for its stabilizing
-effect, so the rest can be removed. Second, given that pre-normalization is chosen specifically
-to keep the residual path un-normalized (for the gradient benefit), what controls the *scale*
-of the activations flowing along that un-normalized path as depth grows, and what would have to
-change in the block to keep that scale controlled without giving up the gradient benefit. A good
-answer keeps the well-behaved-at-initialization gradients of pre-normalization while preventing
-the forward activations from growing without bound through depth.
+The question is how the normalization rule and the block wiring interact to determine both
+gradient behavior at initialization and the scale of activations as the same block is stacked
+very deep — and whether those interactions can be understood and improved while leaving the
+dataset, tokenizer, optimizer, schedule, and the attention and feed-forward computations
+themselves untouched.
 
 ## Background
 
@@ -49,15 +38,15 @@ forward scale.** The original transformer placed normalization *after* the resid
 (Post-LN): `x ← LN(x + Sublayer(x))`. Xiong et al. (2020) analyzed both placements at
 initialization with mean-field arguments. For Post-LN, the expected gradient norm of the
 parameters near the output is `O(d√(ln d))`, *independent of depth* `L` — large, which is why
-Post-LN needs a learning-rate warmup stage and is delicate to train. Placing the norm *inside*
+Post-LN needs a learning-rate warmup stage. Placing the norm *inside*
 the residual branch (Pre-LN), `x ← x + Sublayer(LN(x))`, so the residual stream itself is never
 normalized, makes the last-layer gradient `O(d√(ln d / L))` — it shrinks with depth, is
 well-behaved at initialization, and trains stably without warmup. That gradient benefit is the
-reason Pre-LN is the prevailing choice. The same analysis records a *forward*-side fact that is
-the load-bearing one here: in Post-LN the residual sum immediately before the next normalization
-has constant expected squared norm, `E[‖x^{post,5}_l‖^2] = (3/2) d`, and the post-normalized state
-itself is projected back to norm `√d`; in Pre-LN the residual stream **grows linearly with
-depth**, `(1 + l/2) d ≤ E[‖x^pre_l‖^2] ≤ (1 + 3l/2) d`. The mechanism is structural: the residual
+reason Pre-LN is the prevailing choice. The same analysis records a *forward*-side fact: in
+Post-LN the residual sum immediately before the next normalization has constant expected squared
+norm, `E[‖x^{post,5}_l‖^2] = (3/2) d`, and the post-normalized state itself is projected back
+to norm `√d`; in Pre-LN the residual stream **grows linearly with depth**,
+`(1 + l/2) d ≤ E[‖x^pre_l‖^2] ≤ (1 + 3l/2) d`. The mechanism is structural: the residual
 stream is an identity path, so each layer's sublayer output is added in raw and never rescaled,
 and the norms accumulate down the stack.
 
@@ -67,17 +56,10 @@ some frameworks store parameters and gradients in FP16 throughout. FP16 has a na
 range, so an activation that grows past roughly `6.5 × 10^4` overflows to infinity, and any
 statistic computed from it — in particular the variance inside a normalization layer — becomes
 NaN. Two failure modes are distinguished in this regime: **overflow** (NaN losses, from values
-too large) and **underflow** (diverging loss, from gradients too small to represent). The
-overflow mode interacts directly with the un-normalized residual path above: because the
-pre-normalized residual stream's scale grows with depth and is never rescaled, the largest
-activation dimensions can climb, layer after layer, into the range where the next layer's
-normalization overflows. A concrete diagnostic of this: in a deliberately stressed setting —
-deep stack, large learning rate, small batch — a pre-normalized transformer's maximum
-activation value in the final embeddings explodes within a few hundred iterations into the
-`10^4–10^5` range and the training NaNs out, whereas the constant-scale Post-LN arrangement does
-not exhibit the same runaway growth. So the very property that makes pre-normalization good for
-gradients (the un-normalized identity path) is what leaves its forward activations unbounded
-with depth.
+too large) and **underflow** (diverging loss, from gradients too small to represent). A concrete
+diagnostic: in a deliberately stressed setting — deep stack, large learning rate, small batch —
+a pre-normalized transformer's maximum activation value in the final embeddings can reach the
+`10^4–10^5` range within a few hundred iterations and the training NaNs out.
 
 **Why specific dimensions explode rather than the whole vector uniformly.** The output of a
 normalization layer is, dimension by dimension, the standardized input times a learned gain, so
@@ -97,7 +79,7 @@ the **re-scaling** invariance (the division by the spread) is what does the stab
 that the **re-centering** invariance (the mean-subtraction) is dispensable; if so, one of the
 two channel-wise reductions and the subtraction could be removed at no quality cost. The
 Euclidean norm (without the `1/n` factor) had been used for weight normalization (Salimans &
-Kingma 2016) but had not been made to work as a layer-activation normalizer.
+Kingma 2016) but not as a layer-activation normalizer.
 
 ## Baselines
 
@@ -110,12 +92,7 @@ x ← x + MLP(LN2(x))
 ```
 
 The residual path is an identity highway and each sublayer reads a freshly normalized copy of
-it. **Limitation:** the gradients are well-behaved at initialization, but the residual stream is
-never rescaled, so its forward scale grows with depth (`E[‖x^pre_l‖^2]` linear in `l`) and the
-largest activation dimensions are re-injected and magnified layer after layer; in a deep stack
-trained at scale in 16-bit precision, those dimensions can climb until a normalization overflows
-and the loss goes NaN. The block has no mechanism to bound the magnitude of what flows along its
-identity path.
+it. The gradients are well-behaved at initialization and training runs stably without warmup.
 
 **Post-normalized LayerNorm block (Vaswani et al. 2017, original placement).** Normalize *after*
 the residual addition:
@@ -127,28 +104,20 @@ x ← LN2(x + MLP(x))
 
 Because the norm sits on the residual sum, the forward hidden-state scale is held constant in
 depth (the residual sum has `E[‖x^{post,5}_l‖^2] = (3/2) d`, then the state is normalized back to
-scale `√d`), so it does not suffer the runaway forward growth above.
-**Limitation:** normalizing the residual sum is exactly what makes the parameter gradients near
-the output large at initialization (`O(d√(ln d))`, independent of `L`); the arrangement requires
-a carefully tuned learning-rate warmup and is delicate and slow to optimize, especially as depth
-grows. It buys forward-scale control at the price of the gradient health that motivated
-pre-normalization in the first place.
+scale `√d`). The parameter gradients near the output are `O(d√(ln d))`, independent of depth,
+which requires a carefully tuned learning-rate warmup.
 
 **Scale-only activation normalization.** The standard LayerNorm calculation suggests an
 orthogonal possibility: if the stabilizing part is the division by a channel-wise scale, then the
 mean-subtraction and its extra reduction may be unnecessary for this problem. A scale-only
 normalizer would still need a learned gain initialized to one, a small denominator floor, and the
 same per-token/channel shape as LayerNorm so it can replace the existing normalization slot.
-**Where it leaves off:** changing the normalization statistic alone changes neither where the
-norm sits nor how the residual and sublayers are wired, so on its own it does not resolve the
-forward-scale growth of a pre-normalized stack. It is at most an ingredient, not a block design.
 
 **Initialization-based residual scaling (Zhang, Dauphin & Ma 2019, "Fixup").** A different
 route to deep stability: with sufficiently careful per-layer initialization, residual networks
-can be trained without any normalization. **Limitation:** it works by rescaling many
-initialization layers in a model-specific way and is awkward to transfer between architectures;
-it does not give a drop-in block change, and in models that keep normalization for its other
-benefits it does not address the scale aggravation along an un-normalized residual path.
+can be trained without any normalization. It works by rescaling many initialization layers in a
+model-specific way; in models that keep normalization for its other benefits, it operates
+independently of the block's normalization placement.
 
 ## Evaluation settings
 

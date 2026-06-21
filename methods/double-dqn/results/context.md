@@ -12,19 +12,14 @@ enough: choose an action in $\arg\max_a Q_*(s,a)$. In large visual domains the
 values cannot be stored in a table, so a parameterized approximator
 $Q(s,a;\theta)$ must carry them.
 
-The hard part is that control bootstraps through a maximization over estimates.
-The estimates are inaccurate during learning, and with function approximation
-they can remain unevenly inaccurate across states and actions. A learning rule
-therefore has to build targets from its own imperfect predictions without
-turning ordinary approximation error into a systematic distortion of the greedy
-ordering.
+Control bootstraps through a maximization over estimates. The estimates are
+inaccurate during learning, and with function approximation they can remain
+unevenly inaccurate across states and actions, so targets are built from the
+approximator's own imperfect predictions.
 
-A useful diagnostic makes the issue concrete. During training one can run the
-current greedy policy and compare two quantities: the value predicted by the
-network for states it visits, and the discounted return actually obtained from
-those states. Large gaps between these two quantities mean the value estimates
-are not just noisy; they are systematically miscalibrated in the direction that
-matters for bootstrapping.
+A useful diagnostic is available during training: run the current greedy policy
+and compare two quantities, the value predicted by the network for states it
+visits and the discounted return actually obtained from those states.
 
 ## Background
 
@@ -37,10 +32,9 @@ Y_t^{\mathrm{Q}}=R_{t+1}+\gamma\max_a Q(S_{t+1},a;\theta_t)
 $$
 and updates $Q(S_t,A_t;\theta_t)$ toward this target.
 
-The maximization is statistically delicate. If action-value estimates can be
-written as true values plus zero-mean errors, the maximum of the estimates is
-not generally an unbiased estimate of the maximum true value. The pointwise max
-is convex, so Jensen's inequality gives
+If action-value estimates can be written as true values plus zero-mean errors,
+the maximum of the estimates is not generally an unbiased estimate of the
+maximum true value. The pointwise max is convex, so Jensen's inequality gives
 $$
 \mathbb{E}\left[\max_a \widehat Q(s,a)\right]\ge
 \max_a \mathbb{E}\left[\widehat Q(s,a)\right].
@@ -48,11 +42,10 @@ $$
 The max preferentially selects actions whose estimation error happened to be
 positive.
 
-An upward shift that were identical for every action in every state would not
-change the greedy policy. The concern is non-uniform overestimation: the amount
-of inflation depends on local approximation error, action count, data coverage,
-and bootstrap history. Non-uniform errors change relative action and state
-values, and those wrong relative values propagate backward through later
+An upward shift identical for every action in every state would not change the
+greedy policy. When the inflation is non-uniform, its amount depends on local
+approximation error, action count, data coverage, and bootstrap history, and
+the resulting relative action and state values propagate backward through later
 updates.
 
 ## Baselines
@@ -72,15 +65,12 @@ DQN target is
 $$
 Y_t^{\mathrm{DQN}}=R_{t+1}+\gamma\max_a Q(S_{t+1},a;\theta_t^-).
 $$
-Replay and the target network stabilize optimization, but the target-network
-values still select and evaluate the greedy next action with the same estimates.
+Replay and the target network stabilize optimization. The target-network values
+select and evaluate the greedy next action.
 
-Tabular Double Q-learning provides a smaller-scale clue. It maintains two value
-functions. When one is updated, it chooses the greedy action with one estimate
-set and evaluates that chosen action with the other. This decoupling addresses
-the maximization bias in the tabular setting, but it leaves open how to get the
-same benefit inside a deep DQN system without adding another complete training
-pipeline.
+Tabular Double Q-learning maintains two value functions. When one is updated, it
+chooses the greedy action with one estimate set and evaluates that chosen action
+with the other. This addresses the maximization bias in the tabular setting.
 
 ## Evaluation Setting
 
@@ -111,7 +101,7 @@ The available training scaffold is a standard DQN loop: choose actions
 $\epsilon$-greedily with the online network, store transitions in replay, sample
 minibatches, compute a one-step target with the target network machinery, update
 the online network, and periodically copy online parameters into the target
-network. The unresolved slot is the next-state bootstrap value.
+network. The slot left to fill is the next-state bootstrap value.
 
 ```python
 import torch

@@ -2,13 +2,13 @@
 
 Online sequential decision-making under the exploration–exploitation tension: at each of `T` rounds an agent picks one of `K` arms, observes a single stochastic reward for the arm it pulled, and wants to do nearly as well as an oracle that always plays the best arm. The honest yardstick is **regret** — the cumulative shortfall against that oracle. The only design choice is the **arm-selection rule**.
 
-The same rule is graded on three structurally different worlds: a stationary 10-arm Bernoulli MAB, a 5-arm linear **contextual** bandit where reward depends on a per-round feature vector, and a **non-stationary** 5-arm Bernoulli bandit whose best arm jumps at four abrupt changepoints. A rule that is well-suited to one regime can be badly miscalibrated on the others, so the design pressure is to find an exploration mechanism that either generalizes across the three regimes or is cheap to specialize per regime.
+The same rule is graded on three structurally different worlds: a stationary 10-arm Bernoulli MAB, a 5-arm linear **contextual** bandit where reward depends on a per-round feature vector, and a **non-stationary** 5-arm Bernoulli bandit whose best arm jumps at four abrupt changepoints.
 
 ## Prior art / Background / Baselines
 
-- **Greedy / certainty-equivalence.** Estimate each arm's mean by its empirical average and always play the largest. Gap: a short unlucky early streak on the truly best arm can depress its estimate permanently, locking the policy onto a worse arm and yielding linear regret.
-- **ε-greedy.** Mostly play the empirical-best arm, but with probability ε pick a uniformly random arm. Gap: a constant ε spends a constant fraction of all pulls on undirected random arms; decaying ε to avoid that requires knowledge of unknown reward gaps.
-- **Lai–Robbins index policies.** Compute an index from each arm's observed rewards and play the arm with the largest index. Gap: the regret guarantees are asymptotic; no bound is provided for any fixed finite horizon.
+- **Greedy / certainty-equivalence.** Estimate each arm's mean by its empirical average and always play the largest.
+- **ε-greedy.** Mostly play the empirical-best arm, but with probability ε pick a uniformly random arm.
+- **Lai–Robbins index policies.** Compute an index from each arm's observed rewards and play the arm with the largest index; these policies achieve asymptotically optimal regret.
 
 ## Fixed substrate / Code framework
 

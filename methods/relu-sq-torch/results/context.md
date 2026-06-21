@@ -8,13 +8,9 @@ position-wise feed-forward network (FFN): two dense maps with a pointwise nonlin
 them, applied independently at every sequence position. The FFN's inner width is typically four
 times the model width, so it is where most of the per-token compute is spent. The activation
 sitting between the two dense maps is, uniquely, a *free* design knob — changing it costs no new
-parameters and almost no extra FLOPs. The precise question is whether a different pointwise
-nonlinearity in that slot can raise the model's **sample efficiency** — lower loss for the same
-number of training tokens/steps — by enough to reduce the *total compute needed to reach a target
-quality*, while remaining a literal drop-in (no new weights, no shrinking of any dimension to stay
-parameter-matched, no re-tuning of the learning-rate schedule). A win here multiplies across every
-layer of every model size, so even a small per-step improvement compounds into large compute
-savings at scale.
+parameters and almost no extra FLOPs. The question is whether a different pointwise nonlinearity
+in that slot can raise the model's **sample efficiency** — lower loss for the same number of
+training tokens/steps — and thereby reduce the total compute needed to reach a target quality.
 
 ## Background
 
@@ -87,47 +83,29 @@ are all instances. The approximate GELU's own series
 `0.5 x (1 + tanh(√(2/π)(x + 0.044715 x³)))` carries a higher-order term, so even the "smooth"
 mainstream activation is not purely linear in its formula.
 
-The landscape, then: an FFN whose middle activation is a free slot; a set of asymptotically-linear
-pointwise units (ReLU, GELU, Swish) in common use; a heavier, three-matrix multiplicative family
-(the GLU variants) that performs better but pays in an extra weight matrix and a shrunk inner
-width; and separate evidence that sharper nonlinearities and multiplicative interactions can change
-what a layer represents.
-
 ## Baselines
 
 **ReLU FFN (Vaswani et al. 2017).** `max(xW1, 0) W2`. Hard sign-gate, no parameters in the
 activation, cheap forward and backward (the backward is a 0/1 mask). Core idea: keep the positive
-part, kill the negative part. **Limitation:** for positive inputs it is exactly the identity, so a
-large pre-activation and a small one are passed through with the same unit slope — the activation
-contributes no extra shaping for strongly-firing units, and its output grows only linearly in the
-input.
+part, kill the negative part.
 
 **GELU FFN (Hendrycks & Gimpel 2016).** `GELU(xW1) W2`, `GELU(x) = xΦ(x)`. Smooths ReLU's corner
 and lets a little negative signal through, which tends to train slightly better than ReLU and is the
-standard choice in large LMs. **Limitation:** it still saturates to a unit slope as `x → ∞` (it is
-asymptotically linear), it requires an `erf`/`tanh` evaluation that is more expensive per element
-than a rectifier in both forward and backward, and on language-model perplexity it is roughly on par
-with — not clearly better than — plain ReLU.
+standard choice in large LMs.
 
 **Swish FFN (Ramachandran et al. 2017).** `Swish₁(xW1) W2`, `Swish_β(x) = xσ(βx)`. A smooth,
-self-gated unit, non-monotonic near the origin. **Limitation:** same asymptotically-linear shape
-and the same per-element sigmoid cost; on the FFN-activation comparison it does not beat ReLU/GELU
-for language modeling.
+self-gated unit, non-monotonic near the origin.
 
 **GLU-variant FFNs (Shazeer 2020).** Replace the activation-of-one-projection by a Hadamard product
 of two projections, one squashed: e.g. `FFN_ReGLU(x) = (max(xW, 0) ⊗ xV) W2`. Core idea: a
 multiplicative gate gives an un-attenuated gradient path (Dauphin et al. 2017) and a richer
 (second-order) interaction between input directions; GEGLU/SwiGLU give the best LM perplexities in
-this family. **Limitation:** they introduce a *third* weight matrix `V`, and to remain
-parameter- and FLOP-matched to the two-matrix FFN they must cut the inner width `d_ff` by `2/3`;
-the gain therefore comes bundled with extra structure and a bookkeeping constraint rather than as a
-clean drop-in, and the best variants (GEGLU/SwiGLU) carry the cost of a smooth gate on top.
+this family. They introduce a *third* weight matrix `V`, and to remain parameter- and FLOP-matched
+to the two-matrix FFN they cut the inner width `d_ff` by `2/3`.
 
 **Transformer++ (the strengthened baseline).** A Transformer with RMSNorm (Zhang & Sennrich 2019),
 Swish activation, and a SwiGLU multiplicative branch in the FFN (benchmarked in Narang et al. 2021).
-Core idea: stack the individually-useful modern modifications. **Limitation:** it inherits the GLU
-variants' extra-matrix structure and is a strong but compound baseline — no single, parameter-free
-activation change.
+Core idea: stack the individually-useful modern modifications.
 
 ## Evaluation settings
 

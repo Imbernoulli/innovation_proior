@@ -14,15 +14,9 @@ behavior (Belkin et al., 2018), which hints that the right way to understand a
 trained network is not through its weights but through the *function* it
 computes, in the same language one uses for kernels.
 
-The precise problem: describe what gradient descent on the parameters of a
-network *does to the function* it represents. Concretely, can the evolution of
-the network function during training be characterized in function space — where
-the cost is convex — rather than in the non-convex parameter space? A solution
-would have to (i) identify the object that governs the function's dynamics, (ii)
-say whether that object is predictable (deterministic) for large networks, (iii)
-relate convergence of training and the network's behavior off the training set
-to properties of that object. Anything weaker leaves the generalization puzzle
-where it started.
+The core question: can the evolution of the network function during training be
+characterized in function space — where the cost is convex — rather than in the
+non-convex parameter space?
 
 ## Background
 
@@ -46,8 +40,7 @@ the empirical second moment (1/n) sum_i sigma(a_i(x)) sigma(a_i(x')) into the
 Gaussian expectation above. This connects networks at initialization to kernels,
 and infinite-width kernels of this form have been used directly in Bayesian
 inference and SVMs with results comparable to trained networks (Cho & Saul,
-2009; Lee et al., 2018). The gap: this describes only the *prior*, the network
-before any training. It says nothing about what gradient descent does.
+2009; Lee et al., 2018).
 
 **The per-layer scaling and its consequence.** The 1/sqrt(width) factor on each
 pre-activation is what makes the large-width limit well-defined. A side effect,
@@ -64,9 +57,7 @@ f_theta = (1/sqrt(P)) sum_p theta_p f^(p). Because this is linear in theta, its
 "feature map" partial_{theta_p} f = (1/sqrt(P)) f^(p) does not depend on theta;
 gradient descent on theta is then *exactly* gradient descent in function space
 against the empirical kernel (1/P) sum_p f^(p) ⊗ f^(p), which tends to K as
-P -> infinity. This is the clean case where training is provably kernel descent.
-The gap: a real network is *nonlinear* in its parameters, so its feature map
-partial_{theta_p} f depends on theta and is not fixed as training proceeds.
+P -> infinity.
 
 **Kernel methods machinery.** Once dynamics live in function space, the relevant
 tools are standard. Kernel PCA (Schölkopf et al., 1998) diagonalizes a kernel's
@@ -94,30 +85,23 @@ product carries the signal.
   induced by random parameters is a GP with covariance Sigma^(L) above; one can
   do Bayesian inference or ridge regression directly with this kernel.
   Math/algorithm: the layer-wise Sigma recursion, then GP posterior mean
-  Sigma(x*, X) Sigma(X, X)^{-1} y. Gap: it models the untrained network only;
-  it does not describe the trajectory of a network actually trained by gradient
-  descent, nor does it explain why that trajectory generalizes.
+  Sigma(x*, X) Sigma(X, X)^{-1} y.
 
 - **Random-feature kernel descent (Rahimi & Recht, 2007).** Core idea: a linear
   combination of fixed random features makes gradient descent equivalent to
   kernel gradient descent. Math/algorithm: parameters follow
   theta_dot_p = -(1/sqrt(P)) <d, f^(p)>; the function follows kernel descent
-  against the (constant) tangent kernel (1/P) sum_p f^(p) ⊗ f^(p). Gap: the
-  features are fixed and the model is linear in its parameters; it is not a
-  network and does not capture the parameter-dependence of a real network's
-  feature map.
+  against the (constant) tangent kernel (1/P) sum_p f^(p) ⊗ f^(p).
 
 - **Deep dot-product / arc-cosine kernels (Cho & Saul, 2009).** Core idea:
   compose Gaussian-expectation kernels to build deep kernels with closed forms
   for nonlinearities like ReLU. Math/algorithm: the arc-cosine kernels give
   E[sigma(X) sigma(X')] and E[sigma'(X) sigma'(X')] for jointly Gaussian (X, X')
-  in closed form. Gap: presented as a fixed kernel family; not derived from, nor
-  connected to, the dynamics of training a finite network.
+  in closed form.
 
 - **Mean-field analysis of two-layer networks (Mei et al., 2018).** Core idea:
   track the distribution of neurons in a two-layer network as a measure evolving
-  under a PDE in the large-width limit. Gap: confined to a single hidden layer;
-  the dynamics of *deep* networks remained open.
+  under a PDE in the large-width limit.
 
 ## Evaluation settings
 

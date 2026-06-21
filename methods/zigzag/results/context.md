@@ -18,10 +18,10 @@ single node, because the intra-node interconnect (NVLink, ~160 GB/s) is several 
 than the inter-node fabric (InfiniBand, ~50 GB/s), so a placement that scatters an expert's
 replicas across nodes pays a heavy all-to-all communication cost that pure load metrics do not
 see. (3) It must be *cheap to compute*, because rebalancing runs repeatedly on the serving
-critical path as the load shifts; a placement algorithm that takes hundreds of milliseconds is
-itself a latency tax. The precise goal: an expert replication-and-placement algorithm that
-holds per-GPU and per-node balance and inter-node locality at the quality of the established
-hierarchical method, while making the placement computation cheap enough to run frequently.
+critical path as the load shifts.
+
+How should the expert replication-and-placement assignment be implemented to satisfy these
+requirements?
 
 ## Background
 
@@ -33,13 +33,12 @@ the busiest GPU, so the placement of experts onto GPUs is a first-order performa
 
 **Skewed, drifting expert load.** Expert utilization is far from uniform: a Zipf-like tail
 means a few experts handle a disproportionate share of tokens, and the identity of the hot
-experts changes as the workload changes. This is the empirical fact that makes a *static*,
-uniform "one expert per GPU" layout leave some GPUs idle while others saturate. The standard
-response, established for DeepSeek-V3 deployment, is a *redundant-experts* strategy: allocate
-extra physical slots (e.g. 32 redundant experts in prefilling, so each GPU holds its experts
-plus an extra one) and place additional *replicas* of the hottest experts, so their traffic is
-split across copies. Because the load drifts, the redundancy plan is recomputed from online
-load statistics (a moving average of recent per-expert token counts) and adjusted periodically.
+experts changes as the workload changes. The standard response, established for DeepSeek-V3
+deployment, is a *redundant-experts* strategy: allocate extra physical slots (e.g. 32 redundant
+experts in prefilling, so each GPU holds its experts plus an extra one) and place additional
+*replicas* of the hottest experts, so their traffic is split across copies. Because the load
+drifts, the redundancy plan is recomputed from online load statistics (a moving average of
+recent per-expert token counts) and adjusted periodically.
 
 **Group-limited / node-limited routing and locality.** DeepSeek-V3 partitions its 256 routed
 experts into 8 groups of 32 and constrains each token to be routed to experts in at most M=4
@@ -63,15 +62,6 @@ later, smaller items fill the gaps. The placement problem here is a *cardinality
 number of expert slots — so the greedy must only ever consider parts that still have free
 capacity, and the classical LPT bound is useful background rather than the exact theorem being
 invoked.
-
-**Diagnostic fact about the reference rebalancer.** The established hierarchical placement
-algorithm is correct and balances well, but its bin-packing core is implemented as nested
-Python loops — an outer loop over layers and an inner loop over items, each item doing a linear
-scan over parts to find the emptiest one with capacity. Profiled on medium MoE deployments this
-takes on the order of 540 ms per rebalance, with an imbalance factor (the ratio of average to
-maximum per-GPU load) around 0.66. The per-element Python iteration, not the arithmetic, is the
-cost: the arithmetic is small enough that an implementation dominated by batched tensor
-operations should not spend most of its time in the host-language loop overhead.
 
 ## Baselines
 
@@ -112,20 +102,10 @@ def balanced_packing(weight, num_packs):          # weight: [B, n]
 
 The hierarchy is what earns locality (groups and replicas stay node-confined) and the sorted
 emptiest-bin packing gives good balance while the cap enforces fixed hardware slot counts.
-**Gap:** the `balanced_packing` core is a per-element Python loop — `B × n` iterations, each scanning `num_packs` parts — so its
-cost grows with the tensor size and it runs in hundreds of milliseconds, even though every
-quantity it manipulates is a small integer index. The running-load dependence (item j's pack
-depends on the loads after items 1..j−1) is what forces the sequential scan, and that is exactly
-what stalls on a GPU, which wants batched, data-parallel work.
 
 **Flat (non-hierarchical) placement.** A simpler alternative skips Stage 1 entirely: replicate
 experts globally and pack all replicas directly onto all GPUs in one shot, ignoring the node
-structure. This removes the group-to-node stage and can balance per-GPU load well, but because
-it never confines an expert's replicas to a node, it scatters replicas across the whole cluster.
-**Gap:** in a multi-node deployment this gives up locality — an expert's replicas can land on
-several different nodes, so serving a token to that expert may cross the slow inter-node fabric,
-inflating the all-to-all cost that the node-limited routing was designed to bound. Per-GPU
-balance alone does not capture this; the locality metric does.
+structure. This removes the group-to-node stage and can balance per-GPU load.
 
 ## Evaluation settings
 

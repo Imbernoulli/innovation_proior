@@ -6,9 +6,9 @@ CIFAR-style ResNets repeat the same residual block tens to hundreds of times. Th
 
 The starting block is the plain post-activation residual block. The relevant prior work is:
 
-- **Plain deep stacks (VGG-style, Simonyan & Zisserman 2014).** Core idea: a uniform stack of 3×3 conv–BN–ReLU layers. Gap: beyond ~20 layers, training error rises with depth despite BN, so extra depth is an optimization failure, not a capacity shortage.
-- **Residual block (He et al. 2015).** Core idea: let a two-conv stack learn the residual `F(x) = H(x) − x` and add a parameter-free identity shortcut, `H = ReLU(F(x) + x)`, so "do nothing" means `F → 0`. Gap: at 110-layer scale, the original block still under-optimizes relative to shallower networks; depth scaling is not fully closed.
-- **Highway Networks (Srivastava et al. 2015).** Core idea: gated skip paths, `y = H(x)·T(x) + x·C(x)`, with learned LSTM-style gates. Gap: gates can suppress the skip path where depth needs it most, and the gate parameters make training less reliable than a fixed identity skip.
+- **Plain deep stacks (VGG-style, Simonyan & Zisserman 2014).** A uniform stack of 3×3 conv–BN–ReLU layers.
+- **Residual block (He et al. 2015).** A two-conv stack learns the residual `F(x) = H(x) − x` with a parameter-free identity shortcut, `H = ReLU(F(x) + x)`, so "do nothing" corresponds to `F → 0`.
+- **Highway Networks (Srivastava et al. 2015).** Gated skip paths, `y = H(x)·T(x) + x·C(x)`, with learned LSTM-style gates.
 - **Batch Normalization (Ioffe & Szegedy 2015).** Normalizes activations per mini-batch with learnable scale and shift; it is fixed inside every block here as `bias=False` convolutions followed by `BatchNorm2d`.
 
 ## Fixed substrate / Code framework

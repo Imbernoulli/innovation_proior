@@ -11,72 +11,63 @@ bandwidth — becomes the binding constraint on latency, while the multiply-accu
 the FP16 matmul dominates the power budget. Halving the bits per weight roughly halves both the
 bytes moved and the arithmetic energy, so the appeal of low precision is direct and large.
 
-The precise goal is a linear layer whose forward weights are drawn from a *tiny discrete set*
-— in the extreme, just two values — used on **every** forward pass during both training and
-inference, not merely at deployment. Such a layer has to (1) replace a standard floating-point
-`Linear` with no change to the surrounding architecture; (2) remain trainable from scratch by
-backpropagation even though the operation that produces the discrete weights has zero gradient
-almost everywhere; (3) keep the forward signal at a healthy scale so that stacking dozens of
-such layers does not blow up or collapse the activations; (4) survive being trained at the
-multi-billion-parameter scale where LLMs actually live, ideally following the same predictable
-loss-vs-size scaling law as a full-precision model; and (5) interact gracefully with the other
-quantities in the layer — chiefly the activations, which are themselves expensive to keep in
-FP16. Each existing line of work below achieves part of this; none delivers a 1-bit linear
-layer that trains a decoder-only LLM at scale. Closing that gap is the problem.
+The question is how to build a linear layer whose forward weights are drawn from a *tiny
+discrete set* — in the extreme, just two values — used on **every** forward pass during both
+training and inference, not merely at deployment. Such a layer would replace a standard
+floating-point `Linear` in place, be trained from scratch by backpropagation through the
+operation that produces the discrete weights, keep the forward signal at a workable scale as the
+layers are stacked dozens deep, run at the multi-billion-parameter scale where LLMs live, and
+fit alongside the activations, which are themselves expensive to keep in FP16.
 
 ## Background
 
 By this time the dominant recipe for shrinking a trained network's footprint is
 **quantization**, and it comes in two flavors. *Post-training quantization* (PTQ) takes an
 already-trained FP16 model and rounds its weights (and sometimes activations) to a low-bit grid
-after the fact; it is attractive because it touches neither the training pipeline nor the data,
-but the model was never optimized for the rounded representation, so accuracy falls — gently at
-8 bits, sharply as the grid coarsens. *Quantization-aware training* (QAT) instead simulates the
-rounding inside the training forward pass ("fake quantization"), so the network learns weights
-that tolerate the grid; it recovers more accuracy but the optimization gets harder as precision
-drops, and whether it obeys the neural-scaling law of language models is unknown. Both share a
-defining feature: the parameters being optimized are still floating-point numbers, and the
-discreteness is a post-hoc or simulated overlay.
+after the fact; it touches neither the training pipeline nor the data. *Quantization-aware
+training* (QAT) instead simulates the rounding inside the training forward pass ("fake
+quantization"), so the network learns weights that tolerate the grid. Both share a defining
+feature: the parameters being optimized are still floating-point numbers, and the discreteness
+is a post-hoc or simulated overlay.
 
 A separate, older line constrains weights to be *natively* discrete during the forward
-computation. The load-bearing facts it established:
+computation. The facts it established:
 
 - **A binary weight and a per-tensor scale are the l2-optimal rank-one summary of a real
-  weight.** If you must approximate a real weight vector `W` by `α·B` with `B ∈ {−1,+1}ⁿ` and a
+  weight.** If you approximate a real weight vector `W` by `α·B` with `B ∈ {−1,+1}ⁿ` and a
   positive scalar `α`, the best `B` in squared error is the elementwise sign of `W`, and the
-  best `α` is the mean absolute value of `W`. This is a clean least-squares fact, derived in the
-  binary-CNN literature (Rastegari et al. 2016), and it gives both the *direction* (sign) and
-  the *magnitude* (a single scale) of the binarization for free.
+  best `α` is the mean absolute value of `W`. This least-squares fact, derived in the
+  binary-CNN literature (Rastegari et al. 2016), gives both the *direction* (sign) and
+  the *magnitude* (a single scale) of the binarization.
 
 - **A non-differentiable threshold can still be trained, by passing the gradient straight
   through it.** Bengio, Léonard & Courville (2013) studied gradient estimators for hard,
   stochastic threshold units and showed that treating the threshold as the identity in the
   backward pass yields a usable — in the canonical stochastic-neuron case, provably unbiased —
-  estimator of the gradient. This "straight-through estimator" (STE) is what makes a `sign`
-  nonlinearity trainable at all: its true derivative is zero almost everywhere, which would kill
-  learning, so the backward pass substitutes the identity.
+  estimator of the gradient. This "straight-through estimator" (STE) makes a `sign`
+  nonlinearity trainable: its true derivative is zero almost everywhere, so the backward pass
+  substitutes the identity.
 
-- **Discreteness in the forward pass must be paired with a high-precision shadow of the
+- **Discreteness in the forward pass is paired with a high-precision shadow of the
   weight.** Courbariaux, Bengio & David (2015) trained networks whose forward and backward
   passes used binary weights `sign(w)`, but accumulated the SGD updates into a *real-valued*
   latent weight, on the argument that "only the expected value of the weight needs high
   precision": stochastic gradient descent makes an enormous number of tiny, noisy steps whose
-  signal only emerges after averaging, and a binary variable cannot accumulate them — a small
-  step usually fails to flip the sign and is simply lost. They also observed that binarization
-  acts as a *regularizer* (weight noise whose expectation is the clean value, in the spirit of
-  DropConnect), and clipped the latent weights to a bounded range so they could not drift
-  arbitrarily far without affecting the binary forward weight.
+  signal emerges after averaging, and a binary variable usually does not flip its sign on a small
+  step. They also observed that binarization acts as a *regularizer* (weight noise whose
+  expectation is the clean value, in the spirit of DropConnect), and clipped the latent weights
+  to a bounded range.
 
 - **Centering the weights before binarizing increases the capacity of the binary code.** Work
   on binarized Transformers (Liu et al. 2022) noted that if the real weights have a nonzero
   mean, the sign operation wastes representational power, and that subtracting the per-tensor
-  mean before taking the sign measurably improves the binarized layer; they pair this with the
-  same absmean scale inherited from the binary-CNN least-squares derivation.
+  mean before taking the sign improves the binarized layer; they pair this with the
+  same absmean scale from the binary-CNN least-squares derivation.
 
 On the activation side, two empirical facts about large language models are by now well
-documented and are the reason activations cannot be treated as casually as weights:
+documented:
 
-- **Activations are intrinsically harder to quantize than weights.** Weight distributions in
+- **Activations are harder to quantize than weights.** Weight distributions in
   trained Transformers are fairly flat and uniform, easy to round; activation distributions are
   not. (Xiao et al. 2023.)
 
@@ -84,66 +75,52 @@ documented and are the reason activations cannot be treated as casually as weigh
   Beyond roughly the 6.7B scale, a small fraction (on the order of 0.1%) of feature dimensions
   take on values tens to a hundred times larger than the rest, and they recur in the same
   channels across tokens (Dettmers et al. 2022; Xiao et al. 2023). Under a single per-tensor
-  scale these outliers dominate the dynamic range and squeeze every other value into very few
-  effective levels. The standard symmetric scheme for handling them is **absmax** quantization:
-  scale by the inverse of the absolute maximum of the tensor and round into the integer range.
+  scale these outliers dominate the dynamic range. The standard symmetric scheme for handling
+  them is **absmax** quantization: scale by the inverse of the absolute maximum of the tensor
+  and round into the integer range.
 
-There is also a standard piece of forward-stability theory worth stating, because the
-binarized layer will have to answer to it. For a linear layer `y = Wx` with the elements of `W`
-and `x` treated as independent and identically distributed, the output variance is
-`Var(y) = n·Var(wx) = n·E[w²]E[x²]`. Under Kaiming/Xavier initialization a full-precision layer
-is arranged so that `Var(y)` sits at order 1, which is what keeps a deep stack numerically
-stable. Any change to how `w` is represented changes `E[w²]` and therefore this variance, so a
-binarized layer that wants to stack tens of times deep has to account for it. Layer
-normalization (Ba et al. 2016) and its group/sublayer placements (Wu & He 2018; the SubLN
-placement of Wang et al. 2022) are the available tools for restoring a target variance.
+There is also a standard piece of forward-stability theory. For a linear layer `y = Wx` with the
+elements of `W` and `x` treated as independent and identically distributed, the output variance
+is `Var(y) = n·Var(wx) = n·E[w²]E[x²]`. Under Kaiming/Xavier initialization a full-precision
+layer is arranged so that `Var(y)` sits at order 1, which keeps a deep stack numerically stable;
+the value of `E[w²]` enters directly. Layer normalization (Ba et al. 2016) and its group/sublayer
+placements (Wu & He 2018; the SubLN placement of Wang et al. 2022) are the available tools for
+restoring a target variance.
 
 Finally, the **neural scaling law** (Kaplan et al. 2020; Hoffmann et al. 2022) is the backdrop:
 full-precision language-model loss falls as a power law `L(N) = aN^b + c` in parameter count,
-which is what makes large models worth building. Whether a natively-discrete-weight model obeys
-the same law is an open and decisive question — if it does not, low-bit training does not scale.
+which is what makes large models worth building.
 
 ## Baselines
 
-These are the prior methods a 1-bit LLM linear layer would be measured against and reacts to.
+These are the prior methods a 1-bit LLM linear layer would be measured against.
 
 **Post-training absmax / LLM.int8-style quantization (Dettmers et al. 2022).** Round an
 FP16-trained model's weights and activations to int8 with a per-tensor (or per-vector) absmax
 scale, using the half-width `Q_b = 2^{b−1}` with a signed int8 storage range `[-128, 127]` at
 8 bits. At 8 bits this is nearly lossless on LLMs once the outlier features are given special
-treatment. **Gap:** it is a deployment-time overlay on a float model; pushed to very low
-bit-width — and especially to a single bit — the rounding error swamps the signal and accuracy
-collapses, because the model was never trained to live on the coarse grid.
+treatment. It is a deployment-time overlay applied to an already-trained float model.
 
 **SmoothQuant (Xiao et al. 2023).** A PTQ method that migrates the activation outlier
 difficulty into the weights by an offline per-channel rescaling `Y = (X·diag(s)⁻¹)(diag(s)·W)`,
-so that both factors become easy to quantize at W8A8. **Gap:** it is still post-training and
-still float-trained; it eases activation quantization but does not contemplate weights at 1 bit,
-and at W4A4/W1A8 the activation difficulty re-emerges.
+so that both factors become easy to quantize at W8A8.
 
 **Weight-only PTQ with error correction — GPTQ (Frantar et al. 2023), QuIP (Chee et al.
 2023).** Quantize weights to 4 or even 2 bits while leaving activations in FP16, using
 second-order/error-feedback corrections to choose the rounding so as to minimize the layer
-output error. **Gap:** activations stay full precision (so the activation-side cost is not
-addressed), and these methods are tuned for 2-4 bits; 1-bit weight-only quantization of an
-FP16-trained LLM is outside their reach.
+output error.
 
 **Binarized convolutional networks — BinaryConnect (Courbariaux et al. 2015), XNOR-Net
 (Rastegari et al. 2016).** Train from scratch with `sign`-binarized weights (XNOR-Net adds the
 absmean scale and, in its full form, binary activations), latent FP weights for the update, and
-STE for the gradient. **Gap:** demonstrated on small image classifiers and convolutional
-architectures; the binarization recipe is in hand but it has never been carried to a
-decoder-only Transformer, nor to the multi-billion-parameter regime, and its forward-variance
-behaviour inside a deep residual language model is unexamined.
+STE for the gradient. Demonstrated on image classifiers and convolutional architectures.
 
 **Binarized Transformers for BERT / machine translation — BiT (Liu et al. 2022), binarized
 NMT (Zhang et al. 2023).** Bring binarization to Transformers, contributing weight centering
 before binarization, a learnable "elastic" scale/threshold for activations, and architectural
-tweaks for stability under distillation. **Gap:** these target bidirectional encoders (BERT) or
-encoder-decoder translation models, both of which are trained at modest scale and often rely on
-knowledge distillation from a full-precision teacher; the unidirectional decoder LLM, trained
-from scratch and scaled to billions of parameters, is a different regime that none of them
-enters.
+tweaks for stability under distillation. These target bidirectional encoders (BERT) or
+encoder-decoder translation models, often trained with knowledge distillation from a
+full-precision teacher.
 
 ## Evaluation settings
 

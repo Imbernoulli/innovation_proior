@@ -2,9 +2,9 @@
 
 ## Research question
 
-How do you find a good convolutional network architecture in a way that actually teaches you something? Two paradigms dominate, and each leaves a gap. Manual design — the lineage from LeNet through AlexNet, VGG, and ResNet — produced not just strong networks but transferable *design principles*: convolution matters, depth matters, residual connections matter. But manual exploration gets unwieldy as the number of interacting choices (per-stage widths, depths, group widths, bottleneck ratios) explodes. Neural architecture search (NAS) automates the search inside a fixed space and finds excellent models, but its output is a single network *instance* tuned to one setting (one FLOP budget, one piece of hardware). That instance teaches you little: it does not tell you why it is good, and there is no obvious rule for adapting it to a different compute regime.
+How do you find a good convolutional network architecture in a way that also yields transferable knowledge about what makes networks good? Two paradigms exist in practice. Manual design — the lineage from LeNet through AlexNet, VGG, and ResNet — produced not just strong networks but transferable *design principles*: convolution matters, depth matters, residual connections matter. Manual exploration becomes unwieldy as the number of interacting choices (per-stage widths, depths, group widths, bottleneck ratios) grows. Neural architecture search (NAS) automates the search inside a fixed space and finds excellent models; its output is a single network *instance* tuned to one setting (one FLOP budget, one piece of hardware).
 
-The precise goal: a paradigm that combines the interpretability of manual design with the efficiency of automated procedures — one that yields not a single network but a *family* of simple, regular networks parametrized by a few scalars, where (a) good models are densely concentrated so a tiny random search finds them, (b) the parametrization is interpretable enough to read off design principles, and (c) those principles generalize across compute regimes, schedule lengths, and block types. A solution would have to provide a small, low-dimensional space that is provably better-populated than the unconstrained one, plus the empirical methodology to demonstrate it.
+The question is whether there is a paradigm that combines methodical automated search with the ability to read off interpretable design principles that generalize across compute regimes, schedule lengths, and block types.
 
 ## Background
 
@@ -24,11 +24,11 @@ Diagnostic facts about existing systems that frame the work:
 
 The natural comparison points are the standard manually designed families and the NAS-found state of the art.
 
-**ResNet / ResNeXt.** A stem, four stages of residual bottleneck blocks at decreasing resolution, then a pooled FC head. The bottleneck block is 1×1 (reduce by a ratio) → 3×3 (group) conv → 1×1 (expand), BatchNorm and ReLU after each conv, residual add. Standard practice: double width across stages, use deeper models for higher compute budgets, use a bottleneck ratio > 1. Gap: the per-stage allocation of depth and width is set by hand or convention; there is no principle that says how many blocks each stage should get, and the conventions (deeper-for-bigger, bottleneck > 1) have never been tested at the population level.
+**ResNet / ResNeXt.** A stem, four stages of residual bottleneck blocks at decreasing resolution, then a pooled FC head. The bottleneck block is 1×1 (reduce by a ratio) → 3×3 (group) conv → 1×1 (expand), BatchNorm and ReLU after each conv, residual add. Standard practice: double width across stages, use deeper models for higher compute budgets, use a bottleneck ratio > 1.
 
-**MobileNetV2 inverted bottleneck / depthwise.** Block goes narrow → wide → narrow with a depthwise spatial conv in the wide middle and a linear (activation-free) projection. Effective for mobile efficiency. Gap: whether the inverted bottleneck and depthwise convolution actually help *as design choices* (versus plain grouped bottlenecks) for a population of structure-optimized networks is untested.
+**MobileNetV2 inverted bottleneck / depthwise.** Block goes narrow → wide → narrow with a depthwise spatial conv in the wide middle and a linear (activation-free) projection. Effective for mobile efficiency.
 
-**EfficientNet.** A NAS-found base network scaled by a compound rule over depth, width, and resolution. Strong accuracy/FLOPs, but trained with heavy training-time enhancements (advanced augmentation, longer schedules, etc.) that confound architecture comparisons; it is slow on GPUs partly due to high activation counts. Gap: as a single searched instance plus a scaling rule, it provides no interpretable principle and its gains are entangled with its training recipe.
+**EfficientNet.** A NAS-found base network scaled by a compound rule over depth, width, and resolution. Trained with training-time enhancements (advanced augmentation, longer schedules, etc.) alongside the architecture search.
 
 ## Evaluation settings
 

@@ -7,16 +7,13 @@ small molecules, rank the library so that the few true binders sit at the very t
 handful can be pulled for wet-lab validation. The accepted wisdom is "bigger is better": the
 larger the library that can actually be screened, the higher the chance of finding a viable
 drug candidate — statistics show the number of true ligands in the top-1000 jumps sharply as
-the library grows from $10^5$ to $10^8$. So the binding constraint is not accuracy on any one
-pair; it is throughput at fixed (and very small) hit rate. A method that scores beautifully
-but can only process a thousand molecules a day is useless against a billion-compound library;
-a method fast enough for the whole library, but whose ranking is no better than chance at the
-top, is equally useless. The goal is a scoring function $s(\text{pocket}, \text{molecule})$
-that (1) ranks true binders above non-binders specifically in the top fraction (0.5%, 1%) that
-will ever be looked at, (2) can be evaluated over a billion molecules in feasible time, (3)
-does not depend on scarce, expensive binding-affinity labels or on hand-built decoy sets, and
-(4) generalizes to protein targets never seen in training — the realistic "zero-shot" screening
-setting. Each existing family of methods achieves some of these and breaks on the rest.
+the library grows from $10^5$ to $10^8$. The binding constraint is not accuracy on any one
+pair; it is throughput at fixed (and very small) hit rate. The goal is a scoring function
+$s(\text{pocket}, \text{molecule})$ that ranks true binders above non-binders specifically in
+the top fraction (0.5%, 1%) that will ever be looked at, evaluated over a billion molecules in
+feasible time, without depending on scarce binding-affinity labels or hand-built decoy sets, and
+generalizing to protein targets never seen in training — the realistic "zero-shot" screening
+setting.
 
 ## Background
 
@@ -47,8 +44,7 @@ load-bearing facts and observed phenomena, all knowable before any new method:
   task — corrupt 15% of atom coordinates with uniform noise in $[-1,1]\,\text{Å}$ and recover
   the original pair distances and coordinates. A special [CLS] atom placed at the centroid
   yields a single whole-molecule or whole-pocket vector. Molecule and pocket encoders are
-  pretrained separately on their own large corpora. These encoders give informative,
-  invariant features but are not, by themselves, a screening scorer.
+  pretrained separately on their own large corpora.
 
 - **Contrastive representation learning is mature.** The InfoNCE objective (Oord et al. 2018;
   N-pair loss, Sohn 2016) trains a scoring function $f(x,c)$ by the categorical cross-entropy
@@ -89,33 +85,18 @@ physically: sample candidate ligand poses (genetic algorithms, Monte Carlo) by e
 conformational space of ligand and receptor, then evaluate each pose with a scoring function
 (empirical force fields) correlated with binding free energy, iterating to convergence. This is
 the dominant method and the only family that reliably beats chance on hard benchmarks.
-*Limitation:* the per-compound pose sampling is the bottleneck — on the order of 10 s per
-compound on a CPU core, so screening $10^{10}$ compounds is estimated at $\sim$3000 years and
-hundreds of thousands of dollars. The cost grows with the library, exactly the wrong scaling
-for the "bigger is better" regime.
 
 **Supervised regression scorers (DeepDTA, OnionNet, GraphDTA, SG-CNN).** Learn a map from a
 protein-molecule representation to a numeric binding-affinity value, train by regression on
-labeled affinities, then rank molecules by predicted affinity. *Limitations:* they depend on
-reliable affinity labels, which are scarce (the standard labeled set has on the order of
-$10^4$ complexes); they see almost no true negatives, so they suffer high false-positive rates;
-and at inference each pocket-molecule pair requires a full forward pass through the scorer, so
-screening a fixed library against many targets scales as (#targets) $\times$ (#library) network
-evaluations.
+labeled affinities, then rank molecules by predicted affinity.
 
 **Supervised classification scorers (DrugVQA, AttentionSiteDTI).** Obtain negatives from
 predefined rules (e.g. DUD-E) and train a binary classifier to separate active from inactive
-protein-molecule pairs. *Limitation:* the observed poor generalization above — the model latches
-onto the negative-sampling rule and does not transfer to benchmarks built with different rules;
-high benchmark AUROC on the training-style decoys does not translate to real screening.
+protein-molecule pairs.
 
 **Single-tower 3D scorers (e.g. OnionNet, SG-CNN style).** Feed the joint protein-ligand
 complex — including the relative protein-ligand geometry — into one network that outputs a
 score, $k_\gamma(h_p, h_m, \text{distances})$. This captures interaction geometry directly.
-*Limitation:* the score depends on the protein-molecule cross-distances, which are only known
-once the ligand is *posed in the pocket*. At screening time the bound conformation is unknown,
-so these models need a docking step to supply the pose — inheriting docking's cost — and their
-score is sensitive to errors in that pose.
 
 ## Evaluation settings
 

@@ -8,106 +8,85 @@ for one — now invokes the *right to be forgotten* (GDPR, CCPA): some subset of
 the **retain set** `D_r = D_c \ D_f` is left intact. The forget set can be an entire class, several
 classes, a cohort inside one class, or a random subset spread across classes.
 
-The unimpeachable answer is to retrain from scratch on `D_r` alone — the *retrained* (or *gold*) model.
-But training a modern deep net is expensive, and deletion requests arrive repeatedly; retraining per
-request is not viable in production. So the real problem is **approximate unlearning**: starting from
-the already-trained weights, cheaply produce a model that *behaves like* the retrained model — it should
-have lost its specific knowledge of `D_f` while keeping its accuracy on `D_r` — in a small fraction of
-the cost of retraining.
+One reference answer is to retrain from scratch on `D_r` alone — the *retrained* (or *gold*) model.
+Training a modern deep net is expensive, and deletion requests arrive repeatedly. The problem studied here
+is **approximate unlearning**: starting from the already-trained weights, produce a model that *behaves
+like* the retrained model — having lost its specific knowledge of `D_f` while keeping its accuracy on
+`D_r` — at a small fraction of the cost of retraining.
 
-Three further constraints make the problem hard rather than trivial. First, it must work on an
-*already-trained* monolithic deep net, without having reorganized training in advance and without prior
-information about how the model was optimized. Second, simply destroying performance on `D_f` is not
-enough and can be actively harmful: a model that is *confidently wrong* on the forget data advertises
-that those samples were specially treated, which a membership-inference attacker can exploit. The target
-behavior on `D_f` is the *generalization-level* behavior of a model that never saw it — uncertain, not
-adversarially wrong. Third, we need a way to *measure* whether forgetting actually happened that does not
-itself require the expensive retrained model as a yardstick.
+The setting is an *already-trained* monolithic deep net, with no prior reorganization of training and no
+recorded information about how the model was optimized. The intended behavior on `D_f` is the
+*generalization-level* behavior of a model that never saw it — uncertain rather than adversarially wrong,
+since a model that is *confidently wrong* on the forget data advertises that those samples were specially
+treated, which a membership-inference attacker can exploit. We also want a way to *measure* whether
+forgetting happened.
 
 ## Background
 
 **Memorization and the deletion obligation.** Deep nets memorize individual training samples
-(Feldman 2020; Carlini et al. 2019), so a sample's influence genuinely persists in the weights and must
-be actively removed, not merely hidden by withholding the data. Machine unlearning as a named problem
-was introduced by Cao & Yang (2015), who recast learning algorithms into a summation form so a deleted
-point's contribution could be subtracted; this works for statistical-query-style learners but not for
-the non-linear, SGD-trained deep nets we care about here.
+(Feldman 2020; Carlini et al. 2019), so a sample's influence persists in the weights and is removed by an
+active procedure rather than by withholding the data. Machine unlearning as a named problem was introduced
+by Cao & Yang (2015), who recast learning algorithms into a summation form so a deleted point's
+contribution could be subtracted; this applies to statistical-query-style learners.
 
-**The retrained model as the ground truth.** The probabilistic notion of unlearning (Ginart et al. 2019),
+**The retrained model as ground truth.** The probabilistic notion of unlearning (Ginart et al. 2019),
 borrowing the differential-privacy template, asks that the output distribution of the unlearned model be
-close to that of the model retrained without `D_f`. Most subsequent theory (Guo et al. 2020 certified
-removal; Neel et al. 2021 descent-to-delete; Sekhari et al. 2021) lives in the convex / linear regime
-and gives guarantees there, but does not transfer to deep nets. Practically, the retrained model is the
-thing every method is trying to imitate.
+close to that of the model retrained without `D_f`. Subsequent theory (Guo et al. 2020 certified removal;
+Neel et al. 2021 descent-to-delete; Sekhari et al. 2021) works in the convex / linear regime and gives
+guarantees there. The retrained model is the thing every method imitates.
 
-**The tradeoff and its empirical signature.** There is a clear tension: push hard on forgetting and
-retain accuracy collapses; stay conservative and measurable traces of `D_f` survive. A diagnostic that
-recurs in this literature: an over-aggressive method drives forget-set accuracy to *exactly zero*, which
-looks like success but is a privacy tell — the retrained model, by contrast, typically retains some
-nonzero, near-chance accuracy on the forget class because the class is not pathologically *avoided*,
-merely not specifically learned. Confidently-wrong predictions on `D_f` are themselves information.
+**The tradeoff and its empirical signature.** There is a tension between forgetting and retain accuracy:
+pushing hard on forgetting moves retain accuracy, while staying conservative leaves measurable traces of
+`D_f`. A diagnostic that recurs in this literature: an over-aggressive method drives forget-set accuracy to
+*exactly zero*, whereas the retrained model typically retains some nonzero, near-chance accuracy on the
+forget class — the class is not pathologically *avoided*, merely not specifically learned. Confidently-wrong
+predictions on `D_f` are themselves information.
 
-**Knowledge distillation.** The load-bearing technique from elsewhere in deep learning is
-distillation (Hinton, Vinyals & Dean 2015): a *student* network is trained to match a *teacher's*
-output distribution rather than the hard labels. With temperature-softened softmax
-`p_i(z; T) = softmax(z_i / T)`, the teacher's soft probabilities carry "dark knowledge" — the relative
-mass it places on the wrong classes — and the student minimizes the divergence to those soft targets,
+**Knowledge distillation.** A standard technique is distillation (Hinton, Vinyals & Dean 2015): a *student*
+network is trained to match a *teacher's* output distribution rather than the hard labels. With
+temperature-softened softmax `p_i(z; T) = softmax(z_i / T)`, the teacher's soft probabilities carry "dark
+knowledge" — the relative mass it places on the wrong classes — and the student minimizes the divergence to
+those soft targets,
 
 ```
 L_KD = KL( p^teacher(T) || p^student(T) ) ,   p(T) = softmax(logits / T),
 ```
 
 (commonly weighted by `T^2` when mixed with a hard-label term, to keep the softened-loss gradient on the
-same scale). The general property that matters: distillation makes the student *copy whatever
-distribution the teacher emits on a given input* — the teacher need not be a "good" model; it is just a
-source of target behavior. Jensen–Shannon divergence,
-`JS(p, q) = ½ KL(p‖m) + ½ KL(q‖m)` with `m = (p+q)/2`, is the symmetric, bounded cousin used to
-*compare* two output distributions.
+same scale). Distillation makes the student *copy whatever distribution the teacher emits on a given
+input*. Jensen–Shannon divergence, `JS(p, q) = ½ KL(p‖m) + ½ KL(q‖m)` with `m = (p+q)/2`, is the
+symmetric, bounded variant used to *compare* two output distributions.
 
 ## Baselines
 
-The prior deep-network unlearning methods a new method would be measured against, and the specific place
-each one stalls.
+The prior deep-network unlearning methods a new method would be measured against.
 
 **SISA — sharded training (Bourtoule et al. 2021).** Partition `D_c` into disjoint shards, train one
 sub-model per shard, and aggregate (e.g. by voting); cache intermediate checkpoints. A deletion request
-only forces retraining of the single shard (and slice) that held the point, so cost drops by the shard
-count. **Where it stalls:** it is a *training-time* architecture — you must have sharded and checkpointed
-from the beginning. It does nothing for an already-trained monolithic model, aggregation costs accuracy
-as shards multiply, and it stores many sub-models and checkpoints.
+forces retraining only of the single shard (and slice) that held the point, so cost drops by the shard
+count. It is a *training-time* architecture: the sharding and checkpointing are set up from the beginning,
+and the sub-models and checkpoints are stored.
 
 **Fisher scrubbing and its linearized variants (Golatkar, Achille & Soatto 2020 "eternal sunshine";
 Golatkar et al. 2020 NTK; Golatkar et al. 2021 mixed-linear).** Derive a closed-form weight update that
 moves the parameters toward the distribution a retrained model would have, using the Fisher information
 matrix (a noise injection that scrubs the readable information) or a neural-tangent-kernel linearization
-of training dynamics; the mixed-linear version trains an auxiliary linearized model alongside the
-original. **Where they stall:** the scrubbing derivation assumes the model was trained with SGD and uses
-the optimization trajectory, so it constrains *how the model had to be trained*; the Fisher / Hessian
-approximations are expensive and brittle; and the NTK / mixed-linear variants require training and
-storing an extra approximating model. They carry strong assumptions and high computational cost.
+of training dynamics; the mixed-linear version trains an auxiliary linearized model alongside the original.
+The scrubbing derivation uses the SGD optimization trajectory; the Fisher / Hessian approximations are
+second-order; and the NTK / mixed-linear variants train and store an extra approximating model.
 
 **UNSIR — impair-then-repair (Tarun et al. 2021).** For class unlearning, learn an
 error-maximizing *noise* tensor for the forget class, fine-tune the model on that noise to impair its
-forget-class behavior, then briefly fine-tune on retain data to repair collateral damage. Fast and
-effective at class removal. **Where it stalls:** it is *class-level only* — there is no natural noise
-construction for a random subset of points scattered across classes — and it drives forget-class
-accuracy to exactly 0, the confidently-wrong regime that diverges from how a retrained model behaves and
-that a membership-inference attacker can read.
+forget-class behavior, then briefly fine-tune on retain data to repair collateral damage. It operates at
+the class level via the noise construction, and drives forget-class accuracy to 0.
 
 **Amnesiac unlearning (Graves et al. 2021).** Log, during training, the parameter update contributed by
-each batch; to unlearn, subtract back the logged updates that touched the forget data. **Where it
-stalls:** it requires storing the full per-batch update history throughout training — large storage,
-tied to training bookkeeping — and the subtraction is approximate once later updates have interacted
-with the removed ones.
-
-Across these, the recurring limitations are: a dependence on *how training was done* (SGD-only,
-sharding, gradient logs), reliance on expensive second-order information or auxiliary models, support for
-only one forgetting mode (class-level), and — for the aggressive methods — collapsing forget accuracy to
-zero, which is a privacy signal rather than faithful imitation of a never-trained model.
+each batch; to unlearn, subtract back the logged updates that touched the forget data. It keeps the
+per-batch update history throughout training and subtracts the logged contributions.
 
 ## Evaluation settings
 
-The natural yardsticks already in use for deep unlearning:
+The yardsticks in use for deep unlearning:
 
 - **Datasets / architectures.** Image classification on CIFAR-10, CIFAR-100 (and its 20 super-classes),
   and FashionMNIST, with standard backbones — ResNet-(18/20/34), VGG-style and AllCNN convolutional

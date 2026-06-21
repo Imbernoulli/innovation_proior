@@ -21,9 +21,7 @@ real nodes are numbered $1..n$. A generic balanced-BST `splay` primitive is
 available as a building block: it stores a set of nodes in a binary search tree
 and, given a node, rotates it to the root of its tree in amortized $O(\log n)$
 while keeping the in-order sequence intact, so it can stand in for an ordered
-sequence with fast splits and joins. What is missing is the structure that ties
-such balanced-BST pieces to the changing forest, and the four top-level
-operations.
+sequence with fast splits and joins.
 
 ```python
 import sys

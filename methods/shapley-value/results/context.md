@@ -22,16 +22,13 @@ The characteristic-function form abstracts away bargaining protocol and records 
 each coalition can achieve. This makes the credit-assignment question purely structural:
 given all coalition worths, what payoff vector is justified by the game itself?
 
-The core obstacle is context dependence. A player can be essential for one coalition and
-irrelevant for another. If `i` joins `S`, the incremental contribution is
+A player's contribution depends on context: if `i` joins `S`, the incremental contribution is
 
 ```text
 v(S union {i}) - v(S),
 ```
 
-where `S` does not contain `i`. Different `S` can give different increments. Any rule that
-uses only singleton worth `v({i})`, or only the loss from removing `i` from the grand
-coalition, ignores much of the coalition structure.
+where `S` does not contain `i`, and different `S` can give different increments.
 
 The natural fairness constraints are these. **Efficiency** requires
 `sum_i phi_i(v) = v(N)`, so no value is lost or manufactured. **Symmetry** requires equal
@@ -48,24 +45,17 @@ auction, or algorithmic implementation is chosen.
 ## Baselines
 
 **Equal split.** Divide `v(N)` equally among all players. This satisfies efficiency and treats
-all names the same, but it fails to respect roles. A player who contributes nothing can
-receive positive credit, and two players with clearly different marginal effects are still
-paid equally.
+all names the same regardless of role.
 
 **Standalone-value split.** Pay each player according to `v({i})`, possibly normalized to sum
-to `v(N)`. This uses individual productivity but misses complementarity. If no one creates
-value alone but pairs or larger coalitions do, this rule has no principled way to divide the
-joint surplus.
+to `v(N)`. This uses individual productivity as the basis for credit.
 
-**Leave-one-out contribution.** Pay player `i` according to `v(N) - v(N \ {i})`. This captures
-the player's contribution to the grand coalition, but it privileges the final coalition only.
-It can double-count value when several players are each pivotal, under-count players who are
-important earlier but replaceable at the end, and need not satisfy efficiency.
+**Leave-one-out contribution.** Pay player `i` according to `v(N) - v(N \ {i})`. This bases
+credit on the player's marginal contribution to the grand coalition specifically.
 
 **Chosen-order marginal accounting.** Pick an order of arrival and give each player the value
-added when they arrive. This is efficient for that one order because the marginal increments
-telescope to `v(N)`. Its gap is arbitrariness: changing the order can change the credit
-allocation, and the game itself has not specified why one order should be privileged.
+added when they arrive. The marginal increments telescope to `v(N)`, making this rule efficient
+for any chosen order.
 
 ## Evaluation settings
 

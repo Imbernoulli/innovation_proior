@@ -1,20 +1,13 @@
 # Research question
 
-We want stochastic variational inference — and the variational autoencoders built on it — to work
-with *much more flexible* approximate posteriors than they currently use, while staying cheap and,
-crucially, scaling to **high-dimensional latent spaces**. In a VAE we fit an inference model q(z|x)
-to approximate the true posterior p(z|x) by maximizing a variational lower bound on log p(x). That
-bound is tight exactly when q(z|x) matches p(z|x); but the posteriors that are computationally
-affordable today are diagonal Gaussians, q(z|x) = N(μ(x), σ²(x)), and true posteriors are essentially
-never factorized. So the bound is loose by exactly the amount that the posterior fails to factorize.
-
-The constraint that has forced everyone onto diagonal Gaussians is threefold: the inference model
-must (1) be cheap to evaluate and differentiate its density, and (2) be cheap to *sample* — both are
-done for every datapoint at every optimization step — and (3) for high-dimensional z on a GPU, those
-operations must be *parallelizable across dimensions*. The question is whether there is a family of
-posteriors that is far more expressive than a diagonal Gaussian yet still satisfies all three, and —
-where the existing flexible families break down — keeps working as the latent space grows to thousands
-of spatially-organized dimensions.
+In a variational autoencoder we fit an inference model q(z|x) to approximate the true posterior p(z|x)
+by maximizing a variational lower bound on log p(x). That bound is tight exactly when q(z|x) matches
+p(z|x). The posteriors used today are diagonal Gaussians, q(z|x) = N(μ(x), σ²(x)). The question is what
+family of approximate posteriors to use for stochastic variational inference and VAEs: a family that is
+more expressive than a diagonal Gaussian, while the inference model stays cheap to evaluate and
+differentiate its density, cheap to *sample* (both are done for every datapoint at every optimization
+step), parallelizable across dimensions on a GPU, and usable as the latent space grows to thousands of
+spatially-organized dimensions.
 
 # Background
 
@@ -37,63 +30,54 @@ computable, the density of the last iterate is
   log q(z_T|x) = log q(z_0|x) − Σ_{t=1}^{T} log |det(∂z_t/∂z_{t-1})|.
 
 Rezende & Mohamed used a planar flow f_t(z) = z + u·h(wᵀz + b) (with vectors u, w, scalar b,
-nonlinearity h), which routes all information through a single-unit bottleneck wᵀz + b — so capturing
-high-dimensional dependencies requires a very long chain. In practice these planar/radial flows are
-effective only for low-dimensional latent spaces (at most a few hundred dimensions); how to scale a
-flow to the latent space of a generative model of large images was open.
+nonlinearity h), routing information through the scalar wᵀz + b. In practice these planar/radial flows
+have been applied to low-dimensional latent spaces (at most a few hundred dimensions).
 
-**Gaussian autoregressive functions.** A separate, very successful line uses autoregressive neural
-networks for density estimation — MADE (Germain et al. 2015), PixelCNN/PixelRNN (van den Oord et al.
-2016), WaveNet, RNN estimators. For a variable y = {y_i} with a chosen order, such a network outputs a
-mean and standard deviation [μ(y), σ(y)] with the autoregressive structure ∂[μ_i, σ_i]/∂y_j = [0, 0]
-for j ≥ i — each element's parameters depend only on the earlier elements. Sampling from such a model
-is the sequential recursion
+**Gaussian autoregressive functions.** A separate line uses autoregressive neural networks for density
+estimation — MADE (Germain et al. 2015), PixelCNN/PixelRNN (van den Oord et al. 2016), WaveNet, RNN
+estimators. For a variable y = {y_i} with a chosen order, such a network outputs a mean and standard
+deviation [μ(y), σ(y)] with the autoregressive structure ∂[μ_i, σ_i]/∂y_j = [0, 0] for j ≥ i — each
+element's parameters depend only on the earlier elements. Sampling from such a model is the sequential
+recursion
 
   y_0 = μ_0 + σ_0·ε_0,   y_i = μ_i(y_{1:i-1}) + σ_i(y_{1:i-1})·ε_i,   ε ~ N(0, I),
 
-whose cost is proportional to the dimensionality D and is inherently sequential, so these models are
-not directly attractive as posteriors to sample from.
+whose cost is proportional to the dimensionality D and is inherently sequential.
 
 **Building blocks available.** Masked autoregressive networks (MADE) and masked/causal convolutions
-(PixelCNN, WaveNet) give cheap, parallel autoregressive functions. ResNets (He et al. 2015, 2016)
-make deep image models trainable. Weight normalization with data-dependent initialization (Salimans &
-Kingma 2016) stabilizes such training. The LSTM "forget-gate bias" trick (Jozefowicz et al. 2015) —
-biasing a gate so it starts near 1 — is a known way to make a gated update begin as near-identity. Adam
-is the default optimizer; the importance-weighted bound (Burda et al. 2015) gives a tighter likelihood
-estimator for evaluation.
+(PixelCNN, WaveNet) give parallel autoregressive functions. ResNets (He et al. 2015, 2016) make deep
+image models trainable. Weight normalization with data-dependent initialization (Salimans & Kingma 2016)
+stabilizes such training. The LSTM "forget-gate bias" trick (Jozefowicz et al. 2015) — biasing a gate so
+it starts near 1 — is a known way to make a gated update begin as near-identity. Adam is the default
+optimizer; the importance-weighted bound (Burda et al. 2015) gives a tighter likelihood estimator for
+evaluation.
 
 **Deep stochastic-layer optimization.** Deep VAEs with many latent groups can settle into a
-zero-information state q(z|x) ≈ p(z), especially early in training when the likelihood signal is weak.
-Then the KL terms are small, the stochastic layers are unused, and encoder gradients have poor
-signal-to-noise for escaping. KL annealing in sentence VAEs and ladder-style VAEs is one known way
-to avoid over-penalizing latent information too early; the general requirement is an objective or
-schedule that prevents immediate collapse to an unused-latent solution.
+zero-information state q(z|x) ≈ p(z), in which the KL terms are small and the stochastic layers are
+unused. KL annealing in sentence VAEs and ladder-style VAEs is a known way to avoid over-penalizing
+latent information early in training.
 
 # Baselines
 
 **Diagonal-Gaussian VAE.** q(z|x) = N(μ(x), σ²(x)) with μ, σ nonlinear functions of x, reparameterized
-as z = μ(x) + σ(x) ⊙ ε. *Math/algorithm:* cheap density, cheap sampling, fully parallel. *Gap:* the
-posterior is forced factorized, so the bound is loose whenever the true posterior has correlations —
-which it almost always does.
+as z = μ(x) + σ(x) ⊙ ε. *Math/algorithm:* cheap density, cheap sampling, fully parallel; the posterior
+is factorized across dimensions.
 
 **Planar / radial normalizing flows (Rezende & Mohamed 2015).** A chain of invertible maps
 z + u·h(wᵀz + b) (planar) refining the posterior, with a tractable per-step Jacobian. *Math/algorithm:*
-log q updated by the per-step log-determinant. *Gap:* each step squeezes all information through a
-single-unit bottleneck, so it does not scale to high-dimensional latent spaces — effective only up to a
-few hundred dimensions.
+log q updated by the per-step log-determinant; each step routes information through the scalar wᵀz + b.
+Applied to latent spaces up to a few hundred dimensions.
 
 **Coupling-layer flows — NICE / Real NVP (Dinh et al. 2014, 2016).** A flow that splits z into two
 halves, copies one half, and transforms the other half as a neural-network function of the copied half.
 *Math/algorithm:* the large copied block gives a triangular Jacobian and a computationally cheap
-*inverse* in one pass. *Gap:* updating only half the variables per layer as a function of the other half
-was found generally less powerful per transformation than other flows in low dimensions (Rezende &
-Mohamed 2015), and these were developed for density estimation rather than as a posterior.
+*inverse* in one pass; each layer updates half the variables as a function of the other half. Developed
+for density estimation.
 
 **Hamiltonian variational inference (Salimans et al. 2014).** Generates a transformation by simulating
 Hamiltonian dynamics on the latents with auxiliary momentum, guided by the exact posterior and leaving
-it invariant for small steps. *Math/algorithm:* could approach the exact posterior given enough steps.
-*Gap:* very demanding computationally, and requires an auxiliary variational bound for the momentum
-variables that can impede progress if not tight.
+it invariant for small steps. *Math/algorithm:* approaches the exact posterior given enough steps; uses
+an auxiliary variational bound for the momentum variables.
 
 # Evaluation settings
 

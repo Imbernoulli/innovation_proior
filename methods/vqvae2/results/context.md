@@ -4,15 +4,13 @@
 
 How can a generative image model keep the measurable, mode-covering benefits of likelihood training while producing high-resolution samples that look sharp and varied?
 
-The conflict is concrete. Adversarial models can produce sharp images at high resolution, but they are not trained with a likelihood and can drop parts of the data distribution without a direct held-out likelihood penalty. Likelihood models have the opposite strength: minimizing negative log-likelihood is minimizing the forward KL from data to model up to the data entropy, so assigning negligible probability to real data is heavily penalized. They give a comparable test-set objective and, in principle, pressure the model to cover all modes. The weakness is that pixel-space likelihood spends capacity on details that matter numerically but little perceptually, and autoregressive pixel sampling is sequential over a very large grid.
-
-A satisfactory route should keep a tractable density model somewhere in the system, avoid spending most modeling effort on imperceptible pixel detail, sample faster than a pixel-by-pixel model, and still preserve enough global structure for coherent large images.
+Adversarial models can produce sharp images at high resolution, but they are not trained with a likelihood and can drop parts of the data distribution without a direct held-out likelihood penalty. Likelihood models minimize the forward KL from data to model up to the data entropy, so assigning negligible probability to real data is heavily penalized; they give a comparable test-set objective and, in principle, pressure the model to cover all modes.
 
 ## Background
 
 **Likelihood versus implicit generation.** VAEs, flows, and autoregressive models train by likelihood or a likelihood bound; GANs train an implicit generator through a discriminator. The first family offers held-out objectives and mode-coverage pressure, while the second family historically produced very sharp samples but needed proxy metrics such as Inception Score and FID for comparison.
 
-**Pixel-space likelihood mismatch.** Pixel NLL is not always aligned with perceptual quality. A model can improve bits/dim by modeling local texture, sensor noise, or bit-plane detail while doing little for object shape and scene layout. Autoregressive pixel models compound this by sampling one location at a time.
+**Pixel-space likelihood mismatch.** Pixel NLL is not always aligned with perceptual quality. A model can improve bits/dim by modeling local texture, sensor noise, or bit-plane detail while doing little for object shape and scene layout. Autoregressive pixel models sample one location at a time.
 
 **Lossy compression.** Image compression suggests that much of an image can be discarded without a visible change. A generative model that operates on a compact representation rather than raw pixels can spend probability mass on the information the decoder actually needs for reconstruction.
 
@@ -28,13 +26,13 @@ A satisfactory route should keep a tractable density model somewhere in the syst
 
 `||x - D(z_q(x))||_2^2 + ||sg[z_e(x)] - e_k||_2^2 + beta ||z_e(x) - sg[e_k]||_2^2`.
 
-With a deterministic one-hot posterior and a uniform `K`-way prior, the KL is `log K` per latent position, or `N log K` for `N` independent positions, so it is constant during autoencoder training. The codebook term can be replaced by an EMA update, equivalent to online k-means. Gap: one flat grid has to represent both global shape and local texture, and one prior has to model correlations at all scales.
+With a deterministic one-hot posterior and a uniform `K`-way prior, the KL is `log K` per latent position, or `N log K` for `N` independent positions, so it is constant during autoencoder training. The codebook term can be replaced by an EMA update, equivalent to online k-means.
 
-**Pixel-space autoregressive models.** PixelCNN-style models give exact likelihood and strong density estimates, but sampling a high-resolution image requires many sequential conditionals and capacity is spent directly on pixel detail.
+**Pixel-space autoregressive models.** PixelCNN-style models give exact likelihood and strong density estimates.
 
-**GANs at scale.** BigGAN-style generators provide strong sample quality and a truncation knob for a quality-diversity tradeoff, but the model is not optimized for test likelihood and can have incomplete coverage.
+**GANs at scale.** BigGAN-style generators provide strong sample quality and a truncation knob for a quality-diversity tradeoff.
 
-**Hierarchical latent-variable models.** Multi-level latents and hierarchical quantized codes have been used before, including for raw audio. The open question is how to arrange the levels so that they divide global and local information without letting one level collapse or forcing a pixel-space autoregressive decoder to do the hard work.
+**Hierarchical latent-variable models.** Multi-level latents and hierarchical quantized codes have been used before, including for raw audio.
 
 ## Evaluation Settings
 

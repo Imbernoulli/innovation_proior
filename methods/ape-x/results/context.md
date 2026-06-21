@@ -3,29 +3,25 @@
 ## Research question
 
 A broad empirical regularity in deep learning is that combining more computation with more powerful
-models and larger datasets yields better results, and there is good reason to hope the same holds for
+models and larger datasets yields better results, and there is reason to hope the same holds for
 deep reinforcement learning: the most striking RL successes of the moment — Gorila, A3C, GPU
-Advantage Actor-Critic, Distributed PPO, AlphaGo — all leaned heavily on greater compute. Yet most
-deep-RL research still optimizes within the budget of a single machine, and the question of how best
-to *harness more machines* is comparatively underexplored.
+Advantage Actor-Critic, Distributed PPO, AlphaGo — all leaned heavily on greater compute. Much
+deep-RL research optimizes within the budget of a single machine.
 
 Standard distributed training of neural networks parallelizes the computation of **gradients** so as
-to update parameters faster. The narrower question here is whether there is a *different* axis to
-scale on: let environment interaction happen on many machines, but keep the parameter update itself
-stable. Concretely — if hundreds of environment instances run in parallel, what should be
-communicated, what can safely be stale, and how should a learner spend a fixed update budget? A
-solution would have to reach the best-known final performance on the Arcade Learning Environment in a
-small fraction of the usual wall-clock time, without per-game hyperparameter tuning, and ideally
-generalize to continuous-control problems as well.
+to update parameters faster. The question here is how to use many machines to train a deep-RL agent:
+if hundreds of environment instances run in parallel, what should be communicated and how should a
+learner spend its update budget, so as to reach the best-known final performance on the Arcade
+Learning Environment in a fraction of the usual wall-clock time, without per-game hyperparameter
+tuning, and ideally generalize to continuous-control problems as well.
 
 ## Background
 
 **Distributed stochastic gradient descent.** In supervised learning, training of deep networks is
 routinely sped up by parallelizing gradient computation across workers, applying the parameter
-updates either synchronously (Krizhevsky 2014) or asynchronously (Dean et al. 2012, DistBelief). A
-recurring constraint is that gradients become **stale** quickly: a gradient computed against
-parameters that are now several updates old is a worse and worse estimate, so these systems need
-low-latency communication and short synchronization periods.
+updates either synchronously (Krizhevsky 2014) or asynchronously (Dean et al. 2012, DistBelief).
+A gradient is computed against the current parameters and applied as a parameter update; these
+systems use low-latency communication and short synchronization periods.
 
 **Distributed importance sampling.** A complementary way to speed up training is variance reduction
 by non-uniform sampling: draw training examples with probability proportional to, say, the L2 norm
@@ -84,33 +80,28 @@ actor-critic; GA3C and PAAC adapted it to GPUs.
 
 **Gorila DQN (Nair et al. 2015).** Distributes deep RL by replicating actor + local-replay + learner
 bundles and **distributing gradient computation**: local learners compute gradients and ship them to
-a central parameter server. Gap it leaves open: each bundle's replay is *local* and sampled
-*uniformly*, so the training data distribution is fragmented across replicas; and because the thing
-communicated is gradients, the system inherits distributed-SGD's sensitivity to staleness and
-latency.
+a central parameter server. Each bundle's replay is *local* and sampled *uniformly*; the thing
+communicated between bundles and the server is gradients.
 
 **DQN with uniform experience replay (Mnih et al. 2015).** Single learner, sliding-window 10⁶
 buffer, minibatches of 32 sampled uniformly, target network, reward clipping, ε-greedy behavior.
-The state of the art on Atari for its time, but single-machine and sample-bound; uniform replay
-spends most updates on already-mastered transitions.
+The state of the art on Atari for its time, running on a single machine.
 
 **Prioritized / Prioritized Dueling DQN (Schaul et al. 2016; Wang et al. 2016).** DQN with sampling
-∝ |δ|^α and an annealed IS correction (β: β₀ → 1), and a dueling value head. Substantially more
-sample-efficient than uniform DQN, but still single-machine: one process both acts and learns, so
-throughput is capped by a single environment-interaction stream, and the "insert at max priority,
-refine on first sample" rule assumes a single slow producer of new transitions.
+∝ |δ|^α and an annealed IS correction (β: β₀ → 1), and a dueling value head. Runs on a single
+machine, with one process that both acts and learns, and inserts each new transition at the maximum
+priority seen so far, refining it on first sample.
 
 **A3C (Mnih et al. 2016).** Multi-threaded on-policy n-step advantage actor-critic; effective and
-fast on a single machine, but on-policy — it cannot reuse past experience and so is sample-bound, and
-it parallelizes only within one machine.
+fast on a single machine, learning on-policy from freshly generated experience.
 
 **Distributional DQN / C51 (Bellemare et al. 2017) and Rainbow (Hessel et al. 2018).** C51 learns a
 distribution over returns instead of a scalar; Rainbow combines double Q-learning, prioritization,
 dueling, multi-step returns, distributional values, and noisy nets into the strongest single-machine
-value-based agent. Still single-machine and sample-bound.
+value-based agent.
 
 **DDPG (Lillicrap et al. 2015).** The standard off-policy actor-critic for continuous control, the
-natural single-machine yardstick for any continuous-control extension.
+single-machine yardstick for any continuous-control extension.
 
 ## Evaluation settings
 

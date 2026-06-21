@@ -4,9 +4,9 @@ Safe reinforcement learning on Safety-Gymnasium navigation: an agent must maximi
 
 ## Prior art / Background / Baselines
 
-- **Constrained MDPs (Altman 1999).** A standard MDP augmented with a cost function and budget `d`; maximizing reward subject to `J_c <= d` is convex in the state-action occupancy measure, so the constrained problem has zero duality gap. Gap: the exact LP/occupancy formulation does not apply to neural policies; in the function-approximation setting one must fall back to iterative primal-dual schemes that only approximate the saddle point.
-- **Penalty / reward-shaping baselines.** Fold safety into reward as `r - beta*c` for a fixed scalar `beta`, then run unconstrained RL. Gap: `beta` cannot be set from the budget `d` ahead of time — the mapping from penalty weight to resulting cost return is policy- and environment-dependent — and a single constant cannot serve both early exploration and late fine-tuning.
-- **Lagrangian / primal-dual methods.** Dualize the constraint with a nonnegative multiplier `lambda`, form `L = J_r - lambda*(J_c - d)`, and alternate policy ascent with dual descent, updating `lambda` from the running violation `J_c - d`. Gap: because `lambda` is updated from cumulative violation, the budget is enforced only at convergence, not on the trajectories generated during training; episodes routinely exceed the limit while learning.
+- **Constrained MDPs (Altman 1999).** A standard MDP augmented with a cost function and budget `d`; maximizing reward subject to `J_c <= d` is convex in the state-action occupancy measure, so the constrained problem has zero duality gap. In the function-approximation setting one falls back to iterative primal-dual schemes that approximate the saddle point.
+- **Penalty / reward-shaping baselines.** Fold safety into reward as `r - beta*c` for a fixed scalar `beta`, then run unconstrained RL. The mapping from penalty weight to resulting cost return is policy- and environment-dependent.
+- **Lagrangian / primal-dual methods.** Dualize the constraint with a nonnegative multiplier `lambda`, form `L = J_r - lambda*(J_c - d)`, and alternate policy ascent with dual descent, updating `lambda` from the running violation `J_c - d`.
 
 ## Fixed substrate / Code framework
 

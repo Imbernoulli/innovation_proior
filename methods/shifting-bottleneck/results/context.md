@@ -20,11 +20,9 @@ third family is the hard part: for every pair of operations `(i,j)` that share a
 them must come first, but which one is ours to choose. Those *disjunctions* are the entire
 combinatorial difficulty.
 
-The goal is a method that, in useful time (seconds to a couple of minutes, not hours), produces a
-schedule whose makespan is close to optimal on instances the size of a real shop — on the order of
-ten machines and ten-to-fifty jobs. An exact optimum is out of reach at that size; what a solution
-must achieve is *consistently better quality than the fast greedy rules*, at a cost that is still
-modest.
+The question is how to choose the machine orderings — orienting the disjunctive edges — so as to
+minimize the makespan on instances the size of a real shop (on the order of ten machines and
+ten-to-fifty jobs).
 
 ## Background
 
@@ -77,19 +75,13 @@ operation to dispatch from the set of currently schedulable ones by a local crit
 processing time), MWKR (most work remaining on the job), FCFS, LST (late start time), MINSLK
 (minimum slack), and others. The eligible set is restricted so the result is an active or non-delay
 schedule. These are one-pass greedy procedures: decisions are based on what looks locally best and
-are never undone. They are extremely fast and usually "not too bad," but they commit early to
-sequencing decisions on *every* machine simultaneously and myopically, with no notion of which
-machine actually constrains the makespan. No single rule dominates: across a test bank, different
-rules win on different instances, and the typical gap to optimum is real and uneven. A common patch
-is to *randomize* a rule (sample operations with probability proportional to priority) and take the
-best of many runs — more time for modest, unreliable gains.
+are never undone.
 
 **Implicit enumeration on the disjunctive graph (Balas 1969).** Machine sequencing via the
 disjunctive graph, solved by branch and bound that orients disjunctive edges and prunes by longest
-paths. It supplies the key structural fact used later: a machine `k` is *critical* for a selection
-`S` if its selection `S_k` contributes an arc to a longest (critical) path in `D_S`; any schedule
-strictly better than `S` must reverse at least one arc on every critical path. This is exact but
-expensive, and "critical" is a yes/no label — it partitions machines into critical and non-critical.
+paths. A machine `k` is *critical* for a selection `S` if its selection `S_k` contributes an arc to
+a longest (critical) path in `D_S`; any schedule strictly better than `S` must reverse at least one
+arc on every critical path.
 
 **Branch and bound for the one-machine problem (McMahon & Florian 1975; Carlier 1982).** Exact
 algorithms for `1|r_j,q_j|C_max`. McMahon & Florian solved instances up to ~80 jobs; Carlier (1982)
@@ -98,8 +90,6 @@ current time, among released jobs pick the one with largest tail `q_j`) produces
 and its critical path; from a *critical block* `J` of jobs one reads a lower bound
 `h(J) = min_{i∈J} r_i + Σ_{i∈J} d_i + min_{i∈J} q_i`, and a single "critical job" `j(k)` whose
 placement before or after `J` defines a two-way branch. Trees stay small (rarely above `2n` nodes).
-This is the tool that makes a one-machine subproblem essentially free to solve exactly. What it does
-*not* do on its own is say anything about a multi-machine shop.
 
 ## Evaluation settings
 

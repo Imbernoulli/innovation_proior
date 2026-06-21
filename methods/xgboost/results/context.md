@@ -4,33 +4,11 @@
 
 Across spam filtering, ad click-through prediction, fraud detection, web-search ranking, and
 physics event classification, the learner that most often wins is an ensemble of decision trees
-trained by boosting. The accuracy is there. What is not there is a single system that delivers
-that accuracy *and* scales the way the data has grown. The concrete problems a usable system
-would have to solve at once:
-
-- **Datasets no longer fit in memory.** Click logs and insurance/claims data reach hundreds of
-  millions to billions of rows. The dominant single-machine tree-boosting packages assume the
-  data sits in RAM; once it does not, they either fail or thrash.
-- **Tree learning re-sorts the data every iteration.** The expensive inner step of growing a
-  tree is finding the best split, which requires the instances in sorted order per feature. Doing
-  that sort afresh at every node of every tree, over hundreds of trees, dominates the run time and
-  carries an avoidable `log n` factor.
-- **Real features are sparse, and sparsity is handled by ad-hoc hacks.** Missing values, frequent
-  zeros, and one-hot encodings make the input matrix mostly empty. Existing tree learners are
-  tuned for dense data or special-case categorical encodings; none handles all sparsity patterns
-  in one principled, *fast* way (cost proportional to the non-zeros).
-- **The approximate, distributed split-finder lacks a rigorous primitive.** When the data is
-  bucketed for an out-of-core or distributed split search, the candidate split points are quantiles
-  of a feature. But in second-order boosting each instance carries a *weight*, and the available
-  streaming quantile machinery handles only *unweighted* points with a provable error bound;
-  weighted-quantile proposals have been done by sorting a random subset (failure probability) or by
-  guarantee-free heuristics.
-- **Accuracy still leaks through overfitting.** A tree ensemble has enough capacity to memorize;
-  the procedure needs regularization that is part of *what is optimized when a split is chosen*,
-  not just an after-the-fact cap on the number of trees.
-
-A solution has to be one end-to-end system: as accurate as the best boosting, and able to push a
-terabyte of sparse data through a desktop or a small cluster.
+trained by boosting. The accuracy is there. The practical question is how to build a single
+end-to-end system that delivers that accuracy on the scale and data shapes the industry actually
+sees: click logs and insurance/claims data reaching hundreds of millions to billions of rows,
+heavily sparse feature matrices from one-hot encoding, and hardware where aggregate RAM can be
+smaller than the dataset.
 
 ## Background
 
@@ -69,10 +47,7 @@ derivative divided by the second derivative of the loss. For the logistic loss t
 each round fits a base learner by *weighted* least squares to a working response
 `z_i = (y_i^* - p_i) / (p_i(1-p_i))` with weights `w_i = p_i(1-p_i)`. The working response is the
 negative gradient divided by curvature, and the weight is the curvature itself; the Newton step is a
-weighted least-squares fit in which **the weights are the curvature**. So boosting already secretly
-carries a notion of a per-instance second-order weight — but the mainstream gradient-boosting
-implementations use only the first-order gradient to fit the tree and then a separate per-leaf line
-search.
+weighted least-squares fit in which **the weights are the curvature**.
 
 **Regularization of additive models.** Friedman (2001) shows that **shrinkage** — scaling each
 newly added term by a factor `0 < ν < 1` (a "learning rate"), `F_m = F_{m-1} + ν·f_m` — generally
@@ -82,16 +57,14 @@ iteration, which both regularizes and speeds up. **Column (feature) subsampling*
 borrowed from RandomForest (Breiman 2001; Friedman & Popescu 2003): at each tree (or split) only a
 random subset of features is considered; commercial TreeNet used it for boosting, but open-source
 boosting packages did not. Regularized Greedy Forest (Zhang & Johnson 2014) goes further by putting
-an explicit penalty on the whole forest and doing fully-corrective updates — more accurate in
-places but harder to parallelize.
+an explicit penalty on the whole forest and doing fully-corrective updates.
 
 **Streaming quantiles with merge and prune (Greenwald & Khanna 2001; Zhang & Wang 2007).** For
 proposing candidate split points on huge or distributed data, the database community has
 `ε`-approximate **quantile summaries**: a small data structure that answers rank/quantile queries
 to relative error `ε`, supporting a **merge** of two summaries (error becomes `max(ε_1, ε_2)`) and
 a **prune** down to `b+1` elements (error grows to `ε + 1/b`). These two operations are what let a
-summary be built in a streaming/distributed fashion. The catch: the guarantees are for
-*equally-weighted* points.
+summary be built in a streaming/distributed fashion.
 
 **The empirical facts about scale that any system inherits.** These are properties of the hardware
 and data, available before the design: indirect, by-row memory access during a feature-sorted
@@ -104,34 +77,22 @@ dense size is paying mostly for zeros.
 
 **TreeBoost / gradient boosting machine (Friedman 2001; `scikit-learn`, R `gbm`).** Function-space
 steepest descent with trees: fit a tree to the negative-gradient pseudo-residuals, then a per-leaf
-constant by line search; shrink by `ν`. Core idea is exactly right and dominant in accuracy on
-tabular data. *Limitation:* it fits the tree using only the first-order gradient and finds the leaf
-values by a separate per-leaf optimization, so the criterion used to *choose splits* (least-squares
-fit to pseudo-residuals) is not the same quantity as the loss being minimized, and it carries no
-explicit model-complexity penalty inside the split criterion. The implementations sort the data per
-node every iteration, are single-threaded (R `gbm`, `scikit-learn` for the tree growth here), are
-in-memory only, and have no unified sparsity handling.
+constant by line search; shrink by `ν`. Dominant in accuracy on tabular data. The implementations
+sort the data per node every iteration, are single-threaded (R `gbm`, `scikit-learn` for the tree
+growth here), and are in-memory only.
 
 **LogitBoost / adaptive-Newton boosting (FHT 2000).** Fits each round by weighted least squares with
 weights equal to the loss curvature and working response equal to negative gradient divided by
-curvature — a per-round Newton step. *Limitation:* derived loss-by-loss (logistic, exponential),
-presented as a fitting procedure rather than as an explicit regularized objective over the tree
-structure and leaf scores; no scalable system, no sparsity or out-of-core story.
+curvature — a per-round Newton step.
 
 **Regularized Greedy Forest (Zhang & Johnson 2014).** An explicit regularizer over the forest plus
-fully-corrective re-optimization of all leaf weights. *Limitation:* the fully-corrective objective
-and structure search are comparatively heavy and hard to parallelize.
+fully-corrective re-optimization of all leaf weights.
 
 **pGBRT / parallel and distributed boosting (Tyree et al. 2011; Ye et al. 2009; PLANET 2009).**
-Histogram/approximate split finding to parallelize or distribute tree growth. *Limitation:* they
-address only the algorithmic parallelization of split finding; out-of-core computation,
-cache-aware access, and a principled sparsity-aware split finder are not addressed, and the
-approximate proposal step relies on unweighted quantiles.
+Histogram/approximate split finding to parallelize or distribute tree growth.
 
 **In-memory distributed analytics frameworks (Spark MLlib, H2O).** General distributed ML with tree
-ensembles. *Limitation:* they require the data to live in cluster RAM; they cannot fall back to
-disk, so on data larger than aggregate memory they either cannot run or slow down sharply, and
-their tree learners support only a subset of approximate/sparse settings.
+ensembles running across a cluster.
 
 ## Evaluation settings
 
@@ -189,7 +150,7 @@ class AdditiveEnsemble:
         raise NotImplementedError
 
     def predict(self, X):
-        out = np.full(X.shape[0], self.initial_value, dtype=float)
+        out = np.full(X.shape[0], self.initial_value)
         for learner in self.learners:
             out += self.lr * learner.predict(X)
         return out

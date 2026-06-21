@@ -6,26 +6,20 @@ We are given a data matrix `D` of `m` iid records over `n` discrete variables `X
 each variable taking one of finitely many integer-coded states, and we want to recover the
 *causal/probabilistic structure* that generated it — a directed acyclic graph (DAG) `G` whose
 edges encode how the joint distribution factors,
-`p(x_1, ..., x_n) = prod_i p(x_i | pa_i)`. The catch that shapes the entire problem is an
+`p(x_1, ..., x_n) = prod_i p(x_i | pa_i)`. A defining feature of the setting is an
 *identifiability* limit: from observational data alone, under the standard faithfulness
 assumption, many distinct DAGs are statistically indistinguishable. Two DAGs that encode the
-same set of conditional-independence constraints fit any dataset equally well, so no amount of
-observational data can tell them apart. The honest target is therefore not a single DAG but the
-*Markov equivalence class* (MEC) of the true DAG — the set of all DAGs that share its
-independence structure — and a canonical graphical object that names that class uniquely.
+same set of conditional-independence constraints fit any dataset equally well, so the target is
+not a single DAG but the *Markov equivalence class* (MEC) of the true DAG — the set of all DAGs
+that share its independence structure — together with a canonical graphical object that names
+that class uniquely.
 
 The goal is an algorithm that, given purely observational discrete data, returns the equivalence
-class of the generative structure. What a good solution must achieve: (1) **statistical
-soundness** — ideally a guarantee that, in the large-sample limit, it recovers the *true*
-equivalence class, not merely some high-scoring graph; (2) **computational feasibility** — the
-number of DAGs over `n` nodes grows super-exponentially (over 700 billion DAGs and over 200
-billion equivalence classes for just 8 variables), and choosing the optimal structure under a
-Bayesian score is NP-hard, so any practical method must be a *local* search whose every step is
-cheap to evaluate; and (3) **generality across scale and cardinality** — it must work on small
-networks of a handful of binary variables and on networks of dozens of variables with mixed
-cardinalities, without re-tuning to a particular size or edge density. Reconciling (1) and (2) —
-a *local, greedy* search that nonetheless carries a *global* large-sample optimality guarantee —
-is the heart of the problem.
+class of the generative structure. The number of DAGs over `n` nodes grows super-exponentially
+(over 700 billion DAGs and over 200 billion equivalence classes for just 8 variables), and
+choosing the optimal structure under a Bayesian score is NP-hard. The setting spans small
+networks of a handful of binary variables and networks of dozens of variables with mixed
+cardinalities.
 
 ## Background
 
@@ -51,7 +45,7 @@ the data, and search the space of structures for a high-scoring one. The Bayesia
 generative distribution,
 `S_B(G, D) = log p(G^h) + log p(D | G^h)`,
 where the marginal likelihood `p(D | G^h)` integrates the data likelihood over the unknown
-network parameters. Two structural properties of a score turn out to be load-bearing:
+network parameters. Two structural properties of a score are load-bearing:
 
 - **Decomposability.** A score is decomposable if it is a sum of per-node *family* terms,
   `S(G, D) = sum_i s(X_i, Pa_i^G)`, each depending only on a node and its parents (and the
@@ -82,11 +76,11 @@ parent configurations, `N_ijk` counts records with `X_i = k` and `Pa_i` in confi
 *uniform* special case — every joint cell equally likely a priori — sets
 `N'_ijk = N' / (r_i q_i)` and `N'_ij = N' / q_i`, controlled by a single **equivalent sample
 size** `N'`. This uniform-prior multinomial score is decomposable *and* score-equivalent, and it
-needs only one prior knob plus a structure prior. By contrast the older K2 score (Cooper &
+needs only one prior knob plus a structure prior. The older K2 score (Cooper &
 Herskovits 1992), which constrains parameter priors to a restricted family, is decomposable but
 *not* score-equivalent: two DAGs in the same class can get different K2 values.
 
-**The asymptotic facts that make scores trustworthy.** Geiger, Heckerman, King and Meek (2001)
+**The asymptotic facts about scores.** Geiger, Heckerman, King and Meek (2001)
 established that multinomial and Gaussian Bayesian-network models are *curved exponential
 models*, and Haughton (1988) showed that for such models the Bayesian score is, via Laplace's
 method, asymptotically the Bayesian Information Criterion,
@@ -101,7 +95,7 @@ facts about *any* such score, knowable before any search algorithm exists:
 - **Local consistency.** Because BIC is decomposable, consistency localizes: adding the edge
   `X_i -> X_j` to a DAG *raises* the score in the limit if and only if `X_i` and `X_j` are
   dependent given `X_j`'s current parents (`X_j` not independent of `X_i` given `Pa_j`), and
-  *lowers* it otherwise. (Proof sketch knowable in advance: in the limit the score ranks like
+  *lowers* it otherwise. (Proof sketch: in the limit the score ranks like
   BIC; by decomposability the score change of adding the edge is the same in any DAG where `X_j`
   has the same parents, so reduce to a DAG where the addition completes a fully connected graph,
   which imposes no constraints, and invoke consistency.)
@@ -127,38 +121,27 @@ conditional independencies of growing conditioning-set size, delete an edge when
 separating set is found, then orient v-structures and propagate Meek's orientation rules to
 output a PDAG of the equivalence class. *Core algorithm:* start from the complete undirected
 graph; for each adjacent pair, search for a subset of the neighbors that renders them
-conditionally independent; orient colliders, then apply orientation rules. *Gap:* every decision
-is a hard accept/reject of an individual hypothesis test, so errors compound — one wrong CI
-verdict early removes or keeps an edge and cascades through orientation; on discrete data the
-chi-squared / `G^2` tests become unreliable exactly where conditioning sets are large and cell
-counts thin, which is precisely the high-cardinality, larger-network regime. There is no single
-global objective being optimized and no claim that the output is the best-fitting model — only
-that it is consistent with the test outcomes.
+conditionally independent; orient colliders, then apply orientation rules. Each decision
+is a hard accept/reject of an individual hypothesis test; on discrete data the comparator CI
+test is chi-squared / `G^2`. The output is consistent with the test outcomes rather than the
+optimizer of a single global objective.
 
 **Hill-climbing over DAGs with a score (classical local search).** Treat each DAG as a state and
 each *single edge addition, deletion, or reversal* as a move; greedily take whichever move most
 improves a decomposable score, until no move helps. *Core algorithm:* maintain a current DAG;
 enumerate its single-edge-change neighbors that remain acyclic; score each via the cheap
-decomposable score difference; move to the best if it improves; stop at a local maximum. *Gaps:*
-(i) it searches *DAG* space, which is larger and more redundant than the space of distinguishable
-models — many of its moves are *covered-edge reversals* that change the DAG but not the
-equivalence class, so the search wastes steps shuffling among indistinguishable representations
-of the same model and can stall on plateaus of equivalent DAGs; (ii) it carries *no* large-sample
-optimality guarantee — a purely local DAG hill-climb can terminate at a structure that is not the
-generative one even with infinite data; (iii) because it commits to a *single* DAG it implicitly
-picks an arbitrary orientation among equivalent ones, over-claiming causal direction that the
-data cannot support.
+decomposable score difference; move to the best if it improves; stop at a local maximum. The
+search runs over *DAG* space, in which many moves are *covered-edge reversals* that change the
+DAG but not the equivalence class, and it commits to a *single* DAG, picking one orientation
+among the equivalent ones.
 
-**Earlier hill-climbing over equivalence classes.** Prior class-space work had already shown
-that one can avoid redundant DAG representatives: keep a partially directed graph that records
-which orientations are compelled and which are reversible, make small local modifications that
-preserve a valid equivalence-class representation, score candidates through decomposable family
-terms, and re-canonicalize the class graph after an accepted move. This is a genuine advance
-over DAG-space hill-climbing because it searches distinguishable models rather than arbitrary
-representatives. *Gap:* efficient local edits alone do not explain why a local maximum should be
-the generative equivalence class in the infinite-data limit. This prior line removes
-representation redundancy, but its local neighborhoods are still an algorithmic choice rather
-than a structural certificate that greedy progress cannot get stuck at the wrong class.
+**Earlier hill-climbing over equivalence classes.** Prior class-space work searches over
+partially directed graphs rather than individual DAGs: keep a partially directed graph that
+records which orientations are compelled and which are reversible, make small local
+modifications that preserve a valid equivalence-class representation, score candidates through
+decomposable family terms, and re-canonicalize the class graph after an accepted move. This
+searches distinguishable models, with local neighborhoods defined by the chosen set of local
+edits.
 
 ## Evaluation settings
 
@@ -168,7 +151,7 @@ The natural yardsticks already in use for structure learning on discrete data:
   with known DAG and Dirichlet-sampled multinomial parameters, run the learner, and ask whether
   the learned equivalence class is *equivalent to the generative structure*. Sweep `m` (e.g.
   hundreds to tens of thousands of records) to trace recovery versus sample size. The figure of
-  merit is exact recovery of the class, which directly tests the soundness goal.
+  merit is exact recovery of the class.
 - **Real-world discrete datasets** of varying size and cardinality — e.g. web-usage indicator
   data, TV-viewing indicators, movie ratings, demographic/internet-use categories,
   congressional voting records, mushroom attributes — drawn from public repositories (UCI and

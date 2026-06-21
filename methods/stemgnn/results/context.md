@@ -8,20 +8,14 @@ Stack them into a matrix `X ∈ R^{N×T}`: row `i` is one series, column `t` is 
 `N` series at timestamp `t`. From a window of the last `K` timestamps `X_{t-K},…,X_{t-1}` we must
 forecast the next `H` timestamps `X_t,…,X_{t+H-1}` for every series at once.
 
-Accuracy here hinges on modeling two things *together*. There is **intra-series** structure: each
+Accuracy here depends on modeling two things together. There is **intra-series** structure: each
 series has its own temporal dynamics — trend, periodicity (a daily rush-hour cycle), autocorrelation.
 And there is **inter-series** structure: the series interact — congestion on one road segment
 propagates to the next a few minutes later, so series `i`'s future depends on series `j`'s recent
-past. Either structure modeled alone leaves accuracy on the table; the hard part is capturing the
-coupling between them. A solution must (1) represent the temporal patterns of each series, (2)
-represent how the series influence each other, (3) fuse the two so each informs the other, and (4)
-do so *without* being handed the correlation structure as a prior — because in most real problems
-no clean dependency graph is given, and even when one is (the road network), a fixed graph from
-human knowledge may not be the structure that actually matters for forecasting. That is the gap.
+past. The question is how to build a single model that captures both the temporal patterns of each
+individual series and the correlations across the full set.
 
 ## Background
-
-The field state is two largely separate lines of machinery that each handle one half of the problem.
 
 **Temporal modeling of a single series.** Recurrent nets — LSTM (Hochreiter & Schmidhuber 1997),
 GRU (Cho et al. 2014) — carry a hidden state across time and are the default for sequence modeling.
@@ -54,32 +48,25 @@ Laplacian eigenbasis rotates the mixed node coordinates into **orthogonal graph 
 modes capture slowly varying components over strongly connected nodes; higher-frequency modes capture
 sharper contrasts. When the raw node traces mix several such components, this rotation can expose
 network-level or community-level temporal components that are less entangled than the originals.
-Smoother, less entangled series are individually easier to forecast.
 
 ## Baselines
 
 **Spectral GCN with Chebyshev approximation — ChebNet (Defferrard et al. 2016).** Computing
-`U g_θ(Λ) U^T x` directly needs the eigendecomposition of `L`, which is `O(N^3)` and numerically
-fragile, and the resulting filters are global (not localized) and tied to one specific graph. ChebNet
+`U g_θ(Λ) U^T x` directly needs the eigendecomposition of `L`, which is `O(N^3)`. ChebNet
 sidesteps the eigendecomposition by writing the filter as a truncated Chebyshev polynomial of the
 (rescaled) Laplacian, `g_θ(L) = Σ_{k=0}^{K} θ_k T_k(L̃)`, with `L̃ = 2L/λ_max − I` so the argument
 lands in `[-1,1]`, the polynomials computed by the recurrence `T_0 = I`, `T_1 = L̃`,
 `T_k = 2 L̃ T_{k-1} − T_{k-2}`. Because `T_k(L̃)` is a degree-`k` polynomial in `L`, applying it only
 mixes each node with its `k`-hop neighborhood — the filter is *localized* and costs `O(K·|E|)`
-sparse matrix-vector products, no eigendecomposition. **Gap:** ChebNet (and GCN, Kipf & Welling 2016,
-its first-order special case) operates on *static* node features on a *given* graph; it has no notion
-of a temporal axis on each node and no way to discover the graph when none is supplied.
+sparse matrix-vector products, no eigendecomposition. GCN (Kipf & Welling 2016) is a first-order
+special case.
 
 **Stacked graph-conv + recurrent spatio-temporal models — DCRNN (Li et al. 2017), STGCN
 (Yu et al. 2017), GraphWaveNet (Wu et al. 2019).** These wire the two lines together by alternating
 a graph-convolution module (for the spatial/cross-series mixing) with a temporal module (a GRU in
 DCRNN, gated temporal convolutions in STGCN, dilated causal convolutions in GraphWaveNet). They are
-the state of the art for traffic forecasting. **Gaps:** (a) the temporal module operates purely in
-the *time* domain, so the spatial and temporal computations never share a representation — the
-benefit of viewing the series spectrally is never combined with the benefit of viewing the graph
-spectrally; (b) DCRNN and STGCN require a **pre-defined** adjacency (the road network) as a prior;
-GraphWaveNet adds a learnable adjacency but still keeps spatial and temporal processing in separate,
-time-domain stages.
+the state of the art for traffic forecasting. DCRNN and STGCN use a pre-defined adjacency (the road
+network) as a prior; GraphWaveNet adds a learnable adjacency.
 
 **Pure-temporal deep forecasters — N-BEATS (Oreshkin et al. 2019), TCN (Bai et al. 2018), DeepGLO
 (Sen et al. 2019), DeepState (Rangapuram et al. 2018).** N-BEATS is a deep stack of fully-connected
@@ -88,14 +75,8 @@ emits two outputs, a *forecast* of the future and a *backcast* (a reconstruction
 window); the backcast is subtracted from the input before it passes to the next block, so each block
 only has to explain the residual its predecessors could not, and the block forecasts are summed.
 Second, **basis expansion**: a block produces its output as `Y = V θ`, where `V` is a set of learnable
-basis vectors and `θ` are expansion coefficients from a fully-connected layer. **Gap:** N-BEATS and
-TCN are *univariate* — they forecast each series in isolation and model no inter-series correlation
-at all; DeepGLO captures global structure through matrix factorization but the learned cross-series
-relationships are implicit and not a graph.
-
-The shared limitation across all of these: each either treats cross-series structure and temporal
-structure in separate stages, or avoids explicit graph structure, and the graph-based ones mostly
-lean on a supplied topology.
+basis vectors and `θ` are expansion coefficients from a fully-connected layer. DeepGLO captures
+global structure through matrix factorization.
 
 ## Evaluation settings
 

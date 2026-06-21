@@ -8,13 +8,11 @@ toy problems it is not told which future symbols are forced by the generator. At
 the only score that matters is whether it predicts those forced symbols on lengths and nesting
 depths beyond the training range.
 
-The hard part is not next-token prediction in the ordinary statistical sense. A local model can learn
-that many `a` tokens are followed by more `a` tokens and many `b` tokens by more `b` tokens. The
-test asks for something stronger: infer the compact rule behind the stream and execute that same
-rule for larger `n`. In `a^n b^n`, the predictor must know when the `b` run has exactly matched
-the previous `a` run. In nested brackets, it must know which opener is most recent. In reversal, it
-must remember the symbols in last-in-first-out order. These are memory-organization demands, not
-just longer-range correlations.
+The test asks for something stronger than ordinary next-token prediction: infer the compact rule
+behind the stream and execute that same rule for larger `n`. In `a^n b^n`, the predictor must know
+when the `b` run has exactly matched the previous `a` run. In nested brackets, it must know which
+opener is most recent. In reversal, it must remember the symbols in last-in-first-out order. These
+are memory-organization demands, not just longer-range correlations.
 
 ## Existing Recurrent Machinery
 
@@ -27,18 +25,13 @@ y_t = softmax(V h_t).
 ```
 
 The recurrent edge makes the previous internal state available at the next step, so time is
-represented implicitly in the trajectory of `h_t`. This is enough to learn many temporal
-regularities and N-gram-like predictive structures, but the prefix is compressed into a fixed
-`R^m` vector chosen before seeing the sequence length. If the task needs a resource that grows
-with the count or nesting depth, the ordinary hidden state has no such resource.
+represented implicitly in the trajectory of `h_t`.
 
-The long-memory recurrent line weakens this objection but does not remove it. LSTM memory cells
-and gates can preserve error flow over long time lags and can behave like counters on some
-one-turn languages. Constrained recurrent matrices and slowly changing context units similarly
-make longer summaries easier to keep. These mechanisms show that structure in the recurrence
-matters, and that gradient descent can train useful long-memory dynamics. They still leave open
-the shape of memory needed for order-sensitive recursion: a counter or slow summary is not the
-same thing as an addressable last-in-first-out store.
+The long-memory recurrent line extends this class. LSTM memory cells and gates preserve error
+flow over long time lags and can behave like counters on some one-turn languages. Constrained
+recurrent matrices and slowly changing context units similarly make longer summaries easier to
+keep. These mechanisms show that structure in the recurrence matters and that gradient descent can
+train useful long-memory dynamics.
 
 ## Formal-Language Pressure
 
@@ -48,27 +41,18 @@ reading `a`" versus "now reading `b`", but it cannot keep an unbounded count or 
 nesting stack. A pushdown automaton adds exactly one ingredient: a stack that can grow and whose
 top is read first. That makes it the natural abstract machine for many context-free patterns.
 
-This observation cuts both ways. It explains why fixed recurrent vectors are a poor fit for the
-unbounded case, but it also warns that the useful memory operation is structured. A fully general
-random-access memory can do far more than the toy languages require; a bag-like slow context unit
-does too little; and a hand-designed symbolic recognizer solves only a chosen grammar. The missing
-piece is a way to put a simple structured memory under a learned neural controller.
-
 ## Prior Memory-Augmented Baselines
 
 Early neural pushdown automata already paired recurrent controllers with external stack memory and
 showed that grammatical structure can be learned with stack actions. That work establishes the
-right bias: a recurrent state machine plus a stack can represent the relevant rules. Its drawback
-for this setting is trainability and generality. The earlier systems often used specialized error
-functions, hints, isolated grammars, or hard action mechanisms, so they do not yet give a clean
-drop-in next-symbol predictor trained from the raw stream alone.
+right bias: a recurrent state machine plus a stack can represent the relevant rules. These earlier
+systems often used specialized error functions, hints, isolated grammars, or hard action
+mechanisms.
 
 The Neural Turing Machine gives another path: attach a differentiable memory matrix to a neural
 controller and use soft attention for reading and writing. It is trainable by gradient descent and
-can learn algorithmic behaviors such as copy and sort. But the memory is a fixed-size matrix, and
-the read/write/addressing interface is much broader than a last-in-first-out problem demands. For
-the simple generators here, the question is whether a narrower memory topology can be learned more
-directly while retaining gradient-based training.
+can learn algorithmic behaviors such as copy and sort. The memory is a fixed-size matrix, and the
+read/write/addressing interface supports a wide range of memory access patterns.
 
 ## Evaluation and Code Frame
 

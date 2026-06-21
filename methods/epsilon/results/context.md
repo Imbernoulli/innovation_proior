@@ -2,26 +2,18 @@
 
 ## Research question
 
-We want a generative model of natural images that is **simple to define, stable to train, and
-produces sharp, high-fidelity samples** — and ideally one that is a proper likelihood model
-(so it can be evaluated and compared), not just a sample generator. The dominant high-quality
-samplers of the time are adversarial (GANs): they make beautiful images but train unstably and
-give no tractable likelihood for model comparison. The dominant likelihood models
-(autoregressive nets, normalizing flows) are stable and give exact likelihoods but need
-specialized, constrained architectures and, for images, sample slowly one coordinate at a time.
+We want a generative model of natural images. The dominant high-quality samplers of the time
+are adversarial (GANs): they produce sharp images but train without a tractable likelihood for
+model comparison. The dominant likelihood models (autoregressive nets, normalizing flows) give
+exact likelihoods, use specialized architectures, and for images sample one coordinate at a
+time.
 
-There is a third idea that is conceptually clean — define a fixed forward process that
-gradually destroys the data into noise, then *learn the reverse* — but to date it has produced
-only blurry, low-quality images, never anything competitive. The concrete problem is: given a
-**fixed** Gaussian corruption process, choose the parameterization of the learned reverse step
-and the per-step training loss so that a finite-time reverse Markov chain, trained by a
-tractable objective, actually generates high-quality images. Two design choices are wide open
-and entangled: *what the reverse network should output*, and *how each timestep's loss should
-be weighted*. The pain point is that the obvious answers (have the network predict the reverse
-mean directly; train on the exact variational bound) have already been tried and give weak
-samples — so the open question is whether a different but equivalent reparameterization, or a
-different loss weighting, unlocks the sample quality that the architecture is clearly capable
-of.
+A third family defines a **fixed** forward process that gradually destroys the data into noise
+and *learns the reverse*. The concrete problem this poses: given a fixed Gaussian corruption
+process, choose the parameterization of the learned reverse step and the per-step training loss
+so that a finite-time reverse Markov chain, trained by a tractable objective, generates images.
+Two design choices sit open and entangled: *what the reverse network should output*, and *how
+each timestep's loss should be weighted*.
 
 ## Background
 
@@ -57,8 +49,7 @@ by `sqrt(1-beta_t)` as it injects variance `beta_t`, so the total variance stays
 the chain converges to a standard normal. Sohl-Dickstein et al. also derived **entropy bounds**
 that pin down two natural choices for the reverse variance — equal to the forward step variance,
 or equal to the variance of the true reverse posterior — as the upper and lower extremes for
-data with unit coordinate variance. The method was elegant and tractable but had never been
-shown to make high-quality images.
+data with unit coordinate variance. The construction is tractable and per-step Gaussian.
 
 **The score / Langevin line.** A parallel approach models the **score** of the data density,
 `∇_x log p(x)` — the vector field pointing toward higher density — instead of the density
@@ -106,8 +97,7 @@ levels because `(x̃−x)/sigma ~ N(0,I)` and `‖sigma·s_theta‖ ∝ 1`.
 
 These two lines — a fixed Gaussian forward process trained by a variational bound, and a
 multi-noise-level denoiser trained by score matching and sampled by annealed Langevin — are
-developed completely separately, in different languages (variational inference vs. score
-estimation), and it is not at all obvious that they are related.
+developed separately, in different languages (variational inference vs. score estimation).
 
 ## Baselines
 
@@ -115,40 +105,31 @@ These are the prior methods a new image generator would be measured against and 
 
 **GANs (Goodfellow et al. 2014; ProgressiveGAN, BigGAN, StyleGAN2).** A generator is trained
 adversarially against a discriminator. Core idea: minimize a divergence between model and data
-implicitly through the discriminator's signal. They produce the sharpest images of the era.
-**Gap:** training is unstable (mode collapse, sensitivity to hyperparameters and
-architecture), and there is no tractable likelihood, so models cannot be compared on a
-principled probabilistic metric and there is no inductive guarantee that the generator covers
-the data distribution.
+implicitly through the discriminator's signal. They produce the sharpest images of the era; the
+model is an implicit sample generator with no tractable likelihood.
 
 **Autoregressive models (PixelCNN++, Gated PixelCNN, Sparse Transformer).** Factor the image
 likelihood as a product of per-pixel conditionals and model each with a deep net. Core idea:
-exact likelihood via the chain rule, trained by maximum likelihood. **Gap:** sampling is
-inherently sequential — one coordinate at a time, `D` network evaluations for `D` pixels — and
-the fixed raster ordering bakes in an inductive bias; high-resolution sampling is slow.
+exact likelihood via the chain rule, trained by maximum likelihood. Sampling is sequential —
+one coordinate at a time, `D` network evaluations for `D` pixels — under a fixed raster
+ordering.
 
 **Normalizing flows (NICE, RealNVP, Glow).** Build an invertible map from data to a simple
-latent with a tractable Jacobian, giving exact likelihood. **Gap:** invertibility plus a
-cheap-Jacobian constraint restricts the architecture, and sample quality has lagged GANs.
+latent with a tractable Jacobian, giving exact likelihood. The architecture is constrained to
+be invertible with a cheap Jacobian.
 
 **The original diffusion model (Sohl-Dickstein et al. 2015).** The fixed-forward /
 learned-reverse construction above, trained on the variational bound with the reverse step's
 mean and variance both learned by a network. Core idea: model the data as the endpoint of a
-learned reverse diffusion; tractable per-step Gaussians; exact-ish likelihood from the bound.
-**Gap:** in practice it produced only low-quality, blurry samples — it had never been shown
-that this family is capable of competitive image synthesis, and it left open exactly *how* to
-parameterize the reverse Gaussian's mean (predict the mean directly? predict the clean image?)
-and *how* to weight the per-timestep loss terms, with the naive choices giving weak results.
+learned reverse diffusion; tractable per-step Gaussians; likelihood from the bound. The reverse
+Gaussian's mean and the per-timestep loss weighting are set within the network and the bound.
 
 **NCSN (Song & Ermon 2019).** Multi-noise-level denoising score matching with annealed
 Langevin sampling, described above; reached an unconditional CIFAR-10 Inception score of 8.87.
 Core idea: estimate the score at many noise scales with one conditional network, sample by
-annealing. **Gap:** the sampler's coefficients (step sizes, noise scales, number of steps) are
-set by hand *after* training rather than derived from the training process, so training does
-not directly optimize the quality of what the sampler produces; the noise scaling does not
-shrink the signal (variance grows with noise), and the model is not a likelihood model and
-matches the data only approximately. It is a denoiser plus a hand-tuned MCMC, not a single
-trained generative chain with a bound it provably optimizes.
+annealing. The sampler's coefficients (step sizes, noise scales, number of steps) are chosen
+for the MCMC, and the noise scaling keeps signal variance fixed while adding variance. It is a
+denoiser plus an annealed MCMC sampler.
 
 ## Evaluation settings
 
@@ -174,11 +155,10 @@ precomputed once: with `alpha_t = 1 - beta_t` and `alpha_bar_t = prod_{s<=t} alp
 closed-form one-shot corruption `q(x_t|x_0) = N(sqrt(alpha_bar_t) x_0, (1 - alpha_bar_t) I)`
 lets us jump to any timestep directly. The network is a time-conditioned image-to-image model
 (a U-Net) that already exists; the optimizer (Adam), the MSE training loss, the data pipeline,
-and the EMA of weights all already exist. What is **not** settled — and is exactly what must be
-designed — is the bridge between the network's raw output and the diffusion: *what target the
-network is trained to produce at each noisy sample*, and *how that output is turned back into a
-prediction of the clean image for the reverse step*. Those two are a matched pair and must
-invert each other. They are the single empty slot below.
+and the EMA of weights all already exist. The bridge between the network's raw output and the
+diffusion is left open: *what target the network is trained to produce at each noisy sample*,
+and *how that output is turned back into a prediction of the clean image for the reverse step*.
+Those two form a matched pair that must invert each other — the empty slots below.
 
 ```python
 import torch

@@ -4,7 +4,7 @@
 
 Deep learning is fluent at learning *functions* from data: a map from a finite vector to a label, a class score, or a number. Many scientific problems ask for something larger. They ask for an *operator*: a map that takes an entire function as input and returns another function. A differential-equation solution map is the canonical example: feed in a forcing term, initial condition, boundary condition, or material field, and the output is a solution function. Integral transforms, response maps of dynamical systems, and some nonlocal differential operators have the same shape.
 
-The task is to learn such a map \(G:u\mapsto G(u)\) from input-function/output-function examples. For a query location \(y\) in the output domain, the supervised scalar is \(G(u)(y)\). The desired learner should work with scattered input sensors and arbitrary output query locations, not only with image-like grids, and it should generalize from a finite collection of functions rather than merely interpolate one discretized trajectory.
+The task is to learn such a map \(G:u\mapsto G(u)\) from input-function/output-function examples. The input function is observed at a fixed set of sensor locations, and for a query location \(y\) in the output domain the supervised scalar is \(G(u)(y)\). The learner is given a finite collection of input functions, each paired with output values at scattered query locations, and must predict \(G(u)(y)\) for new functions and new query points.
 
 ## Background
 
@@ -14,19 +14,19 @@ The familiar universal approximation theorem says that a sufficiently wide neura
 \left|G(u)(y)-\sum_{k=1}^{p}\left[\sum_{i=1}^{n}c_i^k\sigma\left(\sum_{j=1}^{m}\xi_{ij}^ku(x_j)+\theta_i^k\right)\right]\sigma(w_k\cdot y+\zeta_k)\right|<\varepsilon
 \]
 
-for every \(u\in V\) and \(y\in K_2\). The formula is important because it is not merely an existence statement over a concatenated vector. It separates sampled information about the input function from the output query coordinate and recombines them through a finite sum of products.
+for every \(u\in V\) and \(y\in K_2\). The expression handles sampled information about the input function (through the inner sums over the sensor values \(u(x_j)\)) and the output query coordinate \(y\) separately, and recombines them through a finite sum of products.
 
-That theorem still leaves the practical learning problem open. It controls approximation error for large enough networks, but useful neural models also need small optimization error and small generalization error. This is the same gap that appears in ordinary vision models: a fully connected network is a universal approximator, but convolutional structure can generalize far better when the data have image structure.
+This theorem controls approximation error for large enough networks. The overall performance of a neural model also depends on optimization error and generalization error, as with ordinary function-fitting networks: a fully connected network is a universal approximator, and convolutional structure generalizes well when the data have image structure.
 
 ## Baselines
 
-**Fully connected network on concatenated input.** Treat \([u(x_1),\ldots,u(x_m),y]\) as one vector and regress \(G(u)(y)\). This is a natural baseline because the input has no obvious grid or sequence layout in the most general setting. Its limitation is that it erases the difference between "which input function is being transformed" and "where the output function is being evaluated"; in experiments, increasing its size drives training error down while the generalization gap grows.
+**Fully connected network on concatenated input.** Treat \([u(x_1),\ldots,u(x_m),y]\) as one vector and regress \(G(u)(y)\). The input has no obvious grid or sequence layout in the most general setting, so a plain fully connected network is a natural baseline.
 
-**Image-to-image convolutional models.** Discretize both the input and output functions on grids and learn an image-to-image map. This can exploit convolutional structure, but it requires regular grids for the input sensors and output locations.
+**Image-to-image convolutional models.** Discretize both the input and output functions on regular grids and learn an image-to-image map with convolutional networks.
 
-**Parameterized-equation identification.** Assume a PDE form and identify unknown coefficients or forcing terms from data. This is useful when the governing family is already known, but it does not learn a general map from input functions to output functions.
+**Parameterized-equation identification.** Assume a PDE form and identify unknown coefficients or forcing terms from data, when the governing family is already known.
 
-**Local unstructured operators.** Generalized moving-least-squares networks handle point clouds and local stencils. Their locality is a limitation for nonlocal operators such as integrals and for global solution maps.
+**Local unstructured operators.** Generalized moving-least-squares networks handle point clouds and local stencils.
 
 ## Evaluation settings
 

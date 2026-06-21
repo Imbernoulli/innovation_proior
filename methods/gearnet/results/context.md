@@ -6,14 +6,11 @@ single protein structure as one alpha-carbon coordinate per residue, `x in R^{n 
 residue identity at each point, produce a vector for every residue and a pooled vector for the
 whole protein. Those vectors should be useful to downstream predictors of function and fold.
 
-The encoder has to satisfy several constraints at once. It must use the 3D arrangement, because
-spatial contacts between residues can be far apart along the sequence but close in the folded
-structure. It must be invariant to translation, rotation, and reflection: the same protein in a
-different coordinate frame is still the same protein. It must expose both local structure and
-longer-range fold information. It also has to stay light enough for the available structure data,
-where experimentally solved structures are much scarcer than raw sequences. The open problem is
-to get more geometric expressivity than a plain graph convolution without paying the cost of a
-large, per-contact geometric kernel or a dense all-pairs structural model.
+The encoder operates on the 3D arrangement, because spatial contacts between residues can be far
+apart along the sequence but close in the folded structure. It is invariant to translation,
+rotation, and reflection: the same protein in a different coordinate frame is the same protein.
+It exposes both local structure and longer-range fold information. The question is how to build
+such a residue-level encoder from alpha-carbon coordinates and residue identities.
 
 ## Background
 
@@ -29,57 +26,46 @@ construction, edge descriptors, and message rules only use such scalar geometric
 resulting residue and graph embeddings are invariant without carrying a coordinate frame through
 the network.
 
-The graph construction itself is not neutral. Sequential edges preserve local backbone order,
-while spatial edges are needed for tertiary contacts. A fixed radius graph can become too sparse
-on loosely packed structures, leaving too few contacts for message passing. A k-nearest-neighbor
-graph keeps a more stable degree, but it can hide real density differences by giving every
-residue roughly the same number of neighbors. These are complementary failure modes in the
-input graph, and they shape what a practical protein encoder has to consider.
+The graph construction itself shapes what the encoder sees. Sequential edges preserve local
+backbone order, while spatial edges capture tertiary contacts. A fixed radius graph connects
+residues within a distance cutoff. A k-nearest-neighbor graph connects each residue to its `k`
+closest neighbors, keeping a more stable degree. These are the standard ways to turn coordinates
+into a graph, and they shape what a practical protein encoder works with.
 
-There is also a known expressivity gap in purely distance-only messages. Two different local
-geometries can present similar distance patterns around each residue while differing in directional
-arrangement. Small-molecule models and structure-prediction systems had already shown that richer
-directional geometry can matter, but the expensive versions of those ideas are not an obvious fit
-for a residue-level encoder that must be simple, sparse, and easy to pretrain.
+Distance-only messages summarize local geometry through scalar distances. Two different local
+geometries can present similar distance patterns around each residue while differing in
+directional arrangement. Small-molecule models and structure-prediction systems use richer
+directional geometry such as bond and dihedral angles.
 
 ## Baselines
 
 **GCN (Kipf & Welling 2017).** A plain graph convolution applies one shared kernel to every
 neighbor before aggregation, for example
 `H^{(l+1)} = sigma(D^{-1/2} A D^{-1/2} H^{(l)} W^{(l)})`. It is cheap and works as a generic
-residue-graph baseline. Its limitation is that one shared transform cannot distinguish a local
-backbone edge from a long-range spatial contact.
+residue-graph baseline.
 
 **R-GCN (Schlichtkrull et al. 2018).** Relational graph convolution was built for graphs whose
 edges have a discrete type `r`:
 `h_i^{(l+1)} = sigma(sum_{r in R} sum_{j in N_r(i)} (1/c_{i,r}) W_r h_j^{(l)} + W_0 h_i^{(l)})`.
 Each relation has its own kernel, shared across edges of that relation, so capacity scales with
-the number of relation types rather than the number of edges. Its limitation is that the relation
-types must be supplied by the graph design; the layer itself does not decide what geometric
-relations a protein should expose.
+the number of relation types rather than the number of edges. The relation types are supplied by
+the graph design.
 
 **IEConv (Hermosilla et al. 2021).** IEConv is a protein-structure convolution whose per-edge
-geometric descriptors are passed through an MLP that outputs a kernel for that edge. It is
-expressive because the transform can vary continuously with geometry. Its limitation is cost:
-generating and applying a distinct kernel per edge, together with intrinsic-distance features,
-is memory-heavy and cumbersome for large-scale structure pretraining.
+geometric descriptors are passed through an MLP that outputs a kernel for that edge, so the
+transform varies continuously with geometry, together with intrinsic-distance features.
 
 **SchNet (Schutt et al. 2017).** SchNet uses continuous filters generated from interatomic
 distances expanded over radial basis functions. Because its geometric inputs are distances, it
-is invariant and smooth. Its limitation for proteins is that distance-only local messages can
-miss directional arrangement, and the model was designed for small molecules rather than
-residue-level protein graphs.
+is invariant and smooth. It was designed for small molecules.
 
 **EGNN (Satorras, Hoogeboom & Welling 2021).** EGNN updates both node features and coordinates
-with equivariant coordinate shifts based on relative positions. It is a clean way to preserve
-3D symmetry. Its limitation here is that an invariant protein embedding does not necessarily
-need coordinates to be updated through every layer; carrying them can be heavier than using
-invariant scalar geometry from the start.
+with equivariant coordinate shifts based on relative positions, preserving 3D symmetry by
+carrying coordinates through every layer.
 
-**DimeNet (Klicpera/Gasteiger et al. 2020).** DimeNet shows, in small molecules, that angular
-information can repair failures of distance-only continuous-filter models. It uses a specialized
-spherical Bessel/harmonic basis over distance and angle. Its limitation is that this basis
-machinery is heavier than the minimal residue-level encoder desired here.
+**DimeNet (Klicpera/Gasteiger et al. 2020).** DimeNet incorporates angular information alongside
+distances in a continuous-filter model for small molecules. It uses a specialized spherical
+Bessel/harmonic basis over distance and angle.
 
 ## Evaluation settings
 

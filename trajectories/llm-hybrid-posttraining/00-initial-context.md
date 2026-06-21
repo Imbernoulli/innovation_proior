@@ -1,12 +1,12 @@
 ## Research question
 
-A fixed hybrid post-training stack — `Unify-Post-Training`'s HPT scaffold — already pairs each math prompt with two signals: the model's own verifier-scored on-policy rollouts (for RL) and a teacher demonstration `τ★` (for SFT). The advantage estimator (`grpo`), the unify strategy (`switch`), and the off-policy loss type (`sft`) are frozen. The single thing being designed is the **per-question router** — the trainer-side rule that decides, for each prompt, whether to keep its on-policy RL samples, drop them, regenerate more, or replace them with off-policy SFT (or off-policy RL) samples. Everything else about the stack is fixed.
+A fixed hybrid post-training stack — `Unify-Post-Training`'s HPT scaffold — pairs each math prompt with two signals: the model's own verifier-scored on-policy rollouts (for RL) and a teacher demonstration `τ★` (for SFT). The advantage estimator (`grpo`), the unify strategy (`switch`), and the off-policy loss type (`sft`) are frozen. The single thing being designed is the **per-question router** — the trainer-side rule that decides, for each prompt, whether to keep its on-policy RL samples, drop them, regenerate more, or replace them with off-policy SFT (or off-policy RL) samples. Everything else about the stack is fixed.
 
 ## Prior art / Background / Baselines
 
-- **Behavior cloning / SFT.** Fit the policy to a demonstration set by token-level NLL. Cheap, stable, and the only thing that reliably raises competence on prompts the model cannot solve at all. Gap: it learns only to copy demonstrations, injects no signal about which of the model's own behaviors are good, and tends to overfit and degrade out-of-distribution.
-- **GRPO.** Critic-free on-policy RL: per prompt, sample a group of rollouts, score them with the verifier, and standardize within-group rewards into advantages. Excellent at sharpening reasoning the model can already partly do, and cheap because it needs no value network. Gap: purely on-policy, so it is bounded by what the base model can sample; on a hard prompt where every rollout gets the same score, the within-group advantage collapses to zero and GRPO contributes no gradient.
-- **Fixed SFT+RL blends and SFT→RL pipelines.** Combine SFT and RL via hand-tuned coefficients, schedules, or fixed multi-stage pipelines. Gap: the combination is committed in advance and ignores how the model's competence varies across prompts and over training; the knobs must be retuned per model and dataset.
+- **Behavior cloning / SFT.** Fit the policy to a demonstration set by token-level NLL. Cheap, stable, and the only thing that reliably raises competence on prompts the model cannot solve at all.
+- **GRPO.** Critic-free on-policy RL: per prompt, sample a group of rollouts, score them with the verifier, and standardize within-group rewards into advantages. Effective at sharpening reasoning the model can already partly do, and cheap because it needs no value network.
+- **Fixed SFT+RL blends and SFT→RL pipelines.** Combine SFT and RL via hand-tuned coefficients, schedules, or fixed multi-stage pipelines.
 
 ## Fixed substrate / Code framework
 

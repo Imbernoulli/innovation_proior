@@ -4,24 +4,15 @@ A trained image classifier `f` with parameters `θ` and a differentiable trainin
 `J(θ, x, y)` assigns the right label to almost every naturally occurring image, yet there
 exist inputs `x̃ = x + η` that are visually indistinguishable from a correctly classified `x`
 — every pixel changed by less than the precision the sensor or 8-bit encoding can even
-represent — that the model confidently misclassifies. These *adversarial examples* are not a
-rare curiosity: the same perturbed image often fools a *different* network, with a different
+represent — that the model confidently misclassifies. These *adversarial examples* have a
+striking property: the same perturbed image often fools a *different* network, with a different
 architecture, trained on a *disjoint* slice of the data, and the different models tend to
-agree on the (wrong) class. That rules out the easy stories — it is not memorized noise
-specific to one model, nor a quirk of one training set.
+agree on the (wrong) class.
 
-Two things are needed and neither exists yet. First, an *explanation*: why do these blind
-spots exist at all, and why do they transfer across models? The prevailing speculation blames
-the extreme nonlinearity of deep nets, or excess capacity, or insufficient regularization /
-model averaging — but none of those accounts for the cross-model, cross-dataset transfer.
-Second, and more concretely, a *cheap* way to produce such a perturbation. The only known
-generator runs an iterative constrained optimization per image (below), which is far too slow
-to study the phenomenon at scale or to fold adversarial examples into the training loop. The
-precise goal: given full white-box access to `θ` and the gradient `∇_x J`, and a strict
-per-pixel budget `||η||_∞ ≤ ε`, produce a perturbation that reliably raises the loss — in
-roughly the cost of a single backward pass — and keep the result a valid image (pixels in
-`[0, 1]`). A solution that fast would also make it practical to *train against* these
-perturbations.
+The concrete question is how to produce such a perturbation. The only known generator runs an
+iterative constrained optimization per image (below). The setting: given full white-box access
+to `θ` and the gradient `∇_x J`, and a strict per-pixel budget `||η||_∞ ≤ ε`, produce a
+perturbation that raises the loss while keeping the result a valid image (pixels in `[0, 1]`).
 
 ## Background
 
@@ -29,7 +20,7 @@ The discovery that set this up (Szegedy, Zaremba, Sutskever, Bruna, Erhan, Goodf
 Fergus, ICLR 2014): a trained network's input→output map is far less locally smooth than the
 kernel-method intuition assumes. For a correctly classified `x` one can find a tiny `r` with
 `x + r` misclassified, and the empirical findings about these `r` are the load-bearing facts
-here, all knowable before any fast method exists:
+here:
 
 - **Imperceptibility.** On ImageNet the perturbations were so small the difference was
   invisible to the eye; on MNIST the average per-pixel distortion to reach 0% accuracy was on
@@ -45,24 +36,20 @@ here, all knowable before any fast method exists:
   whereas the crafted examples are essentially never classified correctly. The crafted
   direction matters; the magnitude alone does not.
 - **Shallow linear models are vulnerable too.** Plain softmax / logistic regression on pixels
-  has the same problem, which the "deep nets are too nonlinear" story cannot explain.
-- **Adversarial training helps but is impractical.** Mixing crafted examples into training
-  regularizes (Szegedy reported MNIST gains), but only with an expensive constrained optimizer
-  in the inner loop, so it could not be run at the scale of a normal training run.
+  has the same problem.
+- **Adversarial training.** Mixing crafted examples into training regularizes (Szegedy
+  reported MNIST gains), using a constrained optimizer in the inner loop.
 
 The conceptual tools available. A model "behaves linearly" wherever its loss is well
 approximated by its first-order Taylor expansion around the input,
 `J(θ, x + η, y) ≈ J(θ, x, y) + η^T ∇_x J(θ, x, y)`; the gradient `∇_x J` is computable by
-backpropagation in one backward pass. Many of the architectures in use are *deliberately*
-engineered toward piecewise-linear or near-linear behaviour because it makes them easy to
-optimize — rectified linear units, maxout units, LSTM gating, and sigmoid networks kept in
-their non-saturating regime. From convex duality, Hölder's inequality with the conjugate pair
-`∞, 1` bounds any first-order change by `η^T g ≤ ||η||_∞ ||g||_1`, so the max-norm budget and
-the loss gradient are the two quantities that matter. A separate fact about feature precision
-motivates the choice of norm: 8-bit
-image encodings discard everything below `1/255` of the dynamic range, so a change to a single
-feature that is below the sensor's precision *should* be semantically irrelevant — which makes
-a *per-coordinate* (max-norm) budget the natural one, rather than an aggregate `ℓ_2` budget.
+backpropagation in one backward pass. Many of the architectures in use are easy to optimize
+because of their piecewise-linear or non-saturating components — rectified linear units, maxout
+units, LSTM gating, and sigmoid networks kept in their non-saturating regime. A separate fact
+about feature precision concerns the choice of norm: 8-bit image encodings discard everything
+below `1/255` of the dynamic range, so a change to a single feature that is below the sensor's
+precision is semantically irrelevant — which makes a *per-coordinate* (max-norm) budget a
+natural one, rather than an aggregate `ℓ_2` budget.
 
 ## Baselines
 
@@ -82,26 +69,20 @@ minimize  c·||r||_2 + loss_f(x + r, l)   subject to   x + r ∈ [0, 1]^m ,
 
 solved with box-constrained L-BFGS, increasing `c` until `f(x + r) = l`. For a convex loss
 this recovers the true minimum-distortion point; for a network it is an approximation. It
-reliably finds tiny, transferable perturbations — the existence proof for the whole
-phenomenon. **Limitation:** it runs an iterative constrained optimization, with a line search
-over the penalty weight, *per example*. That cost makes it impractical to generate
-perturbations at the scale needed to analyze the phenomenon across many models, and far too
-slow to regenerate fresh perturbations inside every minibatch of a training run — so the
-regularization benefit it hinted at could not be realized in practice.
+finds tiny, transferable perturbations by running an iterative constrained optimization, with a
+line search over the penalty weight, per example.
 
 **Random per-pixel noise (control).** Add `±ε` to each pixel, or draw each pixel's
-perturbation from `U(−ε, ε)`. Trivially cheap. **Limitation:** ineffective as an attack — a
-zero-mean perturbation has expected inner product zero with any fixed reference direction, so
-on average it does not move the loss in the damaging direction; the same per-pixel magnitude
-that a crafted perturbation uses to flip the label leaves most random-noise inputs correctly
-classified. It establishes that *direction*, not magnitude, is what a successful perturbation
-must get right.
+perturbation from `U(−ε, ε)`. A zero-mean perturbation has expected inner product zero with any
+fixed reference direction, so on average it does not move the loss in a particular direction;
+the same per-pixel magnitude that a crafted perturbation uses to flip the label leaves most
+random-noise inputs correctly classified. It establishes that *direction*, not magnitude, is
+what a successful perturbation gets right.
 
 **Generic regularization and noise augmentation.** Dropout, weight decay, model averaging, and
-random input noise are available ways to reduce overfitting or improve local stability.
-**Limitation:** none directly asks, for the current input and current model, which point inside
-the allowed pixel box most increases the loss. They can make the classifier less brittle, but
-they do not supply a cheap worst-case example for each minibatch.
+random input noise are available ways to reduce overfitting or improve local stability. They
+operate over the training distribution rather than asking, for the current input and current
+model, which point inside the allowed pixel box increases the loss.
 
 ## Evaluation settings
 

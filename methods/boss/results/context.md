@@ -9,15 +9,10 @@ observational data identify the true DAG `G*` only up to its Markov equivalence 
 set of DAGs encoding exactly the same conditional independences, summarized by a completed
 partially directed acyclic graph (CPDAG). So the goal is to return the CPDAG of `G*`.
 
-The hard part is doing this on the graphs people actually have. Real systems — functional brain
+The graphs of interest are the ones people actually have. Real systems — functional brain
 imaging, gene regulation, electronic health records, financial networks — routinely have
-hundreds or thousands of variables, each connected to dozens of others. A method that is only
-correct in the limit, or only fast on sparse toy graphs, is of little use here. The precise
-requirement is a single procedure that is simultaneously (1) asymptotically correct (returns
-`MEC(G*)`), (2) accurate at finite sample on *dense* graphs, where the existing provably-correct
-methods are observed to fall well short of their theory, and (3) scalable in both accuracy and
-wall-clock time to `p` in the hundreds-to-thousands with average degree in the tens. Each prior
-method below buys a subset of these; none buys all three. Closing that gap is the problem.
+hundreds or thousands of variables, each connected to dozens of others. The question is how to
+recover `MEC(G*)` on graphs of this size and density from observational data alone.
 
 ## Background
 
@@ -56,14 +51,11 @@ optionally times a structure prior over the parent set. BDeu is the unique BD sc
 expert-elicited prior — only `α`. Score-equivalence is exactly the property that makes a
 score-based search over equivalence classes well-defined.
 
-**Diagnostic finding that motivates the whole line.** The provably-correct algorithms (PC, GES)
-are observed to underperform their theoretical guarantees, and the gap *widens as the true graph
-gets denser*. The standing hypothesis (Uhler, Raskutti, Bühlmann & Yu 2013; Zhang & Spirtes
-2008) is that *almost-violations of faithfulness* — near path-cancellations and near-determinism
-that push a true dependence's strength close to zero — are ubiquitous in finite samples, and they
-are precisely what makes a conditional-independence test report the wrong answer and what makes a
-greedy edge move pick the wrong edge. Any robust method has to tolerate dependences that are real
-but faint.
+**Almost-violations of faithfulness.** A line of work (Uhler, Raskutti, Bühlmann & Yu 2013;
+Zhang & Spirtes 2008) studies *almost-violations of faithfulness* — near path-cancellations and
+near-determinism that push a true dependence's strength close to zero. At finite sample these
+make a conditional-independence test or a score delta for such a faint-but-real dependence behave
+as if the dependence were absent.
 
 **The order/permutation view.** A permutation `π = ⟨a, b, c, …⟩` of the variables fixes an
 acyclic ordering. Given `P` (or data), `π` *induces* a DAG `G_π` in which each variable's parents
@@ -90,51 +82,35 @@ gives `BIC(G_π)`. By local consistency of BIC, *grow* only adds a candidate `Y`
 **PC (Spirtes, Glymour & Scheines 2000).** Constraint-based. Start from the complete undirected
 graph and remove an edge `i — j` whenever a conditioning set `S` is found with `X_i ⊥ X_j | S`,
 testing sets of growing size; then orient v-structures and propagate Meek's rules. Provably
-returns `MEC(G*)` under faithfulness with a perfect CI oracle. **Gap:** every decision rests on a
-finite-sample conditional-independence test, and on dense graphs the required conditioning sets
-are large, so the tests are low-powered and erratic; under the near-cancellations described above
-a true-but-faint dependence is read as an independence, an edge is wrongly deleted, and the error
-propagates through orientation. Empirically its recall collapses as density grows.
+returns `MEC(G*)` under faithfulness with a perfect CI oracle. Every decision rests on a
+finite-sample conditional-independence test.
 
 **GES / fGES (Chickering 2002; Ramsey et al. 2017).** Score-based, two-phase. *Forward*: greedily
 add the single edge that most improves the (decomposable) BIC of the current CPDAG, until no
 addition helps. *Backward (BES)*: greedily delete the single edge that most improves the score,
 until none helps. With a locally consistent score, GES provably returns `MEC(G*)` in the limit;
-fGES caches and parallelizes the score deltas to reach very large `p`. **Gap:** the forward phase
-commits to edges one at a time on a fully greedy criterion; on dense graphs the same
-almost-faithfulness that fools CI tests makes individual edge gains misleading, so GES gets
-trapped at structures far from the truth and, like PC, shows high precision but sharply falling
-recall as average degree rises.
+fGES caches and parallelizes the score deltas to reach very large `p`.
 
 **SP — Sparsest Permutation (Raskutti & Uhler 2018).** Over all `p!` permutations, project each
 to its induced DAG `G_π` and return the one(s) with the fewest edges. Correct under *u-frugality*
 (the true DAG is the uniquely sparsest Markovian DAG), an assumption strictly weaker than
-faithfulness — which is the point, since it tolerates the almost-faithful cases that defeat PC and
-GES. **Gap:** it enumerates all `p!` permutations; in practice it is limited to roughly nine
-variables. The robustness is real but the search is intractable.
+faithfulness. The search enumerates all `p!` permutations.
 
 **Ordering Search (Teyssier & Koller 2005).** Hill-climb the permutation space with *adjacency
-transpositions* (swap two neighbours in `π`); the key efficiency observation is that an adjacency
-swap changes only the two swapped variables' local scores, so a move is cheap to evaluate. Uses
-random restarts and a tabu list. **Gap:** purely heuristic — no consistency guarantee — and a
-single adjacency swap is a very local move, so the search stalls in shallow optima on hard graphs.
+transpositions* (swap two neighbours in `π`); an adjacency swap changes only the two swapped
+variables' local scores, so a move is cheap to evaluate. Uses random restarts and a tabu list.
 
 **TSP / ESP / GSP (Solus, Wang & Uhler 2021).** Greedy, weakly-edge-decreasing traversals of the
-permutation space that restore scalability to the SP idea while keeping a correctness guarantee:
-TSP navigates DAGs by reversing *covered* edges (Chickering sequences); ESP traverses the DAG
-associahedron. Asymptotically correct under faithfulness (TSP) or a weaker razor (ESP). **Gap:** a
-Python implementation of TSP is fast but is observed to lose accuracy on moderate-to-large graphs,
-so the scalability-vs-accuracy tension is only partly resolved.
+permutation space: TSP navigates DAGs by reversing *covered* edges (Chickering sequences); ESP
+traverses the DAG associahedron. Asymptotically correct under faithfulness (TSP) or a weaker
+razor (ESP).
 
-**GRaSP (Lam, Andrews & Ramsey 2022).** The current best accuracy on dense graphs. It moves
-through permutation space with a *tuck* operator that re-orders the minimal stretch of `π` needed
-to change the induced DAG, run as a depth-first search over sequences of covered/singular/general
-tucks, in three tiers (`GRaSP₀ = TSP`, `GRaSP₁ = ESP`, `GRaSP₂` a strictly weaker relaxation).
-Scores permutations with Grow-Shrink + BIC. It is robust to the almost-violations of faithfulness
-that sink PC and GES, and is accurate even on dense graphs. **Gap:** the tuck-DFS is expensive and
-carries several interacting search-depth tuning parameters (overall depth, singular depth,
-uncovered depth); its running time grows steeply, so even with strong accuracy it does not scale
-comfortably past a few hundred variables, and the many parameters make it inconvenient to deploy.
+**GRaSP (Lam, Andrews & Ramsey 2022).** Moves through permutation space with a *tuck* operator
+that re-orders the minimal stretch of `π` needed to change the induced DAG, run as a depth-first
+search over sequences of covered/singular/general tucks, in three tiers (`GRaSP₀ = TSP`,
+`GRaSP₁ = ESP`, `GRaSP₂` a strictly weaker relaxation), with search-depth parameters (overall
+depth, singular depth, uncovered depth). Scores permutations with Grow-Shrink + BIC. It is robust
+to the almost-violations of faithfulness, and is accurate on dense graphs.
 
 ## Evaluation settings
 
@@ -165,9 +141,8 @@ The yardsticks already in use for structure learning:
 
 The procedure plugs into a standard structure-learning harness: a decomposable local score over
 the data, a way to turn an ordering of the variables into a DAG by selecting each node's parents
-from its predecessors, and a routine that converts the final DAG to a CPDAG. What is still missing
-is the order-search engine in the middle: how to move through orderings to improve the projected
-score, and how to organize the repeated parent-selection work so the search remains practical.
+from its predecessors, and a routine that converts the final DAG to a CPDAG. The order-search
+engine in the middle — the `search` routine that traverses orderings — is the open slot.
 
 ```python
 import numpy as np
@@ -223,5 +198,4 @@ def run_causal_discovery(X: np.ndarray) -> GeneralGraph:
 ```
 
 The skeleton fixes the data path, the score interface, the order-to-DAG projection, and the
-final CPDAG conversion. The open slot is `search`, along with whatever internal bookkeeping that
-routine needs.
+final CPDAG conversion. The open slot is `search`.

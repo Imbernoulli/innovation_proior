@@ -11,17 +11,15 @@ question is therefore not "what is the most accurate classifier?" but "for a giv
 *who should answer* — the model or the expert — so that the combined system is as accurate (or
 as fair, or as cheap in expert time) as possible?"
 
-Making that routing decision well is subtle for three reasons. First, the model must decide to
+Making that routing decision well is subtle for several reasons. First, the model must decide to
 abstain *without* observing the expert's side information — at decision time it sees only the
 covariates `x`, not the expert's context `z`. Second, the gains from routing come precisely
 from the *mismatch* between where the model is weak and where the expert is strong, so the
 router has to reason about both error profiles jointly. Third, the only supervision available is
 samples of the expert's past decisions `m_i` — we do not get to interrogate the expert on demand
-or read out their internal confidence. A solution would have to learn, from a dataset
+or read out their internal confidence. The problem is to learn, from a dataset
 `{(x_i, y_i, m_i)}`, a routing rule and a predictor that together minimize a combined
-system loss, fit into the ordinary deep-learning stack, and come with a guarantee that the
-trainable objective drives the system error toward its optimum rather than toward some unrelated
-quantity.
+system loss.
 
 ## Background
 
@@ -55,7 +53,7 @@ L(h, r, x, y) = I[y·h(x) ≤ 0]·I[r(x) > 0] + c·I[r(x) ≤ 0],
 and gave a full theoretical analysis (Rademacher generalization bounds, a notion of *realizable
 (H,R)-consistency*, and convex binary surrogates built from two upper-bounding convex functions
 `φ, ψ` via the identity `max(a,b) ≥ (a+b)/2`, yielding a *max-hinge* and a *plus-hinge* loss).
-Crucially their analysis, and their consistent surrogates, were for the **binary** case. Cortes
+Their analysis, and their consistent surrogates, were for the **binary** case. Cortes
 et al. explicitly *considered and set aside* a cost-sensitive-learning view of rejection,
 remarking that the reject symbol "is not a class" and that there is no natural distribution over
 the augmented set `{-1, +1, reject}`. Ni et al. (2019) then tried to push the Cortes-style
@@ -67,9 +65,7 @@ problem.
 **Selective classification.** A neighbouring line (El-Yaniv & Wiener 2010; Geifman & El-Yaniv
 2017, 2019) fixes a *coverage* constraint instead of a reject cost: predict on at least a
 fraction of inputs and minimize error there. SelectiveNet (Geifman & El-Yaniv 2019) even adds a
-second network head to decide coverage. But selective classification assumes there is *no
-downstream answerer* — a rejected point is simply not predicted — so it never models who picks
-up the rejected instance or how good that answerer is on it.
+second network head to decide coverage.
 
 **Routing to a downstream answerer.** Two recent threads put an expert at the end of the pipe.
 Raghu et al. (2019) learn a classifier on the task, separately learn a model of *whether the
@@ -85,21 +81,6 @@ exactly when the expert's chance of being right beats the model's best guess,
 `r^B(x) = I[ max_y η_y(x) ≤ P(Y=M|X=x) ]`. This Bayes rule is the yardstick any proposed method
 will be checked against.
 
-**The diagnostic that motivates joint learning.** A documented failure mode of the
-*train-the-classifier-first* recipe (the confidence approach, and any method that fits `h` to
-the target while ignoring the expert) appears already under limited model capacity. Picture two
-sub-populations: on group A the expert is excellent (it uses side information, or computes a
-nonlinear boundary the model cannot), and on group B only the model can help. A linear `h`
-trained on *all* the data tries to fit both groups at once and separates neither well. The
-better system has `h` give up on group A entirely and specialize on group B, while `r` routes
-group A to the expert — but a classifier trained without reference to the expert can never
-discover that it *should* abandon group A. So independence of the classifier from the expert is
-not a convenience; under realistic capacity limits it costs accuracy. Likewise, a soft-gate
-objective that compares the classifier's *entropy* to the expert's error rate (rather than the
-classifier's *confidence in its top class*) can route in the wrong places, and is observed to
-collapse to "never defer" once the classifier's training loss reaches zero while the expert-cost
-term stays put.
-
 ## Baselines
 
 These are the prior methods a new routing approach would be measured against and react to.
@@ -107,36 +88,26 @@ These are the prior methods a new routing approach would be measured against and
 **Confidence thresholding / Chow's rule (Chow 1970; Bartlett & Wegkamp 2008).** Threshold the
 predictor's own confidence: abstain when `max_y P(y|x)` is below a cutoff set by the reject cost
 (or, with a coverage target, by a quantile). Simple, consistent for the *pure-rejection*
-problem. **Gap:** with a downstream expert there is no model of the expert at all, so it cannot
-tell a hard-for-the-model-but-easy-for-the-expert instance from a hard-for-everyone instance; it
-abstains on raw uncertainty, not on *who is better here*.
+problem.
 
 **Independent confidence comparison (Raghu et al. 2019).** Train `h` on the task; separately
-train a model of `P(expert correct | x)`; defer to whichever is more confident. This *is*
-consistent over all measurable functions and does model the expert. **Gap:** the classifier is
-fit ignoring the expert, so with a restricted hypothesis class it cannot specialize away from
-the expert's strong region (the two-subpopulation failure above); and it needs *two* trained
-models, paying the statistical cost of two hypothesis classes when expert-labeled data is scarce.
+train a model of `P(expert correct | x)`; defer to whichever is more confident. This is
+consistent over all measurable functions and does model the expert.
 
 **Mixtures-of-experts deferral (Madras, Pitassi & Zemel 2018).** Optimize one differentiable
 objective: a soft gate `softmax(r_0, r_1)` weights the classifier's cross-entropy against the
 expert's error, `E[ softmax(r0)·l(y,h(x)) + softmax(r1)·l(y,m) ]`, with the classifier's
-gradient stopped from flowing through the gate. **Gap:** the objective is non-convex in the gate;
-its population minimizer compares the classifier-posterior *entropy* `H(h^B(x))` against
-`P(Y≠M|x)` rather than the *confidence* `max_y η_y(x)`, so it does not recover the Bayes rejector
-— and in practice it tends to stop deferring as the classifier's loss vanishes, because predict
-becomes the uniformly cheaper branch.
+gradient stopped from flowing through the gate. The population minimizer of this objective
+compares the classifier-posterior *entropy* `H(h^B(x))` against `P(Y≠M|x)`.
 
 **Binary two-function reject surrogates (Cortes, DeSalvo & Mohri 2016; Bartlett & Wegkamp 2008;
 extended by Ni et al. 2019).** Learn `(h, r)` jointly via convex surrogates upper-bounding the
-binary reject loss. **Gap:** the consistent constructions are binary; their multiclass extension
-was shown unable to be consistent (Ni et al. 2019), and the reject cost is a constant `c`, not a
-per-instance expert-error that varies across the input space.
+binary reject loss. The consistent constructions are binary; their multiclass extension was
+shown unable to be consistent (Ni et al. 2019), and the reject cost is a constant `c`.
 
 **Selective classification with a learned head (Geifman & El-Yaniv 2017, 2019).** Add a coverage
-constraint and possibly a second network head for the abstain decision. **Gap:** no downstream
-expert is modeled — a rejected point is simply uncovered, so the framework cannot reason about
-the expert's competence on the rejected region.
+constraint and possibly a second network head for the abstain decision. No downstream
+expert is modeled — a rejected point is simply uncovered.
 
 ## Evaluation settings
 

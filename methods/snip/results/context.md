@@ -11,34 +11,34 @@ min_w  L(w; D) = (1/n) Σ_i ℓ(w; (x_i, y_i))
 s.t.   w ∈ R^m,  ‖w‖_0 ≤ κ,
 ```
 
-where ℓ is a standard loss (e.g. cross-entropy), m is the total number of parameters, ‖·‖_0 is the L0 "count of non-zeros", and κ is the number of weights allowed to remain. The L0 constraint is combinatorial, so the practical question is: by what *criterion* do we decide which connections to keep, and *when* in the training pipeline do we apply it? A good criterion would (1) be cheap, (2) not require pretraining or hand-tuned prune/retrain schedules, and (3) be robust across architectures.
+where ℓ is a standard loss (e.g. cross-entropy), m is the total number of parameters, ‖·‖_0 is the L0 "count of non-zeros", and κ is the number of weights allowed to remain. The L0 constraint is combinatorial, so the practical question is: by what *criterion* do we decide which connections to keep, and *when* in the training pipeline do we apply it?
 
 ## Background
 
 The pruning literature splits into two families.
 
-**Penalty / projection methods.** One can add sparsity-enforcing penalties to the objective (L1/L0-style terms; classical weight-decay-with-thresholding). A more recent variant treats the constrained problem directly with a stochastic projected-gradient descent where the projection step *is* the pruning. In practice these tend to be inferior to saliency-based methods in achieved sparsity and need heavily tuned hyperparameters.
+**Penalty / projection methods.** One can add sparsity-enforcing penalties to the objective (L1/L0-style terms; classical weight-decay-with-thresholding). A more recent variant treats the constrained problem directly with a stochastic projected-gradient descent where the projection step *is* the pruning.
 
 **Saliency methods.** These treat pruning as selectively removing redundant connections, ranked by a saliency score s_j for connection j. Two criteria dominate:
-- *Magnitude*: s_j = |w_j|. Small weights are deemed unimportant. Simple and effective, but highly heuristic — the weights to be pruned depend on learning rate and architecture (e.g. normalization layers rescale weights), and it must be applied many times.
+- *Magnitude*: s_j = |w_j|. Small weights are deemed unimportant.
 - *Hessian / curvature* (Optimal Brain Damage / Optimal Brain Surgeon): start from the Taylor expansion of the loss around a trained minimum,
   ```
   δL = (∂L/∂w)ᵀ δw + ½ δwᵀ H δw + O(‖δw‖³),
   ```
-  assume convergence so the first-order term vanishes, and read off s_j = w_j² H_jj / 2 (diagonal) or s_j = w_j² / (2 [H⁻¹]_jj) (full). More principled, but the Hessian H = ∂²L/∂w² is neither diagonal nor positive-definite in general, is approximate at best, and is intractable to compute (OBS even re-inverts H per removed weight).
+  assume convergence so the first-order term vanishes, and read off s_j = w_j² H_jj / 2 (diagonal) or s_j = w_j² / (2 [H⁻¹]_jj) (full).
 
-A diagnostic observation about *both* dominant criteria: they depend on the **scale of the weights**. That ties them to a *trained* network — a magnitude or curvature score computed on random initial weights is uninformative because the weights have not yet organized. This is precisely why pruning has classically been a post-training step, embedded in expensive **prune–retrain cycles**: train, score, remove, retrain to recover, repeat. The retraining is what makes the loop slow, and the schedule is often heuristic.
+Both dominant criteria depend on the **scale of the weights**, which ties them to a trained network — magnitude or curvature scores computed on random initial weights carry the distributional properties of the initialization. Pruning has classically been applied as a post-training step, embedded in **prune–retrain cycles**: train, score, remove, retrain to recover, repeat.
 
-Two further building blocks from the field are load-bearing here:
+Two further building blocks from the field are relevant:
 - **Weight initialization theory** (LeCun; Glorot/Xavier variance scaling). With a fixed-variance Gaussian init, the variance of the forward signal (and of gradients) drifts layer to layer, so gradient magnitudes pick up architecture-specific scaling. Variance-scaling initializations are designed precisely so the signal variance is preserved through the layers.
 - **Influence functions** (Koh & Liang, 2017): perturb an *input* example and measure the resulting change in loss to gauge that example's importance.
 
 ## Baselines
 
-- **Magnitude-based pruning (Han et al., 2015; Guo et al., 2016).** Train the dense net, threshold weights by |w|, retrain. Iterating gives high sparsity at good accuracy. Gap: requires a fully trained reference and repeated retraining; scores depend on weight scale and so on learning policy and normalization choices.
-- **Optimal Brain Damage / Optimal Brain Surgeon (LeCun et al., 1990; Hassibi & Stork, 1993).** Curvature-based saliency w_j² H_jj / 2 (or full-Hessian variant). Gap: requires a trained minimum (so the first-order Taylor term can be dropped), and the Hessian is intractable/ill-conditioned for large nets.
-- **Early sensitivity criteria (Mozer & Smolensky, 1988; Karnin, 1990).** Identify elements whose removal least degrades performance — their saliency is essentially −∂L/∂w (or w.r.t. neuron activity), which depends on the *value of the loss before pruning* and is designed to be folded into the learning process. Gap: again requires a pretrained network and iterative optimization, and depends on weight scale.
-- **Direct constrained optimization via projected gradient (Carreira-Perpiñán & Idelbayev, 2018).** Optimize the L0-constrained objective with projection-as-pruning. Gap: inferior achieved sparsity and sensitive hyperparameters compared to saliency methods.
+- **Magnitude-based pruning (Han et al., 2015; Guo et al., 2016).** Train the dense net, threshold weights by |w|, retrain. Iterating gives high sparsity at good accuracy.
+- **Optimal Brain Damage / Optimal Brain Surgeon (LeCun et al., 1990; Hassibi & Stork, 1993).** Curvature-based saliency w_j² H_jj / 2 (or full-Hessian variant). Applied at a trained minimum, where the first-order Taylor term can be dropped.
+- **Early sensitivity criteria (Mozer & Smolensky, 1988; Karnin, 1990).** Identify elements whose removal least degrades performance — their saliency is essentially −∂L/∂w (or w.r.t. neuron activity), folded into the learning process.
+- **Direct constrained optimization via projected gradient (Carreira-Perpiñán & Idelbayev, 2018).** Optimize the L0-constrained objective with projection-as-pruning.
 
 ## Evaluation settings
 

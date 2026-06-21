@@ -1,4 +1,4 @@
-# Context: coarse optimized step function for the C1 autocorrelation inequality
+# Context: coarse step-function shape for the C1 autocorrelation inequality
 
 ## Research question
 
@@ -16,16 +16,14 @@ Non-negative step function `f = Σ a_n·1_[n,n+1)`. The autoconvolution is piece
 R(a) = 2N · max_k (a*a)_k / ( Σ_n a_n )^2 ,    lower = tighter.
 ```
 
-The flat profile (the previous baseline rung) is pinned at `R = 2` with no gradient — every gain must come from
-breaking that symmetry, since a flat function maximizes the central self-overlap that this minimization punishes.
+The flat profile (the previous baseline rung) is pinned at `R = 2`: a flat function maximizes the central
+self-overlap that this minimization punishes.
 
 ## This rung
 
-Find the optimized *shape* at a coarse resolution `N ≈ 50`, short enough for a stochastic search to canvas the
-shape space. The method: simulated annealing on the heights (multiplicative kicks, Metropolis acceptance that takes
-occasional uphill moves to escape the flat-triangle basin, geometric cooling, several restarts), then a
-`β`-annealed projected-Adam polish on a softmax surrogate of the non-differentiable `max`. The fine-grid refinement
-that a much stronger optimizer would bring is deferred to later rungs.
+Search for a good step-function *shape* at a coarse resolution `N ≈ 50`, a short enough vector that the
+shape space can be canvassed directly. The objective `R(a)` is the only signal: it is non-negative, scale-free
+in `a`, bounded below by `1.28`, and its central `max_k (a*a)_k` is the maximum over discrete convolution nodes.
 
 ## Fixed yardsticks
 

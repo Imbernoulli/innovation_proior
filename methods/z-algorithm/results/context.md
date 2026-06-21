@@ -6,7 +6,7 @@ Given a string `s` of length `n`, compute the Z-array, where `z[i]` is the lengt
 
 By convention, `z[0]` is `0`. For example, `z_function("aaaaa")` should return `[0, 4, 3, 2, 1]`, `z_function("aaabaab")` should return `[0, 2, 1, 0, 2, 1, 0]`, and `z_function("abacaba")` should return `[0, 0, 1, 0, 3, 0, 1]`.
 
-The direct approach computes each `z[i]` independently by comparing `s[0]` with `s[i]`, then `s[1]` with `s[i + 1]`, and so on until a mismatch or the end of the string. On a repeated string such as `"aaaaa"`, this repeats almost the same scan at many starting positions and costs quadratic time. The goal is a linear-time `z_function`, and then a linear-time occurrence finder whose total work is proportional to `len(pattern) + len(text)`.
+The direct approach computes each `z[i]` independently by comparing `s[0]` with `s[i]`, then `s[1]` with `s[i + 1]`, and so on until a mismatch or the end of the string. The goal is a linear-time `z_function`, and then a linear-time occurrence finder whose total work is proportional to `len(pattern) + len(text)`.
 
 ## Code framework
 

@@ -12,8 +12,7 @@ A single sampling rate exposes only one view of that mixture. A five-minute traf
 commute spikes; a daily aggregation suppresses those spikes and exposes weekday or holiday
 structure; a still coarser view mostly exposes slow macro movement. The same physical process can
 therefore look microscopic at a fine scale and macroscopic at a coarse scale. The open question is
-how to use cheap neural components to forecast from this kind of signal without forcing every
-temporal variation through one native-resolution representation and one final head.
+how to use cheap neural components to forecast from this kind of signal.
 
 The desired component should fit a standard forecasting harness: it receives `[B, P, C]` past
 values, optional time features for the past and decoder side, and returns `[B, F, C]`. It should be
@@ -38,8 +37,6 @@ stride 1 to get a smooth trend, and define the seasonal residual as `x - trend`.
 The third is multiscale representation. Pooling or aggregating along time is a low-pass operation:
 it suppresses high-frequency detail and keeps slower structure. Models such as pyramidal attention
 and splitting trees already show that a network can process several temporal resolutions internally.
-The unresolved design issue is what should remain separate, what should be mixed, and at what point
-the model should collapse the scales into a forecast.
 
 The fourth is cheap mixing. MLP-style blocks can mix along a chosen axis using Linear layers and a
 nonlinearity. A temporal Linear can map one sequence length to another; a channel FeedForward can
@@ -55,28 +52,21 @@ output.
 
 **Autoformer.** Uses moving-average series decomposition inside a Transformer-style forecasting
 model. Its decomposition block provides a reusable primitive: `trend = MovingAvg(x)` and
-`season = x - trend`, with length preserved by endpoint padding. Its limitation here is that the
-decomposition is applied at the model's chosen representation scale, not as a full design for
-interacting among several sampled scales.
+`season = x - trend`, with length preserved by endpoint padding.
 
 **DLinear.** Decomposes a look-back window into seasonal and trend components, maps each component
 directly from past length to future length with one temporal Linear, and sums the two forecasts. It
-shows that simple temporal linear maps can be strong and efficient. Its limitation is that it uses
-one native-resolution view of the series.
+shows that simple temporal linear maps can be strong and efficient.
 
 **TimesNet and other multiperiodicity models.** Detect dominant periods, often with an FFT, and
-process period-specific structures. They disentangle variation along a period axis. Their limitation
-for this setup is that period decomposition is not the same as a sampling-scale ladder from fine to
-coarse observations.
+process period-specific structures. They disentangle variation along a period axis.
 
 **Pyraformer and SCINet.** Build multiscale internal representations using a pyramidal structure or
-a splitting tree. Their limitation is that the forecast interface still tends to consume a merged
-representation rather than preserving a separate forecasting role for each scale.
+a splitting tree.
 
 **PatchTST and related channel-independent forecasters.** Treat variates independently with shared
 weights, which is useful when `C` ranges from a few channels to hundreds and cross-channel
-correlations are weak or unstable. The open question is how to combine that regularization with
-multiscale temporal modeling.
+correlations are weak or unstable.
 
 ## Evaluation settings
 
@@ -98,8 +88,7 @@ statistics must be computed from observed windows and then reused only to invert
 
 ## Code framework
 
-The available toolbox already contains the generic pieces below. The missing part is the
-architecture that arranges them between the observed past and the future prediction.
+The available toolbox already contains the generic pieces below.
 
 ```python
 import torch

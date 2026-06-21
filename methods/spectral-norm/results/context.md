@@ -7,11 +7,7 @@ Generative adversarial networks train a generator `G` only through the signal pr
     min_G max_D V(G,D),
     V(G,D) = E_{x~q_data}[log D(x)] + E_{x'~p_G}[log(1 - D(x'))],
 
-the discriminator is not just an evaluator; it is the generator's teacher. If the discriminator function class is too unconstrained, the generator can receive gradients that are badly scaled, unstable, or zero.
-
-Two failure modes make the restriction problem sharp. First, in high-dimensional image space, the discriminator is implicitly estimating density-ratio information from samples, and that estimate can be inaccurate and unstable. Second, when the model and data distributions lie on nearly disjoint low-dimensional supports, there can be a discriminator that separates them perfectly. Once such a discriminator is reached, its derivative with respect to the input can vanish almost everywhere on the generator side, so the generator stops receiving a useful learning signal.
-
-The goal is to restrict the discriminator function class so that `D` cannot become arbitrarily sharp, while preserving enough capacity to use many features. The restriction should be cheap enough to apply to every weight-bearing layer during GAN training, should avoid a delicate new hyperparameter search, and should work for ordinary linear and convolutional discriminator layers.
+the discriminator is not just an evaluator; it is the generator's teacher. The question is how to restrict the discriminator function class so that `D` cannot become arbitrarily sharp, while preserving enough capacity to use many features.
 
 ## Background
 
@@ -53,24 +49,24 @@ converge to the leading right and left singular vectors when the top singular va
 
 ## Baselines
 
-**Weight clipping in Wasserstein GANs.** WGAN uses the Kantorovich-Rubinstein dual form of Wasserstein-1 distance, which requires a 1-Lipschitz critic. Its simple enforcement mechanism clips every weight entry into a fixed box after each update, `w <- clip(w, -c, c)`. This is cheap but blunt. A box constraint controls entries rather than the actual input-output stretching of the layer, and WGAN-GP later diagnosed capacity underuse: clipped critics can become overly simple and have pathological value surfaces.
+**Weight clipping in Wasserstein GANs.** WGAN uses the Kantorovich-Rubinstein dual form of Wasserstein-1 distance, which requires a 1-Lipschitz critic. Its simple enforcement mechanism clips every weight entry into a fixed box after each update, `w <- clip(w, -c, c)`.
 
 **Gradient penalty.** WGAN-GP replaces clipping with a soft penalty,
 
     lambda E_{x_hat}[(||grad_{x_hat} D(x_hat)||_2 - 1)^2],
     x_hat = epsilon x + (1 - epsilon) x_tilde,
 
-usually with `lambda = 10`. This directly regularizes input gradients at sampled interpolation points and avoids the worst clipping behavior. The cost is that it is local to sampled points on the current real/generated supports, and training must backpropagate through an input-gradient norm, adding a heavier gradient-of-gradient computation.
+usually with `lambda = 10`. This directly regularizes input gradients at sampled interpolation points.
 
 **Weight normalization and Frobenius normalization.** Weight normalization reparametrizes each row/vector as `w = g v / ||v||_2`. For a pure row-normalized comparison with the learned scales removed, each row has unit norm, so the sum of squared singular values is fixed:
 
     sum_t sigma_t(W)^2 = tr(W W^T) = d_out.
 
-Frobenius normalization fixes the same type of budget to one. Under a fixed squared-singular-value budget, increasing sensitivity in one direction encourages concentrating the budget in the largest singular value, which can reduce the effective rank of the layer.
+Frobenius normalization fixes the same type of budget to one.
 
-**Orthonormal regularization.** Adding `||W^T W - I||_F^2` pushes all singular values toward one. This keeps the spectrum from collapsing, but it is also an over-constraint: it pressures every direction to have the same singular value, including directions that the discriminator may not need.
+**Orthonormal regularization.** Adding `||W^T W - I||_F^2` pushes all singular values toward one.
 
-**Spectral norm regularization.** A prior supervised-learning regularizer penalizes large `sigma(W)` terms in the loss, estimated by power iteration. It supplies an efficient estimate of the right matrix quantity, but as a penalty it only nudges the largest singular value through a regularization coefficient; it does not itself impose a fixed layer scale.
+**Spectral norm regularization.** A prior supervised-learning regularizer penalizes large `sigma(W)` terms in the loss, estimated by power iteration.
 
 ## Evaluation settings
 

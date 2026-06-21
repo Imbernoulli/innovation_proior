@@ -37,19 +37,6 @@ The `342` sits above the record multiplier `320` and below the Barba ceiling
 | Flip-annealing (single-entry SA, full `slogdet` scoring) | 149.87 | 0.4382 |
 | Symmetric-design baseline (Jacobsthal `Q + I`) | 49 | 0.1433 |
 
-## The starting point and its wall
-
-The principled baseline is the symmetric Jacobsthal design `Q + I` (multiplier `49`), which is a
-*strict* local maximum under single-entry flips — no greedy climb leaves it. Simulated annealing on
-`log|det|` with single-entry flips breaks that symmetry by accepting downhill moves and climbs to
-multiplier `~150`. But that annealing rung hits its own wall: it scores each candidate flip with a
-full `slogdet` factorization, `O(n³)` per candidate, so a single-seed run can afford only tens of
-thousands of flips and plateaus in the low `150`s — while the machine-search frontier sits near
-`197` and the record at `320`. The diagnosis is sharp: the search *idea* is right, but **per-flip
-cost is the binding constraint**. If a candidate flip could be scored in `O(1)` instead of `O(n³)`,
-the same annealing could run hundreds of times longer and restart from many seeds, and keep
-climbing. The present method attacks exactly that cost.
-
 ## Prior art
 
 - **Hadamard (1893) / Barba (1933) / Ehlich / Wojtas bounds.** Upper bounds on `|det|` keyed to
@@ -61,12 +48,12 @@ climbing. The present method attacks exactly that cost.
   structured restart points.
 - **Simulated annealing (Kirkpatrick, Gelatt & Vecchi 1983).** Accept worsening moves with a
   cooling Metropolis probability to escape local optima; the engine that broke the symmetric basin.
+  Each candidate flip is scored by a full `slogdet` factorization, `O(n³)` per candidate.
 - **Matrix determinant lemma & Sherman–Morrison.** A single-entry sign flip at `(i,j)` is a
   *rank-one* perturbation `M ← M + Δ e_i e_jᵀ` with `Δ = −2 M_{ij}`. The matrix determinant lemma
-  gives the new determinant in closed form: `det(M + Δ e_i e_jᵀ) = det(M)·(1 + Δ·(M⁻¹)_{ji})`, so
-  if the inverse is carried, the determinant *ratio* of any candidate flip is `O(1)` to read.
-  Sherman–Morrison updates the carried inverse after an accepted flip in `O(n²)`. This is the
-  algebraic key that removes the factorization from the inner loop.
+  gives the new determinant in closed form: `det(M + Δ e_i e_jᵀ) = det(M)·(1 + Δ·(M⁻¹)_{ji})`.
+  Sherman–Morrison describes how to update a carried matrix inverse after a rank-one perturbation
+  in `O(n²)`.
 - **Computer / program search for maximal determinants (Orrick, Solomon, Brent; ShinkaEvolve /
   ThetaEvolve).** Records for non-Hadamard orders come from large-scale search; the `n = 29` record
   `m = 320` is conjectured optimal but unproven, and no program-evolution system has matched it —

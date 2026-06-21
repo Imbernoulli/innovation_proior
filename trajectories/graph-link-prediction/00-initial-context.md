@@ -1,14 +1,12 @@
 ## Research question
 
-Link prediction on graphs: given a partially observed graph, score candidate node pairs so that true-but-held-out edges rank above non-edges. The design target is a single `LinkPredictor` — an **encoder** that maps nodes to embeddings from their features and observed connectivity, and a **decoder** that turns a pair of embeddings (plus, optionally, local structure around the pair) into an edge score. It must work without assuming a fixed feature dimension or graph size: the same class runs on small citation graphs with thousands of nodes and rich features and on a collaboration graph with a quarter-million nodes and 128-dim features. Data loading, the link split, negative sampling, the training loop, and the metrics are fixed; only the model is open to design.
+Link prediction on graphs: given a partially observed graph, score candidate node pairs so that true-but-held-out edges rank above non-edges. Data loading, the link split, negative sampling, the training loop, and the metrics are fixed; only the model is open to design.
 
 ## Prior art / Background / Baselines
 
-Current approaches to link prediction each leave a concrete gap.
-
-- **Heuristic structural scores (Adamic–Adar 2003; common neighbors; resource allocation).** Score a pair by a hand-designed function of its common neighborhood. No learning; ignores node features entirely; the formula is fixed and does not adapt to the data.
-- **Random-walk embeddings (DeepWalk 2014; node2vec 2016).** Treat random walks as sentences and learn node embeddings with skip-gram; score a pair by the dot product of its node embeddings. Learns structure, but the embedding is transductive, ignores features, and the walk objective is decoupled from the link-prediction task.
-- **GCN as an encoder (Kipf & Welling 2016).** A message-passing encoder folds features and structure into every node embedding in $O(|E|)$ and is end-to-end trainable. It has been applied to node classification, but it is not a link-prediction model: it defines no decoder for pairs and no objective for edge prediction.
+- **Heuristic structural scores (Adamic–Adar 2003; common neighbors; resource allocation).** Score a pair by a hand-designed function of its common neighborhood. No learning; the formula is fixed.
+- **Random-walk embeddings (DeepWalk 2014; node2vec 2016).** Treat random walks as sentences and learn node embeddings with skip-gram; score a pair by the dot product of its node embeddings.
+- **GCN as an encoder (Kipf & Welling 2016).** A message-passing encoder folds features and structure into every node embedding in $O(|E|)$ and is end-to-end trainable. Applied to node classification.
 
 ## Fixed substrate / Code framework
 

@@ -8,11 +8,11 @@ The **data hyper-cleaning** instance corrupts 50% of MNIST training labels and l
 
 ## Prior art / Background / Baselines
 
-- **Implicit differentiation.** Core idea: for strongly convex inner problems, compute the exact hypergradient by inverting the inner Hessian at the unique minimizer. Gap: it requires a Hessian inverse and fails when the inner problem is only PL / non-convex or `S(x)` is a flat valley, and it is second-order.
+- **Implicit differentiation.** For strongly convex inner problems, compute the exact hypergradient by inverting the inner Hessian at the unique minimizer. The approach requires second-order information.
 
-- **Reverse-mode hypergradients / ITD.** Core idea: unroll `T` inner gradient-descent steps, treat the final iterate as a differentiable surrogate for `y*(x)`, and back-propagate the validation loss through the inner trajectory by the adjoint recursion. Gap: the reverse pass stores every inner iterate, so memory grows as `O(T * dim(y))`, and the finite-time relation to the true bilevel solution is fragile.
+- **Reverse-mode hypergradients / ITD.** Unroll `T` inner gradient-descent steps, treat the final iterate as a differentiable surrogate for `y*(x)`, and back-propagate the validation loss through the inner trajectory by the adjoint recursion. The reverse pass stores the inner iterates, so memory scales with `O(T * dim(y))`.
 
-- **Penalty reformulations.** Core idea: fold lower-level optimality into a single joint objective `F_gamma(x, y) = f(x, y) + gamma * p(x, y)` and descend on `(x, y)` with plain first-order steps, where `p` measures lower-level optimality. Gap: the choice of penalty `p`, penalty weight `gamma`, and update geometry are unsettled, and naive penalties can stall at spurious points.
+- **Penalty reformulations.** Fold lower-level optimality into a single joint objective `F_gamma(x, y) = f(x, y) + gamma * p(x, y)` and descend on `(x, y)` with plain first-order steps, where `p` measures lower-level optimality.
 
 ## Fixed substrate / Code framework
 

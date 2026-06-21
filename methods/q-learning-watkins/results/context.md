@@ -4,13 +4,13 @@
 
 An agent repeatedly observes a state, chooses an action, receives a reward, and moves to another state. The environment is a finite controlled Markov process: the next-state distribution and expected reward depend only on the current state and chosen action. The objective is to learn behavior that maximizes expected discounted return from every state, with discount factor `0 < gamma < 1`, while the reward function and transition probabilities are not given.
 
-The central difficulty is delayed credit assignment. A useful reward may arrive many steps after the action that made it possible, and exploratory actions are necessary before the agent knows which actions are useful. A satisfactory method should learn from the actual stream of sampled transitions, avoid constructing an explicit transition model, improve online, and still converge to the same optimum that dynamic programming would compute if the model were known.
+The central difficulty is delayed credit assignment. A useful reward may arrive many steps after the action that made it possible, and exploratory actions are necessary before the agent knows which actions are useful.
 
 ## Background
 
 Classical dynamic programming solves the known-model version of the control problem. For a fixed policy, the value of a state is the expected discounted return obtained by following that policy. Because the process is Markov and discounting is exponential, the value function satisfies a one-step consistency equation. If the reward means and transition probabilities are known, policy evaluation is a finite system of linear equations.
 
-Optimal control adds Bellman's optimality principle: the best value at a state is obtained by comparing the available actions after accounting for immediate reward and the best continuation value. This yields value iteration and policy iteration. Those methods are mathematically clean, but they require the model. The model is much larger than a value table in a finite problem, and selecting the right state features for a model can itself require knowing what matters for good control.
+Optimal control adds Bellman's optimality principle: the best value at a state is obtained by comparing the available actions after accounting for immediate reward and the best continuation value. This yields value iteration and policy iteration. Those methods require the model.
 
 Temporal-difference learning addresses prediction without a model. Instead of waiting for a full return, a learner can bootstrap from a sampled reward and a current estimate of the next state's value. Sutton's temporal-difference analysis shows why this is useful for prediction: corrected truncated returns reduce error toward the value of the policy being evaluated. Robbins-Monro stochastic approximation gives the step-size conditions under which noisy sampled targets can be averaged consistently.
 
@@ -18,19 +18,19 @@ Temporal-difference learning addresses prediction without a model. Instead of wa
 
 Known-model value iteration and policy iteration compute the dynamic-programming optimum, but require the reward and transition model explicitly. They establish the benchmark, not a direct learning method from raw experience.
 
-Certainty-equivalence control estimates the model from data and then plans in that estimated model. This can work in principle, but early model errors are treated as if they were true, and the learner still pays the cost of representing the transition structure.
+Certainty-equivalence control estimates the model from data and then plans in that estimated model.
 
-Temporal-difference prediction learns the value of a fixed policy from sampled experience. It does not by itself solve control, because the value of a state is relative to a policy and does not directly say which untried action should be chosen without a model.
+Temporal-difference prediction learns the value of a fixed policy from sampled experience.
 
-Actor-critic and learning-automata style controllers keep a value estimate and a separately represented policy or action-strength system. They can improve behavior empirically, but the two adaptive processes can interact during learning, and the convergence target is harder to characterize.
+Actor-critic and learning-automata style controllers keep a value estimate and a separately represented policy or action-strength system. They can improve behavior empirically.
 
-Monte Carlo control waits for sampled returns before changing estimates. It avoids a model, but high variance and delayed updates make it a poor fit for incremental online control in continuing discounted tasks.
+Monte Carlo control waits for sampled returns before changing estimates. It avoids a model and can learn from complete episodes.
 
 ## Evaluation Settings
 
 The main setting is a finite tabular controlled Markov process with bounded rewards and discount `0 < gamma < 1`. The learner receives sampled transitions only. It should converge to the optimal state-action values and therefore induce an optimal greedy policy, provided every state-action pair is sampled often enough and the learning rates decrease according to stochastic-approximation conditions.
 
-Important diagnostics are whether the learned estimates match the dynamic-programming optimum, whether the induced greedy behavior becomes optimal, whether exploratory behavior can differ from the policy being learned, and whether convergence depends on model estimation. Small grid tasks, episodic absorbing tasks, and tabular control examples are natural sanity checks because the exact dynamic-programming solution can be computed for comparison.
+Important diagnostics are whether the learned estimates match the dynamic-programming optimum and whether the induced greedy behavior becomes optimal. Small grid tasks, episodic absorbing tasks, and tabular control examples are natural sanity checks because the exact dynamic-programming solution can be computed for comparison.
 
 ## Code Framework
 

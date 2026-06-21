@@ -15,16 +15,12 @@ The relevant baselines are the high-capacity sequence models that currently domi
 benchmarks.
 
 - **Iterated RNN/seq2seq forecasters (e.g. DeepAR, Salinas et al. 2017).** Predict one step, feed it
-  back, repeat to the horizon. Natural for sequences but they *compound* error over a long horizon —
-  each fed-back prediction is itself noisy — and they are slow to train. Gap: error accumulation and
-  slow training.
+  back, repeat to the horizon.
 - **Transformer forecasters (Informer, Zhou et al. 2021; Autoformer, Wu et al. 2021; FEDformer, Zhou
   et al. 2022).** Replace recurrence with attention and predict the whole horizon at once. Autoformer
   adds an Auto-Correlation block and a moving-average **series decomposition** that splits a window
   into trend and seasonal parts; FEDformer moves the mixing into the frequency domain. These set the
-  accuracy bar on long-horizon benchmarks, but they are heavy, and self-attention is
-  permutation-invariant, so temporal order is represented only through positional encodings. Gap:
-  large memory/compute cost and reliance on positional encodings to encode temporal order.
+  accuracy bar on long-horizon benchmarks.
 - **The decomposition primitive (from Autoformer's `series_decomp`).** A length-preserving moving
   average gives the trend; the residual is the seasonal part. It is a reusable operation when a
   window's trend and seasonal balance matters.

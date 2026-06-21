@@ -10,22 +10,9 @@ already exists. The state and action spaces are continuous vectors (joint torque
 handful of discrete moves), so the policy is a function `π: S → A` and the value function a
 critic `Q(s, a)` over a continuous action argument.
 
-The difficulty is specific. Off-policy actor-critic methods are in principle applicable
-offline — they already learn from a replay buffer — but they degrade badly when that buffer is
-frozen. The cause is a documented failure mode: the critic is asked to evaluate state-action
-pairs whose actions are not represented in `D`, where its output is an unconstrained
-extrapolation; because temporal-difference learning bootstraps each target from the next
-state's estimate, that error is backed up through the Bellman recursion, and because the actor
-is moved to *increase* the critic's value, the policy is pulled toward exactly the actions the
-critic happens to over-rate. Online, fresh interaction would refute an over-valued action;
-offline there is no such correction, so the error compounds. A solution would have to keep the
-learned policy's actions close enough to the data that the critic is only ever queried where it
-has support, *without* sacrificing the value-based exploitation that lets a policy improve on
-the data-generating behavior — and it must do so under a sharp practical constraint particular
-to the offline setting: every additional component or hyperparameter is far more expensive than
-online, because there is no environment to validate it against. The yardstick is a method that
-is robust across datasets of very different reward scales and data quality, with as little
-added machinery and tuning as possible.
+The question is how to adapt off-policy actor-critic methods — which already learn from a
+replay buffer and are in principle applicable offline — so that they work reliably from a frozen
+dataset across tasks with different reward scales and data quality, with minimal added machinery.
 
 ## Background
 
@@ -54,26 +41,17 @@ policy-constraint — distinguished by *how* that closeness is imposed.
 
 **Behavior cloning.** The other way to get a policy from a dataset is pure imitation: fit
 `π(s) ≈ a` by supervised regression on `D` (Pomerleau 1991). Behavior cloning needs no value
-function and never queries out-of-distribution actions, so it cannot suffer extrapolation
-error — but it is ceilinged by the data, copying good and bad actions alike, and cannot improve
-on the behavior that produced the dataset.
+function and never queries out-of-distribution actions.
 
-**Diagnostic findings about existing offline systems.** Two observations
-about the state of the art frame the problem. First, the recent strong offline methods are not,
-on inspection, "simple": each modifies an underlying online algorithm (TD3 or SAC) not only with
-its named algorithmic idea but with a stack of unannounced implementation changes — altered
-network architectures, separate actor learning rates, actor pre-training phases, removal of the
-entropy term, reward bonuses, max-over-sampled-actions at evaluation. When those implementation
-adjustments are stripped back to the base algorithm, measured performance drops sharply across
-many datasets — i.e. the headline results lean heavily on the un-justified extras, which are
-hard to attribute and, lacking a train/validation split, plausibly tuned on the evaluation data
-itself. These extras also more than double wall-clock training time relative to the base
-algorithm (logsumexp over many sampled actions; training a separate generative model). Second,
-offline-trained policies examined show large variance in return both
-within a single evaluation and across nearby evaluation checkpoints, in contrast to online
-policies that converge to low-variance behavior; this appears tied to distributional shift and
-poor generalization to unobserved states, and is a property of the offline setting rather than
-of any one algorithm.
+**Observations about existing offline systems.** The recent strong offline methods each modify
+an underlying online algorithm (TD3 or SAC) with its named algorithmic idea alongside a stack of
+additional implementation changes — altered network architectures, separate actor learning rates,
+actor pre-training phases, removal of the entropy term, reward bonuses, max-over-sampled-actions
+at evaluation. These extras also substantially increase wall-clock training time relative to the
+base algorithm (logsumexp over many sampled actions; training a separate generative model).
+Offline-trained policies also show large variance in return both within a single evaluation and
+across nearby evaluation checkpoints, in contrast to online policies that converge to low-variance
+behavior; this appears tied to distributional shift and is a property of the offline setting.
 
 ## Baselines
 
@@ -81,8 +59,6 @@ These are the prior methods a new offline algorithm would be measured against an
 
 **Behavior cloning (Pomerleau 1991).** Supervised regression `min_π E_{(s,a)~D}[(π(s) - a)^2]`
 (or a likelihood for stochastic policies). Simple, value-free, no out-of-distribution queries.
-**Gap:** it imitates the dataset wholesale and cannot exceed the behavior that generated it; on
-mixed or suboptimal data it copies the bad actions along with the good.
 
 **Online off-policy actor-critic — DDPG (Lillicrap et al. 2015) and TD3 (Fujimoto et al. 2018).**
 DDPG couples a deterministic actor with a deep critic, a replay buffer, and target networks.
@@ -95,46 +71,32 @@ perturb the target action, `ã = π_{φ'}(s') + ε`, `ε ~ clip(N(0,σ), -c, c)`
 target action rather than a narrow peak — a SARSA-flavored regularizer. *Delayed policy
 updates:* update the actor and the soft target networks (`τ=5e-3`) only every `d=2` critic
 steps, letting the value estimate settle relative to the slowly moving policy. Architecture is
-`256×256` ReLU MLPs, Adam at `3e-4`, batch 256, `γ=0.99`. **Gap (offline):** designed for
-online interaction, it has no mechanism to keep the actor inside the data distribution, so on a
-frozen dataset its critic extrapolates at the actions the actor selects and the policy collapses
-onto over-valued out-of-distribution actions.
+`256×256` ReLU MLPs, Adam at `3e-4`, batch 256, `γ=0.99`. Designed for online interaction,
+with no mechanism to keep the actor inside the data distribution.
 
 **Batch-constrained Q-learning — BCQ (Fujimoto et al. 2019).** The work that named
 extrapolation error. It restricts the actor to actions close to the data by fitting a
 conditional variational autoencoder as a generative model of the behavior policy, sampling
 candidate actions from it, perturbing them within a small range, and selecting among them with
-the critic. **Gap:** it depends on an accurate generative model of the behavior policy and adds
-that model plus a perturbation network and their hyperparameters; the constraint is only as good
-as the density estimate.
+the critic.
 
 **Behavior-regularized policy optimization — BEAR, BRAC (Kumar et al. 2019; Wu et al. 2019).**
 Fit an explicit parametric behavior model `π̂_β` by maximum likelihood and constrain the actor
 toward it — as a divergence penalty `D(π_θ, π̂_β)` (KL in BRAC), or a support constraint via
-MMD (BEAR). **Gap:** the constraint hinges on a fitted `π̂_β`; an inaccurate behavior model
-makes the constraint either leaky or over-conservative, and the fit, its divergence choice, and
-its strength are extra moving parts to tune without an environment to check them.
+MMD (BEAR).
 
 **Conservative critic — CQL (Kumar et al. 2020).** Rather than constrain the policy, regularize
 the *critic*: add a term that pushes down `Q` on out-of-distribution actions while pushing it up
 on dataset actions, so the value function itself becomes pessimistic about unsupported actions.
-**Gap:** the conservative term is approximated with a logsumexp over many sampled actions
-(extra compute), and the reported results also rely on an actor pre-training phase, a
-max-over-sampled-actions evaluation rule, removal of the SAC entropy term, and modified
-architecture/learning-rate — a substantial stack of adjustments beyond the named idea.
+The conservative term is approximated with a logsumexp over many sampled actions.
 
-**Behavior-model-with-offset — Fisher-BRC (Kostrikov et al. 2021).** State-of-the-art at the
-time: train a separate generative behavior model, reparameterize the critic as that model's log
-density plus a learned offset, regularize the offset with a Fisher-divergence gradient penalty,
-and add a constant reward bonus. **Gap:** strong, but it carries a generative model, an offset
-network, a gradient-penalty term, a reward bonus, and the entropy-removal/architecture changes —
-many components and hyperparameters, and roughly double the base algorithm's runtime.
+**Behavior-model-with-offset — Fisher-BRC (Kostrikov et al. 2021).** Train a separate generative
+behavior model, reparameterize the critic as that model's log density plus a learned offset,
+regularize the offset with a Fisher-divergence gradient penalty, and add a constant reward bonus.
 
 **Advantage-weighted regression — AWR/AWAC (Peng et al. 2019; Nair et al. 2020).** Extract a
 policy by weighted behavior cloning, weighting each dataset action by `exp(A(s,a)/β)` so the
 policy imitates the high-advantage actions more strongly. Stays inside the data by construction.
-**Gap:** the policy is still pinned to a (weighted) imitation objective with an advantage
-estimate and a temperature `β` to set, and the weighting can be conservative on broad datasets.
 
 ## Evaluation settings
 
@@ -148,9 +110,8 @@ scaled so that 0 is a random policy and 100 is an expert policy. The protocol: t
 million gradient steps, evaluate periodically (every 5000 steps) by averaging undiscounted
 return over 10 episodes with exploration noise off, and report the average over the final
 evaluations across several random seeds. Wall-clock training time on a single GPU is a secondary
-axis of comparison, since avoiding added compute is part of the goal. Comparisons are run from a
-common framework with author-provided implementations re-run where possible for an identical
-evaluation.
+axis of comparison. Comparisons are run from a common framework with author-provided
+implementations re-run where possible for an identical evaluation.
 
 ## Code framework
 

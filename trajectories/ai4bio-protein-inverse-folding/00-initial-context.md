@@ -4,12 +4,12 @@ Protein inverse folding (fixed-backbone design): given the backbone coordinates 
 
 ## Prior art / Background / Baselines
 
-Current approaches encode structure in different ways and leave different gaps.
+Current approaches encode structure in different ways.
 
-- **Voxelized 3D-CNN models.** Rasterize atoms into a 3D occupancy grid and apply 3D convolutions. Gap: the grid is not orientation-invariant without augmentation, resolution trades against memory, and the residue-residue graph structure is discarded.
-- **Sequential / hand-crafted-feature models.** Summarize each residue's 3D environment with hand-built features and feed a 1D sequence model. Gap: geometry not captured by the chosen features is unavailable to the network.
-- **Message passing on a proximity graph.** Form messages over a `k`-nearest-neighbor graph and aggregate at each node. Gap: relational reasoning and permutation invariance are cheap, but the design of invariant node/edge features and update rules remains open.
-- **Graph encoders with invariant scalar geometry.** Pin a local frame per node and encode edges with distance, normalized relative direction, and relative orientation. Gap: geometry is collapsed into invariant scalars before message passing, so later layers cannot update the representation of direction.
+- **Voxelized 3D-CNN models.** Rasterize atoms into a 3D occupancy grid and apply 3D convolutions.
+- **Sequential / hand-crafted-feature models.** Summarize each residue's 3D environment with hand-built features and feed a 1D sequence model.
+- **Message passing on a proximity graph.** Form messages over a `k`-nearest-neighbor graph and aggregate at each node; relational reasoning and permutation invariance follow from the graph structure.
+- **Graph encoders with invariant geometry.** Pin a local frame per node and encode edges with distance, normalized relative direction, and relative orientation as scalar features for message passing.
 
 ## Fixed substrate / Code framework
 

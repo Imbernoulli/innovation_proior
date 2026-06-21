@@ -4,9 +4,9 @@ Can a sequence model learn the bounded hierarchical **Dyck-(k,m)** language — 
 
 ## Prior art / Background / Baselines
 
-- **Bounded-memory Dyck recognizers (Hewitt, Hahn, Ganguli, Liang & Manning, 2020).** A small RNN with `O(m log k)` hidden units can exactly represent Dyck-(k,m) by encoding the bounded stack in its fixed-width state. Gap: the construction shows representability, not whether gradient descent on a standard language-modeling objective learns the stack-tracking state and length-generalizes.
-- **Self-attention on hierarchical languages (Yao, Peng, Papadimitriou & Narasimhan, 2021).** Transformers with `O(log n)` depth can represent bounded-depth Dyck. Gap: with standard absolute positional encodings, learned Transformers fit the training lengths and collapse on longer strings.
-- **Stack-augmented recurrent nets (Joulin & Mikolov, 2015; Suzgun et al., 2019).** An RNN augmented with a differentiable external stack whose memory depth grows with the input can length-generalize on Dyck-like tasks where plain LSTMs fail. Gap: existing results rely on an unbounded stack, curriculum training, and test-time discretization; whether a bounded, end-to-end-trained stack inside this harness reaches the same generalization is open.
+- **Bounded-memory Dyck recognizers (Hewitt, Hahn, Ganguli, Liang & Manning, 2020).** A small RNN with `O(m log k)` hidden units can exactly represent Dyck-(k,m) by encoding the bounded stack in its fixed-width state.
+- **Self-attention on hierarchical languages (Yao, Peng, Papadimitriou & Narasimhan, 2021).** Transformers with `O(log n)` depth can represent bounded-depth Dyck.
+- **Stack-augmented recurrent nets (Joulin & Mikolov, 2015; Suzgun et al., 2019).** An RNN augmented with a differentiable external stack whose memory depth grows with the input can length-generalize on Dyck-like tasks where plain LSTMs fail.
 
 ## Fixed substrate / Code framework
 

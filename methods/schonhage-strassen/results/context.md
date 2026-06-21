@@ -3,15 +3,9 @@
 ## Research question
 
 Given two integers each about n bits long, compute their product exactly. The schoolbook
-method costs Θ(n²) bit operations, and for the regimes that matter — thousands to millions of
-digits in primality testing, π/e computations, cryptography, computer algebra — that quadratic
-cost is the binding constraint. The question is how far below Θ(n²) one can push the *bit*
+method costs Θ(n²) bit operations. The question is how far below Θ(n²) one can push the *bit*
 complexity of an exact integer product, ideally toward something near-linear, while keeping the
 arithmetic exact (no floating-point round-off) so the answer is provably correct to the last bit.
-
-A solution must do three things at once: (1) reduce the number of expensive "core" multiplications
-far below the n² the schoolbook method performs; (2) stay exact — integer arithmetic only; and
-(3) compose with itself, so the same idea can be applied at every scale rather than bottoming out.
 
 ## Background
 
@@ -44,31 +38,28 @@ parts and treating it as a degree-d polynomial is a known, measured way to cut c
 counts: two d+1-digit numbers need (d+1)² core multiplications by the schoolbook layout, but
 clever recombination needs far fewer — the count is what these methods are judged on, and the
 schoolbook tableau makes the (d+1)² count concrete (a 4×4 product visibly performs 16 core
-multiplications, an 8×8 performs 64). The open gap, observed across these schemes, is that the
-exponent stays strictly above 1 and the hidden constant grows as the split widens.
+multiplications, an 8×8 performs 64).
 
 ## Baselines
 
 **Schoolbook / long multiplication.** c_k = Σ_{i+j=k} a_i b_j directly, then carry. Θ(N²) core
-multiplications for length-N operands. Exact and simple; the quadratic cost is the gap.
+multiplications for length-N operands. Exact and simple.
 
 **Karatsuba (Karatsuba & Ofman, 1962).** Split each number into two halves, a = a₁B + a₀,
 b = b₁B + b₀. Naively ab = a₁b₁B² + (a₁b₀ + a₀b₁)B + a₀b₀ needs four half-products; Karatsuba's
 identity a₁b₀ + a₀b₁ = (a₁ + a₀)(b₁ + b₀) − a₁b₁ − a₀b₀ trades one multiplication for additions,
 leaving three half-products. Recursing gives T(n) = 3T(n/2) + Θ(n) = Θ(n^{log₂3}) ≈ Θ(n^{1.585}).
-Gap: the exponent is still well above 1.
 
 **Toom–Cook (Toom, 1963; Cook, 1966).** Generalize: split into k+1 parts, regard each operand as a
 degree-k polynomial, *evaluate* both at 2k+1 points, multiply pointwise (2k+1 smaller products),
 and *interpolate* the product polynomial. Toom-3 gives 5 sub-products of n/3-size operands,
-T(n) = 5T(n/3) + Θ(n) = Θ(n^{log₃5}) ≈ Θ(n^{1.465}). As k → ∞ the exponent → 1, but the
-interpolation work and the constant factor blow up with k, so no fixed k reaches near-linear.
-Gap: still polynomial with exponent > 1; evaluation/interpolation overhead caps the gain.
+T(n) = 5T(n/3) + Θ(n) = Θ(n^{log₃5}) ≈ Θ(n^{1.465}). As k → ∞ the exponent approaches 1, but the
+interpolation work and the constant factor grow with k.
 
 **Floating-point FFT multiplication.** Apply the Cooley–Tukey FFT over C with ω = e^{2πi/N} to get
-the convolution in Θ(N log N) operations. Gap: it is *inexact* — round-off in floating-point roots
-of unity means the recovered integer coefficients must be guarded with extra precision, and the
-error analysis is delicate; this disqualifies it as an exact method without care.
+the convolution in Θ(N log N) operations. Round-off in floating-point roots of unity means the
+recovered integer coefficients must be guarded with extra precision, and the error analysis requires
+care.
 
 ## Evaluation settings
 

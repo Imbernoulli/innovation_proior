@@ -2,26 +2,21 @@
 
 A decoder-only transformer, during autoregressive generation, stores a key and a value vector
 for every token it has processed, so that each new query can attend over the whole history
-without recomputing past projections. This Key-Value (KV) cache is what makes generation cheap
-per step, but its memory grows linearly with sequence length, and for long contexts it becomes
+without recomputing past projections. This Key-Value (KV) cache makes generation cheap
+per step, and its memory grows linearly with sequence length, so for long contexts it becomes
 the dominant cost: a 70B model with a one-million-token context needs on the order of 320 GB
 just for the cache, far beyond a single GPU. Reasoning models that emit thousands of
-intermediate tokens and agentic systems that ingest entire codebases or documents push exactly
-into this regime. Architectural fixes (fewer KV heads, latent attention, state-space models,
-sliding windows) all require changing or retraining the model, and either underperform on long
-context or do not remove the attention bottleneck.
+intermediate tokens and agentic systems that ingest entire codebases or documents run in this
+regime. Architectural alternatives (fewer KV heads, latent attention, state-space models,
+sliding windows) change or retrain the model.
 
-The precise problem is therefore: given a *pre-trained, unmodified* transformer, drop a subset
-of the cached `(k_i, v_i)` pairs so that only a small fixed-budget fraction is retained, while
-losing as little generation quality as possible — with no training and no architectural
-change. A solution has to (1) decide *which* pairs are safe to evict by some measure of how
-much each pair actually matters to the model's output; (2) compute that measure from
-information available *at compression time*, even though a pair's true importance depends on
-how tokens that have not yet been generated will attend to it; (3) be compatible with the
-attention kernels used in modern deployment, which never build the full attention matrix; and
-(4) work both when the whole prompt is compressed once before generation and when the cache is
-trimmed repeatedly during long generation. Each existing approach gets a subset of these; none
-gets all four.
+The setting here is: given a *pre-trained, unmodified* transformer, drop a subset of the cached
+`(k_i, v_i)` pairs so that only a small fixed-budget fraction is retained, while losing as
+little generation quality as possible — with no training and no architectural change. This asks
+for some measure of how much each cached pair matters to the model's output, computed from
+information available *at compression time*. The compression is applied both when the whole
+prompt is compressed once before generation and when the cache is trimmed repeatedly during
+long generation.
 
 ## Background
 
@@ -36,30 +31,29 @@ h_t^out = h_t + sum_{i=1}^t a_ti W_o v_i = h_t + sum_{i=1}^t Δh_ti,
 where `a_ti` is the attention weight from the query at position `t` to the key at position `i`,
 `v_i` is the cached value, and `W_o` is the output projection. Each cached pair `(k_i, v_i)`
 thus contributes exactly one additive term `Δh_ti = a_ti W_o v_i` to the stream. The size of
-that contribution, `||Δh_ti|| = a_ti · ||W_o v_i||`, is an exact statement of how much pair `i`
-moves the output at step `t`: it factors into how strongly the query attends to the key
-(`a_ti`) and how large the resulting value update is (`||W_o v_i||`). The value-norm factor is
-computable from the cache at any time. The attention factor is the obstruction — `a_ti` is
+that contribution, `||Δh_ti|| = a_ti · ||W_o v_i||`, measures how much pair `i` moves the
+output at step `t`: it factors into how strongly the query attends to the key (`a_ti`) and how
+large the resulting value update is (`||W_o v_i||`). The value-norm factor is computable from
+the cache at any time. The attention factor is
 
 ```
 a_ti = z_ti / sum_{j<=t} z_tj,   z_ti = exp(q_t^T k_i / sqrt(d)),
 ```
 
-and the queries `q_t` for the steps that matter are the *future* ones, not yet generated.
+with `q_t` the query at position `t`.
 
 **Distributional properties of LLM activations.** Studies of activation statistics in modern
 LLMs report that the hidden states feeding the attention and MLP blocks are zero-mean,
 unimodal, and well approximated by a Gaussian, `h ~ N(mu, Sigma)` (the intermediate
 activations inside those blocks are instead Laplacian-like). This regularity has been used
-elsewhere for magnitude-based activation sparsity; it is a pre-existing, measurable fact about
-where activations concentrate, and it holds even for models with QK-normalization.
+for magnitude-based activation sparsity, and it holds even for models with QK-normalization.
 
 **Rotary position embedding (RoPE).** Positions enter through a per-position orthonormal
 rotation applied to queries and keys: `q_i = R_i W_Q h_i`, `k_i = R_i W_K h_i`, with
 `R_i in R^{d x d}` the RoPE rotation at position `i` (in the standard implementation,
-`R_i x = x ⊙ cos_i + rotate_half(x) ⊙ sin_i`). The rotation is what makes `q_t^T k_i` depend
-on the relative offset `t - i`, so any statement about a query at a *future* position carries
-that position's rotation with it.
+`R_i x = x ⊙ cos_i + rotate_half(x) ⊙ sin_i`). The rotation makes `q_t^T k_i` depend
+on the relative offset `t - i`, so a query's logit against a key carries that query position's
+rotation.
 
 **The attention-sink phenomenon.** The first few tokens of a sequence receive disproportionate
 attention across essentially all layers and heads, regardless of their semantic content — one
@@ -69,9 +63,8 @@ Both facts mean the first handful of tokens behave differently from the rest of 
 
 **The deployment constraint.** Production attention kernels (Flash Attention and its
 successors) compute the softmax-weighted sum on the fly and never materialize the full
-`t x t` attention matrix. So *no* method that needs to read the attention weights — even the
-past ones — is usable at deployment; the importance signal must be reconstructable from the
-cached keys, values, and hidden states alone.
+`t x t` attention matrix. The quantities available at deployment are the cached keys, values,
+and hidden states, along with the module's projections and RoPE.
 
 ## Baselines
 
@@ -80,29 +73,23 @@ al. 2024).** These rank a cached pair by the attention it has received. H2O keep
 hitters" by accumulated attention mass over the observed steps; SnapKV pools the attention
 that an observation window of recent (typically user-question) tokens pays to the context and
 keeps the most-attended keys; TOVA ranks by the most recent query's attention. Core math: all
-read entries of the realized attention matrix `a_ti` and keep the largest. **Limitation:** the
-signal comes from *past* queries, but the pairs that should be kept are the ones future queries
-will need — and the two need not coincide. SnapKV additionally presupposes that a question
-follows the context, which biases retention toward that question and breaks when no such query
-exists. And all of them require reading `a_ti`, which the Flash-Attention kernels never expose.
+read entries of the realized attention matrix `a_ti` and keep the largest. The signal comes
+from queries already observed, and SnapKV's observation window assumes a question follows the
+context.
 
 **Position heuristics — StreamingLLM (Xiao et al. 2023), H2O's recency component.**
 StreamingLLM keeps a small set of initial "sink" tokens plus a sliding window of the most
-recent tokens, discarding the middle; this stabilizes streaming to millions of tokens.
-**Limitation:** it is purely positional — it never looks at content, so it keeps recent tokens
-whether or not they matter and discards distant tokens that may carry the answer.
+recent tokens, discarding the middle; this stabilizes streaming to millions of tokens. It is
+purely positional, scoring by position rather than content.
 
 **Norm / embedding heuristics — KNorm (Devoto et al. 2024), KeyDiff, Q-Filters.** KNorm keeps
 the keys with the smallest L2 norm; KeyDiff uses distances between key embeddings; Q-Filters
 projects keys onto an SVD direction. These need only the cached keys, so they are Flash-
-Attention compatible and cheap. **Limitation:** they score keys by a geometric proxy with no
-principled tie to the pair's actual effect on the model's output, and their accuracy is uneven
-across model families (e.g. norm-based rules degrade under QK-normalization).
+Attention compatible and cheap, scoring keys by a geometric proxy.
 
 **Head-adaptive budgeting — AdaKV (Feng et al. 2024), PyramidKV.** Rather than a new scoring
 rule, these reallocate a fixed total budget across heads/layers, since heads differ in how much
-compression they tolerate. **Limitation:** orthogonal to scoring — it improves whatever
-per-pair score it is given but supplies no such score itself.
+compression they tolerate. They operate on top of whatever per-pair score they are given.
 
 ## Evaluation settings
 

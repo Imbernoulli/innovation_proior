@@ -4,9 +4,9 @@ Text-to-image diffusion models generate high-quality images, but standard sampli
 
 ## Prior art / Background / Baselines
 
-- **DDPM (Ho et al. 2020).** Trains a noise predictor and samples by reversing the Markov forward chain one ancestral step at a time. Gap: the sampling chain is tied to the forward chain length, so generating one image takes hundreds to a thousand sequential network passes.
-- **Classifier-free guidance (Ho & Salimans 2022).** At each step forms a guided prediction from unconditional and conditional outputs using a large scale to sharpen prompt alignment. Gap: the large scale amplifies model approximation errors and pushes samples toward oversaturated or off-manifold outputs.
-- **CFG++ renoising convention.** The sampler renoises using the unconditional noise prediction while the clean-image estimate still uses the guided prediction, tempering over-saturation. Gap: this only fixes the renoising term; it does not reduce the number of steps needed for high-quality sampling.
+- **DDPM (Ho et al. 2020).** Trains a noise predictor and samples by reversing the Markov forward chain one ancestral step at a time, following the same discrete schedule used during training.
+- **Classifier-free guidance (Ho & Salimans 2022).** At each step forms a guided prediction from unconditional and conditional outputs using a large scale to sharpen prompt alignment.
+- **CFG++ renoising convention.** The sampler renoises using the unconditional noise prediction while the clean-image estimate still uses the guided prediction, tempering over-saturation.
 
 ## Fixed substrate / Code framework
 
@@ -27,9 +27,7 @@ Only two regions may be edited: the body of `BaseDDIMCFGpp.sample` in `latent_di
 # EDITABLE region of latent_diffusion.py — default scaffold (SD v1.5; SDXL is the analogous reverse_process)
 @register_solver("ddim_cfg++")
 class BaseDDIMCFGpp(StableDiffusion):
-    # TODO: Implement your improved sampling method here.
-    # Implement an improved sampling algorithm that achieves better image quality
-    # (FID / CLIP) with a fixed budget of NFE = 20 steps.
+    # TODO: Implement your sampling method here.
     #
     # Available helpers from the parent class:
     #   self.get_text_embed(null_prompt, prompt) -> (uc, c)
@@ -53,8 +51,7 @@ class BaseDDIMCFGpp(StableDiffusion):
                callback_fn=None,
                **kwargs):
         # TODO: Implement your efficient sampling method here.
-        # Generate high-quality images with the fixed NFE budget. Consider the
-        # update rule, the timestep spacing, multistep history, or renoising.
+        # Generate high-quality images with the fixed NFE budget.
         raise NotImplementedError("You need to implement the sample method")
 ```
 

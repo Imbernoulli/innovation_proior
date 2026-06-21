@@ -15,14 +15,12 @@ The domain has two faces. On the one hand it is **geometric**: the function depe
 arrangement and orientation of residues in space — directions, angles, the 3D shape of a
 binding pocket, where points that are not themselves atoms sit relative to the chain. On the
 other hand it is **relational**: which residues are in contact, the connectivity pattern of
-interactions, the sequential order along the chain. A successful architecture must reason
-about *both*, and — because a protein's identity does not change when you rotate or reflect
-the coordinate frame it is described in — its scalar predictions must be **invariant** to
-rotations, reflections, and translations of the input coordinates. The pain point is that
-the two leading families of architectures each capture only one face, and bolting them
-together naively forces a choice that throws away part of the geometry. Closing that gap —
-full relational expressivity together with direct geometric reasoning, at a cost that scales
-to molecules with hundreds of residues — is the problem.
+interactions, the sequential order along the chain. Because a protein's identity does not
+change when you rotate or reflect the coordinate frame it is described in, its scalar
+predictions must be **invariant** to rotations, reflections, and translations of the input
+coordinates. The question is what architecture maps a backbone structure, described by these
+geometric and relational features, to a per-residue amino-acid distribution at a cost that
+scales to molecules with hundreds of residues.
 
 ## Background
 
@@ -39,14 +37,11 @@ Three things are established and load-bearing here.
 **Symmetry of the domain.** A protein's properties are unchanged under a rigid motion of the
 whole molecule: any rotation/reflection `R` (a unitary `3×3` matrix) and translation applied
 to all atom coordinates leaves the answer fixed. So a scalar target (a quality score, a
-per-residue class) must be computed *invariantly*, and any internal geometric quantity that
-is itself directional (an orientation, a bond direction) transforms *equivariantly* — it
-should rotate with the molecule. Two strategies exist for honoring this. One is to reduce
-every directional quantity to rotation-invariant scalars at the input (lengths, angles, dot
-products measured in a per-node local coordinate frame), after which an ordinary network may
-process them freely. The other is to carry the directional quantities themselves through the
-network as objects in `R^3` and only ever combine them through operations that commute with
-`R`.
+per-residue class) is computed *invariantly*, and any internal geometric quantity that is
+itself directional (an orientation, a bond direction) transforms *equivariantly* — it rotates
+with the molecule. One common way to honor this is to reduce every directional quantity to
+rotation-invariant scalars at the input — lengths, angles, dot products measured in a per-node
+local coordinate frame — after which an ordinary network may process them freely.
 
 **The message-passing template (Gilmer et al. 2017).** A graph neural network over a
 proximity graph computes, at each propagation step, a message for each directed edge
@@ -56,15 +51,13 @@ with a per-node feed-forward update. `g` and `U` are learned. This is the substr
 relational reasoning over a structure graph is built; what varies between methods is what `g`
 and `U` are, and what the node/edge features `h, e` contain.
 
-**The diagnostic limitation of distance-only graph features (observed by Ingraham et al.
-2019).** A node update `h_i ← f(h_i, {e_{j→i}})` can only depend on the local environment to
-the extent the edge features encode it. Pairwise distances alone are *not locally
-informative*: knowing `‖x_a − x_i‖` and `‖x_b − x_i‖` does not say whether neighbors `a` and
-`b` lie on the same side of `i` or on opposite sides. So a graph representation that hopes to
-reason about local 3D geometry must carry *more than length* on its edges — enough to
-reconstruct neighbor positions up to rigid motion. This representation gap forces every
-structure-graph method to make a choice about how to encode directional information on
-edges.
+**Local informativeness of graph features (observed by Ingraham et al. 2019).** A node update
+`h_i ← f(h_i, {e_{j→i}})` depends on the local environment only to the extent the edge
+features encode it. Pairwise distances alone are *not locally informative*: knowing
+`‖x_a − x_i‖` and `‖x_b − x_i‖` does not say whether neighbors `a` and `b` lie on the same
+side of `i` or on opposite sides. A graph representation that reasons about local 3D geometry
+therefore carries *more than length* on its edges — enough to reconstruct neighbor positions
+up to rigid motion.
 
 **Standard geometric input features for a protein backbone.** From the backbone atoms one
 can compute, per residue, the three dihedral angles `(φ, ψ, ω)` (functions of consecutive
@@ -87,19 +80,13 @@ structure-graph featurization.
 feature vector of its 3D environment — residue contacts, locally projected orientations,
 physics-inspired energy terms — and the protein is treated as a sequence/collection of such
 vectors fed to a 1D-CNN, RNN, or dense network (e.g. SPIN2, O'Connell et al. 2018; and the
-quality-assessment methods VoroMQA, SBROD, ProQ3D). **Gap:** the 3D structure is represented
-only indirectly, through whatever the hand-crafted features happen to capture; the geometry
-the features discard is unrecoverable downstream.
+quality-assessment methods VoroMQA, SBROD, ProQ3D).
 
 **Voxelized 3D-CNN models.** Atoms are rasterized into an occupancy map on a 3D voxel grid
-and processed by a 3D convolutional network, whose hierarchical filters are well suited to
-detecting structural motifs, pockets, and shapes — directly leveraging the geometric face of
-the domain (CPD methods of Anand et al. 2020, Zhang et al. 2019; quality-assessment 3DCNN
-and Ornate). **Gap:** the convolution is over a rigid voxel grid, so the model is not
-naturally invariant to rotation (one re-orients by data augmentation), the grid resolution
-trades memory against geometric precision, and the representation discards the explicit
-graph of residue-residue relations — relational reasoning has to be re-learned through dense
-volumetric filters.
+and processed by a 3D convolutional network, whose hierarchical filters detect structural
+motifs, pockets, and shapes (CPD methods of Anand et al. 2020, Zhang et al. 2019; quality-
+assessment 3DCNN and Ornate). The convolution is over a rigid voxel grid, and rotational
+robustness is obtained by data augmentation.
 
 **Graph neural networks with invariant scalar geometry (Structured Transformer / Structured
 GNN, Ingraham et al. 2019).** The state of the art for CPD. The protein is a `k`-nearest-
@@ -116,34 +103,21 @@ encodes each edge as the triple
 `e_{j→i} = ( RBF(‖x_j − x_i‖),  O_i^T (x_j − x_i)/‖x_j − x_i‖,  q(O_i^T O_j) )` —
 a distance lifted to the RBF basis, the *direction to the neighbor expressed in `i`'s local
 frame*, and the quaternion of the relative rotation `O_i^T O_j`. Node features are the
-backbone dihedrals on the torus. Because every directional quantity is projected into a local
-frame before it enters the network, the inputs are rotation-invariant by construction and the
+backbone dihedrals on the torus. Every directional quantity is projected into a local frame
+before it enters the network, so the inputs are rotation-invariant by construction and the
 rest of the network is an ordinary (scalar) graph transformer. Ingraham et al. further note in
-their ablation that removing the attention and using plain graph propagation does not hurt —
-the graph message passing, not the attention, is doing the work. **Gap:** all geometry is
-collapsed into invariant scalars *at the input*; after that first projection, the
-intermediate representations are scalars and the network can no longer manipulate the
-directional quantities as geometric objects — it cannot, for example, propagate a position in
-a shared frame, point at a location that is not itself a node, or update an orientation as
-the representation deepens. Geometry is also encoded *redundantly*: an orientation is
-described once per neighbor (relative to each `O_i`) rather than once, absolutely, per node.
+their ablation that removing the attention and using plain graph propagation does not hurt the
+result.
 
 **Equivariant networks over irreducible representations of SO(3) (Tensor Field Networks,
-Thomas et al. 2018; Cormorant, Anderson et al. 2019).** A principled route to true 3D
-equivariance: every layer inputs and outputs *geometric tensors* — scalars, vectors, and
-higher-order tensors organized as irreducible representations of the rotation group — and
-convolutional filters are built as products of a learned radial function and a spherical
-harmonic, with tensor (Clebsch–Gordan) products coupling features so that the whole network
-is exactly rotation- and translation-equivariant at every layer. This delivers the strongest
-form of the symmetry bias and avoids data augmentation entirely. **Gap:** the spherical-
-harmonic / Wigner-D and tensor-product machinery is mathematically and computationally heavy;
-the cost of carrying and coupling higher-order irreps confines these networks, in practice,
-to small molecules — they do not scale to proteins with hundreds of residues.
-
-So the table is set with a tension: CNNs and the irreps networks reason geometrically (the
-latter even equivariantly) but are costly or non-relational; GNNs reason relationally and
-cheaply but, to stay invariant, freeze all geometry into scalars at the door. Existing
-choices leave either expensive geometric machinery or cheap scalar-only graph propagation.
+Thomas et al. 2018; Cormorant, Anderson et al. 2019).** A route to true 3D equivariance: every
+layer inputs and outputs *geometric tensors* — scalars, vectors, and higher-order tensors
+organized as irreducible representations of the rotation group — and convolutional filters are
+built as products of a learned radial function and a spherical harmonic, with tensor
+(Clebsch–Gordan) products coupling features so that the whole network is exactly rotation- and
+translation-equivariant at every layer. This holds the symmetry bias exactly and avoids data
+augmentation. The spherical-harmonic / Wigner-D and tensor-product machinery, and the cost of
+carrying and coupling higher-order irreps, place these networks in practice on small molecules.
 
 ## Evaluation settings
 

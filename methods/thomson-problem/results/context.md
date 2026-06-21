@@ -23,12 +23,7 @@ the global minimizer for N = 8 or N = 20 is not the corresponding Platonic solid
 and even when a beautiful symmetric configuration is the apparent winner there is no
 configuration-space argument that proves it. What matters, and what is hard, is a
 *proof*: a lower bound on the energy of every admissible configuration that is met
-with equality by a specific arrangement. Two things would make such a proof
-especially valuable. First, robustness across potentials: a single argument that
-holds for a whole family of f at once, rather than one f at a time. Second, it should
-explain *why* the exceptional configurations — the regular simplex and cross
-polytope, the icosahedron, the minimal vectors of the E_8 and Leech lattices — keep
-appearing as optima across many different energies.
+with equality by a specific arrangement.
 
 ## Background
 
@@ -80,8 +75,7 @@ minimal vectors of the E_8 root lattice (n = 8, N = 240) and of the Leech lattic
 high-strength spherical design with only a few distinct inner products. The vertices
 of the regular 600-cell (n = 4, N = 120) are an 11-design with eight inner products and
 behave almost as well. These same objects recur across number theory, lattice theory,
-and analysis, and the recurring question is whether their optimality is one
-phenomenon or many.
+and analysis.
 
 ## Baselines
 
@@ -90,22 +84,15 @@ function on (S^{n-1})^N and minimize it directly: from a random start, move poin
 downhill along the sphere-tangential gradient (Claxton–Benson 1966, Erber–Hockney
 1991), optionally with simulated annealing or basin hopping to escape local minima
 (Altschuler et al. 1994). This finds excellent candidate configurations and the best
-known energies for hundreds of points. Its limitation is fundamental: it returns a
-*configuration*, never a *proof*. With exponentially many local minima it can never
-certify that the reported configuration is the global optimum, and it must be redone
-for each N and each f separately. It is a way to guess the answer, not to establish
-it.
+known energies for hundreds of points.
 
 **Yudin's spherical-harmonic bound.** Yudin (1992) gave a rigorous lower bound for
 the harmonic energy of n+1 or 2n points on S^{n-1}, proving optimality of the simplex
 and the cross polytope, by expanding the potential in spherical harmonics and using
 their positivity. Kolushov and Yudin (1997) extended this to show the E_8 minimal
 vectors are the unique minimum for (n,N) = (8,240), and Andreev (1996, 1997) handled
-the Leech vectors (24, 196560) and the icosahedron (3, 12). The limitation each
-instance shares: each treats essentially one harmonic potential and one configuration,
-with an ad hoc auxiliary polynomial chosen by hand for that case; the existing
-arguments stop short of any uniform recipe that would cover an arbitrary completely
-monotonic f and an arbitrary special configuration at once.
+the Leech vectors (24, 196560) and the icosahedron (3, 12). Each treats one harmonic
+potential and one configuration, with an auxiliary polynomial chosen by hand for that case.
 
 **Linear programming bounds for codes.** Delsarte, Goethals and Seidel (1977) and,
 independently, Kabatiansky and Levenshtein (1978) bound the size of a spherical code
@@ -116,9 +103,7 @@ problem in dimensions 8 and 24). Levenshtein (1992) identified the configuration
 which these LP code bounds are *sharp* — and that list coincides with the exceptional
 arrangements above. The construction of the optimal code polynomial used the
 Christoffel–Darboux formula and the roots of certain Jacobi-type orthogonal
-polynomials. The gap: these bounds are about *packing* (one threshold distance), not
-about *energy* for a smooth potential, and they certify cardinality, not an energy
-value.
+polynomials.
 
 ## Evaluation settings
 
@@ -144,9 +129,7 @@ The existing tools are: spherical-harmonic / Gegenbauer polynomial evaluation
 linear-programming solver, and direct energy evaluation for candidate configurations.
 The available numerical slot is a finite-dimensional LP over Gegenbauer coefficients of
 the same flavor as the Delsarte–Kabatiansky–Levenshtein code bounds, with constraints
-sampled at inner products on a grid. How to put that LP to work, and what would let a
-grid-sampled result become a certified proof for the special configurations, is left
-open.
+sampled at inner products on a grid.
 
 ```python
 import numpy as np

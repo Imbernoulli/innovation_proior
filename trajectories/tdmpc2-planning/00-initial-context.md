@@ -6,8 +6,8 @@ TD-MPC2 plans at every environment step through a learned latent world model. Th
 
 The optimizer may only query the model by rolling out an action sequence and reading a scalar value; it runs under `@torch.no_grad()`. The relevant prior methods share the scaffold below.
 
-- **Random shooting.** Draw action sequences from a fixed distribution, roll each through the model, and execute the first action of the best sequence. Gap: it never updates where it samples, so later iterations keep redrawing from regions already shown to be poor.
-- **Differential dynamic programming / iLQG.** Linearize the dynamics and quadratize the cost around a nominal trajectory, then use a backward Riccati sweep to obtain a local feedback law. Gap: it requires a differentiable model and an explicit cost; it is unavailable when the model is a learned latent network evaluated without gradients.
+- **Random shooting.** Draw action sequences from a fixed distribution, roll each through the model, and execute the first action of the best sequence.
+- **Differential dynamic programming / iLQG.** Linearize the dynamics and quadratize the cost around a nominal trajectory, then use a backward Riccati sweep to obtain a local feedback law. It requires a differentiable model and an explicit cost.
 - **Model-predictive control wrapper.** Re-optimize at every step, execute only the first action, re-observe, and warm-start the next plan from the un-executed tail. This receding-horizon wrapper is already provided by the scaffold; the inner optimizer is the design target.
 
 ## Fixed substrate / Code framework

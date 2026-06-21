@@ -11,20 +11,11 @@ This matters whenever the classification is one piece of a larger decision and t
 must be *combined* or *acted on under a cost*. A Viterbi/HMM word recognizer composing
 phoneme posteriors, a Bayes-optimal decision that trades off a known utility, a
 cost-sensitive choice where a false positive and a false negative carry different prices — all
-of these need a calibrated `P(y = +1 | x)`, not just a ranking. A bare margin or an
-uncalibrated confidence score breaks them: the threshold that is optimal for one loss is
-wrong for another unless the score is a true probability.
+of these need a calibrated `P(y = +1 | x)`, not just a ranking.
 
-Two hard constraints shape the problem. First, the score-producing classifier is fixed: it
-was trained to minimize a *margin* or *accuracy* objective, which makes its rankings good but
-its score magnitudes meaningless as probabilities, and I do not want to retrain it (retraining
-can destroy the very properties — sparseness, accuracy — that made it worth using). Second,
-the only thing I may learn is a *mapping* from the raw scores to probabilities, and I must
-learn it from a limited amount of labelled data without it overfitting — including the
-degenerate case where that data is perfectly linearly separable in the score. The goal is a
-cheap, trainable post-processor `g : f(x) ↦ P(y = +1 | x)` that produces a valid probability,
-respects the obvious monotonicity (higher score ⇒ higher probability of the positive class),
-and does not blow up on small or separable calibration sets.
+The score-producing classifier is fixed: it was trained to minimize a *margin* or *accuracy*
+objective, and I do not want to retrain it. The question is how to learn a mapping from the
+raw scores to probabilities using a limited amount of labelled data.
 
 ## Background
 
@@ -37,39 +28,33 @@ C Σ_i (1 − y_i f_i)_+  +  (1/2) ||h||²_F ,
 ```
 
 the hinge term `(1 − y f)_+` penalizing margin violations and the RKHS-norm term controlling
-capacity. Minimizing this bounds the test misclassification rate and, crucially, yields a
+capacity. Minimizing this bounds the test misclassification rate and yields a
 *sparse* machine — only a subset of training points (the support vectors) carry nonzero `α_i`.
-The price of that margin objective is that `f(x)` is an *uncalibrated* number: it is built to
-separate the classes, not to report a probability. Other strong classifiers of the era —
-boosted ensembles, decision trees, naive Bayes — have the same disease in their own way:
-their scores rank well but are systematically mis-scaled.
+Other strong classifiers of the era — boosted ensembles, decision trees, naive Bayes — each
+produce their own real-valued scores that rank examples well.
 
-The geometry of these scores is the seed of the problem. If I look at the
+The geometry of these scores is informative. If I look at the
 class-conditional distributions of the SVM output — `p(f | y = +1)` and
 `p(f | y = −1)` — for a real linear SVM (the histograms can be read off cross-validated
 scores), they are emphatically *not* Gaussian. They have kinks: the derivative of each density
 is discontinuous at the margins `f = +1` and `f = −1`, which is unsurprising because the
 training cost `(1 − y f)_+` itself is non-smooth exactly there. And between the two margins,
-the densities fall off roughly *exponentially*. That empirical shape in the region between the
-margins sharply constrains what a useful posterior model can look like.
+the densities fall off roughly *exponentially*.
 
 Several conceptual frames are on the table. The **generative** frame: estimate the
 class-conditional densities `p(f | y)` and combine them by Bayes' rule,
 `P(y=1|f) = p(f|y=1)P(y=1) / Σ_i p(f|y=i)P(y=i)`. The **discriminative** frame: skip the
 densities and model the posterior `P(y=1|f)` directly with a parametric family fit to labelled
 data. The **regularized-likelihood** frame: replace the classifier's training objective with
-one whose output *is* a probability (a logistic link plus a norm penalty), at the cost of
-giving up sparseness. And a recurring background idea from smoothing of empirical frequencies:
-a raw count ratio `k/n` is a high-variance, biased estimate of a probability (it saturates at
-0 and 1), and the classical Bayesian cure is to shrink it away from the boundary with
-Laplace's `(k+1)/(n+2)` rule of succession. The same pathology can occur whenever a flexible
-probability map is fit on separable score data.
+one whose output *is* a probability (a logistic link plus a norm penalty). And a recurring
+background idea from smoothing of empirical frequencies: a raw count ratio `k/n` is a
+high-variance estimate of a probability (it saturates at 0 and 1), and the classical Bayesian
+cure is to shrink it away from the boundary with Laplace's `(k+1)/(n+2)` rule of succession.
 
 A second background fact: the relevant decision threshold need not sit at `f = 0`. The
 Bayes-optimal threshold depends on the class priors `P(y=−1)/P(y=+1)` and on the loss; when the
 priors are skewed, the point where the true posterior crosses `0.5` is shifted away from the
-classifier's natural `f = 0` boundary. Any calibration map that forces `P = 0.5` at `f = 0`
-therefore builds in an assumption that is often simply wrong.
+classifier's natural `f = 0` boundary.
 
 ## Baselines
 
@@ -82,30 +67,20 @@ minimize a penalized negative log multinomial likelihood,
 ```
 
 so the output `p(x)` is a posterior probability by construction. Core idea: bake calibration
-into training via the right loss. **Gap:** minimizing a likelihood loss makes *every* training
-example exert a kernel term — the machine is no longer sparse. The thing that made the SVM
-attractive (a handful of support vectors) is lost, and the classifier must be retrained from
-scratch rather than reused.
+into training via the right loss.
 
 **Gaussian class-conditional fit (Hastie & Tibshirani, 1996/1998).** Stay generative: fit a
 Gaussian to each class-conditional density `p(f | y = ±1)`. With a single *tied* variance for
 both Gaussians, Bayes' rule turns the posterior into a sigmoid in `f`, and the bias is then
 adjusted so that `P(y=1|f) = 0.5` lands at `f = 0`. Core idea: two Gaussians ⇒ a logistic
-posterior, one parameter estimated generatively from the variances. **Gap (two of them):** the
-single parameter, derived from the fitted variances, need not match the true posterior; and if
-the variances are *untied* the posterior becomes `P(y=1|f) = 1/(1 + exp(a f² + b f + c))`,
-which is non-monotonic in `f` — it can *decrease* the positive-class probability as the score
-grows, directly contradicting the fact that the classifier was trained to push positives to
-large `f`. Fixing `P=0.5` at `f=0` is also wrong whenever the priors are skewed.
+posterior, one parameter estimated generatively from the variances. With *untied* variances the
+posterior becomes `P(y=1|f) = 1/(1 + exp(a f² + b f + c))`.
 
 **Cosine-expansion posterior (Vapnik, 1998).** Decompose the feature space into the direction
 orthogonal to the separating hyperplane (parameterized by a scaled `t`) and the remaining
 directions (a vector `u`), and fit
 `P(y=1|t,u) = a_0(u) + Σ_{n=1}^N a_n(u) cos(n t)`, the coefficients minimizing a regularized
-functional. Core idea: a flexible expansion that can depend on the full feature vector. **Gap:**
-each evaluation requires solving a linear system for the `a_n` at the current `u`; the cosine
-sum is not constrained to lie in `[0,1]`; and it is not constrained to be monotonic in `f`,
-again clashing with the strong monotone prior the margin classifier induces.
+functional. Core idea: a flexible expansion that can depend on the full feature vector.
 
 ## Evaluation settings
 

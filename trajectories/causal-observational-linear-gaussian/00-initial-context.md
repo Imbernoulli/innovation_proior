@@ -12,20 +12,14 @@ dataset-specific constants.
 
 - **Markov equivalence and constraint-based recovery (Spirtes, Glymour & Scheines 2000;
   Verma & Pearl 1990).** Observational data fix only the conditional-independence pattern; the
-  recoverable object is the CPDAG (skeleton plus unshielded colliders). Gap: on finite samples,
-  thresholded independence tests delete faint real edges and retain spurious ones, so both recall
-  and precision decay as density or noise grow.
+  recoverable object is the CPDAG (skeleton plus unshielded colliders).
 
 - **Greedy Equivalence Search (GES; Chickering 2002; Meek 1997).** A score-based forward/backward
   climb over equivalence classes using local insert/delete operators and a decomposable score.
-  Gap: every move evaluates a single edge's marginal score gain, so finite-sample noise and dense
-  graphs push it into shallow optima with spurious adjacencies.
 
 - **Sparsest-permutation and ordering search (Raskutti & Uhler 2018; Teyssier & Koller 2005).**
   Rank permutations by the edge count of the induced minimal I-map; the sparsest ordering recovers
-  the true MEC under assumptions weaker than faithfulness. Gap: exhaustive search is `p!` and
-  infeasible beyond a handful of variables, while greedy ordering variants scale but lack
-  consistency guarantees.
+  the true MEC under assumptions weaker than faithfulness.
 
 ## Fixed substrate / Code framework
 
@@ -81,6 +75,4 @@ Five scenarios spanning the difficulty range, each at seed 42:
 Five metrics per scenario, computed against the ground-truth CPDAG: **SHD** (structural Hamming
 distance via `SHD(...).get_shd()`, lower is better), **adjacency precision / recall** (via
 `AdjacencyConfusion`, higher is better), and **arrow precision / recall** (via `ArrowConfusion`,
-higher is better). The two large scale-free scenarios and the high-noise denser scenario are what
-separate the methods; the small sparse graphs (ER10, ER20) are where every reasonable method should
-be near-perfect.
+higher is better).

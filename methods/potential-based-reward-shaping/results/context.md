@@ -18,30 +18,30 @@ and the optimal policy is $\pi^*_M(s)\in\arg\max_{a}Q^*_M(s,a)$. $Q^*_M$ is the 
 
 $$Q^*_M(s,a)=\mathbb E_{s'}\!\Big[R(s,a,s')+\gamma\max_{a'}Q^*_M(s',a')\Big],$$
 
-which is the fixed point that value iteration and Q-learning converge to. Note that a policy is defined over *states*, so the *same* policy object can be applied to two MDPs that share $S$ and $A$ but differ in their rewards — which is exactly the comparison we will need.
+which is the fixed point that value iteration and Q-learning converge to. Note that a policy is defined over *states*, so the *same* policy object can be applied to two MDPs that share $S$ and $A$ but differ in their rewards.
 
 **Regularity for the undiscounted case.** When $\gamma=1$ one assumes a distinguished absorbing state $s_0$ (the process stops on entering it, with no further reward) and that all policies are *proper*: from any state, any policy reaches $s_0$ with probability 1. This is a condition on $T$. Discounted MDPs ($\gamma<1$) have no absorbing state and are infinite-horizon; for them one writes $S\setminus\{s_0\}=S$.
 
 **The single-step precedent.** Utility theory studies one-shot decisions and already answers the analogous invariance question there: for decisions *without* uncertainty any monotonic transformation of utilities preserves the optimal choice; *with* uncertainty (expected-utility maximization) only **positive linear transformations** are allowed [von Neumann and Morgenstern, 1944]. These facts underwrite how one designs evaluation functions in games and elicits utilities from people. The sequential, multi-step version of "which reward transformations preserve the optimum" had not been worked out.
 
-**Shaping and its documented failure modes.** Shaping — supplying helpful auxiliary rewards to accelerate learning — has a substantial empirical track record [Dorigo and Colombetti, 1994; Mataric, 1994; Randløv and Alstrøm, 1998], with antecedents in the animal-training literature [Saksida et al., 1997]. The diagnostic facts that frame the problem are its *bugs*, all observed on existing systems:
+**Shaping in practice.** Shaping — supplying helpful auxiliary rewards to accelerate learning — has a substantial empirical track record [Dorigo and Colombetti, 1994; Mataric, 1994; Randløv and Alstrøm, 1998], with antecedents in the animal-training literature [Saksida et al., 1997]. Empirical work has documented cases where shaping produced unexpected learned behavior:
 
 - A bicycle agent rewarded for making progress toward a goal but **not** penalized for moving away learned to **ride in tiny circles** near the start, collecting the progress reward each time it happened to point goalward [Randløv and Alstrøm, 1998].
 - A soccer robot given reward for **touching the ball** learned to sit next to the ball and **"vibrate,"** touching it as often as possible (David Andre and Astro Teller, reported in the same line of work).
 
 In both, the shaping reward, not the task, dictated the learned behavior, and the result is clearly suboptimal for the original objective. In each case the agent had found some repeatable behavior that kept paying out shaping reward while making no progress on the real task.
 
-**Approximate invariance.** It was known that if rewards are perturbed by at most $\varepsilon$, the new policy's value is within $2\varepsilon/(1-\gamma)$ of optimal [Singh and Yee, 1994; Williams and Baird, 1994] — a robustness bound, but not a characterization of *exact* policy-preserving transformations.
+**Approximate invariance.** It was known that if rewards are perturbed by at most $\varepsilon$, the new policy's value is within $2\varepsilon/(1-\gamma)$ of optimal [Singh and Yee, 1994; Williams and Baird, 1994].
 
 ## Baselines
 
 The "prior art" here is the set of shaping heuristics people actually used, together with the theoretical tools they leaned on.
 
-- **Distance-to-goal / progress shaping** [Randløv and Alstrøm, 1998]. Core idea: give a positive reward $r$ on any transition that moves the agent closer to the goal, zero otherwise — $F(s,a,s')=r$ if $s'$ is closer to the goal than $s$. Math/algorithm: add $F$ to the environment reward and run ordinary TD learning (e.g. Sarsa$(\lambda)$). **Gap:** it is not symmetric — moving away is not penalized — so going out and coming back nets positive reward, which is the tiny-circles bug. Even a symmetric "closer/farther" version is an *ad hoc* state-pair reward with no guarantee that it does not shift the optimum.
+- **Distance-to-goal / progress shaping** [Randløv and Alstrøm, 1998]. Core idea: give a positive reward $r$ on any transition that moves the agent closer to the goal, zero otherwise — $F(s,a,s')=r$ if $s'$ is closer to the goal than $s$. Math/algorithm: add $F$ to the environment reward and run ordinary TD learning (e.g. Sarsa$(\lambda)$).
 
-- **Subgoal / event shaping** [Mataric, 1994; Dorigo and Colombetti, 1994]. Core idea: hand out reward for reaching designated subgoals or for performing useful primitive events (touching the ball, picking up a flag) — $F(s,a,s')=r$ when $a=a_1$ for $s$ in some set $S_0$, else $0$. **Gap:** an "event" the agent can repeat — touch, release, touch again — keeps paying out, which is the vibration bug. Subgoal bonuses with the wrong magnitudes can also make a detour-through-a-subgoal beat the truly optimal path.
+- **Subgoal / event shaping** [Mataric, 1994; Dorigo and Colombetti, 1994]. Core idea: hand out reward for reaching designated subgoals or for performing useful primitive events (touching the ball, picking up a flag) — $F(s,a,s')=r$ when $a=a_1$ for $s$ in some set $S_0$, else $0$.
 
-- **The general additive form.** For a fixed MDP and additive, memoryless shaping, the most general shaping is $R'=R+F$ with $F:S\times A\times S\to\mathbb R$ bounded. This is implementable even model-free: with only sample access to $M$ (take action, observe $s'$ and $R$), one simulates access to $M'$ by simply reporting $R(s,a,s')+F(s,a,s')$ on the same transition, since $M$ and $M'$ share $S,A,T$. So online/offline, model-based/model-free algorithms transfer unchanged from $M$ to $M'$. **Gap:** this is the whole problem — the form is far too permissive; without a constraint on $F$ it admits exactly the pathologies above.
+- **The general additive form.** For a fixed MDP and additive, memoryless shaping, the most general shaping is $R'=R+F$ with $F:S\times A\times S\to\mathbb R$ bounded. This is implementable even model-free: with only sample access to $M$ (take action, observe $s'$ and $R$), one simulates access to $M'$ by simply reporting $R(s,a,s')+F(s,a,s')$ on the same transition, since $M$ and $M'$ share $S,A,T$. So online/offline, model-based/model-free algorithms transfer unchanged from $M$ to $M'$.
 
 - **The value/Q-learning machinery itself** [Sutton and Barto, 1998; Bertsekas and Tsitsiklis, 1996]. Q-learning estimates $Q^*$ by sampling the Bellman optimality backup; the optimal policy is the greedy argmax over $Q^*$ at each state. This is the tool a designer is trying to accelerate with shaping.
 

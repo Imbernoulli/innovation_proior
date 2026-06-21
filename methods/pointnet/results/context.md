@@ -7,27 +7,11 @@ point cloud being an unordered set $\{P_i \mid i=1,\dots,n\}$ where each $P_i$ i
 its $(x,y,z)$ coordinate (optionally with extra channels such as color or normal)
 — and that serves a *unified* set of recognition tasks: object classification
 (output $k$ class scores for the whole cloud) and segmentation (output $n\times m$
-scores, one label distribution per point). The pain point is that the dominant deep
-architectures of the time, convolutional networks, require *regular* input formats
-— pixel grids, voxel grids — so that weight sharing and kernel optimizations apply.
-Point clouds are irregular, so the standard practice is to first convert them into a
-voxel grid or a collection of rendered images and then run a CNN. That conversion is
-wasteful in two concrete ways: it makes the data unnecessarily voluminous (a dense
-voxel grid is mostly empty, and resolution costs scale cubically), and it introduces
-quantization artifacts that obscure the natural invariances of the geometry.
-
-A method that consumed the points directly would avoid both. But to do so it must
-respect what a point cloud fundamentally *is* — a set — and that imposes three
-requirements any solution has to meet:
-
-- **Permutation invariance.** The cloud has no canonical order; feeding the $n$
-  points in any of $n!$ orders must produce the same answer (for classification) or
-  the same per-point answers (for segmentation).
-- **Locality / interaction.** The points live in a metric space, so nearby points
-  form meaningful local structures and a useful model should be able to exploit local
-  geometry and the interactions among local structures.
-- **Transformation invariance.** Rigid (and more generally affine) motions of the
-  whole cloud should not change the predicted category or per-point labels.
+scores, one label distribution per point). The dominant deep architectures of the
+time, convolutional networks, require *regular* input formats — pixel grids, voxel
+grids — so that weight sharing and kernel optimizations apply. The standard practice
+is to first convert point clouds into a voxel grid or a collection of rendered images
+and then run a CNN.
 
 ## Background
 
@@ -35,7 +19,7 @@ requirements any solution has to meet:
 efficiency from weight sharing over a regular lattice: the same kernel slides over a
 grid of pixels or voxels. This is why 3D recognition pipelines first regularize the
 data. Volumetric grids and multi-view renderings are the two standard regularizers,
-each with a cost discussed under Baselines.
+each discussed under Baselines.
 
 **Symmetric functions and order invariance.** A function of several arguments is
 *symmetric* if its value is unchanged under any permutation of those arguments;
@@ -59,8 +43,7 @@ classification or segmentation score should have.
 showed that a network can learn to *canonicalize* its input: a small sub-network
 predicts a spatial transformation that is applied to the data before the main network
 sees it, making the main network's job invariant to that family of transformations.
-For images this required a specially built sampling-and-interpolation layer, which
-introduces aliasing.
+For images this required a specially built sampling-and-interpolation layer.
 
 **Sets and sequences.** One alternative for handling unordered input is to treat the
 set as a sequence and use a recurrent network, training on randomly permuted
@@ -73,33 +56,22 @@ re-ordering only for short sequences.
 
 **Volumetric CNNs (3DShapeNets, Wu et al. 2015; VoxNet, Maturana & Scherer 2015).**
 Convert the cloud to an occupancy grid (e.g. $32\times32\times32$) and apply 3D
-convolutions. They make the data regular at the cost of cubic memory and compute, most
-of it spent on empty space, and they suffer quantization at the chosen resolution. They
-are also sensitive to orientation (VoxNet averages predictions over many rotated
-views). The open gap: a representation that is native to the irregular, sparse nature
-of points.
+convolutions. They are also sensitive to orientation (VoxNet averages predictions over many rotated
+views).
 
 **Multi-view CNNs (MVCNN, Su et al. 2015; Qi et al. 2016).** Render the shape from
 several virtual camera viewpoints into 2D images, run a 2D CNN per view, and pool
-across views. They leverage mature 2D CNNs and large image-pretrained models, but they
-require a rendering step, choose viewpoints by hand, and discard the explicit 3D
-structure. The open gap: operating on the geometry directly rather than on its
-projections.
+across views. They leverage mature 2D CNNs and large image-pretrained models, and
+require a rendering step with viewpoints chosen by hand.
 
 **Sorting the points into a canonical order, then an MLP/CNN.** The simplest way to
 make an order-dependent network order-invariant: impose a deterministic order first.
-The gap: in high-dimensional space there is no ordering that is stable under small
-perturbations of the points (a stable order would be a proximity-preserving bijection
-to the real line, which cannot exist in general), so the network still faces an
-effectively inconsistent input-to-output mapping.
 
 **RNN over the (permutation-augmented) point sequence.** Feed the points as a sequence
-to a recurrent net and train on many random orderings. The gap: order cannot be fully
-trained away (per *Order Matters*), and recurrent models do not scale their
-order-robustness to the thousands of elements typical of point clouds.
+to a recurrent net and train on many random orderings.
 
 **Spatial transformer networks (Jaderberg et al. 2015).** The mechanism for learnable
-input canonicalization, but built for images with a resampling layer that aliases.
+input canonicalization, built for images with a resampling layer.
 
 ## Evaluation settings
 
@@ -122,10 +94,7 @@ perceptron (the same small MLP applied independently to every point, implemented
 $1\times1$ convolutions over the point axis), batch normalization and ReLU, fully
 connected layers with dropout, generic reductions over a chosen axis, an affine
 transform of point coordinates by matrix multiplication, the Adam optimizer, and a
-softmax cross-entropy loss. What does *not* yet exist is the overall shape of the
-network: how to collapse the unordered per-point features into a single
-order-invariant descriptor, how to make the result invariant to rigid/affine motion,
-and how to produce per-point predictions.
+softmax cross-entropy loss.
 
 ```python
 import torch

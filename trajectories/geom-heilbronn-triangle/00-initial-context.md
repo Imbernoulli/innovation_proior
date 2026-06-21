@@ -11,9 +11,9 @@ Higher is better; one collinear triple gives score `0`. At `n = 11` the best-kno
 
 ## Prior art / Background / Baselines
 
-- **Heilbronn's conjecture and asymptotic bounds.** The conjecture `Δ(n) = O(1/n^2)` and subsequent upper/lower bounds address the rate of decay for large `n`. *Gap:* these are order-of-magnitude statements that give no exact constant at a specific small `n` like `11`; the record there remains a hand-found rational.
-- **Goldberg (1972) structured constructions.** Explicit small-`n` configurations place points at rational coordinates with symmetric layouts, including the `1/27` arrangement at `n = 11`. *Gap:* these are isolated hand designs for particular `n`; there is no construction that generalizes to arbitrary `n`.
-- **Comellas–Yebra (2001) and Karpov computer search.** Records for `n = 10, 12, 13, ...` come from large-scale numerical optimization such as multi-start local search and simulated annealing on point coordinates. *Gap:* the published values are conjectured records from dedicated runs, not proven optima, so room remains for better configurations.
+- **Heilbronn's conjecture and asymptotic bounds.** The conjecture `Δ(n) = O(1/n^2)` and subsequent upper/lower bounds address the rate of decay for large `n`.
+- **Goldberg (1972) structured constructions.** Explicit small-`n` configurations place points at rational coordinates with symmetric layouts, including the `1/27` arrangement at `n = 11`.
+- **Comellas–Yebra (2001) and Karpov computer search.** Records for `n = 10, 12, 13, ...` come from large-scale numerical optimization such as multi-start local search and simulated annealing on point coordinates.
 
 ## Fixed substrate / Code framework
 

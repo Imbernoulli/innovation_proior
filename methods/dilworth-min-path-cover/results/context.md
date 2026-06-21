@@ -7,13 +7,12 @@ vertex-disjoint paths needed to cover every vertex exactly once (the minimum pat
 cover). A path here is a directed simple path that follows edges of the graph; a
 single vertex with no edges counts as a path of length zero. "Vertex-disjoint" and
 "exactly once" mean the chosen paths partition the vertex set: every vertex lies on
-one and only one path. The goal is to make the number of paths as small as
-possible.
+one and only one path. Make the number of paths as small as possible.
 
 The graph is acyclic, so the edge relation is consistent with some topological
 order, and no path can revisit a vertex. Sizes are moderate: $n$ up to a few
-thousand vertices and $m$ up to tens of thousands of edges, small enough that an
-$O(n \cdot m)$ procedure is acceptable.
+thousand vertices and $m$ up to tens of thousands of edges, so an $O(n \cdot m)$
+procedure is acceptable.
 
 ## Code framework
 

@@ -7,31 +7,12 @@ The dominant problem is neural sequence transduction: map a variable-length inpu
 case, but the same shape covers language modeling, summarization, and parsing. A good layer for
 this has to do one thing well: let the representation at every position be informed by the
 relevant content at every other position, including far-away ones, because meaning in language
-is non-local (agreement, coreference, long-distance dependencies). Two costs make the existing
-solutions painful at scale.
+is non-local (agreement, coreference, long-distance dependencies).
 
-First, **training throughput**. The state-of-the-art layer factors its computation along the
-sequence: it produces a hidden state at position `t` as a function of the hidden state at
-position `t-1` and the input at `t`. That dependency chain is inherently sequential — you cannot
-compute position `t` until position `t-1` is done — so within a single training example there is
-nothing to parallelize. At long sequence lengths, memory limits how many examples you can batch
-together, so the sequential bottleneck directly throttles training over large corpora, exactly
-when you most want to scale.
-
-Second, **the length of the path a signal must travel** between two positions that depend on
-each other. The easier it is for forward and backward signals to traverse the network between
-two positions, the easier it is to learn the dependency between them; long paths make
-long-range dependencies hard to learn because gradients have many steps to survive. In a layer
-that walks the sequence one step at a time, information from position `j` reaches position `i`
-only after `|i - j|` steps.
-
-The precise goal, then, is a layer that simultaneously: (1) relates any two positions with a
-number of *sequential* operations that does not grow with the sequence length or the distance
-between them; (2) keeps the maximum path length between any pair of positions short and roughly
-constant; (3) is fully parallelizable across positions within an example; and (4) is
-computationally affordable — its per-layer cost must be competitive with the recurrent and
-convolutional layers it would replace. Each existing layer below achieves some of these and
-pays on the others.
+The precise goal is a layer that relates any two positions cheaply and in parallel, with a short
+maximum path length between any pair of positions. The analytic measures on which layers are
+compared are: the number of sequential operations per layer, the maximum path length between any
+two positions, and the per-layer computational cost.
 
 ## Background
 
@@ -39,17 +20,15 @@ pays on the others.
 the established workhorses for sequence modeling and transduction. A recurrent layer maps
 `(x_1,...,x_n)` to `(z_1,...,z_n)` by `h_t = f(h_{t-1}, x_t)`, threading a single hidden state
 through the sequence. Per layer this costs `O(n · d^2)` (an `n`-long walk, each step a `d×d`
-matrix-vector product), but the number of *sequential* operations is `O(n)`, and the maximum
-path length between positions `i` and `j` is `O(|i-j|)` — both grow with the sequence. The first
-is the throughput wall; the second is the long-range-dependency wall.
+matrix-vector product), with `O(n)` sequential operations and a maximum path length of
+`O(|i-j|)` between positions `i` and `j`.
 
 **Convolution.** Convolutional sequence models (ByteNet, ConvS2S) replace recurrence with stacked
 1-D convolutions, computing all positions in parallel, so the number of sequential operations
-drops to `O(1)`. But a single convolution of kernel width `k < n` only connects positions within
-its receptive field; to connect *all* pairs you need a stack of `O(n/k)` layers for contiguous
-kernels, or `O(log_k n)` for dilated ones, so the maximum path length still grows with distance.
-A convolutional layer also costs a factor of `k` more than a recurrent one, `O(k · n · d^2)`;
-separable convolutions reduce this to `O(k · n · d + n · d^2)`.
+drops to `O(1)`. A single convolution of kernel width `k < n` connects positions within its
+receptive field; to connect all pairs you need a stack of `O(n/k)` layers for contiguous kernels,
+or `O(log_k n)` for dilated ones. A convolutional layer costs `O(k · n · d^2)`; separable
+convolutions reduce this to `O(k · n · d + n · d^2)`.
 
 **Attention as a bridge over distance.** The crucial prior idea is the attention mechanism,
 introduced to remove the fixed-vector bottleneck of plain encoder-decoder models. Instead of
@@ -62,23 +41,21 @@ the whole thing trains end to end. The decisive structural property: this connec
 position `i` to *any* input position `j` through a single weighted sum — a path of constant
 length, independent of `|i-j|`, computed for all `j` in parallel. Attention layers, used as the
 cross-positional channel inside otherwise-recurrent models, are by this time an essential
-ingredient of competitive translation systems. In nearly all of those systems, though, the
-attention is bolted onto a recurrent (or convolutional) backbone rather than used on its own.
+ingredient of competitive translation systems. In nearly all of those systems, the attention is
+bolted onto a recurrent (or convolutional) backbone rather than used on its own.
 
 **Self-attention / intra-attention.** Attention has also been turned inward — relating different
 positions *of the same sequence* to compute a representation of it — in reading comprehension,
 summarization, entailment, and sentence-embedding work (Cheng et al. 2016; Parikh et al. 2016;
 Lin et al. 2017), and recurrent attention over an external memory (end-to-end memory networks,
-Sukhbaatar et al. 2015) performs well on simple QA and language modeling. These show attention
-can stand in for sequence-aligned recurrence in pieces of a model.
+Sukhbaatar et al. 2015) performs well on simple QA and language modeling.
 
 **Diagnostic finding on dot-product scores at large dimension.** The compatibility score `a` can
 be computed several ways. A feed-forward (additive) score and a multiplicative (dot-product)
 score have similar theoretical cost, but their behavior diverges with the per-position
 dimension: an empirical NMT study (Britz et al. 2017) reports that while the two perform
 similarly for small key dimension `d_k`, additive attention outperforms raw dot-product attention
-as `d_k` grows. Raw dot-product magnitude is therefore a practical concern when choosing a
-high-dimensional score function.
+as `d_k` grows.
 
 ## Baselines
 
@@ -93,22 +70,13 @@ emits the target, and at each step `i` reads from the source through attention. 
 Luong's *multiplicative* family keeps the same weighted-sum structure but offers cheaper scores:
 `dot: s_t^T h̄_s`, `general: s_t^T W_a h̄_s`, and a `concat` variant equivalent to the additive
 form. The dot score is just an inner product between the decoder state and each source state.
-**Gap:** the cross-positional channel is excellent, but it rides on an RNN, so the model as a
-whole keeps the recurrent layer's `O(n)` sequential operations and `O(n)` path length on the
-self-sequence side — the parallelization and long-range-on-the-same-sequence problems are
-untouched. The additive score also evaluates a small MLP for every query-key pair, which does
-not map onto a single dense matrix multiply.
 
 **Convolutional sequence models (ByteNet, Kalchbrenner et al. 2016; ConvS2S, Gehring et al.
 2017).** Stacked convolutions give `O(1)` sequential operations and full parallelism across
-positions, and ConvS2S was a strong translation system. **Gap:** the maximum path length between
-two positions still grows with their distance (`O(n/k)` or `O(log_k n)`), so distant
-dependencies remain comparatively hard, and the per-layer cost carries the extra factor of `k`.
+positions, and ConvS2S was a strong translation system.
 
 **Plain encoder-decoder (Sutskever et al. 2014; Cho et al. 2014).** Encode the entire source
-into a single fixed-length vector, then decode from it. **Gap:** one fixed vector is a hard
-bottleneck for long inputs; this is precisely what attention was introduced to remove, so it is
-a baseline the attention mechanisms above already improve on.
+into a single fixed-length vector, then decode from it.
 
 ## Evaluation settings
 

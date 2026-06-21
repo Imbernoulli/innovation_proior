@@ -10,13 +10,7 @@ those beliefs into an actual choice of portfolio, i.e. a vector of weights `X = 
 where `X_i` is the fraction of wealth placed in security `i`. Short sales are excluded, so
 `X_i >= 0`, and the budget is fully invested, so `sum_i X_i = 1`.
 
-The precise goal is a *rule* that maps `(mu, sigma)` to a portfolio — one that (1) is well
-defined and computable, (2) is consistent with the plainly observed and sensible practice of
-*diversification* (real investors spread their money; a rule that never recommends spreading
-must be wrong), (3) captures the obvious fact that an investor likes high return and dislikes
-risk, and (4) does so without first having to write down and estimate a full subjective utility
-function over wealth, which no one knows how to elicit. A rule meeting all four is what is
-missing. The candidate rules on the table each fail at least one.
+The question is how to turn those beliefs into an actual portfolio — a rule that maps `(mu, sigma)` to a weight vector in a principled way.
 
 ## Background
 
@@ -50,43 +44,27 @@ Several established facts about probability and about the world constrain any ru
   had suggested means and the covariance matrix as a first-order description of preferences over
   uncertain consumption.
 
-The pain point is the gap between the two strands above and reality: the present-value rule, taken
-literally as a *guide*, gives degenerate (undiversified) advice; the law-of-large-numbers patch
-rests on an empirically false premise about correlation. Neither yields the right kind of
-diversification for the right reason.
-
 ## Baselines
 
 - **Maximize discounted expected return (Williams 1938; Hicks 1939).** For each security compute a
   scalar `R_i` (discounted anticipated return); choose `X` to maximize `R = sum_i X_i R_i`. Because
   each `R_i` is fixed and independent of the weights, `R` is a weighted average of the `R_i` with
   non-negative weights summing to one; it is maximized by setting `X_a = 1` for whichever security
-  has the largest `R_a` (or any mixture of ties). **Gap:** this rule *never* prefers a diversified
-  portfolio to all undiversified ones — it always points at a single corner. Since diversification
-  is both observed and sensible, the rule fails as a guide to behavior, no matter how the discount
-  rates are chosen or how they vary over time.
+  has the largest `R_a` (or any mixture of ties).
 
 - **Diversify among the maximum-expected-return securities (law of large numbers).** A patch:
   spread funds across all securities that share the maximum `mu_i`; invoke the law of large numbers
-  so that the realized yield is almost the expected yield. **Gap:** this assumes a portfolio exists
-  that simultaneously maximizes expected return and minimizes variance, and it assumes the law of
-  large numbers applies across securities. Both are false in general — returns are too
-  intercorrelated, and the maximum-`E` portfolio is generally *not* the minimum-`V` one.
+  so that the realized yield is almost the expected yield.
 
 - **Expected-utility maximization (the von Neumann–Morgenstern / Savage program, contemporaneous).**
   Posit a utility function `U(W)` over terminal wealth and maximize `E[U(W)]`. Coherent and general.
-  **Gap:** it requires eliciting an investor's entire subjective utility function, which is not
-  practical; it gives no directly computable portfolio rule from the inputs an analyst actually has
-  (`mu`, `sigma`). One wants something operational that uses only first and second moments.
 
 - **Safety-first (Roy, 1952, developed independently and in parallel).** Refuse to posit a utility
   function. Fix a "disaster level" return `d` the investor most wants to avoid falling below, and
   choose the portfolio that minimizes the probability `P(R < d)`. Under a two-moment description of
   the portfolio return, minimizing that probability amounts to maximizing the ratio `(mu_P - d)/sigma_P`
   — pushing the disaster level as many standard deviations below the mean as possible. Roy writes
-  down the very same portfolio-variance-in-terms-of-covariances relation. **Gap relative to the
-  goal:** it commits in advance to one specific point (the disaster-`d` ratio maximizer) and one
-  specific risk attitude, baked into the rule, leaving the investor no say in the trade-off.
+  down the very same portfolio-variance-in-terms-of-covariances relation.
 
 ## Evaluation settings
 

@@ -2,9 +2,9 @@
 
 ## Research question
 
-How can a model learn, with no supervision, an *interpretable, factorised* latent representation of image data — one where each latent unit responds to a single underlying generative factor of the world (position, scale, rotation, lighting, identity, …) and stays invariant to the others — and how can the degree of such *disentanglement* even be measured so that models can be compared and tuned?
+How can a model learn, with no supervision, an *interpretable, factorised* latent representation of image data — one where each latent unit responds to a single underlying generative factor of the world (position, scale, rotation, lighting, identity, …) and stays invariant to the others — and how can the degree of such *disentanglement* be measured so that models can be compared and tuned?
 
-The world's images are generated from a small set of independent factors of variation; a representation that recovers them in separate, axis-aligned coordinates would generalise across tasks, support transfer and zero-shot inference (recombining known factors into unseen configurations), and enable novelty detection. The difficulty is doing this *unsupervised*: a freshly initialised learner faces complex data with no a-priori knowledge of how many generative factors exist or what they are, and little-to-no labelling to discover them. Two sub-problems must be solved together: (1) a learning pressure that encourages each latent to capture one independent factor; and (2) a way to *quantify* disentanglement, since none existed — without it there is no way to compare methods or to tune whatever (1) introduces.
+The world's images are generated from a small set of independent factors of variation; a representation that recovers them in separate, axis-aligned coordinates would generalise across tasks, support transfer and zero-shot inference (recombining known factors into unseen configurations), and enable novelty detection. The setting is *unsupervised*: a freshly initialised learner faces complex data with no a-priori knowledge of how many generative factors exist or what they are, and little-to-no labelling to discover them. Two sub-problems are in play together: a learning pressure that encourages each latent to capture one independent factor, and a way to *quantify* disentanglement so that methods can be compared.
 
 ## Background
 
@@ -12,26 +12,26 @@ The world's images are generated from a small set of independent factors of vari
 
 **Why disentanglement helps.** Knowledge about one factor then generalises to novel configurations of the others; downstream tasks become learnable with simple (even linear) decision rules; and the representation can be reused across tasks (transfer), recombined for unseen inputs (zero-shot), or used to flag inputs that don't fit the learned factors (novelty).
 
-**The state of unsupervised factor learning.** Most earlier approaches required a-priori knowledge of the number and/or nature of the generative factors, or did not scale beyond simple datasets like FreyFaces/MNIST. Independent-component / principal-component methods (ICA, PCA) project data onto independent or uncorrelated bases, but *independence is not disentanglement*: the recovered components generally do not align with the interpretable generative factors, so they lack interpretability and a simple cross-correlation between latents would not suffice as a disentanglement measure.
+**The state of unsupervised factor learning.** Earlier approaches typically operate with a-priori knowledge of the number and/or nature of the generative factors, or on simple datasets like FreyFaces/MNIST. Independent-component / principal-component methods (ICA, PCA) project data onto independent or uncorrelated bases; the recovered components are statistically independent or uncorrelated rather than aligned to the interpretable generative factors.
 
 **The variational autoencoder substrate.** The VAE (Kingma & Welling, 2013; Rezende, Mohamed & Wierstra, 2014) provides a scalable, stable, unsupervised deep generative model with an inference network. It posits a prior `p(z)`, a decoder `p_θ(x|z)`, and an encoder `q_φ(z|x)`, and maximises the evidence lower bound
 `E_{q_φ(z|x)}[log p_θ(x|z)] − D_KL(q_φ(z|x) ‖ p(z))`,
-trained by the reparameterisation trick `z = μ(x) + σ(x)·ε`, `ε ∼ N(0, I)`. The first term reconstructs; the second pulls the posterior toward the prior. With the standard equal weighting it tends to learn *entangled* representations — multiple factors smeared across latents — on anything beyond toy data.
+trained by the reparameterisation trick `z = μ(x) + σ(x)·ε`, `ε ∼ N(0, I)`. The first term reconstructs; the second pulls the posterior toward the prior.
 
 ## Baselines
 
-**Standard VAE (Kingma & Welling, 2013; Rezende et al., 2014).** Maximise the ELBO above with `q_φ(z|x) = N(μ(x), σ²(x))` and `p(z) = N(0, I)`; the KL has a closed form for diagonal Gaussians. Strengths: scalable, stable, unsupervised, has an inference network. Gap: achieves only limited disentangling; on complex data it entangles factors (e.g. azimuth with emotion and gender on faces, chair width with leg style), because nothing pushes individual latents to specialise to single independent factors.
+**Standard VAE (Kingma & Welling, 2013; Rezende et al., 2014).** Maximise the ELBO above with `q_φ(z|x) = N(μ(x), σ²(x))` and `p(z) = N(0, I)`; the KL has a closed form for diagonal Gaussians. Scalable, stable, unsupervised, with an inference network.
 
-**InfoGAN (Chen et al., 2016).** Augments a GAN with a recognition network and an objective that maximises the mutual information between a subset of the noise variables and the recognition output, so those noise variables come to control interpretable factors — fully unsupervised. Gap: inherits GAN training instability and reduced sample diversity; is sensitive to the choice of prior and to the number of regularised noise variables; provides no principled inference network for arbitrary inputs; and still needs some a-priori sense of the data.
+**InfoGAN (Chen et al., 2016).** Augments a GAN with a recognition network and an objective that maximises the mutual information between a subset of the noise variables and the recognition output, so those noise variables come to control interpretable factors — fully unsupervised.
 
-**DC-IGN (Kulkarni et al., 2015).** An inverse-graphics autoencoder trained *semi-supervised*: minibatches are structured so that exactly one generative factor varies, teaching specific latents to encode specific factors. Gap: requires this supervision / structured data and knowledge of the factor count; cannot discover unlabelled factors on its own.
+**DC-IGN (Kulkarni et al., 2015).** An inverse-graphics autoencoder trained *semi-supervised*: minibatches are structured so that exactly one generative factor varies, teaching specific latents to encode specific factors.
 
-**PCA / ICA.** Linear decompositions onto uncorrelated / independent components. Gap: independence without interpretability — the components do not align with the interpretable generative factors, so even when statistically independent they are not disentangled in the sense required.
+**PCA / ICA.** Linear decompositions onto uncorrelated / independent components.
 
 ## Evaluation settings
 
 - **Datasets.** A synthetic dataset of 2D shapes — 737,280 binary 64×64 images, the Cartesian product of shape ∈ {heart, oval, square} (3 values), position-X (32), position-Y (32), scale (6), and rotation (40 values over 2π) — chosen because it has exactly five known independent generative factors and no confounds, giving ground truth for an objective disentanglement comparison. Also CelebA, 3D chairs, and 3D faces for qualitative inspection of learned factor traversals.
-- **Metrics.** A quantitative disentanglement score (to be designed — none exists yet); qualitative latent-traversal inspection (fix all latents but one, sweep that one over a range, view the decoded images).
+- **Metrics.** A quantitative disentanglement score; qualitative latent-traversal inspection (fix all latents but one, sweep that one over a range, view the decoded images).
 - **Protocol.** Train encoder/decoder by gradient descent. On the 2D-shapes encoder/decoder of fully-connected layers (FC 1200, 1200; 10 latents; Adagrad lr 1e-2; Bernoulli decoder). On CelebA/chairs/faces, a convolutional encoder (four 32-channel 4×4 stride-2 convs, then FC 256; 32 latents) with a mirror-image deconvolutional decoder and Adam at 1e-4. Prior `p(z) = N(0, I)` throughout.
 
 ## Code framework

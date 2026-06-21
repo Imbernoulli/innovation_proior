@@ -6,9 +6,9 @@ I have a few thousand high-dimensional points — MNIST and Fashion-MNIST images
 
 The relevant prior methods are:
 
-- **Least-squares regression lines (Galton/Pearson).** A straight line is fit to a cloud by minimizing squared residuals along one coordinate, with one variable chosen as dependent. Gap: the line depends on which variable is chosen as dependent, so the same cloud yields two different summaries, and neither treats all coordinates symmetrically.
-- **Random projection (Johnson–Lindenstrauss).** Points are projected onto a random low-dimensional subspace; with enough target dimensions, pairwise distances are approximately preserved with high probability. Gap: at only two target dimensions the guarantee does not bite, so a random slice typically captures a small, arbitrary portion of the variation.
-- **Factor analysis (Spearman).** Observed variables are modeled as linear combinations of a fixed number of latent factors plus noise. Gap: the number of factors is fixed by hypothesis, and the solution is rotationally indeterminate — no canonical ordered set of directions is produced.
+- **Least-squares regression lines (Galton/Pearson).** A straight line is fit to a cloud by minimizing squared residuals along one coordinate, with one variable chosen as dependent.
+- **Random projection (Johnson–Lindenstrauss).** Points are projected onto a random low-dimensional subspace; with enough target dimensions, pairwise distances are approximately preserved with high probability.
+- **Factor analysis (Spearman).** Observed variables are modeled as linear combinations of a fixed number of latent factors plus noise.
 
 The scaffold default is a random linear projection: orthonormalized random axes, the Johnson–Lindenstrauss construction at two dimensions, used as the poor floor each method must beat.
 

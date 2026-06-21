@@ -10,33 +10,19 @@ every feed-forward (FFN) block. Each dense `n × n` weight matrix costs `O(n²)`
 The standing idea for cutting this cost is to replace each dense weight matrix `W` with a
 **structured** matrix — a matrix with sub-quadratic (`o(n²)`) parameters and a sub-quadratic
 matrix–vector multiply. Examples: entrywise-sparse matrices, low-rank matrices, and the
-classical fast transforms (Fourier, sine/cosine, Chebyshev, Hadamard). In principle this
-should shrink both the parameter count and the compute. In practice structured weight
-matrices have not been adopted, and the goal of this work is to understand why and to find a
-structured class that finally makes the trade favorable. Concretely, a usable class must
-satisfy three demands at once:
-
-1. **Hardware efficiency** — its matrix multiply must be *fast in wall-clock time on a GPU*,
-   not merely cheap in FLOP count.
-2. **Expressiveness** — replacing dense matrices with it must not cost model quality; ideally
-   it can represent the transforms that encode useful domain structure (convolution, Fourier,
-   DCT), so it is at least as rich as those.
-3. **Tractable projection** — given a *pretrained dense* matrix `A`, there must be an
-   efficient way to find the member of the class closest to `A`, so a dense checkpoint can be
-   converted into a structured one without retraining from scratch.
-
-No existing class meets all three; that gap is the problem.
+classical fast transforms (Fourier, sine/cosine, Chebyshev, Hadamard). The question is
+whether there is a structured class that makes this trade favorable in practice, and what
+properties such a class would need to have.
 
 ## Background
 
 **FLOPs are not wall-clock time on a GPU.** A GPU is a block-oriented machine: it is fast when
 it multiplies dense tiles (the tensor cores / batched-matrix-multiply, BMM, units operate on
 dense blocks) and slow when it chases scattered nonzeros, because irregular memory access
-defeats coalescing and the dense-tile units. This is the load-bearing empirical fact behind
-everything here: it is well documented that unstructured-sparse training, despite cutting
-FLOPs, usually *slows down* training in wall-clock time (Gale et al. 2019; Hooker 2020). A
-structure built from dense blocks can map onto BMM and actually be fast; a structure built
-from scattered entries cannot.
+defeats coalescing and the dense-tile units. It is well documented that unstructured-sparse
+training, despite cutting FLOPs, usually slows down training in wall-clock time (Gale et al.
+2019; Hooker 2020). A structure built from dense blocks can map onto BMM and actually be fast;
+a structure built from scattered entries cannot.
 
 **Fast transforms and their recursive structure.** The discrete Fourier transform (DFT) of
 size `N=2^m` factors by the Cooley–Tukey recursion (Cooley & Tukey 1965). Writing `F_N` for
@@ -88,48 +74,28 @@ guarantee of optimality (Pan 2012).
 ## Baselines
 
 **Dense linear layer.** `W ∈ ℝ^{n×n}`, full `O(n²)` parameters and FLOPs, executed as one
-GEMM. It is the quality ceiling and the speed/parameter target to beat. Its multiply is
-maximally hardware-efficient (a single dense matmul) — the bar any structured replacement must
-clear on quality while undercutting on cost.
+GEMM. Its multiply is maximally hardware-efficient (a single dense matmul).
 
-**Entrywise-sparse / pruned layers** (Han et al. 2015; Frankle & Carbin 2018 lottery tickets;
+**Entrywise-sparse / pruned layers** (Han et al. 2015; Frankle & Carlin 2018 lottery tickets;
 RigL, Top-KAST). Keep an unstructured subset of weights. Cuts parameter count and FLOPs, and
-can match quality. *Limitation:* the nonzeros are scattered, so on a GPU the multiply is
-memory-bound and typically runs *slower* than the dense baseline in wall-clock time; pruning
-also targets inference and ignores the cost of finding the sparse model.
+can match quality at sparse inference.
 
 **Block-sparse layers** (Gray et al. 2017; Child et al. 2019). Restrict the sparsity to dense
-blocks so the multiply maps onto BMM and is fast. *Limitation:* a single block-diagonal matrix
-cannot mix information across blocks at all (it is exactly block-separable), so it is far less
-expressive than dense — it cannot represent transforms like the DFT or a convolution that
-couple all coordinates.
+blocks so the multiply maps onto BMM and is fast.
 
 **Low-rank layers.** `W ≈ UVᵀ`, rank `r`, `O(nr)` parameters, two GEMMs. Hardware-efficient
-and has the Eckart–Young closed-form projection. *Limitation:* low-rank cannot represent
-full-rank transforms (the DFT and permutations are full rank), so it caps quality on tasks
-that need them.
+and has the Eckart–Young closed-form projection.
 
 **Hand-picked fast transforms** (FFT/DCT layers; used in PDE solvers and MRI). Fixed, very
-cheap, encode strong domain priors. *Limitations:* only specific instances have fast GPU
-kernels (FFT does; a general orthogonal-polynomial transform does not); they are not learnable;
-and choosing the right transform needs domain expertise.
+cheap, encode strong domain priors. Only specific instances have fast GPU kernels (FFT does;
+a general orthogonal-polynomial transform does not).
 
 **Butterfly layers** (Dao et al. 2019; Dao et al. 2020). A product of `log n` butterfly factor
 matrices: expressive (the kaleidoscope result above), learnable, `O(n log n)` params and FLOPs.
-*Limitations:* the `log n` sequential factors are each a multiply by a matrix of tiny `2×2`
-diagonal blocks — many small, irregular operations that underutilize a GPU, so wall-clock speed
-is poor. And there is no known tractable way to take a dense pretrained matrix and recover the
-butterfly factors that best approximate it without retraining.
+The `log n` sequential factors are each a multiply by a matrix of tiny `2×2` diagonal blocks.
 
-**Pixelated butterfly** (Chen et al. 2021). Tries to make butterflies hardware-friendly by
-fixing a flat (non-recursive) block sparsity pattern. *Limitation:* it pays for the hardware
-friendliness with reduced expressiveness relative to true butterflies, and still offers no
-dense→structured projection.
-
-The recurring split: the *expressive* classes (butterfly, kaleidoscope) are
-hardware-inefficient and lack a projection; the *hardware-efficient* classes (block-sparse,
-low-rank) are not expressive enough. Nobody has a class that is dense-block-based AND as
-expressive as butterflies AND projectable in closed form.
+**Pixelated butterfly** (Chen et al. 2021). Makes butterflies hardware-friendly by fixing a
+flat (non-recursive) block sparsity pattern.
 
 ## Evaluation settings
 

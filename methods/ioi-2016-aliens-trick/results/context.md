@@ -126,9 +126,7 @@ ll minimum_cost_exact_k(vector<int> row, vector<int> col, int K) {
         return sq(max(0LL, (ll)r[t - 1] - l[t] + 1));
     };
 
-    // TODO: run a single-layer lower-envelope sweep over the sorted endpoints,
-    // expanding cost(t,i) into a line in x = r[i-1] via the Li Chao structure.
-    // TODO: turn that one cheap sweep into the exact-count answer f[n][K].
+    // TODO: fill in the body that computes f[n][K].
     return 0;
 }
 ```

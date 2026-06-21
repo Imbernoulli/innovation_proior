@@ -2,15 +2,15 @@
 
 Offline-to-online RL pretrains a policy and value function on a fixed dataset `D` and then continues learning with live environment interaction. The editable component is the `OfflineOnlineAlgorithm` class — the networks it builds, the per-batch `train` update, and the `on_online_start` hook fired once at the offline→online handoff. The surrounding harness (data loading, replay buffer, two-phase training loop, evaluation, and the 256-width network cap) is fixed.
 
-The difficulty is the transition. A conservative offline value can turn overoptimistic once online data shifts the replay distribution; a behavior-regularized policy can forget the competence it learned offline; and naive fine-tuning often triggers an early **Q-value collapse** and a performance drop before recovery. The datasets are Adroit `cloned-v1` (Pen, Door, Hammer) — mixtures of expert and noisy demonstrations, so offline pretraining alone is weak and the online phase must improve substantially while preserving what was already learned. The precise question: design an algorithm that pretrains stably from mixed offline data and then fine-tunes online without catastrophic forgetting or Q-collapse.
+The datasets are Adroit `cloned-v1` (Pen, Door, Hammer) — mixtures of expert and noisy demonstrations. The question: design an algorithm that pretrains from mixed offline data and then fine-tunes online across all three manipulation tasks.
 
 ## Prior art / Background / Baselines
 
-The baselines are standard offline-RL families. Each pretrains stably but fails at the online handoff in a characteristic way.
+The baselines are standard offline-RL families.
 
-- **Off-policy actor-critic on a static batch (TD3 / SAC).** Twin critics fit a Bellman target `r + γ Q_target(s', π(s'))` and the actor maximizes `Q(s, π(s))`. Gap: on a fixed batch the bootstrap evaluates the critic at the actor's chosen `π(s')`, which can be far from any action in the data; the critic extrapolates upward, the actor chases the inflated value, and the value bootstraps and diverges.
-- **Policy-constraint offline RL (BCQ, BEAR, BRAC, TD3+BC).** These add a penalty or architecture that keeps `π` close to the behavior policy `π_β`. Gap: the constraint is over-conservative on mixed data and, once online, either strangles improvement or leaves the early Q-collapse unaddressed.
-- **Value-regularization offline RL (CQL).** This pushes `Q` down on out-of-distribution actions to obtain a conservative lower bound. Gap: the learned `Q` is miscalibrated in scale and can sit far below the true return, so at the online transition the first real returns look huge relative to it, the critic lurches, and the policy collapses before recovering.
+- **Off-policy actor-critic on a static batch (TD3 / SAC).** Twin critics fit a Bellman target `r + γ Q_target(s', π(s'))` and the actor maximizes `Q(s, π(s))`.
+- **Policy-constraint offline RL (BCQ, BEAR, BRAC, TD3+BC).** These add a penalty or architecture that keeps `π` close to the behavior policy `π_β`.
+- **Value-regularization offline RL (CQL).** This pushes `Q` down on out-of-distribution actions to obtain a conservative lower bound.
 
 ## Fixed substrate / Code framework
 

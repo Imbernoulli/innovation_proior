@@ -11,21 +11,14 @@ tune against.
 
 ## Prior art / Background / Baselines
 
-- **Statistical tail rules (3σ, 1.5·IQR).** Core idea: flag a value when it exceeds a fixed
-  multiple of the feature's spread. Observed gap: a two-number caricature (mean/sd or quartiles)
-  assumes a roughly symmetric, Gaussian marginal; the yardstick is wrong on skewed or heavy-tailed
-  features.
-- **Distance-based detection (DB(p,D); D^k).** Core idea: score a point by its distance to its
-  k-th nearest neighbor, treating far-from-everything as anomalous. Observed gap: a single global
-  distance scale cannot separate a genuine anomaly beside a dense cluster from an ordinary member
-  of a sparse cluster, and the neighbor search is heavy and near-superlinear.
-- **Density estimation (histograms, KDE, HBOS).** Core idea: estimate a per-feature density and
-  score points by how low the density is where they land. Observed gap: it requires a bin count or
-  bandwidth that has no label-free way to be set, and it conflates tail rarity with low-density
-  valleys between clumps.
-- **Profiling / boundary models (clustering, one-class boundaries).** Core idea: build a model of
-  the normal bulk and flag whatever falls outside it. Observed gap: capacity goes into describing
-  the majority, while the quantity of interest is the rare minority at the edges.
+- **Statistical tail rules (3σ, 1.5·IQR).** Flag a value when it exceeds a fixed multiple of the
+  feature's spread, characterizing each feature by its mean/sd or quartiles.
+- **Distance-based detection (DB(p,D); D^k).** Score a point by its distance to its k-th nearest
+  neighbor, treating far-from-everything as anomalous using a global distance scale.
+- **Density estimation (histograms, KDE, HBOS).** Estimate a per-feature density and score points
+  by how low the density is where they land, using a bin count or bandwidth parameter.
+- **Profiling / boundary models (clustering, one-class boundaries).** Build a model of the normal
+  bulk and flag whatever falls outside it.
 
 ## Fixed substrate / Code framework
 

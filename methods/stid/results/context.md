@@ -5,11 +5,9 @@
 Given a multivariate time series with `N` correlated variables, predict the next `F`
 steps from the last `P` observed steps. In the traffic setting, the variables are
 loop detectors or road segments; in the electricity setting, they are clients or
-meters. The practical question is whether the forecasting architecture really has
-to model a spatial graph and a temporal sequence at every layer, or whether a much
-smaller direct forecaster can match the same benchmark protocol.
+meters.
 
-The target output is still the standard direct multi-step panel forecast:
+The target output is the standard direct multi-step panel forecast:
 `Y_hat in R^{F x N}` for every sample. The model may use the observed values and
 calendar/time covariates available at the forecast origin, but it must not use
 future target values.
@@ -39,28 +37,6 @@ encoder-decoder with scheduled sampling. STGCN stacks temporal convolutions arou
 graph convolutions. Graph WaveNet learns an adaptive dependency matrix from node
 embeddings and combines it with dilated temporal convolutions. AGCRN learns
 node-specific graph/recurrent parameters and a data-adaptive graph.
-
-These designs are strong, but they repeatedly pay for graph construction or graph
-learning, message passing, and recurrent or convolutional temporal processing.
-Some need a pre-defined road graph; others avoid that graph by learning another
-spatial relation. The baseline question is therefore not whether spatial and
-temporal information matter; it is whether this much machinery is the only way to
-make those distinctions available to a regressor.
-
-## Failure mode to explain
-
-A channel-shared direct regressor sees each variable's recent values through the
-same weights. If two variables have nearly the same recent value trace, the
-regressor receives nearly the same value input for both. Yet those two variables
-can have different future traces because they occupy different locations in the
-system. The same issue appears along the time axis: similar recent traces can
-continue differently at different times of day or on different days of week.
-
-Any simpler model has to confront this collision directly. It cannot rely on
-universal approximation alone if the representation collapses samples whose
-future behavior is different. The open design slot is therefore a direct
-forecaster whose input representation does not force these cases to share the
-same continuation.
 
 ## Evaluation and scaffold
 

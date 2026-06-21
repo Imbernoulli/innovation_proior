@@ -18,7 +18,7 @@ Croot–Lev–Pach / Ellenberg–Gijswijt upper bound is `O(2.756^n)`):
 | max `|cap|` | 2 | 4 | 9 | 20 | 45 | 112 | 236 | ≥ 512 |
 
 Values through `n = 6` are proven optima; `n = 7` is `236`; at `n = 8` the best known lower
-bound `512` is the cap FunSearch discovered (Nature 2024), improving the prior best `496`.
+bound is `512`.
 
 ## How the score is defined
 
@@ -32,13 +32,11 @@ small instances are also cross-checked by an independent `O(c^3)` triple scan.
 
 ## Where this method sits
 
-This method, **greedy lexicographic**, is the floor of the ladder: the simplest deterministic
-rule guaranteed to emit a valid cap. It walks the `3^n` vectors in fixed counting (base-3)
-order and admits each one iff it does not close a line with an already-admitted point. Validity
-is free — every admitted point was checked against all predecessors — so the only degree of
-freedom is the walk order, and lexicographic is the most naive choice: deterministic,
-parameter-free, geometry-blind. It establishes the trivial `2^n`-type baseline that every
-smarter ordering (random multi-start, structured priority, evolved priority) must beat.
+This method, **greedy lexicographic**, is a deterministic constructor that emits a valid cap.
+It walks the `3^n` vectors in fixed counting (base-3) order and admits each one iff it does not
+close a line with an already-admitted point. Every admitted point is checked against all
+predecessors at admission, so the running set is a cap throughout and the walk order is the only
+degree of freedom; lexicographic order is deterministic, parameter-free, and uses no geometry.
 
 ## Code framework
 

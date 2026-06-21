@@ -7,11 +7,9 @@ is a dense vector with millions or billions of floating-point entries. When the 
 network is slow relative to local compute, gradient exchange can dominate wall-clock time.
 
 The goal is to reduce communicated data by one or two orders of magnitude while preserving the
-behavior of the uncompressed optimizer. The hard part is not only statistical. A method that sends a
-small message from each worker can still be slow if those messages cannot be combined by the
-collective communication primitive that optimized distributed-training systems already use. The
-compressed representation must keep a fixed shape and aggregate by addition or averaging, otherwise
-the implementation pays gather-like costs or reconstructs large objects too early.
+behavior of the uncompressed optimizer. The compressed representation must keep a fixed shape and
+aggregate by addition or averaging so that it fits the collective communication primitives that
+optimized distributed-training systems already use.
 
 ## Distributed SGD And Collectives
 
@@ -28,30 +26,22 @@ shape throughout the collective.
 This implementation property becomes a mathematical constraint on a compressor. If the workers
 send `C(g_{t,w})`, then the system wants the average of those compressed objects to be a compressed
 object of the average gradient, or at least a fixed-shape representation from which the same update
-can be reconstructed. If `C` depends on local data in a way that changes the message structure, the
-sum of compressed messages is no longer a valid compressed message of the same size.
+can be reconstructed.
 
 ## Compression Baselines
 
 Unbiased quantization schemes randomly round coordinates to a small number of levels so that
-`E[C(g)] = g`. This makes the optimization analysis resemble SGD with extra variance, but the codes
-and scaling information are not generally closed under addition. The more aggressive the rounding,
-the more the method must pay in variance, metadata, or implementation complexity.
+`E[C(g)] = g`. This makes the optimization analysis resemble SGD with extra variance.
 
 Sign methods send one bit per coordinate, sometimes with majority vote across workers. They are
-appealingly small, but the sign operator discards magnitude and is biased. Majority vote is also a
-nonlinear aggregation rule, not ordinary averaging of fixed-shape floating tensors.
+appealingly small.
 
 Sparsification keeps a subset of coordinates, often the largest magnitudes, and uses a memory vector
-to reinsert dropped coordinates later. The optimizer story can be strong with error compensation, but
-different workers usually select different supports. The union of `W` local supports can grow with
-`W`, so the aggregate is not a `k`-sparse object of the same size.
+to reinsert dropped coordinates later. Error compensation can preserve optimizer quality over time.
 
 Spectral or atomic compression treats a matrix gradient through atoms such as singular-vector outer
 products. This matches the observation that many neural-network gradient matrices have rapidly
-decaying spectra, but exact singular-vector methods are expensive and their factors are data-dependent.
-Sending each worker's exact truncated factorization does not by itself give the truncated factorization
-of the averaged matrix.
+decaying spectra.
 
 ## Mathematical Ingredients
 

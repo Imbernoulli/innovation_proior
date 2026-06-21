@@ -4,36 +4,29 @@ Ship Pythia-1.4B with its transformer-block linear weights stored at 4, 3, or 2 
 held-out perplexity as close to full precision as possible. The damage comes from one irreversible
 step: snap every real weight onto a signed `B`-bit integer grid (per-row, per-group of
 `group_size=128` columns, symmetric). At 8 bits that grid is fine; at INT2 only four codes exist per
-group, so a mid-range weight can move by half the group's max. The object of study is the
-**training-side QAT algorithm**: how the fake-quant forward behaves, how the gradient reaches the
-weight through the non-differentiable round, and how the optimizer schedule is set, so that *after*
-the real quantize-dequantize roundtrip perplexity stays low across INT4, INT3, and INT2. The
-backbone, data, optimizer family, and the real-QDQ-then-eval harness are fixed.
+group. The object of study is the **training-side QAT algorithm**: how the fake-quant forward
+behaves, how the gradient reaches the weight through the non-differentiable round, and how the
+optimizer schedule is set, so that *after* the real quantize-dequantize roundtrip perplexity stays
+low across INT4, INT3, and INT2. The backbone, data, optimizer family, and the real-QDQ-then-eval
+harness are fixed.
 
 ## Prior art / Background / Baselines
 
 The control baseline is pure round-to-nearest PTQ. Beyond it, the relevant pieces are:
 
 - **Fixed-point CPU inference with per-tensor max-abs scaling.** Take a trained fp32 model and run
-  its linear layers in 8-bit integers with a single max-magnitude scale and no retraining. Gap:
-  works at 8 bits where the grid is fine; leaves large reconstruction error when only a handful of
-  codes remain.
+  its linear layers in 8-bit integers with a single max-magnitude scale and no retraining.
 - **Symmetric affine integer matmul (`r = S q`, zero-point `Z = 0`).** Use an affine code-to-real map
   that keeps real zero exactly representable, enabling integer-only accumulation with symmetric
-  weights. Gap: still an 8-bit story; one-shot rounding has an error floor of `S/2` that is harmless
-  at 8 bits and severe at 2.
+  weights.
 - **Stochastic rounding for low-precision training.** Round up with probability proportional to the
   residual so the expectation is exact, used because the same weight is rounded thousands of times
-  in training and a per-step bias would accumulate. Gap: in one-shot PTQ each weight is rounded once,
-  so stochastic rounding only adds variance without reducing bias.
+  in training and a per-step bias would accumulate.
 - **Straight-through estimator for round/clamp.** Treat the round/clamp as the identity on the
-  backward pass so gradients can reach the weight before the quantizer. Gap: it is only a gradient
-  pathway; it says nothing about where to place the grid or how to account for rounding error at 2
-  bits.
+  backward pass so gradients can reach the weight before the quantizer.
 
 The converged format — per-row, per-group symmetric signed round-to-nearest, max-abs scale, LM head
-and embeddings left full precision — is fixed for this task. The question is what training can do on
-top of that fixed format.
+and embeddings left full precision — is fixed for this task.
 
 ## Fixed substrate / Code framework
 

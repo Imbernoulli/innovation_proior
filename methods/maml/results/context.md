@@ -8,22 +8,15 @@ class after seeing one or five labeled instances, fit a new continuous function
 from five points, or control an agent toward a new goal after a few rollouts —
 produce a model that performs well on held-out data from that same task, using
 only $K$ training examples (often $K\!=\!1$ or $K\!=\!5$) and very little
-computation. This must work *despite* the fact that the model is a
-high-capacity neural network with far more parameters than $K$ data points, so
-the central danger is overfitting: fit the $K$ points exactly and generalize to
-nothing.
+computation. The model is a high-capacity neural network with far more parameters
+than $K$ data points.
 
 A human does this routinely — recognize a new object from one picture, pick up a
 new skill in minutes — by bringing prior experience to bear. So the setting is
 not "train a model on this one task," but "have already trained on *many* related
 tasks, and exploit that to adapt to the next one fast." The quantity we get to
-optimize ahead of time is whatever prior structure the model carries into the
-new task. A solution has to (i) integrate broad prior experience with a tiny
-amount of task-specific data without overfitting, (ii) ideally be general across
-the *form* of the task — supervised classification, regression, control — since
-the form of the data and the loss differ by domain, and (iii) not blow up the
-number of parameters or constrain the architecture, so it can ride on top of
-whatever models already work.
+optimize ahead of time is whatever prior structure the model carries into the new
+task.
 
 ## Background
 
@@ -43,26 +36,16 @@ $H\!=\!1$ and the task is just "draw $(\mathbf{x},\mathbf{y})$ pairs and incur a
 classification or regression loss"; for control, $H\!>\!1$ and the loss is the
 negative reward of a Markov decision process.
 
-The prevailing wisdom of the time held that fast adaptation needed *special
-machinery*: either a learned, parametric adaptation procedure (a recurrent
-"meta-learner" that emits updates or ingests the whole support set), or a learned
-embedding plus a nonparametric comparison rule at test time. The two pain points
-these approaches kept running into were generality and overhead. Methods built
-around a recurrent learner or a metric over embeddings tended to be welded to
-one task form (usually classification) and to introduce a second model — extra
-parameters, extra architecture constraints — whose job was *to do the learning*.
-
-A relevant empirical fact about the alternatives that sets up the problem: the
-obvious cheap baseline — pretrain one network on data pooled from all tasks,
-then fine-tune on the new task — adapts poorly in this regime. When tasks
-demand *contradictory* outputs for the same input (e.g. different sine waves, or
-different goal directions), pooling drives the network to predict the average
-response, which is informative about the output range but not about any single
-task; fine-tuning from there with only $K$ points either barely moves or
-overfits. In control it can be worse still: a policy pretrained across tasks can
-be a *worse* starting point than a random one, an effect already observed when
-transferring policies across related games (Parisotto et al. 2016). So "just
-pretrain and fine-tune" is a real option on the table, and a known-weak one.
+One approach is to learn a parametric adaptation procedure — a recurrent
+"meta-learner" that emits updates or ingests the whole support set. Another is to
+learn an embedding plus a nonparametric comparison rule at test time. A third is
+to pretrain one network on data pooled from all tasks, then fine-tune on the new
+task. When tasks demand *contradictory* outputs for the same input (e.g. different
+sine waves, or different goal directions), pooling drives the network to predict
+the average response; fine-tuning from there with only $K$ points either barely
+moves or overfits. In control, policies pretrained across tasks have sometimes
+been observed to be worse starting points than random initialization when
+transferring across related games (Parisotto et al. 2016).
 
 Automatic differentiation libraries (TensorFlow; Abadi et al. 2016) supported
 higher-order differentiation: a quantity that is itself defined via a gradient
@@ -76,10 +59,7 @@ al. 2015).
 network on a large source task; its intermediate features transfer broadly, and
 a new task is solved by fine-tuning (or by retraining a top layer). Core
 mechanism: ordinary supervised pretraining, then gradient descent on the new
-task. Gap: the features are optimized for the *source objective*, which is a
-different objective from succeeding on a held-out task. With only $K$ examples
-this typically needs a carefully tuned step size and still adapts slowly or
-overfits; pooling contradictory tasks collapses toward the mean output.
+task.
 
 **Metric-based few-shot learning: Siamese / Matching / Prototypical networks
 (Koch 2015; Vinyals et al. 2016; Snell et al. 2017).** Learn an embedding
@@ -88,12 +68,6 @@ against the labeled support set in embedding space — nearest neighbor, an
 attention-weighted sum of support labels (Matching Networks), or distance to
 per-class prototypes (Prototypical Networks):
 $\hat{y} = \sum_j a(g_\phi(\hat{\mathbf{x}}), g_\phi(\mathbf{x}_j))\, y_j$.
-These produce some of the strongest few-shot *classification* numbers. Gap: the
-adaptation mechanism is "embed and compare," which is intrinsically a
-classification construct; there is no natural way to apply an attention-over-
-support-labels rule to regression or to a control policy. They are also
-nonparametric at test time, so the learned machinery is specific to the task
-form.
 
 **Learned optimizers / "learning to learn" (Schmidhuber 1987; Bengio & Bengio
 1990, 1992; Hochreiter et al. 2001; Andrychowicz et al. 2016; Li & Malik
@@ -101,32 +75,23 @@ form.
 typically a recurrent network whose hidden state plays the role of the optimizer
 and which emits parameter updates. "Learning to learn by gradient descent by
 gradient descent" (Andrychowicz et al. 2016) trains an LSTM to output the update
-for the learner's weights. Gap: the optimizer is itself a parametric model that
-must be learned — extra parameters, and at test time you are stuck with the
-learned update rule; you cannot simply keep running plain gradient descent for
-more steps or more data.
+for the learner's weights.
 
 **LSTM meta-learner that also learns the initialization (Ravi & Larochelle
 2017).** Frames the optimizer as an LSTM whose cell update mirrors a gradient
 step, and additionally learns the learner's initial weights, applied to few-shot
 image classification (and the source of the MiniImagenet split). Core idea:
 $\theta_{t} = f_t \odot \theta_{t-1} - i_t \odot \nabla_{\theta_{t-1}}
-\mathcal{L}$, with $f_t, i_t$ produced by the LSTM. Gap: still introduces a
-separate recurrent optimizer with its own parameters and architecture; the
-adaptation is the LSTM's behavior, not ordinary fine-tuning.
+\mathcal{L}$, with $f_t, i_t$ produced by the LSTM.
 
 **Memory-augmented / recurrent meta-learners (Santoro et al. 2016, "MANN";
 Duan et al. 2016, "RL$^2$"; Wang et al. 2016).** A recurrent network ingests the
 support set (or the stream of experience) and adapts through its hidden
-dynamics. These *are* broadly applicable — RL$^2$ applies the recurrent idea to
-reinforcement learning. Gap: they require a recurrent architecture and perform
-adaptation as a black-box rollout of the RNN, which is hard to extend with more
-gradient steps at test time and ties the method to a particular model class.
+dynamics. RL$^2$ applies the recurrent idea to reinforcement learning.
 
 **Context-vector adaptation (Rei 2015).** Adapt only a small set of free
 parameters $\mathbf{z}$ concatenated to the input, by gradient, leaving the rest
-of the network fixed. Gap: adapting a low-dimensional context is far less
-expressive than adapting all the parameters, and degrades on harder problems.
+of the network fixed.
 
 ## Evaluation settings
 

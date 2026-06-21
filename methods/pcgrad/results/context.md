@@ -4,15 +4,8 @@ We want one network, with shared parameters `theta`, to learn several tasks at o
 is that structure shared across tasks makes joint learning more efficient than training each
 task from scratch. The standard way to do this is to put the per-task losses together into a
 single objective and descend it: `L(theta) = sum_i L_i(theta)`, with the combined gradient
-`g = sum_i g_i` where `g_i = grad L_i(theta)`. Yet in practice this often *fails to deliver* —
-joint training frequently reaches *worse* final performance and data efficiency than training
-the tasks separately, to the point that several multi-task pipelines deliberately train tasks
-independently first and only then distill the independent models into one network, paying away
-the efficiency the shared model was supposed to buy. The precise problem is to understand *why*
-naive joint optimization underperforms, and to find a way to combine the per-task gradient
-signals so that the auxiliary tasks help the primary objective instead of degrading it —
-ideally a fix that is cheap, makes no assumption about the network architecture, and drops in
-front of whatever base optimizer (SGD with momentum, Adam) is already in use.
+`g = sum_i g_i` where `g_i = grad L_i(theta)`. The question is how to combine the per-task
+gradient signals so that the auxiliary tasks contribute to the primary objective.
 
 ## Background
 
@@ -20,14 +13,11 @@ Multi-task learning has a long history: the premise (Caruana, *Multitask Learnin
 that an inductive bias from related tasks, sharing a representation, improves generalization
 and sample efficiency. The dominant modern instantiation is **hard parameter sharing** — a
 shared trunk with small task-specific heads — trained by gradient descent on the summed loss.
-The promise is real but so is a stubborn optimization difficulty: jointly learning many tasks
-is empirically harder than learning any one of them, and the reasons are not well understood.
 
-Several diagnostic explanations have been floated in prior work. Tasks are observed to learn at
-**different speeds**, so a faster task can dominate training before a slower one gets going;
-the loss landscape is observed to have **plateaus** where joint progress stalls; and much
-attention has gone into **architecture** (how much to share, where to branch). These are
-observations about *existing* joint-training systems.
+Several observations have been made about what happens during joint training. Tasks are observed
+to learn at **different speeds**, so a faster task can dominate training before a slower one
+gets going; the loss landscape is observed to have **plateaus** where joint progress stalls; and
+much attention has gone into **architecture** (how much to share, where to branch).
 
 A useful lens for thinking about what the combined gradient is doing: the per-task gradients
 `g_i` are vectors in the same parameter space, and the optimizer steps along their sum. Two
@@ -53,15 +43,12 @@ the curvature of `L` between the current and next iterate along the multi-task g
 deep neural-network loss valleys are narrow and highly curved is an observed property of these
 landscapes (Goodfellow et al. 2014, on qualitatively characterizing neural-net optimization).
 
-A simple two-dimensional picture sharpens the intuition and is fully knowable before any fix.
-Take two task objectives that are each a deep, curved valley — e.g. `L_1` and `L_2` of the form
+A simple two-dimensional picture sharpens the intuition. Take two task objectives that are each
+a deep, curved valley — e.g. `L_1` and `L_2` of the form
 `c log(max(|a theta_1 +/- tanh(theta_2) + b|, eps))` — whose summed objective has its optima
-where the two valleys meet. Run a strong adaptive optimizer (Adam) on the sum from a fixed
-start. It descends into one valley and then **stalls**, unable to traverse to where the valleys
-meet, precisely at a point where the two task gradients conflict (negative cosine), differ
-greatly in magnitude (one dominates), and sit in high curvature. This is a diagnostic
-observation about the *plain* optimizer's behavior — a property of the landscape and the
-averaged-gradient update, present before any new method exists.
+where the two valleys meet. Running a strong adaptive optimizer (Adam) on the sum from a fixed
+start illustrates how the geometry of per-task gradients — their relative angles, magnitudes,
+and the curvature of the landscape — shapes the trajectory.
 
 ## Baselines
 
@@ -70,11 +57,7 @@ and would react to.
 
 **Plain summed-loss joint training (the default; Caruana 1997 for the MTL premise).** Minimize
 `L(theta) = sum_i L_i(theta)` by stepping along `g = sum_i g_i` with the usual optimizer. Core
-idea: let the shared representation absorb common structure. *Observed limitation:* on many
-task sets it reaches worse final accuracy and efficiency than separate training; where task
-gradients oppose each other the summed gradient cancels in the overlap, and where one task's
-gradient is much larger it swamps the others, so the shared trunk is pulled almost entirely by
-the dominant task.
+idea: let the shared representation absorb common structure.
 
 **Uncertainty weighting (Kendall, Gal & Cipolla, CVPR 2018).** Replace the equal-weight sum
 with a learned weighted sum derived from each task's homoscedastic (data-independent)
@@ -82,18 +65,11 @@ uncertainty: minimize `sum_i (1/(2 sigma_i^2)) L_i + log sigma_i`, learning a pe
 `sigma_i^2` jointly with the network (a log-variance `s_i = log sigma_i^2` is the stable
 parameterization, with the `log sigma_i` term preventing the trivial `sigma_i -> infinity`
 solution). Core idea: noisier / harder tasks should contribute less to the loss; the weights
-are learned rather than grid-searched. *Observed limitation:* it only rescales the *magnitude*
-of each task's contribution to a scalar sum. Every per-task gradient still enters the step
-pointing in its original direction; a weighting cannot cancel a direction that opposes another
-task. When two gradients conflict, reweighting changes only how much each conflicting vector
-counts, not the fact that they conflict.
+are learned rather than grid-searched.
 
 **GradNorm (Chen et al., ICML 2018).** Adapt the loss weights `w_i` during training so that the
 *weighted* per-task gradient norms grow at similar rates, balancing how fast each task trains.
 Core idea: equalize training dynamics across tasks by normalizing gradient magnitudes.
-*Observed limitation:* like uncertainty weighting, it acts on magnitudes only — it tunes
-`w_i ||g_i||` but never touches the relative *directions* of the `g_i`, so directional conflict
-survives untouched.
 
 **Multi-task as multi-objective optimization / MGDA (Sener & Koltun, NeurIPS 2018; Désidéri
 2012).** Treat the tasks as a vector objective and seek a common descent direction by finding
@@ -102,12 +78,7 @@ the minimum-norm point in the convex hull of the task gradients: solve
 along `sum_t alpha_t g_t`. Désidéri showed the solution is either zero (a Pareto-stationary
 point) or a direction that decreases every task. For two tasks there is a one-dimensional
 analytic `alpha`; for more tasks it is a constrained quadratic program, solved at scale via
-Frank-Wolfe. Core idea: a single update that does not increase any task's loss. *Observed
-limitation:* it must solve a constrained QP over the simplex each step; its update is a *convex
-combination* of the task gradients (a reweighting inside the simplex), so it down-weights
-conflicting tasks rather than excising the conflicting component; and at a Pareto-stationary
-point the min-norm direction can collapse to near zero, stalling progress while individual
-tasks could still improve.
+Frank-Wolfe. Core idea: a single update that does not increase any task's loss.
 
 **Gradient projection for continual learning — GEM (Lopez-Paz & Ranzato, NeurIPS 2017) and
 A-GEM (Chaudhry et al., 2019).** In *sequential* learning, protect already-learned tasks: take
@@ -116,20 +87,12 @@ does not increase any past task's loss, `min ||g - g~||^2` subject to `<g~, g_k>
 past `k` — a QP solved in its dual. A-GEM cheapens this to a single inner product by projecting
 `g` onto only one *reference* (averaged past) gradient when the angle is obtuse. Core idea: use
 the *sign of the inner product* between gradients to detect when an update would hurt another
-task, and project to remove the harmful part. *Observed limitation:* these target the sequential
-(continual) setting — they protect *past* tasks from the *current* one, so they project only the
-single current-task gradient and treat the others asymmetrically; GEM still pays a per-step QP.
-They are not built for learning all tasks *simultaneously*, where there is no privileged current
-task and the task losses interact within the same update.
+task, and project to remove the harmful part.
 
 **Cosine regularization (CosReg; Suteu & Guo 2019).** Add a penalty that drives the cosine
 similarity between different tasks' gradients toward 0. Core idea: discourage interference by
-encouraging orthogonality. *Observed limitation:* it pushes gradients toward orthogonality
-*unconditionally*, so it suppresses cooperative (positively-aligned) gradients too, throwing
-away the very positive transfer that motivated sharing in the first place. (A related line,
-Du et al. 2018, uses the cosine sign merely to decide whether to *keep or drop* an auxiliary
-task wholesale — a binary choice that discards the task's useful component along with its
-harmful one.)
+encouraging orthogonality. (A related line, Du et al. 2018, uses the cosine sign merely to
+decide whether to *keep or drop* an auxiliary task wholesale.)
 
 ## Evaluation settings
 

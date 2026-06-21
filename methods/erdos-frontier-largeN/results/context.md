@@ -25,13 +25,10 @@ SimpleTES 2026 upper bound). Upper-bound yardsticks: flat floor `0.5`, Haugland 
 
 ## This method's role
 
-This is the *endpoint* rung. The middle rung reached `~0.3811` at `120` cells but was capped by
-resolution; the published records live at several hundred cells, found by large evolutionary searches
-(AutoEvolver ran `~12` hours to `n=750`). This method lifts the optimized `120`-cell profile to `n = 600`
-by upscaling (free, same `C`), then refines at scale — abandoning the now-too-slow SLSQP for fast
-`β`-annealed Adam on the analytic soft-max gradient plus an exact-minimax subgradient polish. It lands at
-the step-function frontier a single bounded hierarchical-gradient constructor reaches, a hair above the
-records, with the evolutionary-search records standing just above as the still-open distance.
+This is the *endpoint* rung. The middle rung reached `~0.3811` at `120` cells; the published records live
+at several hundred cells, found by large evolutionary searches (AutoEvolver ran `~12` hours to `n=750`).
+The task here is to take the optimized `120`-cell profile and push toward record resolution at several
+hundred cells.
 
 ## The fixed substrate
 

@@ -5,12 +5,10 @@
 On a single citation graph — nodes are documents with sparse bag-of-words features, edges are
 citations, and only a handful of nodes per class are labeled — I want to classify the rest. The
 established way to do this is to make the predictor a function of both features and the adjacency,
-stacking message-passing layers so that each node mixes in its neighbors. The trouble is that the
-best-performing such models are *shallow*: they peak at two layers, and stacking more layers makes them
-worse, not better. That caps how far information can travel — a two-layer model only ever reaches a
-node's two-hop neighborhood. The precise question is: can a message-passing network be made *genuinely
-deep* — so that adding layers keeps helping rather than hurting — while still using the full nonlinear
-per-layer transform that gives depth its power, and without exploding the parameter count?
+stacking message-passing layers so that each node mixes in its neighbors. The best-performing such
+models are *shallow*: they typically use two layers, and a two-layer model reaches a node's two-hop
+neighborhood. The question is how to design the per-layer propagation-and-transform update, and the
+model that stacks it, for this semi-supervised setting.
 
 ## Background
 
@@ -21,62 +19,50 @@ normalized adjacency of the self-looped graph ($\tilde{\mathbf A}=\mathbf A+\mat
 $\tilde{\mathbf D}=\mathbf D+\mathbf I$), and a layer is
 $\mathbf H^{(\ell+1)}=\sigma(\tilde{\mathbf P}\,\mathbf H^{(\ell)}\mathbf W^{(\ell)})$.
 
-The diagnostic fact that frames everything here is *over-smoothing* (observed by Li et al. 2018): as the
+A property that frames the analysis here is *over-smoothing* (observed by Li et al. 2018): as the
 number of such layers grows, node representations converge toward each other and become
-indistinguishable, and classification accuracy collapses. Two prior results pin down the mechanism.
-Wu et al. 2019 (SGC) show that stacking $K$ convolution layers is, up to the weight matrices, a fixed
-order-$K$ polynomial filter $\tilde{\mathbf P}^{K}\mathbf x$ — the *coefficients are predetermined*, not
-learned. Wang et al. 2019 observe that the residual-augmented operator
-$(\mathbf I + \tilde{\mathbf P})/2$ is a *lazy random walk*, which converges to its stationary
-distribution; in the limit the representation depends only on node degrees and a single global inner
-product with the features, so the input signal is washed out. Independently, Oono & Suzuki 2020 prove
-that $K$-layer GCN features converge to a low-dimensional subspace at a rate governed by $s^{K}$, where
-$s$ is the largest singular value of the weight matrices; effective transforms that contract away from
-singular value 1 make that collapse worse.
+indistinguishable. Two prior results characterize the mechanism. Wu et al. 2019 (SGC) show that
+stacking $K$ convolution layers is, up to the weight matrices, a fixed order-$K$ polynomial filter
+$\tilde{\mathbf P}^{K}\mathbf x$ with predetermined coefficients. Wang et al. 2019 observe that the
+residual-augmented operator $(\mathbf I + \tilde{\mathbf P})/2$ is a *lazy random walk*, which
+converges to its stationary distribution; in the limit the representation depends only on node degrees
+and a single global inner product with the features. Independently, Oono & Suzuki 2020 prove that
+$K$-layer GCN features converge to a low-dimensional subspace at a rate governed by $s^{K}$, where $s$
+is the largest singular value of the weight matrices.
 
-Some established results sit nearby. From computer vision,
-He et al. 2016 (ResNet) made very deep networks trainable with *residual connections* — a layer learns
-a correction added to its input rather than a full remap — and Hardt & Ma 2017 prove that for a *linear*
-residual network $\mathbf H^{(\ell+1)}=\mathbf H^{(\ell)}(\mathbf W^{(\ell)}+\mathbf I)$ the optimal
-weights have small norm and the only critical point is the global minimum. From the graph side, several
-methods already escape shallowness by *decoupling* propagation from transformation. SGC collapses many
-hops into one linear layer. PPNP/APPNP (Klicpera et al. 2019) replace the fixed power filter with a
-personalized-PageRank operator and, in the truncated form, iterate
+Several established results sit nearby. From computer vision, He et al. 2016 (ResNet) made very deep
+networks trainable with *residual connections* — a layer learns a correction added to its input rather
+than a full remap — and Hardt & Ma 2017 prove that for a *linear* residual network
+$\mathbf H^{(\ell+1)}=\mathbf H^{(\ell)}(\mathbf W^{(\ell)}+\mathbf I)$ the optimal weights have small
+norm and the only critical point is the global minimum. From the graph side, several methods *decouple*
+propagation from transformation. SGC collapses many hops into one linear layer. PPNP/APPNP (Klicpera et
+al. 2019) replace the fixed power filter with a personalized-PageRank operator and, in the truncated
+form, iterate
 $\mathbf H^{(\ell+1)}=(1-\alpha)\tilde{\mathbf P}\mathbf H^{(\ell)}+\alpha\mathbf H^{(0)}$ with a
 *teleport* back to the transformed input $\mathbf H^{(0)}=f_\theta(\mathbf X)$ — propagating many hops
-without deepening the network. GDC (Klicpera et al. 2019) generalizes the diffusion. JKNet (Xu et al.
-2018) keeps every layer's output and combines them at the end. The catch shared by the decoupled line is
-that they apply only a *linear* combination of neighbor features at each propagation step (APPNP's own
-finding is that repeated nonlinearities overfit on these small-label datasets), so they are deep in
-*propagation* but shallow in *representation*. The open problem these leave is a model that is deep in
-both — many nonlinear layers, no over-smoothing — and that does *not* simply slow the collapse the way a
-plain ResNet residual on a GCN does (which, as Kipf & Welling note, still degrades with depth).
+without deepening the network; APPNP's own finding is that repeated nonlinearities overfit on these
+small-label datasets. GDC (Klicpera et al. 2019) generalizes the diffusion. JKNet (Xu et al. 2018)
+keeps every layer's output and combines them at the end.
 
 ## Baselines
 
 - **Renormalized graph convolution (Kipf & Welling 2017).**
   $\mathbf H^{(\ell+1)}=\sigma(\tilde{\mathbf P}\mathbf H^{(\ell)}\mathbf W^{(\ell)})$. Cheap, linear in
-  edges, strong at two layers. Gap: $K$ layers = fixed-coefficient order-$K$ filter $\tilde{\mathbf
-  P}^{K}\mathbf x$ that converges to a degree-only stationary state — over-smoothing — so depth hurts.
+  edges, strong at two layers. $K$ layers realize the fixed-coefficient order-$K$ filter
+  $\tilde{\mathbf P}^{K}\mathbf x$ that converges to a degree-only stationary state.
 - **Graph attention (Veličković et al. 2018).** Replaces the fixed degree-based edge weight with a
   learned attention coefficient $\alpha_{ij}=\mathrm{softmax}_j(\mathrm{LeakyReLU}(\vec a^\top[\mathbf W
-  h_i\Vert \mathbf W h_j]))$. Learns *which* neighbor matters, but the same over-smoothing wall holds:
-  best at two layers, degrades when stacked.
+  h_i\Vert \mathbf W h_j]))$. Learns *which* neighbor matters; best at two layers.
 - **Mean-aggregation message passing (Hamilton et al. 2017, GraphSAGE).** Separates self and neighbor
   ($\mathbf H^{(\ell+1)}=\sigma(\mathbf W_{\text{self}}\mathbf H^{(\ell)} + \mathbf W_{\text{neigh}}\,
-  \mathrm{mean}_{j\in N}\mathbf H^{(\ell)}_j)$), inductive. Gap: mean is a fixed linear pool; still
-  shallow in practice, no mechanism against over-smoothing.
+  \mathrm{mean}_{j\in N}\mathbf H^{(\ell)}_j)$), inductive. The neighbor pool is a fixed linear mean.
 - **Decoupled propagation (APPNP, Klicpera et al. 2019).** $\mathbf H^{(\ell+1)}=(1-\alpha)\tilde{\mathbf
   P}\mathbf H^{(\ell)}+\alpha\mathbf H^{(0)}$ with $\mathbf H^{(0)}=f_\theta(\mathbf X)$. Reaches many
-  hops without over-smoothing because the teleport keeps a fraction $\alpha$ of the input. Gap: the
-  per-layer step is *linear* — no weight matrix, no nonlinearity per hop — so it does not get the
-  expressive power of a deep nonlinear stack.
+  hops with a teleport that keeps a fraction $\alpha$ of the input; the per-layer step is linear, with
+  no weight matrix or nonlinearity per hop.
 - **ResNet-style residual GCN (Kipf & Welling 2017).** $\mathbf H^{(\ell+1)}=\sigma((\tilde{\mathbf
-  P}\mathbf H^{(\ell)}+\mathbf H^{(\ell)})\mathbf W^{(\ell)})$, a skip to the *previous* layer. Gap: the
-  residual is to the already-smoothed previous layer, so it only *slows* the lazy-random-walk
-  convergence; deep versions are still beaten by 2-layer GCN.
-- **JKNet (Xu et al. 2018).** Concatenates/max-pools all layer outputs at the end. Gap: relieves
-  over-smoothing but on semi-supervised splits still trails shallow models.
+  P}\mathbf H^{(\ell)}+\mathbf H^{(\ell)})\mathbf W^{(\ell)})$, a skip to the *previous* layer.
+- **JKNet (Xu et al. 2018).** Concatenates/max-pools all layer outputs at the end.
 
 ## Evaluation settings
 

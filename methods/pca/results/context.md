@@ -9,22 +9,18 @@ linked problems press on anyone working with such data.
 
 The first is geometric. We want to draw the line, or the plane, or the lower-dimensional flat
 that "fits" the cloud of points best — a compact stand-in for where the data actually lives in
-`q`-space. But here every variable is measured with error; none of them is a privileged,
+`q`-space. Here every variable is measured with error; none of them is a privileged,
 error-free input against which the others are predicted. A man at a given moment has one true
-position; both his recorded time and his recorded position vary from trial to trial. So a fit
-that singles out one variable as the thing to be predicted and the rest as exact is the wrong
-shape of answer. We need a criterion that treats all `q` coordinates on the same footing and
-returns one unique flat for the cloud.
+position; both his recorded time and his recorded position vary from trial to trial. We need a
+criterion that treats all `q` coordinates on the same footing and returns one unique flat for
+the cloud.
 
 The second is reductive. When `q` is large and the variables are tangled together, the raw
 coordinate axes are an arbitrary and redundant description — six camera readings of a ball that
 really moves along one line, or a battery of tests that mostly reflect a couple of underlying
-aptitudes. We would like to re-express the same data in a smaller number of new variables that
-are mutually uncorrelated and that, taken in order, carry as much of the information in the
-original `q` variables as we can keep, so that the first few new variables alone are a faithful
-low-dimensional picture. What those new variables should be, and how to compute them from the
-observed correlations, is the open problem. A solution would have to be unique, ordered by
-importance, and reduce — when `q = 2` — to something we can already recognize geometrically.
+aptitudes. We would like to re-express the same data in a smaller number of new variables,
+computed from the observed correlations, that are mutually uncorrelated and that, taken in
+order, carry as much of the information in the original `q` variables as we can keep.
 
 ## Background
 
@@ -78,36 +74,29 @@ length" problem gets turned into linear equations.
 **The least-squares regression line (Legendre 1805; Gauss 1809; the Galton-Pearson regression
 line).** Pick one variable as dependent, say `y`, and choose the line minimizing the sum of
 squared residuals *in `y`*, `S(y' - y)^2`, where `y'` is the line's ordinate at the observed
-`x`. This is the workhorse fit and it is exact and well understood. Its limitation is built
-into its asymmetry: the residual it minimizes is measured along one coordinate axis, so if
-instead you regress `x` on `y` you minimize `S(x' - x)^2` and get a *different* line through
-the same cloud. There are two regression lines, not one, and neither is "the" line of the
-points; the construction presumes one variable is known exactly and the other carries all the
-error, which is false when both are observed with error. It gives no single, symmetric summary
-direction for a cloud in which every coordinate is on equal footing.
+`x`. This is the workhorse fit and it is exact and well understood. It is asymmetric: the
+residual it minimizes is measured along one coordinate axis, so if instead you regress `x` on
+`y` you minimize `S(x' - x)^2` and get a different line through the same cloud. The
+construction presumes one variable is known exactly and the other carries all the error.
 
 **Spearman's general-factor / factor-analytic model (Spearman 1904 and the line of work it
 launched).** Posit that the observed scores arise from a small number of latent variables —
 classically one dominant "general ability" factor plus specifics — `x_i = a_i*g + (specific)`.
 For one common factor this implies the *tetrad* relations among correlations,
 `r_ij*r_kl - r_il*r_kj = 0`, which can be tested. The appeal is interpretability: a few
-meaningful latent traits. The limitations are real. The model fixes the number of latent
-factors *in advance* by hypothesis; the tetrad/consistency conditions are essentially never
-satisfied exactly in a finite sample, so the fit is approximate and contestable; and when
-fewer factors than variables are assumed, the solution is not unique — the latent axes can be
-rotated freely (a `q`-dimensional rotation's worth of indeterminacy), so the model does not
-return one determinate, ordered decomposition of the variance. It is a hypothesis to be tested,
-not a unique summary computed from the data.
+meaningful latent traits. The number of latent factors is fixed in advance by hypothesis, and
+the tetrad/consistency conditions are a testable constraint. When fewer factors than variables
+are assumed, the latent axes can be rotated freely (a `q`-dimensional rotation's worth of
+indeterminacy).
 
-**The two regression lines as a stopgap "axis."** One could try to split the difference
-between the `y`-on-`x` and `x`-on-`y` lines, or report both, as a description of the cloud's
-orientation. This is ad hoc: the bisector of two regression lines has no extremal property, no
-generalization to `q > 2`, and no associated measure of how good the fit is. It is a symptom
-that the right object has not yet been named, not a method.
+**The two regression lines as a description of cloud orientation.** One could report both the
+`y`-on-`x` and `x`-on-`y` regression lines, or split the difference between them, as a
+description of the cloud's orientation. The bisector of two regression lines has no extremal
+property and no obvious generalization to `q > 2`.
 
 ## Evaluation settings
 
-The natural material on which such a method would be exercised, all available at the time:
+The natural material on which such a method is exercised, all available at the time:
 
 - **Batteries of mental-test scores** on a sample of schoolchildren — e.g. reading speed,
   reading power, arithmetic speed, arithmetic power, given as a correlation matrix among the

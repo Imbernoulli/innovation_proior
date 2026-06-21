@@ -13,14 +13,9 @@ the gas prediction by a factor of several. The same linear-in-T electronic heat 
 smaller than the lattice (phonon) contribution, is seen in every normal metal.
 
 So the question is: when the interaction is *not* weak, what survives of the Fermi-gas picture,
-and what is renormalized? Specifically, can one build a low-temperature theory of a strongly
-interacting degenerate Fermi system that (i) reproduces the gas-like thermodynamics with the
-*measured* parameters, (ii) says precisely which gas quantities are renormalized by interactions
-and by how much, and (iii) predicts genuinely new low-temperature phenomena that a gas does not
-have — all without solving the intractable many-body Schrödinger equation? A theory that merely
-asserts "treat it like a gas with an adjusted mass" is unsatisfactory: it leaves unclear which
-properties of the gas model correspond to reality and which do not, and it has no way to compute
-the renormalizations or to predict collective behaviour.
+and what is renormalized? Can one build a low-temperature theory of a strongly interacting
+degenerate Fermi system that works with the *measured* parameters rather than bare-particle
+quantities — all without solving the intractable many-body Schrödinger equation?
 
 ## Background
 
@@ -30,17 +25,12 @@ abruptness of the Fermi step is what makes the gas special: only fermions within
 surface can be thermally excited, so the heat capacity is linear, C ≈ (π²/3) k_B² T g(ε_F), with
 g(ε_F) the density of states at the Fermi level — proportional to the particle mass m. The Pauli
 spin susceptibility χ₀ and the n = p₀³/3π²ℏ³ relation are likewise controlled by the Fermi
-surface. This is the model that *almost* works for metals and He-3, getting the *form* of every
-low-T law right while getting the prefactors wrong.
+surface.
 
-**Why the gas model is not enough.** The energy of an ideal gas is a simple sum of single-particle
-energies, each fixed once and for all. That additivity is exactly what fails when particles
-interact strongly: adding or moving one fermion changes the environment seen by all the others, so
-no fixed single-particle energy can be assigned a priori. Hartree–Fock and self-consistent-field
-methods dress each particle in an averaged field, but they have no controlled treatment of the
-*residual* interaction beyond the mean field; for the electron gas the Hartree–Fock single-particle
-velocity even diverges logarithmically at the Fermi surface, a clear signal that the naive
-single-particle dressing is incomplete.
+**Dressing single particles: Hartree–Fock.** Dresses each fermion in the averaged field of the
+others, giving renormalized single-particle energies. The treatment addresses the mean field
+through a self-consistent procedure; for the electron gas it produces a single-particle group
+velocity that diverges logarithmically at the Fermi surface.
 
 **The "Fermi-type spectrum" idea.** It is known that the qualitative low-temperature behaviour of
 a system is fixed by the *character of its energy spectrum* near the ground state, not by the
@@ -50,16 +40,14 @@ results in this direction treat *weakly* non-ideal Fermi systems by perturbation
 weakly-non-ideal Fermi gas (Klimontovich and Silin, J. Exptl. Theoret. Phys. 23, 151 (1952);
 Silin, ibid. 23, 641 (1952); 27, 269 (1954)), and the charged electron gas with its plasma
 oscillations (Gol'dman, ibid. 17, 681 (1947)). These give, in the weak-coupling limit, both the
-renormalized single-particle energies and the collective modes — but only as an expansion in the
-small interaction, valid for a gas, not for a liquid where the interaction is of order one.
+renormalized single-particle energies and the collective modes — as an expansion in the small
+interaction.
 
 **Adiabatic switching as an available tool.** A standard device in quantum mechanics is to turn a
 perturbation on slowly ("adiabatically"): a slow, smooth change cannot make the conserved
 quantities — total momentum, total spin, particle number — jump, so the labels carried by a state
-are protected as long as nothing singular happens to the spectrum. Whether anything of the gas's
-*level structure* beyond those conserved totals survives a switching that is no longer weak is open;
-it is at best expected to fail wherever the system undergoes a genuine change of state (the onset of
-superfluidity/superconductivity, where a gap opens).
+are protected as long as nothing singular happens to the spectrum. This device is well established
+in the perturbative regime; its scope when the interaction is large remains to be characterized.
 
 **Phase space near a Fermi surface.** The Pauli principle sharply restricts the final states
 available to a fermion scattering near the Fermi surface: energy and momentum conservation together
@@ -75,7 +63,7 @@ interaction, no Coulomb screening complications), translationally and rotational
 linear in T but with a slope several times larger than the ideal-gas value for atoms of the bare
 He-3 mass; its compressibility and magnetic susceptibility are likewise measured. These are pre-existing facts
 about the world (Fairbank, Ard and Walters, Phys. Rev. 95, 566 (1954); Walters and Fairbank,
-Phys. Rev. 103, 263 (1956)) that any theory must reproduce and that fix its parameters. The
+Phys. Rev. 103, 263 (1956)) that fix the parameters a theory must reproduce. The
 quadratic-in-T relaxation time underlies the observed sound-absorption ∝ 1/T² (Pomeranchuk, J.
 Exptl. Theoret. Phys. 20, 919 (1950)).
 
@@ -83,30 +71,18 @@ Exptl. Theoret. Phys. 20, 919 (1950)).
 
 **Sommerfeld ideal Fermi gas.** Energy E = Σ ε_p n_p with ε_p = p²/2m fixed; equilibrium is the
 Fermi function n_p = [e^{(ε_p−μ)/θ}+1]^{−1}. Yields C ∝ T with slope ∝ m, Pauli χ₀ ∝ g(ε_F),
-n = p₀³/3π²ℏ³, and a single sound speed from the gas pressure. *Limitation:* every prefactor is
-tied to the bare mass m, with no mechanism for the observed renormalization, and the additive
-energy assumes the cost of one fermion is independent of the rest — which fails once interactions
-are of order the kinetic energy. It also has no collective oscillation at zero temperature.
+n = p₀³/3π²ℏ³, and a single sound speed from the gas pressure.
 
 **Hartree–Fock / self-consistent field.** Dresses each fermion in the averaged field of the
-others, giving renormalized single-particle energies. *Limitation:* it captures only the mean
-field, not the residual two-body interaction among the dressed particles; for the electron gas it
-produces a single-particle group velocity that diverges logarithmically at the Fermi surface,
-showing the dressing is incomplete and that the response of the medium to a moving particle is not
-correctly accounted for.
+others, giving renormalized single-particle energies through the mean-field self-consistency.
 
 **Weakly non-ideal Fermi gas (Silin; Klimontovich–Silin; Gol'dman).** Perturbation theory in a
 small interaction for a Fermi gas: gives the leading correction to single-particle energies and,
-for the charged case, plasma oscillations. *Limitation:* it is an expansion in the interaction
-strength and so applies only to a gas, not to a liquid where the interaction is of order one; the
-results are not expected to survive at the coupling actually present in metals or He-3.
+for the charged case, plasma oscillations.
 
 **Bose-liquid theory of He II.** Shows that the low-temperature properties of a strongly
 interacting *quantum liquid* follow from the *type* of its excitation spectrum (phonon/roton →
-superfluidity), independent of microscopic detail. *Limitation:* it is built for bosons; the
-spectrum and statistics of a fermion liquid are different, and the Bose construction does not
-carry over — but it establishes the strategy of reasoning from the spectrum rather than the
-Hamiltonian.
+superfluidity), independent of microscopic detail.
 
 ## Evaluation settings
 

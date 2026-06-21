@@ -2,11 +2,9 @@
 
 ## Research question
 
-Sequence models are the backbone of foundation models across language, audio, genomics, and more. The dominant choice — self-attention — routes information densely between every pair of positions in a context window. That density is exactly what makes it effective, but it carries three structural costs: it cannot attend to anything outside a fixed window; training scales quadratically in sequence length; and autoregressive decoding must keep the entire context resident as a key/value cache, so per-step memory and time grow with how much has been generated.
+Sequence models are the backbone of foundation models across language, audio, genomics, and more. The dominant choice — self-attention — routes information densely between every pair of positions in a context window. This gives it access to all prior context, but training scales quadratically in sequence length and autoregressive decoding must keep the entire context resident as a key/value cache.
 
-The question is whether a sequence model can match attention's modeling quality while scaling *linearly* in sequence length, with a *constant-size* per-step state at inference. A large literature of subquadratic architectures — linear attention, gated convolutions, recurrent models, structured state space models — answers the efficiency half: they are cheap and they scale. But on information-dense discrete modalities, language above all, they have consistently fallen short of attention. So the real question is sharper: what is the *specific* capability these efficient models lack, and can it be restored without giving up their linear-time scaling?
-
-A useful way to frame it: sequence modeling is the problem of compressing context into a state. Attention sits at one extreme — it compresses nothing (it stores the whole context), which is why it is both powerful and expensive. A recurrent model with a finite state sits at the other extreme — cheap, but only as good as what its fixed-size state managed to keep. The goal is a model whose bounded state nonetheless retains everything that matters — which raises the question of what governs the act of compression, and what the efficient models are doing differently when they fail to keep it.
+A large literature of subquadratic architectures — linear attention, gated convolutions, recurrent models, structured state space models — offers linear-time training and a constant-size per-step state at inference. These are the setting for the question: can a subquadratic sequence model match attention's modeling quality on information-dense discrete data such as natural language?
 
 ## Background
 
@@ -36,33 +34,31 @@ The recurrence is convenient for step-by-step autoregressive inference (constant
 
 and a work-efficient parallel scan (Blelloch, 1990; Martin & Cundy, 2018) computes all prefixes in O(L) work and O(log L) depth. S5 (Smith et al., 2023) used exactly this to compute a diagonal SSM as a recurrence rather than a convolution, trading the SISO formulation for a MIMO one to keep the materialized state small.
 
-**The LTI limitation, seen on diagnostic tasks.** The constant-dynamics property that buys the convolution also imposes a ceiling. Two synthetic tasks expose it:
+**Synthetic diagnostic tasks.** Two synthetic tasks are used to probe sequence model behavior:
 
-- *Copying* (Arjovsky et al., 2016): reproduce a set of tokens after a fixed offset. The spacing is constant, so the task needs only time-awareness; an LTI model solves it trivially — a convolution kernel of exactly the right length, or a fixed-delay recurrence.
-- *Selective Copying* (the Denoising task of Jing et al., 2019): the tokens to memorize are placed at *random* positions, interspersed with noise tokens to ignore. Now the model must decide, based on each token's content, whether to keep it. A static convolution kernel cannot model the varying input-to-output spacing, and constant recurrent dynamics cannot choose what to retain. LTI models fail.
-- *Induction Heads* (Olsson et al., 2022): having seen a bigram such as "Harry Potter", on the next occurrence of "Harry" the model must emit "Potter". This associative recall at the right moment is strongly predictive of in-context learning in large language models, and again demands content- and context-dependent behavior.
+- *Copying* (Arjovsky et al., 2016): reproduce a set of tokens after a fixed offset. The spacing is constant, so the task requires only time-awareness.
+- *Selective Copying* (the Denoising task of Jing et al., 2019): the tokens to memorize are placed at *random* positions, interspersed with noise tokens. The model must decide, based on each token's content, whether to keep it.
+- *Induction Heads* (Olsson et al., 2022): having seen a bigram such as "Harry Potter", on the next occurrence of "Harry" the model must emit "Potter". This associative recall task is strongly predictive of in-context learning in large language models.
 
-A complementary observation about state size: a larger recurrent state N should compress more context and improve quality, but in a naive recurrence it multiplies the materialized state and the memory traffic by N. This is the expressivity-versus-speed tension — one would like to expand the state without paying for it.
-
-**Classical gated RNNs.** Classical gated RNNs (LSTM, GRU) control information flow with input-dependent gates, e.g. h_t = (1 − g_t) h_{t−1} + g_t x_t with g_t = σ(Linear(x_t)). Such gates are powerful but were historically tied to small states (N = 1), heuristic forms, and vanishing-gradient/efficiency problems from their sequential nature. Older gated, time-wise-linear RNNs (QRNN, Bradbury et al., 2016; SRU, Lei et al., 2017) already made the recurrence parallelizable via the scan, but kept N = 1 and used heuristic gates.
+**Classical gated RNNs.** Classical gated RNNs (LSTM, GRU) control information flow with input-dependent gates, e.g. h_t = (1 − g_t) h_{t−1} + g_t x_t with g_t = σ(Linear(x_t)). Older gated, time-wise-linear RNNs (QRNN, Bradbury et al., 2016; SRU, Lei et al., 2017) made the recurrence parallelizable via the scan, keeping N = 1.
 
 **IO-aware kernels.** On GPUs most operations other than dense matrix multiply are bounded by memory bandwidth, not arithmetic (Williams et al., 2009). FlashAttention (Dao et al., 2022) exploited this: fuse the attention computation into a single kernel that keeps intermediates in fast on-chip SRAM, never writing the large score matrix to slow high-bandwidth memory (HBM), and recompute what is needed in the backward pass rather than storing it.
 
 ## Baselines
 
-**Self-attention / Transformer** (Vaswani et al., 2017; attention of Bahdanau et al., 2015). Each position attends to all others via softmax over query-key dot products; output is the weighted sum of values. Maximally expressive routing. Gaps: O(L²) time and memory at training, an O(L) key/value cache at inference, and no mechanism for context beyond the window.
+**Self-attention / Transformer** (Vaswani et al., 2017; attention of Bahdanau et al., 2015). Each position attends to all others via softmax over query-key dot products; output is the weighted sum of values. Maximally expressive content-based routing, with O(L²) time and memory at training and an O(L) key/value cache at inference.
 
-**Linear attention** (Katharopoulos et al., 2020). Replaces softmax with a kernel feature map so that attention can be rewritten as a linear recurrence with a matrix-valued state, giving O(L) inference. It is, in effect, a degenerate LTI state space model and made the attention-recurrence duality explicit. Gap: quality lags softmax attention, particularly on language.
+**Linear attention** (Katharopoulos et al., 2020). Replaces softmax with a kernel feature map so that attention can be rewritten as a linear recurrence with a matrix-valued state, giving O(L) inference. It is, in effect, a degenerate LTI state space model and made the attention-recurrence duality explicit.
 
-**S4 / S4D** (Gu et al., 2021/2022; Gupta et al., 2022). Structured SSMs computed as global convolutions for training and recurrences for inference, with HiPPO-based memory. Strong on continuous-signal and long-range benchmarks. Gap: strictly LTI — the constant dynamics that enable the convolution prevent any content-based selection, so they underperform on dense discrete data like text.
+**S4 / S4D** (Gu et al., 2021/2022; Gupta et al., 2022). Structured SSMs computed as global convolutions for training and recurrences for inference, with HiPPO-based memory. Strong on continuous-signal and long-range benchmarks.
 
-**S5** (Smith et al., 2023). A diagonal SSM computed recurrently with the parallel scan instead of a convolution; switches SISO→MIMO to keep the materialized state small. Gap: the MIMO move shrinks the effective per-channel recurrent state, and the model is still LTI.
+**S5** (Smith et al., 2023). A diagonal SSM computed recurrently with the parallel scan instead of a convolution; switches SISO→MIMO to keep the materialized state small.
 
-**H3** (Dao et al., 2023). The standard SSM architecture block: an SSM flanked by two multiplicative gated connections, preceded by a short local convolution framed as a shift-SSM, and interleaved with a separate MLP block. Generalized linear attention to use S4. Gap: built from LTI SSMs, so it inherits the selection limitation, and it carries a two-block (mixer + MLP) structure.
+**H3** (Dao et al., 2023). The standard SSM architecture block: an SSM flanked by two multiplicative gated connections, preceded by a short local convolution framed as a shift-SSM, and interleaved with a separate MLP block. Generalized linear attention to use S4.
 
-**Hyena** (Poli et al., 2023). The H3 block with the S4 layer replaced by a long convolution whose kernel is parameterized by an MLP. Gap: still a global convolution — time-aware but not content-aware — and cannot do fast autoregressive inference directly.
+**Hyena** (Poli et al., 2023). The H3 block with the S4 layer replaced by a long convolution whose kernel is parameterized by an MLP.
 
-**Gated RNNs / QRNN / SRU** (LSTM; Bradbury et al., 2016; Lei et al., 2017). Input-dependent gating gives content-dependent behavior and, in the time-wise-linear variants, admits the parallel scan. Gaps: no state expansion (N = 1), heuristic gate forms not grounded in SSM theory, and historically poor parameterizations/initializations.
+**Gated RNNs / QRNN / SRU** (LSTM; Bradbury et al., 2016; Lei et al., 2017). Input-dependent gating gives content-dependent behavior and, in the time-wise-linear variants, admits the parallel scan.
 
 ## Evaluation settings
 

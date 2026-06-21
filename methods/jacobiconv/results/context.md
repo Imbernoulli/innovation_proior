@@ -7,15 +7,13 @@ A spectral graph neural network classifies nodes by pushing features through the
 decides what the network can see. On a homophilic graph (linked nodes share labels) the right
 response is a smooth low-pass; on a heterophilic graph (linked nodes differ) the discriminative
 content is high-frequency and the response must be high- or band-pass. A single learnable filter
-should reach any of these from labels alone. The prior learnable filters do reach them — GPR-GNN
-learns monomial coefficients, BernNet learns Bernstein coefficients, ChebNetII interpolates at
-Chebyshev nodes — and they differ only in *which polynomial basis* parameterizes the response.
+should reach any of these from labels alone.
 
-So the question this work asks is sharper than "can the filter take any shape": **given that several
+The prior learnable filters do reach them — GPR-GNN learns monomial coefficients, BernNet learns
+Bernstein coefficients, ChebNetII interpolates at Chebyshev nodes — and they differ only in *which
+polynomial basis* parameterizes the response. The question this work asks is: **given that several
 complete polynomial bases all have the same expressive power, why do they reach such different
-accuracies, and is there a basis that is optimal?** And a second, more provocative question: the
-established models all wrap the polynomial propagation in a nonlinear MLP — **is the nonlinearity
-even necessary**, or is a *linear* spectral GNN already powerful enough for node classification?
+accuracies, and is there a basis that is systematically better-conditioned for optimization?**
 
 ## Background
 
@@ -34,36 +32,21 @@ and differ only in `g_k`.
 
 **Baselines, by basis.**
 - **GPR-GNN (Chien et al. 2021)** — *Monomial* basis `g_k(λ) = λ^k`. Maximally simple, learns signed
-  hop-weights, but the monomial powers are ill-conditioned (the Vandermonde collinearity), and one
-  can prove the monomial basis *cannot* be orthogonal under any weight function.
+  hop-weights.
 - **ChebNet / ChebNetII (Defferrard et al. 2016; He et al. 2022)** — *Chebyshev* basis. Near-minimax
-  and `O(K)`; ChebNetII fixes the free-coefficient overfitting by interpolating at Chebyshev nodes.
-  But Chebyshev is orthogonal w.r.t. only *one* fixed weight `(1-λ²)^{-1/2}`.
-- **BernNet (He et al. 2021)** — *Bernstein* basis. Non-negative and interpretable, but `O(K²)` and a
-  non-orthogonal basis whose Hessian need not be diagonal.
+  and `O(K)`; ChebNetII interpolates at Chebyshev nodes, fixing free-coefficient overfitting. Chebyshev
+  polynomials are orthogonal w.r.t. the weight `(1-λ²)^{-1/2}`.
+- **BernNet (He et al. 2021)** — *Bernstein* basis. Non-negative and interpretable; `O(K²)`.
 
-**Two pre-method facts the analysis turns on.**
-(a) *Universality of linear spectral GNNs (Wang & Zhang's own analysis).* A linear GNN
-`Z = g(L̂) X W` can produce *any* one-dimensional prediction provided the Laplacian has no repeated
-eigenvalues and the features contain all frequency components — and on the ten standard benchmarks
-fewer than 1% of eigenvalues are multiple and *no* frequency component is missing, so the
-universality conditions hold in practice. ReLU's only role is to *mix* frequency components across
-the spectrum, which the no-missing-frequency condition makes unnecessary. This is the license to
-*drop the nonlinearity* and study a purely linear filter.
-(b) *Convergence speed depends on the basis through the Hessian.* For the linear filter trained under
-a squared loss `R = ½‖Z − Y‖²`, the Hessian w.r.t. the coefficients `α` has entries
+**Convergence and the Hessian.** For a linear filter trained under squared loss
+`R = ½‖Z − Y‖²`, the Hessian w.r.t. the coefficients `α` has entries
 `H_{k₁k₂} = ∫₀² g_{k₁}(λ) g_{k₂}(λ) f(λ) dλ`, where `f(λ)` is the *spectral density of the graph
-signal*. Gradient descent's convergence rate is governed by the condition number `κ(H)`, which is
-minimized — `κ = 1` — exactly when `H = I`, i.e. when `{g_k}` is *orthonormal under the inner product
-weighted by the signal density `f`*. So the optimal basis is not fixed; it is the orthogonal family
-whose weight function matches `f(λ)`.
+signal*. Gradient descent's convergence rate is governed by the condition number `κ(H)`.
 
-**The Jacobi family.** The Jacobi polynomials `P_k^{a,b}` are orthogonal w.r.t. the weight
-`(1-x)^a (1+x)^b` on `[-1,1]`, with two free parameters `a, b` that reshape the weight — putting
-more mass near `x=1` (low frequency of `Â`, i.e. low `λ`) or near `x=-1` (high frequency). Chebyshev
-is the single special case `a=b=-1/2`; Legendre is `a=b=0`. So Jacobi is the one basis that can
-*adapt its weight function* to the graph's spectral density, exactly the `κ(H)→1` knob fact (b)
-demands, while the monomial basis (provably non-orthogonal) and Chebyshev (one fixed weight) cannot.
+**The classical orthogonal polynomial families.** The Jacobi polynomials `P_k^{a,b}` are orthogonal
+w.r.t. the weight `(1-x)^a (1+x)^b` on `[-1,1]`, with two free parameters `a, b` that reshape the
+weight. Chebyshev is the special case `a=b=-1/2`; Legendre is `a=b=0`. The broader family of
+classical orthogonal polynomials on `[-1,1]` is well-studied in numerical analysis.
 
 ## Evaluation settings
 
@@ -79,7 +62,7 @@ demands, while the monomial basis (provably non-orthogonal) and Chebyshev (one f
 ## Code framework
 
 The filter fills the propagation slot of the decoupled `transform → polynomial propagation →
-log-softmax` harness; the empty body is the Jacobi-basis recurrence and how the `K+1` learnable
+log-softmax` harness; the empty body is the basis recurrence and how the `K+1` learnable
 coefficients combine the propagated signals.
 
 ```python

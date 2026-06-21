@@ -13,17 +13,10 @@ FFN(x) = act(x W1 + b1) W2 + b2,    W1: d -> d_ff,  W2: d_ff -> d,   d_ff = 4d.
 ```
 
 Almost all of the design attention in this layer has gone to `W1`, `W2`, and `d_ff`; the
-single scalar nonlinearity `act` is usually inherited unquestioned from whatever the codebase
-shipped with (ReLU in the original Transformer, GELU in the BERT/GPT line). The precise goal
-here is to find a *better* `act` for autoregressive language-model pretraining: a change that
-lowers validation loss / improves sample efficiency per unit of training compute, while
-staying a strictly **modular, feed-forward-only** intervention. To be adoptable it must
-(1) keep the `(B, T, d) -> (B, T, d)` shape contract of the FFN; (2) not touch attention,
-normalization, the dataset, the optimizer schedule, or evaluation; (3) ideally add no
-parameters and require no re-tuning, so practitioners can drop it into an existing codebase.
-A solution that needs a bigger hidden state, a third weight matrix, or a new hyperparameter
-pays a cost that has to be earned back. Closing the gap between "the nonlinearity is whatever
-we inherited" and "the nonlinearity is the best available drop-in" is the problem.
+single scalar nonlinearity `act` is usually inherited from whatever the codebase shipped with
+(ReLU in the original Transformer, GELU in the BERT/GPT line). The question is whether a
+different pointwise `act` in this slot can improve sample efficiency for autoregressive
+language-model pretraining.
 
 ## Background
 
@@ -51,13 +44,8 @@ state and the load-bearing concepts:
   term in the energy becomes *sharper*, which lets the network pack and reliably
   retrieve more memories — they derive a capacity `K^max = alpha_n N^{n-1}` that
   grows with `n`. In their feed-forward neural-network dual, an energy power maps
-  to a rectified-polynomial activation of one lower degree, so the load-bearing
-  lesson is not a ready-made Transformer formula but the question they pose
-  directly: above the threshold, should an activation grow linearly, sub-linearly,
-  or *faster* than linearly, and are there functions that beat ReLU? This is the
-  precedent that changing above-threshold growth can have a principled upside —
-  but it lives in shallow energy-based models and on MNIST, never in a deep
-  Transformer FFN.
+  to a rectified-polynomial activation of one lower degree, connecting memory capacity
+  to the growth rate of the activation above threshold.
 
 - **Multiplicative interactions as a source of representational power.** A separate line
   (Jayakumar et al. 2020) shows that layers built on a *product* of two learned quantities
@@ -67,9 +55,7 @@ state and the load-bearing concepts:
 
 - **Searching for architecture components pays off, but at a coarse grain.** Prior automated
   searches over neural-net components (e.g. activation-function search, below) had shown that
-  a learned or searched primitive can beat the hand-chosen default. But these searches fixed
-  the surrounding structure and varied one thing — a scalar function, or a high-level block —
-  so the candidate space was narrow.
+  a learned or searched primitive can beat the hand-chosen default.
 
 ## Baselines
 
@@ -77,29 +63,20 @@ The prior FFN-nonlinearity choices a new activation would be measured against.
 
 - **ReLU FFN (Vaswani et al. 2017; Glorot et al. 2011).** `act(z) = max(0, z)`. Cheap,
   nonsaturating on the positive side, induces sparsity (negative pre-activations are zeroed).
-  Core idea: pass the positive part linearly, kill the rest. **Limitation:** the positive
-  branch is exactly the identity, so the FFN's only nonlinearity is the hard gate at zero;
-  the function is piecewise *linear* and treats every surviving unit on the same linear scale,
-  with a hard nondifferentiable kink at the origin.
+  Core idea: pass the positive part linearly, kill the rest.
 
 - **GELU (Hendrycks & Gimpel 2016).** `act(z) = z Phi(z) = z * 1/2 [1 + erf(z / sqrt(2))]`,
   with the common approximations `0.5 z (1 + tanh(sqrt(2/pi)(z + 0.044715 z^3)))` and
   `z sigmoid(1.702 z)`. Derived as the expected value of an input multiplied by a
   Bernoulli(Phi(z)) "keep" mask — a deterministic stand-in for input-dependent (adaptive)
   dropout. Smooth everywhere, with a small negative dip just below zero. The default
-  activation in BERT and the GPT line. **Limitation:** it is a smooth reshaping of ReLU that
-  is still asymptotically linear (`Phi(z) -> 1`, so `GELU(z) -> z`), so for strongly activated
-  units it behaves essentially like the identity; it also costs an `erf`/`exp`/`tanh`
-  evaluation per element.
+  activation in BERT and the GPT line.
 
 - **Swish (Ramachandran, Zoph & Le 2017).** `act(z) = z * sigmoid(beta z)`, the winner of a
   reinforcement-learning-plus-exhaustive *search over scalar activation functions*. Self-gated
   (the input gates itself through a sigmoid of itself), smooth, nonmonotonic, and — like
   GELU — asymptotically linear for large positive input. Demonstrates that searching for the
-  nonlinearity beats hand-design. **Limitation:** the search ranged over *scalar pointwise
-  functions* with the FFN's two-matrix structure held fixed, and the discovered functions all
-  land in the same smooth, ~linear-asymptote family as GELU; the search never reached
-  functions with a different growth regime or a multiplicative structure.
+  nonlinearity beats hand-design.
 
 - **GLU and its Transformer variants (Dauphin et al. 2016/2017; Shazeer 2020).** A Gated
   Linear Unit replaces a single projection with a *product of two* projections, one passed
@@ -110,10 +87,9 @@ The prior FFN-nonlinearity choices a new activation would be measured against.
   gating which vanishes through depth. Shazeer (2020) drops these into the Transformer FFN:
   `FFN_ReGLU(x) = (max(0, x W) ⊗ x V) W2`, and likewise `GEGLU` (GELU gate) and `SwiGLU`
   (Swish gate). On a T5 span-filling benchmark `GEGLU` and `SwiGLU` give the best perplexities
-  of the family. **Limitation:** every GLU FFN uses *three* weight matrices instead of two, so
-  to hold parameters and compute fixed the hidden width `d_ff` must be cut by a factor of 2/3;
-  it adds a projection and a hyperparameter (the width adjustment), and Shazeer (2020)
-  explicitly declines to explain *why* the gating helps — the mechanism is left open.
+  of the family. Every GLU FFN uses *three* weight matrices instead of two, so to hold
+  parameters and compute fixed the hidden width `d_ff` is reduced by a factor of 2/3; Shazeer
+  (2020) notes the empirical gains without offering a mechanistic explanation.
 
 ## Evaluation settings
 

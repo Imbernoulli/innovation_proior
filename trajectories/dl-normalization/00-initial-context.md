@@ -4,11 +4,11 @@ Current convolutional networks insert a normalization layer after almost every c
 
 ## Prior art / Background / Baselines
 
-- **Batch normalization (Ioffe & Szegedy 2015).** For each channel, it pools the mean and variance over the batch and spatial axes and applies a per-channel affine `γ x̂ + β`. Gap: the statistic is estimated over the batch, so quality degrades as the per-device batch shrinks and the layer must keep frozen running statistics for inference, creating a train-test discrepancy.
+- **Batch normalization (Ioffe & Szegedy 2015).** For each channel, it pools the mean and variance over the batch and spatial axes and applies a per-channel affine `γ x̂ + β`.
 
-- **Instance normalization (Ulyanov, Vedaldi & Lempitsky 2016).** For each sample and each channel, it pools over the spatial axes and applies a per-channel affine. Gap: on standard recognition tasks it underperforms batch normalization, because standardizing each channel map independently discards the per-image global scale that carries useful signal for classification.
+- **Instance normalization (Ulyanov, Vedaldi & Lempitsky 2016).** For each sample and each channel, it pools over the spatial axes and applies a per-channel affine.
 
-- **Layer normalization (Ba, Kiros & Hinton 2016).** For each sample, it pools over all channels and spatial positions and applies a per-channel affine. Gap: on convolutional features it lags batch normalization, because forcing every channel to share a single mean and variance ignores that different channels often have very different response distributions.
+- **Layer normalization (Ba, Kiros & Hinton 2016).** For each sample, it pools over all channels and spatial positions and applies a per-channel affine.
 
 ## Fixed substrate / Code framework
 
@@ -16,7 +16,7 @@ The backbones, training loop, and data are frozen. Three evaluations: **ResNet-5
 
 ## Editable interface
 
-Exactly one region is editable — the `CustomNorm` class in `pytorch-vision/custom_norm.py` (lines 31–45). It must be a drop-in replacement for `nn.BatchNorm2d`: constructed as `CustomNorm(num_features)` where `num_features` is the channel count `C`, taking `[B, C, H, W]` to `[B, C, H, W]`, numerically stable in both train and eval. Inside it you may compute statistics over any combination of the batch, channel, and spatial axes, add learnable affine parameters, mix several normalizations, or make the normalization input-dependent — as long as the constructor signature and tensor shape are preserved and nothing else changes.
+Exactly one region is editable — the `CustomNorm` class in `pytorch-vision/custom_norm.py` (lines 31–45). It must be a drop-in replacement for `nn.BatchNorm2d`: constructed as `CustomNorm(num_features)` where `num_features` is the channel count `C`, taking `[B, C, H, W]` to `[B, C, H, W]`, numerically stable in both train and eval. Inside it you may compute statistics over any combination of the batch, channel, and spatial axes, add learnable affine parameters, or make the normalization input-dependent — as long as the constructor signature and tensor shape are preserved and nothing else changes.
 
 The starting point is the default scaffold below: a plain `nn.BatchNorm2d`. Each rung replaces exactly this class body and nothing else.
 

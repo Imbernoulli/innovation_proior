@@ -71,19 +71,21 @@ The slot to be filled:
 # Known: the equal-time commutator of two local fields, supported on x0 = y0,
 # with delta-function coefficients in the three-vector x - y.
 #   [A(x0,x), B(x0,y)] = sum_n D_n(x - y) O_n(x)
+# This is the only short-distance datum current algebra hands us, and it is
+# blind to the convergence / divergence / high-energy questions listed above.
 
-# TODO: a description of the short-distance behavior of the ORDINARY (unequal-time,
-#       4-vector) product A(x) B(y) as y -> x, from which the equal-time commutator
-#       and the q0 -> infinity (Bjorken) limit must both follow as special cases.
-#
-#   A(x) B(y)  =  < the object we will construct here >
+# TODO: a sharper characterization of the short-distance behavior of a product
+#       of two local operators -- precise enough to settle whether the Weinberg
+#       sum rules converge, how radiative corrections diverge, and how the
+#       Fourier transform behaves as q0 -> infinity -- and from which the known
+#       equal-time commutator above must come back out.
 
-# Known machinery to be used in determining it:
+# Known machinery available for whatever that characterization turns out to be:
 #   - scale transformations U(s) and the dimensions of free fields
 #   - Wick's theorem and the free singular function D(x-y) ~ (x-y)^-2
-#   - the distribution/Taylor identities above, to recover the equal-time
-#     commutator as a special case
+#   - the distribution/Taylor identities above, for relating singular functions
+#     to delta-functions
 #   - Fourier transform + dimensional analysis for the q0 -> infinity limit
 ```
 
-The final derivation fills exactly this one slot: it constructs the short-distance description of $A(x)B(y)$, fixes whatever it is built from, and recovers the equal-time commutator (with its Schwinger terms) and the Bjorken limit as special cases.
+The final derivation fills exactly this one slot: it fixes the short-distance characterization, says what it is built from, and recovers the equal-time commutator (with its Schwinger terms) and the high-energy limit as consequences.

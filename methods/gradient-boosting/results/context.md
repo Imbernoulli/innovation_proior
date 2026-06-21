@@ -17,22 +17,20 @@ F(x) = sum_{m=1}^{M} beta_m * h(x; a_m),
 ```
 
 where each `h(x; a)` is a simple parameterized base learner (a small regression tree, a
-wavelet, a sigmoid unit). The trouble is fitting it. Doing the full joint optimization over
-all `{beta_m, a_m}` at once is infeasible, so one fits it greedily, one term at a time, in a
-forward stagewise manner. But that greedy per-stage subproblem,
+wavelet, a sigmoid unit). Doing the full joint optimization over all `{beta_m, a_m}` at once is
+infeasible, so one fits it greedily, one term at a time, in a forward stagewise manner. The
+greedy per-stage subproblem is
 
 ```
-(beta_m, a_m) = argmin_{beta, a} sum_i L(y_i, F_{m-1}(x_i) + beta * h(x_i; a)),
+(beta_m, a_m) = argmin_{beta, a} sum_i L(y_i, F_{m-1}(x_i) + beta * h(x_i; a)).
 ```
 
-only has a clean, fast solution for a couple of special losses. For half squared error it reduces
-to "fit the base learner to the current residuals" by least squares. For the exponential loss
-in two-class classification it reduces to a known reweighting algorithm. For everything else —
-absolute error, Huber, binomial deviance, multiclass deviance — there is no convenient
-fitting algorithm for the subproblem, and the bespoke derivations that do exist (one per loss)
-are each their own piece of machinery. The precise goal is a *single* procedure that fits a
-forward-stagewise additive model beyond those special cases, without deriving a new optimizer
-for every loss, while retaining the robustness and interpretability of regression trees.
+For half squared error it reduces to "fit the base learner to the current residuals" by least
+squares. For the exponential loss in two-class classification it reduces to a known reweighting
+algorithm. For other losses — absolute error, Huber, binomial deviance, multiclass deviance —
+bespoke derivations exist, one per loss. The question is how to fit a forward-stagewise additive
+model under an arbitrary differentiable loss `L(y, F)`, using regression trees as the base
+learner.
 
 ## Background
 
@@ -53,21 +51,19 @@ initial guess and each later `p_m` is a step computed from the preceding ones. T
 **steepest descent**: compute the current gradient `g_m = [d Phi / d P]_{P = P_{m-1}}`, step
 along the negative gradient `p_m = -rho_m * g_m`, and set the step length by a **line search**
 `rho_m = argmin_rho Phi(P_{m-1} - rho * g_m)`. The whole solution is a running sum of such
-gradient steps. This is a fully general optimizer — it needs only that `Phi` be
-differentiable — but as stated it lives in *parameter* space.
+gradient steps. This is a fully general optimizer — it needs only that `Phi` be differentiable.
 
-**Loss functions and what they buy.** For a real-valued target, half squared error is convenient
-but gives an outlier influence that grows with the square of its residual, so a few bad cases
-dominate the fit. Absolute error bounds each residual's influence (its gradient is just a
-sign) and is robust, but is awkward to optimize directly with a least-squares learner. The
-Huber loss interpolates: quadratic for small residuals (statistical efficiency under normal
-noise), linear beyond a transition point `delta` (robustness to long tails), where `delta` is
-commonly set to a quantile of the residual magnitudes so that a controlled fraction of points
-are treated as outliers. For two-class `y in {-1, 1}`, the natural statistical criterion is
-the binomial deviance `log(1 + e^{-2yF})`, whose minimizer makes `F` the (symmetric) logit of
-the class probability `F(x) = 0.5 * log[P(y=1|x) / P(y=-1|x)]`; the deviance grows only
-linearly in the margin `yF` for badly misclassified points, so it is far gentler on noisy
-labels than a criterion that grows exponentially in the margin.
+**Loss functions and what they buy.** For a real-valued target, half squared error gives an
+outlier influence that grows with the square of its residual. Absolute error bounds each
+residual's influence (its gradient is just a sign) and is robust. The Huber loss interpolates:
+quadratic for small residuals (statistical efficiency under normal noise), linear beyond a
+transition point `delta` (robustness to long tails), where `delta` is commonly set to a
+quantile of the residual magnitudes so that a controlled fraction of points are treated as
+outliers. For two-class `y in {-1, 1}`, a natural statistical criterion is the binomial
+deviance `log(1 + e^{-2yF})`, whose minimizer makes `F` the (symmetric) logit of the class
+probability `F(x) = 0.5 * log[P(y=1|x) / P(y=-1|x)]`; the deviance grows only linearly in the
+margin `yF` for badly misclassified points, gentler on noisy labels than a criterion that grows
+exponentially in the margin.
 
 **Regression trees as the base learner.** A regression tree (CART; Breiman, Friedman, Olshen
 and Stone 1984) partitions the input space into disjoint regions `{R_j}` (its terminal nodes)
@@ -81,11 +77,9 @@ It is grown greedily by recursive binary splits that minimize squared error, and
 size knob is the number of terminal nodes `J`. Trees handle mixed-type and missing data, are
 invariant to monotone transformations of individual inputs (they use only order information),
 are resistant to long-tailed *input* distributions and irrelevant inputs, and are
-interpretable. Their well-known weakness is high variance — a single tree is an unstable,
-inaccurate predictor — which is exactly the weakness that combining many of them addresses.
-Because a tree is itself a sum of `J` indicator basis functions over disjoint regions, an
-optimization over its `J` terminal values decomposes into `J` independent one-dimensional
-problems, one per region.
+interpretable. A single tree is a high-variance predictor. Because a tree is itself a sum of
+`J` indicator basis functions over disjoint regions, an optimization over its `J` terminal
+values decomposes into `J` independent one-dimensional problems, one per region.
 
 **An ANOVA reading of tree size.** Any function decomposes into main effects, two-variable
 interactions, three-variable interactions, and so on (the ANOVA decomposition). A tree with
@@ -96,24 +90,17 @@ large trees are rarely necessary.
 
 ## Baselines
 
-These are the prior methods a new general boosting procedure would be measured against and
-would react to.
+The prior methods a general boosting procedure is measured against.
 
 **Steepest descent in parameter space (numerical optimization).** As above: increments
 `p_m = -rho_m g_m` with a line search for `rho_m`, summed into `P*`. Fully general for any
-differentiable objective. **Gap:** it optimizes a fixed finite parameter vector. When the
-model is a *nonparametric* additive expansion whose components are chosen adaptively from a
-huge class (all small trees), there is no fixed `P` to take gradients of — the "directions"
-available are constrained to whatever the base learner can represent, and ordinary
-parameter-space steepest descent does not say how to respect that constraint.
+differentiable objective; it optimizes a fixed finite parameter vector.
 
 **Forward stagewise least-squares / matching pursuit (Mallat and Zhang 1993).** Greedily add
 the basis function `beta h(x; a)` that most reduces squared error to the current residual:
 `(beta_m, a_m) = argmin sum_i [y_i - F_{m-1}(x_i) - beta h(x_i; a)]^2`, equivalently fit the
-base learner to the residual `y_i - F_{m-1}(x_i)`. Simple and effective for regression.
-**Gap:** it is welded to squared-error loss. Squared error is the wrong criterion for
-classification and is non-robust for regression, and "fit the residuals" does not obviously
-generalize to a loss whose stage subproblem has no least-squares form.
+base learner to the residual `y_i - F_{m-1}(x_i)`. Simple and effective for regression with
+squared-error loss.
 
 **AdaBoost (Freund and Schapire 1996, 1997).** For `y in {-1, 1}`, maintain weights `w_i` over
 training examples (initially uniform). Each round, fit a classifier `h_m` under the current
@@ -121,11 +108,8 @@ weights, compute its weighted error `err_m`, set its coefficient
 `alpha_m = 0.5 * log((1 - err_m) / err_m)`, add `alpha_m h_m` to the ensemble, and reweight
 `w_i <- w_i * exp(-alpha_m * y_i * h_m(x_i))` (renormalized). Misclassified points therefore
 gain a factor `exp(2 * alpha_m)` relative to correctly classified points, so each round
-focuses on what is still hard; the final classifier is
-`sign(sum_m alpha_m h_m(x))`. It is strikingly accurate and modular. **Gap:** it is specific
-to two-class classification with one particular implicit criterion; it does not provide a
-recipe for regression or for general differentiable losses; and its implicit loss penalizes
-large-margin mistakes very steeply, which makes it brittle on noisy labels and outliers.
+focuses on what is still hard; the final classifier is `sign(sum_m alpha_m h_m(x))`. It is
+accurate and modular, for two-class classification.
 
 **Additive logistic regression / Newton-style boosting (Friedman, Hastie and Tibshirani
 2000).** This recasts AdaBoost as forward stagewise additive modeling that minimizes the
@@ -136,18 +120,12 @@ second order around `F = 0` but the deviance is gentler in the tails, and derive
 likelihood-based procedure (LogitBoost) by taking Newton steps on the binomial log-likelihood:
 form the working response `z_i = (y*_i - p_i) / (p_i (1 - p_i))` with weights `p_i(1 - p_i)`
 and fit by weighted least squares; for a tree, the optimal terminal-node constant is the
-corresponding per-leaf Newton step. **Gap:** each loss still gets its own bespoke derivation
-(exponential -> AdaBoost-style, binomial -> LogitBoost-style), one Newton machinery per
-criterion rather than a single mechanism for an arbitrary differentiable loss; and the Newton
-step divides by an estimated second derivative `p(1 - p)`, which vanishes as `p -> 0` or
-`p -> 1`, making the updates numerically unstable exactly where confident points pile up.
+corresponding per-leaf Newton step. Each loss gets its own derivation (exponential ->
+AdaBoost-style, binomial -> LogitBoost-style).
 
-**A single bagged or boosted tree as a predictor.** A single CART tree is interpretable but
-high-variance and inaccurate. Bagging averages many trees fit to bootstrap samples and reduces
-variance, but it is purely a variance-reduction device: with low-variance, high-bias base
-learners (e.g. stumps) it barely helps, since it cannot reduce bias. **Gap:** averaging
-independent trees does not sequentially attack the residual error a loss function still
-sees — it does not descend a chosen loss.
+**A single bagged or boosted tree as a predictor.** A single CART tree is interpretable and
+high-variance. Bagging averages many trees fit to bootstrap samples and reduces variance; with
+low-variance, high-bias base learners (e.g. stumps) it has little effect on variance.
 
 ## Evaluation settings
 

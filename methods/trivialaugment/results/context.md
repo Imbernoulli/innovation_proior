@@ -9,12 +9,6 @@ to apply, how strongly to apply it, whether to apply it at all, and how many ope
 The practical question is whether an augmentation policy must be searched separately for every
 model and dataset, or whether most of the benefit can be recovered by a fixed, search-free rule.
 
-The cost pressure is real. The strongest automatic policies of this period use an extra
-optimization phase before final training: reinforcement learning, density matching, online
-evolution, or grid search over augmentation hyperparameters. That phase can cost from roughly one
-additional training run to more than half a GPU-year, and it makes reproduction sensitive to the
-search code, proxy task, training budget, and augmentation-space details.
-
 ## Augmentation Space
 
 The common image-classification setup starts with a finite augmentation set `A` and a finite
@@ -54,16 +48,13 @@ zero-padding/random crop, and final Cutout.
 **RandAugment (Cubuk et al., 2020).** The policy is simplified to two scalars. For each image,
 sample `N` operations uniformly from the 14-operation set, apply them sequentially, and use one
 global magnitude `M` for all operations. The remaining knobs are `N in {1,2,3}` and
-`M in {0,...,30}`, tuned by grid search on the target task. This removes the controller but not
-the search; the search can still require many full trainings.
+`M in {0,...,30}`, tuned by grid search on the target task.
 
 **UniformAugment (LingChen et al., 2020).** The search-free theory treats augmentation as uniform
 coverage of an approximate invariant transform set. In the original algorithm, each selected
 operation has a sampled application probability `p ~ U(0,1)` and a sampled continuous magnitude
 `lambda ~ U(0,1)`. Some practical comparisons simplify that drop mechanism to a fixed leave-out
-probability of `0.5` while preserving random strength. In either form, there are still extra
-design choices beyond uniform operation sampling: composition depth, a drop mechanism, and a
-continuous or separately discretized strength range.
+probability of `0.5` while preserving random strength.
 
 **Cutout (DeVries and Taylor, 2017).** Cutout masks one random square region of the input image,
 for example `16 x 16` pixels on CIFAR-style inputs. It is a single regularizer, closer to a
@@ -91,13 +82,10 @@ of the loss and gradient vector when the transforms stay approximately in-class.
 coverage argument: the important ingredient is exposing the optimizer to diverse, label-preserving
 views, not finely optimizing the sampling weight of each view.
 
-RandAugment supplies two empirical clues against over-searching. First, the best global magnitude
-is not stable across proxy and target settings: it increases with model size and with training-set
-size. A policy searched on a smaller proxy can therefore be calibrated to the wrong strength.
-Second, RandAugment's appendix compares constant, random, linearly increasing, and random-with-
+RandAugment's appendix compares constant, random, linearly increasing, and random-with-
 increasing-upper-bound magnitude schedules. Random magnitude ties the best result, while the
 constant schedule is chosen mainly because it exposes only one hyperparameter. The same appendix
-and sensitivity plots also indicate that only a few strength values are often enough.
+and sensitivity plots indicate that only a few strength values are often enough.
 
 ## Fixed Code Surface
 
@@ -124,7 +112,3 @@ def build_train_transform(config):
         transforms.Normalize(config["mean"], config["std"]),
     ])
 ```
-
-For a faithful PyTorch landing, the open slot should match the canonical wide-transform semantics:
-14 operations, 31 strength bins, one uniformly sampled operation, one uniformly sampled strength
-bin when the operation has a magnitude vector, and a fair sign flip for signed operations.

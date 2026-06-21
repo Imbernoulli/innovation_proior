@@ -8,18 +8,8 @@ samples it was trained on. A membership inference attacker, given a query sample
 The threat is pervasive — it works on images, medical records, and transaction histories,
 and persists even under black-box access (query in, posterior out) or partial outputs
 (top-k labels). The precise goal: design a *training-time* procedure that drives a strong
-attacker's success rate down toward chance (an attack AUC of 0.5) **without** sacrificing —
-ideally while preserving or improving — the model's test accuracy.
-
-What makes this hard is that the two objectives pull against each other. The signal an
-attacker exploits is overfitting: a model trained to near-zero loss on its members behaves
-visibly differently on them than on never-seen samples. Suppressing that signal usually
-means regularizing harder, which on the standard recipe means lower training accuracy and,
-often, lower test accuracy too. A solution has to break that coupling — to make members and
-non-members look alike to the attacker while leaving (or improving) generalization. It also
-has to be cheap (a defender training a production model will not tolerate large overhead)
-and robust to attackers the defender did not anticipate, including the simplest metric-based
-ones, not just a particular learned attack network.
+attacker's success rate down toward chance (an attack AUC of 0.5) without sacrificing the
+model's test accuracy.
 
 ## Background
 
@@ -39,11 +29,9 @@ Adv = R_gen(A) / B,   R_gen(A) = E_{z~D}[ell(A_S, z)] - E_{z~S}[ell(A_S, z)],
 ```
 the average generalization error — expected loss on fresh data minus expected loss on the
 training set. With the 0-1 loss (`B=1`) the membership advantage *is* the generalization
-gap. The lesson: a large gap between the typical loss on members (driven toward 0 by
-training) and on non-members is by itself sufficient to mount an attack. They also note that
-when the loss is approximately Gaussian, an attacker who knows the error distribution can
-simply threshold the loss, and its advantage grows as the ratio of non-member to member loss
-standard deviations grows.
+gap. They also note that when the loss is approximately Gaussian, an attacker who knows the
+error distribution can simply threshold the loss, and its advantage grows as the ratio of
+non-member to member loss standard deviations grows.
 
 **The Bayes-optimal attack depends only on the sample loss (Sablayrolles, Douze, Ollivier,
 Schmid & Jegou, ICML 2019).** Under the modeling assumption that the trained parameters
@@ -62,11 +50,11 @@ tau_p(z_1) = -T log ∫ exp( -(1/T) ell(t, z_1) ) p_T(t) dt,
 ```
 where `tau_p(z_1)` is the typical loss on `z_1` over models that did *not* train on it. The
 attacker calls a point a member when `-ell(theta, z_1)` exceeds a threshold, equivalently
-when its loss falls below a threshold. Crucially, the white-box internals of `theta` add
-nothing beyond this loss value; the optimal attack is a loss
-threshold (a global constant threshold, or a per-sample one). So the single quantity an
-optimal attacker reads off the model is the *per-sample loss*, and the only thing that
-separates members from non-members is how the loss is *distributed* across the two groups.
+when its loss falls below a threshold. The white-box internals of `theta` add nothing beyond
+this loss value; the optimal attack is a loss threshold (a global constant threshold, or a
+per-sample one). So the single quantity an optimal attacker reads off the model is the
+*per-sample loss*, and the only thing that separates members from non-members is how the
+loss is *distributed* across the two groups.
 
 **The distributional picture.** Put the two together. Let `P` be the distribution of the
 per-sample loss over members and `Q` over non-members. Standard training pushes member
@@ -76,8 +64,7 @@ to tell them apart, and how well it can do so is governed by the statistical dis
 between `P` and `Q`. Empirically, on CIFAR-10 with a 20-layer ResNet, vanilla training
 yields a loss-thresholding attack AUC around 0.84: members near zero loss, non-members far
 above. The non-member loss distribution is observed to have *larger* variance than the
-member one. That is the loss landscape an overfit classifier presents to a threshold
-attacker.
+member one.
 
 **The prevailing regularization toolkit** attacks overconfidence by smoothing the output
 distribution. The relevant primitive is the softmax-cross-entropy objective
@@ -91,49 +78,35 @@ These are the prior defenses in the natural comparison set.
 
 **Early stopping.** Halt training before the model overfits, trading a smaller
 generalization gap for lower accuracy by reading off checkpoints at increasing epochs.
-*Limitation:* it only slides along the existing accuracy-vs-leakage curve set by the vanilla
-recipe; it cannot move that curve, so buying privacy always costs utility one-for-one.
 
 **Dropout (Srivastava et al. 2014).** Randomly mask units during training to prevent
-co-adaptation and reduce overfitting. *Limitation:* a generic regularizer not designed for
-membership inference; it dents the generalization gap slightly but leaves the member/non-
-member loss distributions clearly separable, so metric-based attacks still succeed.
+co-adaptation and reduce overfitting.
 
 **Label smoothing (Szegedy et al. 2016; Mueller, Kornblith & Hinton 2019).** Replace the
 one-hot target with a mixture of the one-hot and the uniform distribution, equivalently
 adding a KL term to the uniform:
 `L = alpha * KL(U || p_theta(y|x)) + (1-alpha) * L_CE`. This caps how confident the model
-becomes, lifting member losses off zero. *Limitation:* the pressure is global and class-
-agnostic; it can soften overconfident predictions, but the train/test loss distributions can
-remain separated enough for threshold attacks to work on images.
+becomes, lifting member losses off zero.
 
 **Confidence penalty (Pereyra, Tucker, Chorowski, Kaiser & Hinton 2017).** Add the negative
 predictive entropy to the loss to penalize peaked outputs:
 `L = -sum log p_theta(y|x) - beta * H(p_theta(y|x))`, with
 `H = -sum_c p^c log p^c`. The entropy gradient w.r.t. logit `i` is
 `p_i ( -log p_i - H )`, a weighted deviation from the mean — it continuously pushes outputs
-toward higher entropy. *Limitation:* like label smoothing it is a generic confidence
-regularizer rather than an objective tied directly to membership indistinguishability, so a
-loss-threshold signal can remain.
+toward higher entropy.
 
 **(Self-)distillation (Hinton et al. 2015; Zhang et al. 2019).** Train the model to match a
 softened teacher of the same architecture, transferring inter-class structure and softening
-predictions. *Limitation:* it reduces overconfidence, but it is not targeted at the
-membership-loss signal, so train/test loss separation can still be visible.
+predictions.
 
 **Adversarial regularization (Nasr, Shokri & Houmansadr 2018) and MemGuard (Jia et al.
 2019).** Train (or, for MemGuard, perturb outputs at test time against) a *surrogate* attack
 network, so the target model is optimized to maximize the surrogate attacker's error.
-*Limitation:* effectiveness hinges on the surrogate matching the real attacker; against a
-different or simpler metric-based attack the defense largely collapses. MemGuard is a test-
-time output perturbation and so does not defend white-box (gradient-norm) attacks at all,
-and adds inference- or training-time cost.
+MemGuard is a test-time output perturbation rather than a training-time objective.
 
 **DP-SGD (Abadi et al. 2016).** Clip per-sample gradients to `L2`-norm `C` and add Gaussian
 noise before each update, giving a worst-case differential-privacy guarantee that provably
-bounds membership advantage. *Limitation:* the guarantee covers attackers far beyond what is
-practically realizable, and paying for it visibly degrades test accuracy; the per-sample
-gradient clipping also makes training substantially more expensive.
+bounds membership advantage.
 
 ## Evaluation settings
 

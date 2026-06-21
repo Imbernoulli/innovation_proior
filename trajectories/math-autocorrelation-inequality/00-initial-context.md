@@ -39,16 +39,12 @@ Published lower bounds for `C2`:
 | Jaech–Joseph | 539 | ~0.9016 |
 | AlphaEvolve-V2 | ~50000 | 0.96102 |
 
-Each baseline leaves a visible gap:
-
-- **Flat indicator.** A single uniform height produces a triangular autoconvolution, the lowest meaningful score.
-- **Matolcsi–Vinuesa.** A small hand-tuned step profile reaches `0.88922`, but the construction does not generalize to larger `N`.
-- **AlphaEvolve.** A learned 50-step shape improves on hand tuning, yet the score is still far below 1.
-- **Boyer–Li.** Simulated annealing plus gradient refinement on 575 steps reaches `~0.9016`, but only after roughly `10^6` gradient trajectories.
-- **Jaech–Joseph.** Independent search on 539 steps matches `~0.9016`, confirming the difficulty of pushing past that regime rather than offering a transferable design.
-- **AlphaEvolve-V2.** An evolutionary search on `~50000` irregular steps reaches `0.96102`, the highest published score, at an enormous search cost and with no compact description of the resulting function.
-
-The gap between `0.96102` and the Hölder ceiling `1` remains open.
+- **Flat indicator.** A single uniform height produces a triangular autoconvolution with `R = 2/3`.
+- **Matolcsi–Vinuesa.** A small hand-tuned step profile with `N = 20` pieces reaches `0.88922`.
+- **AlphaEvolve.** A learned 50-step shape reaches `0.89628`.
+- **Boyer–Li.** Simulated annealing plus gradient refinement on 575 steps reaches `~0.9016`.
+- **Jaech–Joseph.** Independent search on 539 steps reaches `~0.9016`.
+- **AlphaEvolve-V2.** An evolutionary search on `~50000` irregular steps reaches `0.96102`, the highest published score.
 
 ## Fixed substrate / Code framework
 

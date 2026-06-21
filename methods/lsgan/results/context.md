@@ -4,28 +4,17 @@
 
 The adversarial framework trains a generative model end-to-end through differentiable networks, with
 no intractable partition function and no approximate inference — a clean advantage over the
-energy-based and variational generative models. But the quality of the images it produces is still
-limited for realistic tasks, and training it is notoriously unstable. In the standard formulation the
-discriminator is a *classifier* trained with the sigmoid cross-entropy loss, and there is a specific,
-diagnosable failure in how that loss feeds gradient back to the generator.
-
-Picture the discriminator's decision boundary in data space. When the generator is updated, it is
-pushed to make the discriminator classify its fake samples as real. Consider fake samples that already
-lie *on the correct (real) side* of the decision boundary but are still *far* from the real data. Under
-sigmoid cross-entropy these samples are already classified confidently as real, so the loss they incur
-is essentially zero and the gradient they pass back to the generator vanishes — the generator receives
-almost no signal to pull those far-but-correctly-classified samples closer to the real data. The
-sigmoid saturates exactly where you still need to move. The precise question: **is there a
-discriminator loss that keeps supplying a useful gradient to the generator for samples that are
-correctly classified but still far from the real data — pulling them toward the real-data manifold —
-and that thereby also makes adversarial training more stable?**
+energy-based and variational generative models. Image quality and training stability remain active
+concerns, and several analyses trace both back to the *objective function* — specifically, the choice
+of discriminator loss and how it feeds gradient back to the generator. The question is what
+discriminator loss most effectively drives the generator toward realistic outputs while keeping
+training stable.
 
 ## Background
 
 The field state (mid-2010s adversarial image generation): the adversarial framework produces the most
-convincing unsupervised image samples, but image quality and training stability are the two open
-fronts, and several lines of work trace both back to the *objective function*. The load-bearing
-concepts and the key diagnostic observation:
+convincing unsupervised image samples, and several lines of work focus on the *objective function* as
+the place to improve image quality and stability. The load-bearing concepts:
 
 - **The adversarial game and its sigmoid cross-entropy loss (Goodfellow et al., 2014).** A generator
   `G(z)` maps noise `z ~ p_z` to data space, implicitly defining `p_g`; a discriminator `D(x)`, a
@@ -34,29 +23,20 @@ concepts and the key diagnostic observation:
   discriminator, this minimizes the Jensen–Shannon divergence between data and model:
   `C(G) = KL(p_data ‖ (p_data+p_g)/2) + KL(p_g ‖ (p_data+p_g)/2) − log 4`.
 
-- **The saturation of sigmoid cross-entropy (the diagnostic insight).** The sigmoid cross-entropy loss,
-  as a function of the classifier's pre-activation, is flat (saturated) once a sample is confidently on
-  the correct side. So a fake that is already classified as real contributes a vanishing gradient,
-  regardless of how far it is from the real data — which is exactly the regime where the generator
-  still needs a push. This is the mechanism behind the vanishing-gradient difficulty when updating the
-  generator.
-
-- **The decision boundary must cross the real-data manifold.** For successful adversarial learning the
-  discriminator's boundary has to pass through the region where the real data lives; otherwise learning
-  saturates. Consequently, moving generated samples *toward the boundary* is, geometrically, moving
-  them *toward the real-data manifold*.
+- **The decision boundary and the real-data manifold.** For successful adversarial learning the
+  discriminator's boundary passes through the region where the real data lives. The generator is
+  updated to push its samples toward the real side of this boundary.
 
 - **f-divergences and the GAN objective (Nowozin et al., 2016; Nguyen et al., 2010).** The original
   game's link to Jensen–Shannon divergence is a special case of a general principle: an adversarial
   objective can be made to estimate and minimize an arbitrary f-divergence between `p_data` and `p_g`.
 
-- **Stability is partly an objective problem.** Multiple analyses (Arjovsky et al., 2017; Metz et al.,
-  2016; Qi, 2016; Che et al., 2016) attribute the instability of adversarial training in part to the
-  objective. Arjovsky et al. argued the Wasserstein distance behaves better than Jensen–Shannon and
-  introduced a stress test for stability: remove batch normalization (Ioffe & Szegedy, 2015) from the
-  networks and see whether learning still converges. Qi's Loss-Sensitive GAN built a loss with
-  non-vanishing gradient almost everywhere from the assumption that real samples should have smaller
-  loss than fakes.
+- **Stability analyses (Arjovsky et al., 2017; Metz et al., 2016; Qi, 2016; Che et al., 2016).**
+  Multiple analyses attribute the behavior of adversarial training partly to the objective. Arjovsky
+  et al. argued the Wasserstein distance behaves better than Jensen–Shannon and introduced a stress
+  test for stability: remove batch normalization (Ioffe & Szegedy, 2015) from the networks and see
+  whether learning still converges. Qi's Loss-Sensitive GAN built a loss with non-vanishing gradient
+  almost everywhere from the assumption that real samples should have smaller loss than fakes.
 
 - **Conditioning on labels (Mirza & Osindero, 2014; Hornik, 1989).** Feeding label information to both
   networks makes the input→output relation deterministic, which a feed-forward network can represent;
@@ -67,28 +47,23 @@ concepts and the key diagnostic observation:
 The prior methods a new procedure would be measured against and reacts to:
 
 - **The adversarial game with a sigmoid cross-entropy discriminator (Goodfellow et al., 2014).** The
-  base method; minimizes Jensen–Shannon divergence at optimum. *Gap:* the sigmoid loss saturates, so
-  fakes that are correctly classified yet far from the data give a vanishing gradient — limiting image
-  quality and destabilizing training.
+  base method; minimizes Jensen–Shannon divergence at optimum.
 
 - **The stable convolutional recipe (Radford et al., 2015).** Strided/fractionally-strided
   convolutions, batch normalization, ReLU in the generator, leaky ReLU in the discriminator — the
   architecture template that made convolutional adversarial training work, and the backbone any new
-  variant would build on. *Gap:* it addresses architecture, not the objective's saturation.
+  variant would build on.
 
 - **Laplacian-pyramid GANs (Denton et al., 2015) and feature matching (Salimans et al., 2016).**
   Quality- and convergence-oriented improvements: a coarse-to-fine pyramid of conditional models, and
-  matching the statistics of an intermediate discriminator layer. *Gap:* leave the core sigmoid
-  objective in place.
+  matching the statistics of an intermediate discriminator layer.
 
 - **Wasserstein GAN (Arjovsky et al., 2017).** Replaces the Jensen–Shannon objective with a
   Wasserstein-distance critic, improving stability and admitting training without batch normalization.
-  *Gap:* requires multiple discriminator updates per generator update (a Lipschitz-constrained critic
-  trained closer to optimality each step), which is comparatively slow.
+  Requires multiple discriminator updates per generator update with a Lipschitz-constrained critic.
 
 - **Energy-based GAN (Zhao et al., 2016).** Views the discriminator as an energy function realized by
-  an autoencoder, improving stability. *Gap:* a different discriminator design, still not addressing
-  the classifier-loss saturation directly.
+  an autoencoder, improving stability.
 
 ## Evaluation settings
 
@@ -113,9 +88,9 @@ The benchmarks, datasets, and protocol that form the natural yardstick:
 
 The available substrate is the stable convolutional adversarial harness — a fractionally-strided
 generator, a strided convolutional discriminator, batch normalization, ReLU/leaky-ReLU activations,
-Adam — together with its standard discriminator loss. What is variable, and what the method will
-change, is the *discriminator's loss function* (and through it the generator's), plus an optional
-label-conditioning path for the many-class case.
+Adam — together with its standard discriminator loss. What is variable is the *discriminator's loss
+function* (and through it the generator's), plus an optional label-conditioning path for the
+many-class case.
 
 ```python
 import torch
@@ -142,7 +117,7 @@ class Discriminator(nn.Module):
         pass
 
 # TODO: the adversarial loss for D and for G. The base game uses a sigmoid + cross-entropy
-#       classifier loss, which saturates; the open question is what loss to use instead.
+#       classifier loss; the open question is what loss to use instead.
 adversarial_loss = None
 
 def train_step(real, opt_g, opt_d):
@@ -152,7 +127,3 @@ def train_step(real, opt_g, opt_d):
     # 2) update G so D scores its fakes as real (under the chosen loss)
     pass
 ```
-
-This harness can run the adversarial game on a stable convolutional pair, but the discriminator's
-output form and the loss that drives both networks — the piece responsible for the vanishing-gradient
-behavior — is the open problem.

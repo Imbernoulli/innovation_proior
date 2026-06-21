@@ -7,9 +7,7 @@ updates *all* of the model's weights and stores a separate copy of the entire mo
 11-billion-parameter model served across many tasks, that per-task cost dominates everything. The
 question: **can one frozen pre-trained model be specialized to many tasks by learning only a tiny
 task-specific signal at the input, with no change to the model's weights — and how good can such a
-method get?** A solution must (i) leave the pre-trained weights untouched and shared across tasks,
-(ii) add a minimal number of new parameters per task, and (iii) ideally close the accuracy gap to
-full fine-tuning. A central sub-question is how this trade-off depends on model *scale*.
+method get?** A central sub-question is how any such approach depends on model *scale*.
 
 ## Background
 
@@ -24,18 +22,15 @@ Y.
 so the model maximizes Pr_θ(Y | [P; X]) with θ fixed. In GPT-3-style prompting, P is a sequence of
 real vocabulary tokens, so the prompt's representation is drawn from the model's frozen embedding
 table — finding a good prompt means *selecting discrete tokens*, by hand or by non-differentiable
-search (Jiang et al. 2020; AutoPrompt, Shin et al. 2020). Prompt design is extremely parameter-
-efficient (the prompt is just token IDs) and needs no training, but its quality is limited and it
-caps each prompt slot at a real word's embedding. GPT-3 showed large frozen models are strong
-"few-shot learners" via such prompts.
+search (Jiang et al. 2020; AutoPrompt, Shin et al. 2020). GPT-3 showed large frozen models are
+strong "few-shot learners" via such prompts.
 
-**Prefix-tuning** (Li & Liang 2021) makes the prompt continuous and learnable, but goes further:
-it prepends trainable activation prefixes at *every* transformer layer, with an MLP
-reparametrization for stable optimization. It works well, but it tunes parameters across all layers
-and modifies the model's internal activations.
+**Prefix-tuning** (Li & Liang 2021) makes the prompt continuous and learnable, prepending trainable
+activation prefixes at *every* transformer layer, with an MLP reparametrization for stable
+optimization.
 
 **Adapters** (Houlsby et al. 2019) insert small trainable bottleneck modules between frozen
-Transformer layers — another parameter-efficient route, but one that adds modules into the backbone.
+Transformer layers.
 
 **T5's pre-training objective.** T5.1.1 is pre-trained *only* on span corruption:
 masked spans in the input are replaced by unique sentinel tokens, and the target is the masked
@@ -45,24 +40,21 @@ toward emitting sentinels. Full fine-tuning can move the decoder weights; an app
 the weights frozen cannot.
 
 **Motivating observations about scale and base model.** Mid-sized T5 models prompted off-the-shelf
-on span corruption are *unreliable*: on many tasks they never emit a legal class label (scoring 0%),
-with the common failure modes being copying sub-spans of the input or predicting the empty string —
-and this is consistent across runs, not variance. GPT-3 (a left-to-right LM that always outputs
+on span corruption produce unexpected outputs on many tasks, including copying sub-spans of the
+input or predicting the empty string, scoring 0%. GPT-3 (a left-to-right LM that always outputs
 natural text) responds far better to prompts.
 
 ## Baselines
 
-- **Model tuning (full fine-tuning)** of T5.1.1, per task. Accuracy target; gap: stores a full model
-  copy per task; no sharing; default lr 1e-3, Adafactor with restored pre-training parameter states.
-- **Model tuning, multi-task.** One model tuned on all tasks jointly with a task-name prefix; a
-  stronger accuracy baseline. Gap: still a full model, and needs all tasks at once.
-- **Prompt design / GPT-3 few-shot** (Brown et al. 2020). Frozen model conditioned on a hand-built
-  discrete prompt. Gap: limited quality; discrete slots capped to real words; very long prompts.
-- **Prefix-tuning** (Li & Liang 2021). Learnable continuous activations at *every* layer + MLP
-  reparametrization. Gap: per-layer task-specific parameters; modifies internal activations across
-  the stack.
-- **Discrete prompt search / AutoPrompt** (Shin et al. 2020). Gradient-guided discrete token search.
-  Gap: non-differentiable search; real-word constraint.
+- **Model tuning (full fine-tuning)** of T5.1.1, per task. Accuracy target; default lr 1e-3,
+  Adafactor with restored pre-training parameter states.
+- **Model tuning, multi-task.** One model tuned on all tasks jointly with a task-name prefix.
+- **Prompt design / GPT-3 few-shot** (Brown et al. 2020). Frozen model conditioned on a
+  hand-built discrete prompt.
+- **Prefix-tuning** (Li & Liang 2021). Learnable continuous activations at *every* layer plus MLP
+  reparametrization.
+- **Discrete prompt search / AutoPrompt** (Shin et al. 2020). Gradient-guided discrete token
+  search.
 
 ## Evaluation settings
 

@@ -5,20 +5,10 @@
 Given a desired magnitude response — typically piecewise constant: gain 1 in passbands, 0 in
 stopbands, with prescribed band edges and "don't-care" transition gaps — design a length-`N`
 finite-impulse-response (FIR) filter with exactly linear phase whose realized magnitude
-approximates the spec as well as possible. The operative notion of "as well as possible" is the
-one a hardware/communications designer actually cares about: the **worst-case** deviation from the
-ideal across the bands. A telephony channel filter, a decimation anti-alias filter, a
-differentiator — each comes with a tolerance scheme (passband ripple ≤ δ_p, stopband attenuation ≥
-some dB) and a fixed tap budget `N`. The problem is to hit the smallest possible worst-case ripple
-for that `N`, while **placing the band edges exactly where the spec demands**, and to do so by a
-procedure reliable and fast enough to design filters with hundreds of taps on the computers of the
-day.
-
-Two requirements make this hard. First, the right error measure is the Chebyshev (minimax, L∞) one
-— minimize the maximum weighted error — not the mean-squared error, and minimax problems have no
-closed form. Second, the designer must be able to nail the passband and stopband cutoff
-frequencies; a method that only lets the optimizer wander the edges around is unusable for meeting
-a spec.
+approximates the spec as well as possible in the **worst-case** (Chebyshev, L∞) sense across the
+bands. A telephony channel filter, a decimation anti-alias filter, a differentiator — each comes
+with a tolerance scheme (passband ripple ≤ δ_p, stopband attenuation ≥ some dB) and a fixed tap
+budget `N`.
 
 ## Background
 
@@ -47,16 +37,13 @@ approximation: guess a reference set of `r+1` points; solve for the polynomial a
 the locations where the actual error is largest (the exchange); repeat. The error level rises
 monotonically toward the optimum and the references converge to the true equioscillation points.
 
-**Motivating empirical facts about the prior FIR methods.** It is well documented that simple
-truncation of the ideal impulse response (a rectangular window) suffers the **Gibbs phenomenon**: a
-roughly **9% overshoot** at the band edge that does **not** shrink as `N` grows — increasing `N`
-only narrows the "ears," never lowers them. So the rectangular window minimizes the
-integral-squared error but is *not optimal by the minimax criterion*: its worst-case ripple is
-stuck. Tapered windows (Hamming `0.54 - 0.46 cos(2πn/(N-1))`, with peak sidelobe ~40 dB down; Blackman,
-sidelobes < 0.0001 of the main-lobe peak at the cost of a 3× wider main lobe; Kaiser/Dolph–Chebyshev
-windows that trade ripple against transition width) tame the ripple but still do not *minimize* it,
-and they offer **no direct handle on the band-edge frequencies** — the cutoff is wherever the
-windowed sum happens to put it.
+**Window behavior.** Simple truncation of the ideal impulse response (a rectangular window) suffers
+the **Gibbs phenomenon**: a roughly **9% overshoot** at the band edge that does **not** shrink as
+`N` grows — increasing `N` only narrows the "ears." The rectangular window minimizes the
+integral-squared error. Tapered windows (Hamming `0.54 - 0.46 cos(2πn/(N-1))`, with peak sidelobe
+~40 dB down; Blackman, sidelobes < 0.0001 of the main-lobe peak at the cost of a 3× wider main
+lobe; Kaiser/Dolph–Chebyshev windows that trade ripple against transition width) reduce the ripple
+relative to the rectangular window.
 
 ## Baselines
 
@@ -64,34 +51,26 @@ windowed sum happens to put it.
 at `ω_c`, `h_d(n) = sin(ω_c n)/(πn)` with limiting value `ω_c/π` at `n=0` — truncate it to `N` samples by multiplying by a window `w(n)`,
 and delay to make it causal. In the frequency domain this convolves the ideal brick wall with the
 window's Fourier transform; the window's main-lobe width sets the transition width and its sidelobes
-set the ripple. **Limitation:** the worst-case ripple is governed by the window, not optimized; for
-the rectangular window it is the fixed ~9% Gibbs overshoot, and for any window the band edges cannot
-be specified independently of the transition width. Best mean-squared error, but not minimax.
+set the ripple. The rectangular window minimizes mean-squared error; the Gibbs overshoot is ~9%.
 
 **Frequency-sampling method.** Specify the response at `N` equispaced frequencies `H_k` and recover
 the impulse response by the inverse DFT, `h(n) = (1/N) Σ_k H_k e^{j(2π/N)kn}`. The interpolated
 response is exact at the sample points but ripples in between. The ripple can be reduced by leaving
 a few **transition-band samples free** and choosing them (by linear programming) to cancel ripple,
-since the response is *linear* in the unknown samples. **Limitation:** it minimizes ripple only
-indirectly, through a handful of free samples, and the sample grid pins the achievable band edges to
-multiples of the sampling interval; it does not directly minimize the in-band worst-case error.
+since the response is *linear* in the unknown samples.
 
 **Linear-programming design.** Because the response `G(f) = Σ α_k cos(2πkf)` is linear in the
 coefficients, one can pose "minimize `δ` subject to `-δ ≤ W(f_i)[D(f_i) - G(f_i)] ≤ δ` on a dense
 frequency grid" as a linear program and let a simplex solver find the minimax coefficients. This
-*does* minimize the worst-case error and *does* allow exact band edges. **Limitation:** an LP with a
-constraint per grid point and one column per coefficient is heavy — practical only up to ~100
-parameters — and slow relative to a method that exploits the special equioscillation structure of
-the optimum.
+minimizes the worst-case error and allows exact band edges, with practical scale up to ~100
+parameters.
 
 **Maximal-ripple (Herrmann–Hofstetter) equiripple design.** Solve directly for a filter whose
 error equiripples: write constraint equations setting the error to `±δ` at a guessed set of extremal
 frequencies and setting its derivative to zero there, producing a system of `N-1` nonlinear
 equations in `N-1` unknowns (the coefficients plus the extremal locations), solved by Newton-type
-iteration. This yields genuinely equiripple filters. **Limitation:** the extremal frequencies — and
-hence the band edges — are *outputs* of the solve, not inputs; the designer cannot prescribe the
-passband/stopband cutoffs, which is exactly what a spec requires. It also targets one filter type at
-a time.
+iteration. This yields genuinely equiripple filters whose extremal frequencies are outputs of the
+solve.
 
 ## Evaluation settings
 

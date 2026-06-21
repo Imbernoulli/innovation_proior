@@ -14,21 +14,21 @@ An interactive proof system consists of a probabilistic polynomial-time verifier
 
 This model extends NP by allowing communication rather than a single static certificate. Goldwasser, Micali, and Rackoff defined the private-coin form using interactive Turing machines; Babai independently developed public-coin Arthur-Merlin games. Goldwasser and Sipser later showed that public and private coins are equivalent up to small round changes.
 
-The model had one striking early success: graph non-isomorphism. The verifier sends a random relabeling of one of two graphs, and an all-powerful prover identifies which graph it came from. If the graphs are isomorphic, the challenge distributions coincide and the prover can only guess. This shows interaction can go beyond obvious NP certificates, but it is a special-purpose protocol.
+The model had one striking early success: graph non-isomorphism. The verifier sends a random relabeling of one of two graphs, and an all-powerful prover identifies which graph it came from. If the graphs are isomorphic, the challenge distributions coincide and the prover can only guess. This shows interaction can go beyond obvious NP certificates.
 
-The next natural pressure point is coNP. Unsatisfiability has no known short certificate, and a coNP-complete interactive proof would be a major departure from the NP picture. A relativized barrier made this seem unlikely: Fortnow and Sipser constructed an oracle relative to which coNP has no interactive proofs. Any positive result in the real world would therefore need to use non-black-box structure.
+The next natural pressure point is coNP. Unsatisfiability has no known short certificate, and a coNP-complete interactive proof would be a major departure from the NP picture. A relativized barrier made this seem unlikely: Fortnow and Sipser constructed an oracle relative to which coNP has no interactive proofs.
 
 Polynomial space supplies the upper benchmark. TQBF, the truth of a fully quantified Boolean formula, is PSPACE-complete. Every polynomial-space computation can be reduced to such a formula, and NP, coNP, and the polynomial hierarchy all sit below PSPACE.
 
 ## Baselines
 
-NP certificates use one message: the prover sends a polynomial-length witness, and the verifier checks it deterministically. This is simple and robust, but it gives no general way to certify that every assignment fails or that every branch of a polynomial-space computation behaves correctly.
+NP certificates use one message: the prover sends a polynomial-length witness, and the verifier checks it deterministically.
 
-Graph non-isomorphism uses interaction and private randomness, but the protocol relies on a symmetry property of two graphs. It does not offer a general method for checking exponentially many configurations or quantified choices.
+Graph non-isomorphism uses interaction and private randomness. The protocol relies on a symmetry property of two graphs: the verifier sends a random relabeling of one graph and the prover identifies which graph it came from.
 
-Arthur-Merlin games use public coins. Constant-round versions have collapse phenomena, and bounded-round proofs for coNP would imply strong collapses of the polynomial hierarchy. This suggests that any large jump in power would need polynomially many rounds.
+Arthur-Merlin games use public coins. Constant-round versions have collapse phenomena, and bounded-round proofs for coNP would imply strong collapses of the polynomial hierarchy.
 
-Counting classes provide another baseline. A #P function counts accepting paths or satisfying assignments. The permanent of a 0/1 matrix is #P-complete, and a formula is unsatisfiable exactly when its number of satisfying assignments is zero. If a verifier could check such counts interactively, the reach would extend well beyond isolated examples.
+Counting classes provide another baseline. A #P function counts accepting paths or satisfying assignments. The permanent of a 0/1 matrix is #P-complete, and a formula is unsatisfiable exactly when its number of satisfying assignments is zero.
 
 Finite fields provide the relevant algebraic tool. Over a field, two distinct low-degree univariate polynomials can agree at only a small number of points. Therefore a random field point can test equality of low-degree polynomials with high confidence, provided the field is large enough.
 
@@ -36,10 +36,8 @@ Finite fields provide the relevant algebraic tool. Over a field, two distinct lo
 
 The theorem is evaluated by proof, not experiments. The verifier must run in polynomial time, use polynomially many random bits, exchange polynomially many messages, and have bounded error against every dishonest prover.
 
-The target hard instances are quantified Boolean formulas, Boolean formulas whose satisfying assignments might need to be counted, and algebraically structured #P-complete objects such as the permanent. A successful protocol must avoid enumerating exponentially many assignments or configurations.
+The target hard instances are quantified Boolean formulas, Boolean formulas whose satisfying assignments might need to be counted, and algebraically structured #P-complete objects such as the permanent.
 
-Soundness must be quantitative. It is not enough to say that a lie is unlikely to pass; the proof must bound the probability that a false claim survives all random challenges. The field size and polynomial degrees must be chosen so this probability is below the required error threshold.
-
-The exact characterization also needs an upper bound. If the verifier-prover model can verify a class of statements, there must be a way to simulate the optimal prover strategy within the claimed deterministic resource bound.
+Soundness must be quantitative: the proof must bound the probability that a false claim survives all random challenges, with the field size and polynomial degrees chosen so this probability is below the required error threshold.
 
 

@@ -18,9 +18,7 @@ The precise problem: the base classifier and the train / calibration / test spli
 held-out labeled calibration set, learn a **post-hoc mapping** `s(x) ↦ p̂(x)` that takes the
 classifier's raw, possibly distorted scores and returns numbers that *are* calibrated probabilities —
 non-negative, and (for the multiclass case, over all classes) summing to one — without retraining the
-base model and without sacrificing the ranking that the scores already get right. A solution has to fix
-whatever shape of distortion the classifier happens to have, regularize enough to generalize from a
-finite calibration set, and remain cheap to fit and to apply.
+base model. How can such a map be learned from a finite calibration set?
 
 ## Background
 
@@ -49,13 +47,10 @@ Several already-visible calibration failures motivate the problem:
   numbers**. There is useful signal in the ordering, and the task is to recover the correct vertical
   scale.
 
-A practical obstacle underlies everything: in real data the number of distinct score values is large
-relative to the number of labeled examples, so we cannot just read `P(c | s(x) = s)` off the data for
-every `s` — there are too few examples at each exact score to estimate a reliable empirical
-probability. Any method has to *aggregate* nearby scores to get stable estimates, and the question of
-*how* to aggregate is where the methods differ. A bias-variance tension runs through it: aggregate too
-coarsely (or impose too rigid a shape) and you cannot represent the true distortion; aggregate too
-finely (or impose nothing) and the estimates are noisy and overfit the calibration set.
+In real data the number of distinct score values is large relative to the number of labeled examples,
+so we cannot just read `P(c | s(x) = s)` off the data for every `s` — there are too few examples at
+each exact score to estimate a reliable empirical probability. Any method has to *aggregate* nearby
+scores to get stable estimates, and the question of *how* to aggregate is where the methods differ.
 
 A second, separate difficulty is the **multiclass** case. Calibration as defined above is per-class and
 transfers directly to `k` classes — class `c_i` is calibrated if `P(c_i | s(c_i, x) = s) → s`. But a
@@ -84,35 +79,21 @@ regularization of the target labels to avoid overfitting). Motivated by the obse
 score-to-probability curve for SVM margins is sigmoidal on many datasets; Platt showed it gives
 probabilities at least as accurate as training an SVM specifically for probabilities, while being
 faster. With only two free parameters it is strongly regularized and works well on small calibration
-sets. **Gap:** it *commits to a single functional shape*. When the true distortion really is sigmoidal
-(SVM on Adult, say) it fits beautifully, but when the score-to-probability relationship has some other
-increasing shape — as naive-Bayes curves can — a sigmoid cannot represent it, and the residual
-miscalibration is whatever the sigmoid leaves behind. It can only undo distortions of the one shape it
-assumes.
+sets.
 
 **Binning / histogram estimation (Zadrozny & Elkan 2001).** A shape-free, non-parametric alternative.
 Sort the calibration examples by score and split the sorted list into `b` subsets of equal size — the
 bins. Record each bin's lower/upper score boundaries. To score a test example, find the bin its score
 falls in and return that bin's *fraction of positive training examples* as the calibrated probability.
-**Gaps:** the number of bins `b` must be chosen by cross-validation, which is unreliable when the
-calibration set is small or highly unbalanced; and, more fundamentally, the **bin size is fixed and the
-boundary positions are essentially arbitrary** — they are dictated by equal counts, not by where the
-score actually carries information. If a boundary happens to fall in the middle of a region where the
-true probability is changing fast, the bin averages together examples that clearly deserve different
-probabilities and smears them into one value. Coarse where it should be fine, and fine where coarse
-would do; the granularity is not adapted to how well the classifier ranks in each part of the range.
+The number of bins `b` is chosen by cross-validation.
 
 **Directly calibrating the multiclass joint output.** One could try to learn the correction in the
-`(k-1)`-dimensional simplex directly. **Gap:** there is no sensible shape constraint to impose on a
-high-dimensional simplex-to-simplex map, and non-parametric estimation in that many dimensions needs
-prohibitively much data as the number of classes grows; the estimates are not reliable.
+`(k-1)`-dimensional simplex directly.
 
 **Code-matrix combiners for multiclass (Kong & Dietterich 1997; Hastie & Tibshirani 1998;
 Zadrozny 2002).** Given per-binary-problem probability estimates `r_b(x)` and a code matrix `M`, recover
 a class distribution `P(c | x)` either by least-squares with non-negativity constraints or by an
 iterative log-loss "coupling" procedure. These solve the *combination* step for arbitrary code matrices.
-**Gap:** they are general-purpose reduction machinery and bring more apparatus than the simplest
-reduction needs; they say nothing about how to calibrate the per-class scores that feed them.
 
 ## Evaluation settings
 

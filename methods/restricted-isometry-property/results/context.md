@@ -9,23 +9,13 @@ $$ y = \Phi x, \qquad \Phi \in \mathbb{R}^{m\times n}, \quad m \ll n, $$
 where $x \in \mathbb{R}^n$ is the unknown signal (or its coefficients in a fixed
 orthobasis), $\Phi$ is a known measurement matrix, and $y \in \mathbb{R}^m$ are the
 observations. The system is **underdetermined**: $\{x : \Phi x = y\}$ is an affine
-subspace of dimension at least $n-m$, an infinitude of exact solutions, and ordinary
-linear algebra gives no reason to prefer one over another. Yet across imaging, signal
-processing, and statistics the signal of interest is **sparse** — only $s \ll n$ of its
-entries are nonzero (or it is sparse after a known transform: a natural image is sparse
-in wavelets, a sum of a few tones is sparse in Fourier). The question is whether sparsity
-is enough side information to single out the *right* $x$ from $m \ll n$ measurements, and
-how few measurements are enough.
-
-A usable answer must clear two separate bars at once. **Identifiability**: under what
-condition on $\Phi$ and on the sparsity level $s$ is the sparse signal the *unique*
-sparse member of the solution set, so that "find the sparsest $x$ consistent with $y$" is
-well posed? **Tractability**: the sparsest-solution problem is on its face a combinatorial
-search over which coordinates are active, and application sizes ($n$ in the millions,
-$\Phi$ dense) rule out anything that enumerates supports or even forms $\Phi^\top\Phi$.
-And underneath both, a **sample-complexity** question: as a function of $s$ and $n$, what
-is the smallest number of rows $m$ for which recovery is possible at all, and can a
-practical method reach it?
+subspace of dimension at least $n-m$, and ordinary linear algebra gives no reason to
+prefer one solution over another. Yet across imaging, signal processing, and statistics
+the signal of interest is **sparse** — only $s \ll n$ of its entries are nonzero (or
+sparse after a known transform: a natural image is sparse in wavelets, a sum of a few
+tones is sparse in Fourier). The question is whether sparsity is enough side information
+to single out the *right* $x$ from $m \ll n$ measurements, and how few measurements
+are enough.
 
 ## Background
 
@@ -35,9 +25,9 @@ formulation is
 $$ (P_0)\quad \min_{\tilde x \in \mathbb{R}^n} \ \|\tilde x\|_{\ell_0}
 \quad\text{s.t.}\quad \Phi\tilde x = y, \qquad \|\tilde x\|_{\ell_0} = |\{i:\tilde x_i\neq 0\}|. $$
 
-Solving $(P_0)$ exactly is NP-hard (Natarajan 1995): to the best of the field's knowledge
-it requires searching over subsets of columns, which is exponential. So $(P_0)$ pins down
-the right answer in principle but is computationally hopeless at scale.
+Solving $(P_0)$ exactly is NP-hard (Natarajan 1995): it requires searching over subsets
+of columns, which is exponential. So $(P_0)$ pins down the right answer in principle but
+is computationally hopeless at scale.
 
 **The $\ell_1$ convex surrogate (basis pursuit).** Replacing the nonconvex count by the
 $\ell_1$ norm gives
@@ -48,18 +38,15 @@ which is convex and recasts as a linear program (Chen–Donoho–Saunders 1999, 
 decomposition by basis pursuit*; Bloomfield–Steiger). The geometric reason $\ell_1$
 promotes sparsity is the shape of its unit ball: the cross-polytope has its vertices and
 low-dimensional faces on the coordinate subspaces, so the first level set of $\|\cdot\|_1$
-to touch the affine constraint set tends to touch it at a sparse point. Whether the
-$\ell_1$ minimizer actually *equals* the $\ell_0$ solution is the crux, and was known only
-under restrictive conditions.
+to touch the affine constraint set tends to touch it at a sparse point.
 
-**The coherence-based guarantees and their ceiling.** Following Donoho–Huo 2001
+**The coherence-based guarantees.** Following Donoho–Huo 2001
 (*Uncertainty principles and ideal atomic decomposition*), a series of works
 (Gribonval–Nielsen, Donoho–Elad, Elad–Bruckstein, Tropp) proved $(P_0)\!=\!(P_1)$ when
 the dictionary's **mutual coherence** $\mu = \max_{i\neq j}|\langle\varphi_i,\varphi_j\rangle|$
 (columns unit-normed) is small: recovery is guaranteed when roughly
 $s < \tfrac12(1+1/\mu)$. For an $m\times n$ matrix $\mu$ cannot beat $\sim 1/\sqrt m$, so
-these guarantees saturate at $s = O(\sqrt m)$ — the "square-root bottleneck." That is far
-below the regime of interest, where a *constant fraction* of coordinates may be active.
+these guarantees saturate at $s = O(\sqrt m)$.
 
 **The discrete uncertainty principle and the random-Fourier result.** A sharper
 identifiability fact comes from harmonic analysis: for prime signal length $N$, a signal
@@ -67,13 +54,10 @@ $f$ supported on $T$ and observed on a frequency set $\Omega$ is uniquely determ
 $|T|\le \tfrac12|\Omega|$ (Tao's cyclic uncertainty principle; the restricted Fourier
 transform $\mathcal{F}_{T\to\Omega}$ is a bijection when $|T|=|\Omega|$). For *randomly*
 chosen $\Omega$, $\ell_1$ minimization recovers $f$ exactly with overwhelming probability
-once $|T| \lesssim \alpha\,|\Omega|/\log N$ (Candès–Romberg–Tao 2004; Candès–Romberg). This
-broke the square-root bottleneck and reached near-linear-in-$m$ sparsity — but the
-guarantee is **probabilistic**, holds **per signal** rather than uniformly over all sparse
-signals, and is tied to the **Fourier** ensemble through delicate number-theoretic and
-large-deviation arguments. There is also a parallel result (Donoho 2004) that for
-$m/2\times m$ Gaussian matrices the minimal $\ell_1$ solution is the sparsest for a number
-of nonzeros up to $\rho\cdot m$, but with $\rho>0$ an unspecified, very small constant.
+once $|T| \lesssim \alpha\,|\Omega|/\log N$ (Candès–Romberg–Tao 2004; Candès–Romberg). There
+is also a parallel result (Donoho 2004) that for $m/2\times m$ Gaussian matrices the minimal
+$\ell_1$ solution is the sparsest for a number of nonzeros up to $\rho\cdot m$, with $\rho>0$
+a small constant.
 
 **The motivating empirical phenomenon.** The phenomenon that demands explanation is a
 reconstruction experiment: a piecewise-constant phantom image, sampled only along a
@@ -82,9 +66,7 @@ coefficients), is recovered **exactly** — not approximately — by minimizing 
 subject to matching the observed coefficients, whereas the classical minimum-energy
 (zero-fill) reconstruction is corrupted by severe nonlocal artifacts. Perfect recovery
 from grossly incomplete linear data, by a convex program, on real test signals, far
-exceeds what the coherence-based theory predicts. The field's tools explain *that* $\ell_1$
-sometimes works but not *why it works so well, so universally*, nor *how few measurements
-truly suffice*.
+exceeds what the coherence-based theory predicts.
 
 **Random matrix theory and concentration.** The ingredients to analyze a generic $\Phi$
 were available. For an $m\times s$ matrix with i.i.d. Gaussian entries of variance $1/m$,
@@ -101,27 +83,20 @@ random linear maps.
 ## Baselines
 
 - **$\ell_0$ minimization / combinatorial support search.** Exactly identifies the
-  sparsest consistent signal; correct in principle. *Limitation*: NP-hard, exponential in
-  $n$; gives no efficient algorithm and no quantitative robustness (no lower bound on the
-  conditioning of the active submatrices).
-- **Basis pursuit / $\ell_1$ minimization (Chen–Donoho–Saunders 1999).** Convex, LP-solvable,
-  empirically recovers sparse signals. *Limitation as it stood*: no general condition on
-  $\Phi$ proving $(P_1)\!=\!(P_0)$ at interesting sparsity; the geometric intuition for why
-  the cross-polytope yields sparse minimizers was not turned into a verifiable matrix
-  property.
+  sparsest consistent signal and is correct in principle, though exponential in $n$ and
+  gives no quantitative information on the conditioning of the active submatrices.
+- **Basis pursuit / $\ell_1$ minimization (Chen–Donoho–Saunders 1999).** Convex,
+  LP-solvable, and empirically recovers sparse signals; the geometric intuition is that
+  the cross-polytope tends to touch the affine constraint set at a sparse point.
 - **Mutual-coherence guarantees (Donoho–Huo; Elad–Bruckstein; Tropp; Gribonval–Nielsen).**
-  Deterministic, checkable: compute $\mu$, recovery if $s<\tfrac12(1+1/\mu)$. *Limitation*:
-  $\mu\gtrsim 1/\sqrt m$ forces $s=O(\sqrt m)$ — the square-root bottleneck — far short of
-  a constant fraction; pairwise coherence is too crude a summary of $\Phi$.
+  Deterministic and checkable: compute $\mu$, recovery is guaranteed when
+  $s<\tfrac12(1+1/\mu)$, with pairwise coherence summarizing the matrix.
 - **Random-Fourier $\ell_1$ recovery (Candès–Romberg–Tao 2004).** Reaches
-  $s\lesssim|\Omega|/\log N$, breaking $O(\sqrt m)$. *Limitation*: probabilistic, per-signal
-  (the exceptional set of bad signals is small but nonempty), and special to the partial
-  Fourier ensemble through number theory and entropy counting; not a single transferable
-  matrix property, and no clean deterministic theorem.
+  $s\lesssim|\Omega|/\log N$ through number-theoretic and entropy-counting arguments
+  specific to the partial Fourier ensemble.
 - **Gaussian-ensemble $\ell_1$ count (Donoho 2004).** Shows $\ell_1=\ell_0$ up to
-  $s=\rho\,m$ nonzeros for Gaussian $\Phi$. *Limitation*: $\rho$ is an unspecified, very
-  small constant with no explicit numerical value, obtained by different (polytope-angle)
-  machinery, again tied to the Gaussian case.
+  $s=\rho\,m$ nonzeros for Gaussian $\Phi$, with $\rho$ a small constant obtained via
+  polytope-angle machinery.
 
 ## Evaluation settings
 
@@ -142,5 +117,3 @@ random linear maps.
 - **Yardstick for sample complexity.** The Gelfand-width / Kashin–Garnaev–Gluskin lower
   bound on the minimal reconstruction error achievable from $m$ linear functionals by *any*
   method — the benchmark a near-optimal scheme should match up to constants.
-
-

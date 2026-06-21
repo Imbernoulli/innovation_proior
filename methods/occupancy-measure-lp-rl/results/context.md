@@ -8,9 +8,7 @@ Given a finite Markov decision process with states `S`, actions `A`, transition 
 J(pi) = E[ sum_{t>=0} gamma^t r(s_t,a_t) | s_0 ~ mu, pi ].
 ```
 
-The standard characterization is recursive: an optimal value function must equal the best one-step reward plus the discounted value of the next state. That characterization is correct, but its shape is awkward for mathematical programming. The statewise action maximization makes the equation nonlinear, and direct optimization over the policy simplex is not linear either because the policy changes the whole transition matrix inside an infinite discounted sum.
-
-The question is whether the planning problem can be expressed as one finite optimization problem with a linear objective and linear constraints, while still returning a policy rather than only a value certificate.
+The question is how to formulate this planning problem as a finite mathematical program.
 
 ## Background
 
@@ -32,25 +30,19 @@ The optimal value satisfies the Bellman optimality equation
 V*(s) = max_a [ r(s,a) + gamma sum_{s'} P(s'|s,a)V*(s') ].
 ```
 
-The Bellman operator is monotone and is a `gamma`-contraction in max norm, so this equation has a unique fixed point. The difficulty is not existence; the difficulty is the statewise max, which hides a family of affine constraints behind one nonlinear expression.
+The Bellman operator is monotone and is a `gamma`-contraction in max norm, so this equation has a unique fixed point.
 
-Markov chains also have a balance viewpoint. In a stationary chain, probability mass flowing into a state equals mass flowing out of that state. In a discounted process, the same idea must be modified: mass is injected from the initial distribution and then discounted as it flows through future transitions. This balance language is the natural counterpart to the recursive value language.
+Markov chains also have a balance viewpoint. In a stationary chain, probability mass flowing into a state equals mass flowing out of that state. In a discounted process, the same idea must be modified: mass is injected from the initial distribution and then discounted as it flows through future transitions.
 
 ## Baselines
 
-Value iteration applies the Bellman optimality operator repeatedly. It is simple and globally convergent, but it remains an iterative fixed-point method and slows down as `gamma` approaches one.
+Value iteration applies the Bellman optimality operator repeatedly. It is simple and globally convergent.
 
-Policy iteration alternates between solving a linear system for the current policy and taking a greedy improvement step. It often converges quickly, but its outer loop still depends on a nonlinear action-selection step.
+Policy iteration alternates between solving a linear system for the current policy and taking a greedy improvement step. It often converges quickly.
 
-Direct policy search optimizes over `pi(a|s)`. Even in the tabular case, the return depends on `(I - gamma P_pi)^-1`, so the objective is not a linear function of the policy parameters.
+Direct policy search optimizes over `pi(a|s)`. In the tabular case, the return depends on `(I - gamma P_pi)^-1` as a function of the policy parameters.
 
-The value-function inequality relaxation is a tempting partial route. Replacing the max equation by one inequality per action gives linear constraints in `V`. But a value-only program still leaves open how the decision rule itself is represented inside the optimization problem.
-
-## Formulation Requirements
-
-Any finite optimization replacement has to keep the start distribution and the discount factor explicit; a discounted process is not already in ordinary steady state. It also has to represent action choice inside the optimization problem, rather than only certify a value vector and leave the policy as a separate afterthought.
-
-There are two edge cases the formulation should handle cleanly. First, a start distribution may put zero mass on some states, so exactness should mean optimal return from `mu`; decisions at states that never receive probability under the induced process can be arbitrary without changing that objective. Second, when several actions tie, matching a particular dynamic-programming tie break is not the right metric; producing any optimal stationary policy is enough.
+The value-function inequality relaxation replaces the max equation by one inequality per action, giving linear constraints in `V`.
 
 ## Evaluation Setting
 

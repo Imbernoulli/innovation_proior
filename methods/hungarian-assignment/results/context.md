@@ -7,18 +7,13 @@ choice of one entry per row and column is a **permutation** `j_1, …, j_n` of t
 want the permutation maximizing `r_{1 j_1} + ⋯ + r_{n j_n}`. This is the **assignment problem**:
 assign `n` people to `n` jobs, one each, with the total rating maximal.
 
-Why it matters and why it is not trivial: the number of permutations is `n!`, which is hopeless to
-enumerate even for moderate `n` — `12! ≈ 4.8 × 10^8`. The problem is a linear program (its feasible
-set is exactly the doubly-stochastic matrices, the convex hull of the permutation matrices), so in
-principle the simplex method solves it; but a `10 × 10` instance is a linear program with `100`
-nonnegative variables and `20` equality constraints, and it is highly **degenerate** (the
-assignment problem is the most degenerate special case of the transportation problem), which makes
-general-purpose simplex slow and awkward on it. What a good solution must achieve is therefore: an
-algorithm that exploits the special combinatorial structure to run far faster than general simplex,
-that produces an **integral** assignment directly (a real permutation, not a fractional one), and —
-most valuable of all — that comes with a **certificate of optimality** so that when it stops, one
-can verify by hand that no better assignment exists. The practical yardstick is an exact solver
-whose certificate is small enough to check by hand and whose work does not grow like `n!`.
+The number of permutations is `n!`, which is hopeless to enumerate even for moderate `n` —
+`12! ≈ 4.8 × 10^8`. The problem is a linear program: its feasible set is exactly the
+doubly-stochastic matrices, the convex hull of the permutation matrices, so in principle the simplex
+method solves it. A `10 × 10` instance is a linear program with `100` nonnegative variables and `20`
+equality constraints, and it is highly **degenerate** (the assignment problem is the most degenerate
+special case of the transportation problem). The setting, then, is how to find — and certify — an
+exact optimal assignment for square integer rating matrices of small-to-moderate order.
 
 ## Background
 
@@ -64,8 +59,7 @@ maximum, and the lines through the "essential" rows/columns form a cover of exac
 **Egerváry's generalization (integers).** J. Egerváry (1931; the relevant paper was translated from
 Hungarian in 1953) extended König's min–max theorem from 0/1 matrices to integer-weighted ones,
 phrasing the result in terms of integer row and column numbers `u_i, v_j`. König's 0/1 statement is
-thus known to be a special case of a result about integer-weighted matrices, though Egerváry's paper
-states the theorem rather than packaging it as an algorithm for general ratings.
+thus a special case of this result about integer-weighted matrices.
 
 **Augmenting paths (the matching engine).** Finding a maximum matching in a bipartite graph is done
 by alternating/augmenting paths. An **alternating path** alternates between non-matching and
@@ -77,39 +71,24 @@ subroutine is: repeatedly search for an augmenting path (a directed reachability
 exposed vertex), augment, and stop when none exists — at which point König's cover is read off from
 the vertices reachable by alternating paths.
 
-**The computational pressure.** Available linear-programming machinery treats the assignment
-instance as a dense collection of variables and degenerate constraints, and its intermediate
-tableau states bear no visible relation to the combinatorial objects (matchings, covers) that make
-the answer checkable by hand. König's constructive 0/1 procedure, by contrast, runs only on
-qualification matrices and does not by itself act on general integer ratings, so neither available
-tool is both fast on this structure and equipped with a hand-checkable certificate for the full
-integer problem.
-
 ## Baselines
 
 **General simplex on the LP.** Treat the assignment problem as the linear program above and run the
-simplex method. It is correct and finds an optimum, but the assignment polytope is highly
-degenerate (many bases give the same vertex), so simplex cycles through degenerate pivots and is
-slow; it also gives no special combinatorial certificate beyond the generic LP one, and for the
-sizes of interest in 1953 the largest general LPs the available machines could handle were near the
-problem's own size. **Gap:** does not exploit the 0/1 / matching structure; degeneracy makes it
-slow and the integrality of the answer is incidental rather than guaranteed by the method.
+simplex method. It is correct and finds an optimum, working through the bases of the degenerate
+assignment polytope and yielding the generic LP certificate. For the sizes of interest in 1953 the
+largest general LPs the available machines could handle were near the problem's own size.
 
 **Transportation-problem methods (Dantzig).** The assignment problem is the special case of the
 transportation problem with all supplies and demands equal to 1; Dantzig's simplex specialization
-for transportation (1951) applies. **Gap:** precisely because all supplies/demands are 1, the
-assignment case is the *most degenerate* instance of transportation, which is exactly where the
-transportation simplex struggles; the method is built for the general flow problem, not for the
-combinatorial all-ones case.
+for transportation (1951) applies directly to it.
 
 **Brute-force permutation search.** Enumerate all `n!` permutations and keep the best. Correct and
-trivially certifiable, but `n!` is astronomically large past tiny `n`; useful only to *check* an
-assignment solver on small instances, never to solve real ones.
+trivially certifiable; `n!` is astronomically large past small `n`, so it serves to *check* an
+assignment solver on small instances.
 
-**König's 0/1 algorithm alone.** Solves the qualification (0/1) special case — maximum independent
-marks / minimum line cover — constructively and in polynomial time, and it carries its own
-optimality certificate (the matching meets the cover). **Gap:** it handles only 0/1 ratings; the
-general integer-rating problem is not directly a single 0/1 problem.
+**König's 0/1 algorithm.** Solves the qualification (0/1) case — maximum independent marks / minimum
+line cover — constructively and in polynomial time, carrying its own optimality certificate (the
+matching meets the cover).
 
 ## Evaluation settings
 

@@ -5,24 +5,10 @@
 A scene is represented by a large set of anisotropic 3D Gaussians and fit to a handful of
 posed photographs by minimizing a per-scene photometric loss. The loss is purely a *data*
 term: it rewards any configuration of Gaussians that reproduces the training images, and is
-otherwise blind to how that configuration is built. This makes the fit badly
-under-constrained. Many Gaussian arrangements render the training views almost identically,
-and gradient descent is free to pick wasteful or pathological ones — long thin "needle"
-Gaussians, faint semi-transparent "floaters" parked in empty space, or one oversized splat
-draped over fine geometry. These look acceptable on the views the optimizer was trained on
-but degrade *held-out, novel-view* quality, and they inflate the count of Gaussians, which is
-what directly sets the memory footprint and the rasterization time.
-
-The precise problem: design a scalar term added to the photometric loss that (1) drives the
-representation toward *parsimony* — fewer, more useful Gaussians — so that a Gaussian which is
-not earning its keep is pushed to *vanish entirely* rather than lingering as a faint or
-oversized artifact; (2) acts on the right physical quantity, the actual visible footprint of a
-Gaussian, not on some surrogate; (3) is cheap (at most linear in the number of Gaussians, no
-all-pairs computation, evaluated every step of a 30k-step optimization); (4) is numerically
-safe under autodiff (no `log(0)`, no `exp` overflow, no divide-by-zero); and (5) is gentle
-enough that it never overwhelms the data term — it should only bite where the photometric loss
-is indifferent to a Gaussian's presence. Closing the gap between "renders the training views"
-and "uses Gaussians efficiently and generalizes" is the problem.
+otherwise blind to how that configuration is built. The open question is how to add a scalar
+regularization term to this photometric loss that encodes a preference for parsimonious,
+efficient use of Gaussians — computationally affordable at every step of a 30k-step
+optimization and numerically safe under autodiff.
 
 ## Background
 
@@ -65,17 +51,13 @@ scales `s_j`. The integrated mass of the underlying 3D bump grows with the Gauss
 which is proportional to `sqrt(det Σ) = ∏_j s_j`. So a Gaussian's visible footprint is governed
 jointly by its opacity and its scale: it is loud if it is opaque *and* large.
 
-**Diagnostic failure modes of an unregularized photometric fit.** The data term alone leaves
-the configuration under-determined, and the observed pathologies of plain 3D-Gaussian fits are
-well documented. (a) *Floaters*: faint, low-opacity Gaussians left hovering in regions the
-training cameras barely constrain (e.g. just outside the view frustum); the photometric loss
-is nearly flat there, so nothing pushes them out, yet they corrupt novel views that *do* see
-that region. (b) *Needles*: extremely anisotropic Gaussians, one axis scale far larger than
-the others, that exploit per-view photometric quirks but read as streaks from new angles.
-(c) *Over-reconstruction*: a single oversized splat covering small-scale geometry, cheaper for
-the data term than resolving the detail. All three are configurations the data term *tolerates*
-but that waste Gaussians and hurt generalization, and the number of Gaussians is itself the
-cost: it sets both the memory and the per-frame render time.
+**Observed configurations in unregularized photometric fits.** The data term alone leaves
+the configuration under-determined, and the observed configurations of plain 3D-Gaussian fits
+include: (a) *Floaters*: faint, low-opacity Gaussians left hovering in regions the training
+cameras barely constrain (e.g. just outside the view frustum). (b) *Needles*: extremely
+anisotropic Gaussians, one axis scale far larger than the others. (c) *Over-reconstruction*:
+a single oversized splat covering small-scale geometry. The number of Gaussians directly sets
+the memory and the per-frame render time.
 
 **Sparsity-inducing penalties.** A standard tool for pushing many values to zero is the L1
 penalty `Σ |w|`. Its defining property versus the L2 penalty `Σ w^2` is the behavior of the
@@ -91,10 +73,7 @@ gradient.
 identifies "dead" Gaussians — those whose opacity has fallen below a small pruning threshold
 (`o < 0.005`) — and recycles them: it relocates each dead Gaussian to where a useful "live"
 Gaussian already sits, sampling targets with probability proportional to opacity, and lets the
-count of live Gaussians grow gradually toward a budget. A Gaussian that has been driven small
-and faint is therefore not wasted — it becomes spare capacity that the framework moves to
-where it is needed. This makes a pressure that pushes useless Gaussians *toward* the dead
-threshold useful rather than merely destructive: it feeds the recycling loop.
+count of live Gaussians grow gradually toward a budget.
 
 ## Baselines
 
@@ -109,35 +88,20 @@ Gaussians with scale divided by an experimentally chosen factor `φ = 1.6`, posi
 sampling the original Gaussian as a PDF. *Prune*: any Gaussian with opacity below a threshold
 `ε_α` is deleted. *Opacity reset*: every `N = 3000` iterations every Gaussian's opacity is
 forced near zero, and the optimizer then re-raises opacity only where the data term demands
-it — a blunt instrument for culling floaters. Core idea: grow and shape the Gaussian set by
-local geometric rules keyed off the positional gradient. **Gap:** the entire mechanism is a
-tower of hand-tuned thresholds — the gradient threshold `τ_pos = 0.0002`, the split factor
-`1.6`, the prune threshold, the 3000-iteration reset cadence — that must be re-tuned per
-scene, leans heavily on a good Structure-from-Motion initialization, makes the final number of
-Gaussians hard to predict from the hyperparameters, and still leaves floaters and
-over-reconstruction in scenes it was not tuned for. It controls *count* but does not directly
-encode a *preference* for a Gaussian to be small and faint when it is not needed; it reacts to
-gradients, not to a stated parsimony objective.
+it. Core idea: grow and shape the Gaussian set by local geometric rules keyed off the
+positional gradient, using hand-tuned thresholds — the gradient threshold `τ_pos = 0.0002`,
+the split factor `1.6`, the prune threshold, and the 3000-iteration reset cadence.
 
 **Anisotropy / aspect-ratio penalties.** A different line bounds `max(s)/min(s)` per Gaussian
-to keep shapes close to isotropic and kill needles directly. Core idea: penalize the *ratio*
-of the largest to smallest scale. **Gap:** it targets only the needle pathology and says
-nothing about overall size or about faint floaters; an isotropic-but-huge or an
-isotropic-but-redundant Gaussian pays nothing, so it does not push the representation toward
-fewer Gaussians.
+to keep shapes close to isotropic. Core idea: penalize the *ratio* of the largest to smallest
+scale.
 
 **Neighbour-consistency / blob-prior penalties.** Encourage spatially adjacent Gaussians to
-have similar parameters, smoothing the field. **Gap:** smoothness is not parsimony — it can
-make redundant Gaussians *agree* without removing any — and naive neighbour terms invite
-all-pairs `N × N` computations, which are infeasible at every step for `N` in the millions.
+have similar parameters, smoothing the field.
 
 **Opacity-only pruning pressure.** One could simply push opacity down (or rely on the reset)
 so low-opacity Gaussians fall below the prune threshold. Core idea: a Gaussian that is faint
-enough is removed. **Gap:** opacity is only *one* of the two factors that set a Gaussian's
-footprint. A large Gaussian held at an opacity just above the prune threshold remains a loud,
-space-filling artifact while paying almost nothing to an opacity-only term; symmetrically, a
-tiny but fully opaque speck contributes negligibly to the image yet escapes any pressure to
-go. Acting on opacity alone leaves a whole class of wasteful Gaussians untouched.
+enough is removed.
 
 ## Evaluation settings
 

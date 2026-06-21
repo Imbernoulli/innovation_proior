@@ -10,25 +10,16 @@ their dynamics (e.g. different physical parameters). The agent never observes wh
 it must infer that from the transitions `(s,a,r,s')` it collects, and turn that inference into good
 behavior fast.
 
-Two distinct kinds of sample-efficiency are at stake, and the pain is that existing methods buy one
-by paying heavily in the other:
+Two distinct kinds of sample-efficiency are at stake:
 
 1. **Adaptation efficiency** — at test time, reach good performance on the new task after as few
-   interactions as possible. This is the headline promise of meta-learning, and it is hardest
-   precisely when reward is *sparse*: if the agent only gets a signal once it stumbles onto the
-   goal, then identifying the task requires *exploring* deliberately, and naive per-timestep
-   action noise wanders without ever testing a coherent hypothesis. Fast adaptation in sparse
-   reward demands reasoning about *which tasks are still possible* and acting to disambiguate them.
+   interactions as possible. Fast adaptation in sparse reward requires reasoning about *which tasks
+   are still possible* and acting to disambiguate them, since if the agent only gets a signal once
+   it stumbles onto the goal, per-timestep action noise wanders without testing a coherent hypothesis.
 
 2. **Meta-training efficiency** — the number of environment samples consumed *while learning to
-   adapt*. This is the cost that is usually swept under the rug. Meta-RL trains across many tasks
-   and many trials per task, so if the meta-training algorithm cannot reuse past data, the total
-   sample count explodes — millions of interactions per task, times a large task set.
-
-A solution would have to deliver both at once: drive meta-training with reusable (off-policy) data
-so the meta-learner is cheap to train, *and* equip the test-time agent with a structured way to
-explore an unfamiliar task and home in on it from a handful of trajectories. The tension between
-these two — explained below — is the crux.
+   adapt*. Meta-RL trains across many tasks and many trials per task, so the total sample count
+   can be large.
 
 ## Background
 
@@ -90,22 +81,16 @@ gradient flows pathwise through `−∇_a Q`. Because it learns from a replay bu
 sample-efficient than on-policy methods, and its stochastic actor and probabilistic
 (energy-based) interpretation make it natural to extend.
 
-**The diagnostic that frames the problem.** Modern meta-learning is built on the principle that the
+**Meta-learning and the matching principle.** Modern meta-learning is built on the principle that the
 data distribution used to adapt should *match* between meta-training and meta-testing — a five-shot
 image classifier is meta-trained on five-example episodes because that is what it will face at test
-(Vinyals et al. 2016). At test time, an RL agent adapts from the *on-policy* experience it gathers by
-exploring the new task. Taken literally, the matching principle then says meta-training must also use
-on-policy data — which is exactly why every efficient context- and gradient-based meta-RL method of
-the time is on-policy, and why their meta-training is so expensive. Replaying old, off-policy
-transitions to train the meta-learner clashes with this principle: those transitions are
-systematically unlike the on-policy data the adapted agent will encounter. It had further been
-observed that value-based off-policy methods, which only minimize temporal-difference error, have no
-direct handle on the *distribution of states the agent visits*, so they cannot by themselves be made
-to learn an exploration strategy — whereas policy-gradient methods, which act directly on the policy,
-can, but are on-policy and inefficient. Attempts to graft recurrent context encoders onto off-policy
-value learning (recurrent DDPG, Heess et al. 2015) had been demonstrated only on much simpler or
-discrete tasks (Hausknecht & Stone 2015), and were observed not to train well on these continuous
-control meta-RL benchmarks.
+(Vinyals et al. 2016). At test time, an RL agent adapts from the on-policy experience it gathers by
+exploring the new task. Context- and gradient-based meta-RL methods of the time are largely on-policy,
+consistent with this matching principle. Value-based off-policy methods, which minimize
+temporal-difference error, operate on the policy indirectly via the value function, while policy-gradient
+methods act directly on the policy but require on-policy data. Recurrent context encoders grafted onto
+off-policy value learning (recurrent DDPG, Heess et al. 2015) had been demonstrated on simpler or
+discrete tasks (Hausknecht & Stone 2015).
 
 ## Baselines
 
@@ -114,44 +99,24 @@ consumes the running stream of `(s,a,r,s')` and the policy conditions on its hid
 thing is meta-trained end to end with a policy-gradient algorithm so that, after a few episodes on a
 new task, the hidden state encodes enough to act well. Core idea: let one network learn *both* to
 infer the task and to act, and let backprop-through-time discover the adaptation rule.
-*Limitations:* it is on-policy, so meta-training is sample-inefficient; the single recurrent network
-is asked to simultaneously do task inference and control, with no separable belief over the task; it
-processes the context as an ordered sequence even though the underlying information is order-free; and
-training a recurrent representation with off-policy value learning over long horizons is unstable in
-this regime.
 
 **MAML / ProMP (Finn et al. 2017; Rothfuss et al. 2018).** Learn an initialization `θ` such that one
 (or a few) inner policy-gradient steps on a new task's trajectories yields a good policy:
 `θ'_i = θ − α∇_θ L^{T_i}(θ)`, with `θ` meta-optimized so the post-adaptation return is high. Core
 idea: bake fast adaptability into the starting point, so test-time adaptation is plain fine-tuning.
-*Limitations:* the inner and outer updates both use on-policy policy gradients, which are
-high-variance and sample-hungry; exploration at test time is whatever the pre-adaptation policy
-happens to do (sampling its own action noise), with no mechanism to deliberately disambiguate the
-task; and the asymptotic returns reached were observed to lag behind what a strong off-policy learner
-attains on the same continuous-control families.
 
-**MAESN (Gupta et al. 2018).** The closest prior method that reasons about tasks probabilistically:
-it introduces per-task latent variables with a meta-learned prior, adapts by gradient descent *on the
-latent variables* for a new task, and explores by sampling the latent from the *prior*. Core idea:
-structured exploration via a learned latent space plus gradient-based adaptation of that latent.
-*Limitations:* it is on-policy and gradient-based, so meta-training again costs on the order of
-`1e8` timesteps; exploration draws the latent from the prior and is not refined *within* test-time
-interaction by conditioning on what has been seen so far; and adaptation by latent-space gradient
-descent is slower per task than a single forward pass would be.
+**MAESN (Gupta et al. 2018).** A method that introduces per-task latent variables with a meta-learned
+prior, adapts by gradient descent *on the latent variables* for a new task, and explores by sampling
+the latent from the *prior*. Core idea: structured exploration via a learned latent space plus
+gradient-based adaptation of that latent.
 
 **Recurrent off-policy value learning (Heess et al. 2015; Hausknecht & Stone 2015).** Memory-based
 control with a recurrent network trained by an off-policy value method (recurrent DDPG / DRQN). Core
 idea: get off-policy efficiency *and* memory by recurrently encoding history inside a Q-learner.
-*Limitations:* it had been shown to work on much simpler or discrete-action POMDPs; it does not
-explicitly form a belief over the task, leaving both inference and optimal behavior to the RNN; and
-it requires training on trajectories, which correlates the samples and was observed to destabilize
-the value updates on these continuous-control task families.
 
 **Soft actor-critic (Haarnoja et al. 2018).** The strongest single-task off-policy continuous-control
-learner available (see Background). It is not itself a meta-learner — it solves one fixed MDP — but it
-is the natural efficient, stable, replay-driven engine a meta-RL method would want to be built on.
-*Limitation as a baseline:* on its own it has no notion of a task distribution or of conditioning on
-inferred task context; run per-task from scratch it pays the full single-task sample cost every time.
+learner available (see Background). It solves one fixed MDP using a replay buffer and a maximum-entropy
+objective, making it sample-efficient and stable relative to on-policy methods.
 
 ## Evaluation settings
 
@@ -165,10 +130,7 @@ The natural yardsticks were continuous-control locomotion meta-RL benchmarks sim
 - **Dynamics-varying family** — Walker-2D with randomized system parameters; tasks differ in
   dynamics and the agent must still move forward.
 - **Sparse-reward 2-D navigation** — a point robot must reach an unseen goal on a half-circle, with
-  reward given only inside a small radius around the goal (radii such as 0.2 and 0.8 tested). This is
-  the setting that stresses *structured exploration*: with no signal until the goal is touched,
-  per-step noise is hopeless, so it is the discriminating test for whether an agent can explore by
-  testing hypotheses.
+  reward given only inside a small radius around the goal (radii such as 0.2 and 0.8 tested).
 
 Protocol: a fixed split of training vs. test tasks per family; a fixed horizon per family (200 steps
 for the MuJoCo-style locomotion families, 20 for the point-robot family);
@@ -182,9 +144,7 @@ several random seeds.
 The pieces that already exist are an off-policy actor-critic engine and a multi-task data pipeline.
 We have a replay buffer per task, an environment that can be reset to any task, an actor-critic
 learner (a stochastic policy, Q-functions, a value function, target networks, soft updates), and a
-trajectory sampler. What does *not* yet exist is how the agent should summarize the experience it has
-collected on a task into something the policy can condition on, and how to meta-train that summary
-together with the actor-critic across the task distribution. Those are the empty slots.
+trajectory sampler.
 
 ```python
 import torch
@@ -262,6 +222,6 @@ class MetaRLAlgorithm:
 ```
 
 The actor-critic objectives, the replay buffers, the samplers, and the network builders are given.
-The single open problem is the `context_module` — what it computes, what it is trained against, and
+The open problem is the `context_module` — what it computes, what it is trained against, and
 how its data is drawn relative to the RL data — and the meta-gradient step that ties it to the
 actor-critic.

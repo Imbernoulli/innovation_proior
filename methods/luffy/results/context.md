@@ -5,23 +5,13 @@
 We have a pretrained language-model policy `π_θ` and want to post-train it to reason — to solve
 math/competition problems where a rule-based verifier scores any candidate solution as correct (1)
 or incorrect (0). The dominant recipe is "zero-RL": run on-policy RL with verifiable rewards (RLVR)
-directly on the base model. It works when the base model can already occasionally stumble onto a
-correct solution, because then there is reward to optimize. But it is bounded by the base model's own
-sampling distribution: on a problem the model never solves, every rollout is wrong, the reward signal
-is absent, and training stalls. We *also* have, for many prompts, off-the-shelf reasoning traces from
-a much stronger model (e.g. DeepSeek-R1). The question is how to use those off-policy traces to push
-the model *beyond* its own capability — to bootstrap problems on-policy RL cannot — while keeping the
-exploration that makes RL generalize, all inside a single training stage.
-
-The difficult part is that the two obvious ways to consume the off-policy traces both fail. Plain SFT
-on them memorizes the teacher and collapses exploration (the well-known SFT-narrows / RL-generalizes
-divide). Naively folding them into RL imitates the teacher's high-probability tokens and ignores the
-low-probability ones that carry the new reasoning, which also collapses entropy. We want a method that
-integrates the off-policy traces into the RL advantage *and* keeps the model exploring.
+directly on the base model. We *also* have, for many prompts, off-the-shelf reasoning traces from
+a much stronger model (e.g. DeepSeek-R1). The question is how to use those off-policy traces
+together with on-policy rollouts inside a single training stage.
 
 ## Background
 
-The load-bearing concepts and the pain points of the time:
+The load-bearing concepts:
 
 - **The policy-gradient frame and GRPO (Shao et al. 2024).** Post-training is policy optimization. For
   a prompt `q`, sample `N` rollouts `τ_i ~ π_{θ_old}`, score each with the verifier `R(τ_i) ∈ {0,1}`,
@@ -37,32 +27,20 @@ The load-bearing concepts and the pain points of the time:
 - **Importance sampling / change of measure.** A gradient defined as an expectation under one
   distribution can be estimated from samples of another by reweighting with the ratio of the two
   densities; the ratio's denominator is the reference policy.
-- **The on-policy ceiling (SimpleRL-Zoo, Zeng et al. 2025; Yue et al. 2025).** Zero-RL presupposes the
-  model can sample reward; on weak models or hard tasks it discovers no correct rollout and stalls.
-  And RLVR lifts Pass@1 but not large-`k` Pass@k — it sharpens what the base model can already do
-  rather than adding genuinely new reasoning. Acquiring new capability needs an external signal and
-  must preserve exploration.
-- **Entropy collapse from naive imitation.** Mixing off-policy demonstrations into the gradient makes
-  the model converge fast onto tokens already likely under `π_θ` and ignore the deviating
-  low-probability tokens that represent the new reasoning — entropy collapses and exploration dies.
+- **The on-policy RL setting (SimpleRL-Zoo, Zeng et al. 2025; Yue et al. 2025).** Zero-RL presupposes
+  the model can sample reward. RLVR lifts Pass@1 and is the current standard for math reasoning
+  post-training. Pass@k to large `k` is also used as an explicit probe of exploration capacity.
 
 ## Baselines
 
-These are the prior methods a new procedure would be measured against and react to.
-
 **SFT on demonstrations (Wei et al. 2021; behavior cloning).** Minimize token-level NLL on the teacher
-traces. Reliably raises competence on prompts the model cannot solve. **Gap:** it learns only to copy,
-injects no signal about the model's own behaviors, memorizes/overfits, and degrades out-of-distribution.
+traces. Raises competence on prompts the model cannot solve.
 
 **On-policy RL / GRPO / Dr.GRPO (Shao et al. 2024; Liu et al. 2025).** Critic-free on-policy RLVR; the
-standard zero-RL engine. Excellent at sharpening reasoning the model can partly do, cheap. **Gap:**
-purely on-policy and so bounded by the base model — it cannot acquire a solution the model never
-produces, and on an all-wrong prompt the group advantage degenerates to zero (no gradient).
+standard zero-RL engine. Sharpens reasoning on prompts the model can partly solve.
 
 **SFT→RL pipelines and RL-with-SFT-loss (Fu et al. 2025).** Distill the teacher first (or add an SFT
-loss during RL), then run RL. Combines both signals but in a fixed, multi-stage way; SFT's long rigid
-generations also inflate RL roll-out cost. **Gap:** a static recipe whose order and coefficient must be
-re-tuned, and the SFT stage still narrows the model before RL recovers exploration.
+loss during RL), then run RL. Combines both signals in a sequential or joint way.
 
 ## Evaluation settings
 
@@ -83,8 +61,7 @@ re-tuned, and the SFT stage still narrows the model before RL recovers explorati
 A GRPO-style trainer already exists: per prompt it draws on-policy rollouts, verifies them, computes
 group-relative advantages, and optimizes the clipped surrogate. It also has access, per prompt, to an
 off-policy teacher trace. What is not settled is how to assemble the on-policy rollouts and the
-off-policy trace into one advantage group and one actor objective so that the off-policy trace bootstraps
-without collapsing exploration.
+off-policy trace into one advantage group and one actor objective.
 
 ```python
 import torch

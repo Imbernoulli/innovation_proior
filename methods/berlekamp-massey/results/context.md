@@ -12,10 +12,8 @@ that every term is the same fixed combination of the $m$ before it:
 $$a_i = \sum_{j=0}^{m-1} c_j \, a_{i-j-1} \qquad \text{for all } i \ge m.$$
 "Shortest" means smallest order $m$. The order is unknown in advance; only the
 bound $m \le k$ is given, and the $2k$ supplied terms are exactly enough to pin a
-recurrence of order $\le k$ down uniquely. Because $N$ can be as large as $10^{18}$,
-generating the sequence term by term up to index $N$ is out of reach — once the
-recurrence is known, the $N$-th term has to be obtained without walking through all
-the intervening terms.
+recurrence of order $\le k$ down uniquely. The index $N$ can be as large as
+$10^{18}$.
 
 All arithmetic is modulo the prime $p$; division is multiplication by a modular
 inverse.

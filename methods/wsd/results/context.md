@@ -6,16 +6,8 @@ When you pretrain a decoder-only transformer language model with a fixed model s
 fixed optimizer (AdamW), a fixed data stream and a fixed total update budget, the one knob
 that still moves the final validation loss by a meaningful margin — after the architecture
 and optimizer are settled — is the *learning-rate schedule*: the function that sets the
-step size at every iteration. The schedule has to do two things that pull against each
-other. Early and through the middle of training the rate should be high, so the optimizer
-explores broadly and makes fast progress through the bulk of the loss; near the end it
-should fall to a small value, so the iterate settles into a good minimum instead of
-rattling around at the noise floor. The prevailing curve is strongest only when its length
-is matched to the planned run. The precise goal is a schedule that (1) keeps the best-tuned
-standard schedule as the loss target under the same compute, and (2) does so without having
-to commit, before training starts, to the exact number of steps the run will take — because
-that commitment is what makes large pretraining runs expensive to plan, impossible to
-extend cleanly, and quadratically expensive to use for scaling-law studies.
+step size at every iteration. The question is how to shape that schedule across the full
+pretraining run.
 
 ## Background
 
@@ -34,8 +26,7 @@ of this curve — warmup, then one cosine descent to a floor at roughly 10% of t
 what large-model practice adopted (Kaplan et al. 2020; Hoffmann et al. 2022; and the GPT /
 LLaMA / Qwen / Falcon families).
 
-The load-bearing fact about this curve is empirical and well-documented, and it is about the
-cosine schedule itself, not about any replacement for it:
+The load-bearing fact about this curve is empirical and well-documented:
 
 - **Total summed learning rate matters.** Kaplan et al. (2020) report that, holding the
   schedule family fixed, the final loss improves as the learning rate summed over the whole
@@ -53,11 +44,6 @@ cosine schedule itself, not about any replacement for it:
   (tens of millions of parameters) confirm the pattern: across runs of `S = 20N, 40N, 60N,
   80N` tokens, the lowest loss is always achieved by the cosine whose cycle matches that
   exact `S`; both shorter and longer cycles lose.
-- **The failure modes point in opposite directions.** If the cycle is shorter than the run,
-  the rate starts falling too early and the summed learning rate is reduced. If the cycle is
-  longer than the run, or if the rate stays high indefinitely, the run never gets the full
-  final anneal that the matched cosine gets. This is why the best standard curve is pinned
-  to `T = S`, and why the same curve is awkward for runs whose final length is unknown.
 
 There is a known, parallel lever as well: instead of decaying the learning rate one can
 *increase the batch size* over training (Smith et al. 2017), trading one schedule for the
@@ -72,36 +58,21 @@ These are the prior schedules a new schedule would be measured against and would
 Hoffmann et al. 2022).** Warm up linearly to `η`, then with normalized cosine progress
 `u = (s - W)/(T - W)` use
 `0.1·η + 0.45·η·(1 + cos(πu))` for `W <= s <= T`, floored at `0.1·η` afterward — a
-smooth descent from the peak to one tenth of the peak over a cycle of length `T = S`. This
-is the de-facto standard and is strong: with `T` matched to the run it attains the best
-loss at the target step count. **Limitation:** the entire curve is parameterized by `T`,
-which must be fixed to the run length `S` *before training begins*. The rate at every step
-in the middle of the run depends on where the end is, so the schedule cannot be left
-open-ended; a run cannot be cleanly extended (the cosine was already descending toward the
-old endpoint), and training is suboptimal at every intermediate step (the curve is
-mid-descent there, not at a converged minimum). To get a converged model at `k` different
-token counts you must launch `k` separate full runs with `k` different `T` values, each
-redoing the high-rate phase from scratch.
+smooth descent from the peak to one tenth of the peak over a cycle of length `T = S`. With
+`T` matched to the run this attains the best loss at the target step count.
 
 **Constant learning rate, and the periodic cosine "loop" (CosineLoop).** Keep the rate at
 its warmup peak indefinitely, or run the same peak-to-floor half-cosine cycles back-to-back
 without ever settling. A constant high rate maximizes the summed learning rate and never
-depends on a horizon, so it is trivially open-ended. **Limitation:**
-it never performs the thorough final descent that the Chinchilla evidence says is necessary;
-its loss stays above the `T = S` cosine and never collapses to that level, because the
-late, fast loss drop only appears when the rate is actually brought down. The periodic loop
-keeps re-warming the rate, which spends summed learning rate on re-exploration the run does
-not need and likewise never converges to the cosine-matched loss.
+depends on a horizon, so it is trivially open-ended. The periodic loop keeps re-warming the
+rate across cycles.
 
 **Multi-step / staircase decay (Bi et al. 2024, "DeepSeek LLM").** Warm up to the peak,
 hold it, then drop the rate by a constant factor at preset fractions of the run: to ≈31.6%
 of the peak after 80% of the tokens, and to ≈10% (a second ×0.316) after 90%. The reported
 final performance is essentially on par with a tuned cosine, and because the first,
 highest-rate phase is a flat plateau, the training done in that phase can be *reused* when
-the run is later extended to a different length — which a cosine, descending throughout,
-cannot offer. **Limitation:** the decay happens in two abrupt discrete drops rather than a
-graded descent, so the annealing is coarse; and the plateau levels and switch points are
-discrete hyper-parameters fixed in advance.
+the run is later extended to a different length.
 
 **Trapezoidal / constant-rate plus cooldown schedules (Hagele et al. 2024).** Another
 nearby line keeps the rate constant for most of training and reserves a final cooldown for
@@ -109,17 +80,12 @@ annealing. The cooldown is written as a monotone function over the last `N_decay
 simple forms such as a linear descent `1 - u`, a half-cosine cooldown, and a `1 - sqrt(u)`
 curve where `u` is progress through the cooldown. This line is useful because it separates
 the long constant-rate regime from the annealing regime and studies the cooldown shape
-directly. **Limitation:** the recipe is still expressed as a fixed-budget schedule with a
-chosen cooldown length and does not, by itself, specify the minimal scheduler interface that
-a large pretraining loop can use for reusable checkpoints and scaling-law branches.
+directly.
 
 **Cosine annealing with warm restarts (Loshchilov & Hutter 2016).** The original cosine
 proposal also resets to `η_max` at the end of each cycle and decays again over a cycle that
 grows by a factor `T_mult`, optionally snapshotting the model just before each restart for
-an ensemble. **Limitation:** in single-objective LLM pretraining the rewarming spikes cost
-summed learning rate on re-exploration and introduce instability, and every cycle's length
-is still a parameter that must be chosen; the mechanism targets multimodality and ensembling,
-not horizon-free single-run pretraining.
+an ensemble.
 
 ## Evaluation settings
 

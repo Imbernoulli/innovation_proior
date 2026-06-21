@@ -4,10 +4,10 @@ Train deep convolutional image classifiers to higher test accuracy by designing 
 
 ## Prior art / Background / Baselines
 
-- **Plain cross-entropy.** Maps logits to softmax probabilities and penalizes the negative log-probability of the true class. Gap: it assigns equal gradient weight to every example regardless of how confident or how wrong it already is, so confident correct and confident wrong examples pull with comparable strength.
-- **Focal loss.** Modulates cross-entropy by `(1 - P_t)^γ` to down-weight easy, high-confidence examples. Gap: it is designed for extreme foreground/background imbalance; on balanced classification it suppresses too many easy examples and discards usable signal.
-- **Label smoothing.** Replaces the one-hot target with a mixture of the true label and a uniform distribution over classes. Gap: the smoothing weight is fixed across every example and class, so it cannot adapt to per-example uncertainty.
-- **PolyLoss.** Treats cross-entropy as a polynomial in `(1 - P_t)` and adds a tunable coefficient to the leading term. Gap: the coefficient is global and static, so the loss does not adjust to individual examples or to the training stage.
+- **Plain cross-entropy.** Maps logits to softmax probabilities and penalizes the negative log-probability of the true class.
+- **Focal loss.** Modulates cross-entropy by `(1 - P_t)^γ` to down-weight easy, high-confidence examples; originally designed for dense object detection with extreme foreground/background imbalance.
+- **Label smoothing.** Replaces the one-hot target with a mixture of the true label and a uniform distribution over classes.
+- **PolyLoss.** Treats cross-entropy as a polynomial in `(1 - P_t)` and adds a tunable coefficient to the leading term.
 
 ## Fixed substrate / Code framework
 

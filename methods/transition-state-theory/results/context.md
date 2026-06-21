@@ -8,7 +8,7 @@ For half a century the temperature dependence has been captured by an empirical 
 
     k = A · exp(-E_a / RT),
 
-with an activation energy E_a and a pre-exponential factor A. The exponential is well understood: only the small Boltzmann fraction of encounters with energy above a threshold can react. The scandal is A. It varies over many orders of magnitude from reaction to reaction, it carries the units that make k dimensionally correct, and there is no theory that predicts it from the molecules involved. A solution to the problem would have to (i) deliver A from molecular data alone — masses, geometries, vibrational frequencies, the shape of the potential between the atoms — and (ii) explain *why* A is sometimes close to a simple collision frequency and sometimes a thousandfold smaller. The prize is a single formula that turns a computed potential energy surface into a number for k.
+with an activation energy E_a and a pre-exponential factor A. The exponential is well understood: only the small Boltzmann fraction of encounters with energy above a threshold can react. A varies over many orders of magnitude from reaction to reaction, it carries the units that make k dimensionally correct, and there is no theory that predicts it from the molecules involved. The question is whether molecular data alone — masses, geometries, vibrational frequencies, the shape of the potential between the atoms — can supply a first-principles value for k.
 
 ## Background
 
@@ -34,13 +34,11 @@ Equilibrium constants follow directly: equating chemical potentials μ = −k_B 
 
     k_C = ∫₀^∞ σ u f(u) du ≈ σ ⟨u_rel⟩ exp(−E*/k_B T),  ⟨u_rel⟩ = (8 k_B T / π μ)^{1/2},
 
-gives an absolute rate: the pre-exponential factor is a collision frequency, computable from molecular diameters and masses. This is the first genuinely predictive A. Its limitations: it treats reactants as featureless spheres, so the *internal* structure of the molecules — their rotations and vibrations, and the structure of the configuration as bonds break and form at the barrier — plays no role; and for almost all reactions except atom–atom ones the predicted rate is too high, so a fudge "steric factor" p ≤ 1 is inserted by hand, p = k_obs/k_C, with no way to compute it. The theory is also naturally limited to bimolecular gas-phase collisions.
+gives an absolute rate: the pre-exponential factor is a collision frequency, computable from molecular diameters and masses. For reactions where the observed rate differs from k_C, a steric factor p = k_obs/k_C is recorded.
 
-**Marcelin's phase-space activation (1910–1915).** A reaction is the passage of the system's representative point across a dividing surface in phase space; the rate is governed by an activation free energy, k ∝ exp(−Δ‡G/RT). This correctly locates the bottleneck as a surface in configuration/phase space and anticipates an entropic contribution to the rate, but it stops at the proportionality: there is no prescription for the constant of proportionality in terms of the molecular partition functions, so it predicts no absolute A.
+**Marcelin's phase-space activation (1910–1915).** A reaction is the passage of the system's representative point across a dividing surface in phase space; the rate is governed by an activation free energy, k ∝ exp(−Δ‡G/RT). This correctly locates the bottleneck as a surface in configuration/phase space and includes an entropic contribution to the rate, but it stops at the proportionality: there is no prescription for the constant of proportionality in terms of the molecular partition functions.
 
-**Trajectory crossing of the col (Pelzer–Wigner 1932).** With the H + H₂ surface in hand, follow the system as it moves over the col and count the flux passing the saddle. This is the right dynamical object — flux through the pass — and it firmly identifies the saddle as where the rate is decided. As carried out it is a hard, case-by-case dynamical calculation tied to one surface; it does not yield a general closed-form rate constant expressed through the reactants' and the saddle configuration's partition functions.
-
-The common gap: collision theory has an absolute A but no molecular structure; Marcelin has the structural/entropic picture but no computable constant; the trajectory calculation has the dynamics at the col but no general formula. None turns "here is the potential energy surface, here are the molecules" into a closed expression for k that uses the full internal structure of the reactants and of the configuration at the pass.
+**Trajectory crossing of the col (Pelzer–Wigner 1932).** With the H + H₂ surface in hand, follow the system as it moves over the col and count the flux passing the saddle. This is the right dynamical object — flux through the pass — and it firmly identifies the saddle as where the rate is decided.
 
 ## Evaluation settings
 
@@ -48,7 +46,7 @@ The natural proving grounds are elementary gas-phase reactions for which a poten
 
 ## Code framework
 
-The pieces that already exist are the statistical-mechanical partition-function primitives and a way to read molecular data off a surface. What does not exist is the model that assembles them into a rate. The scaffold below makes the existing primitives concrete and leaves the rate model as an empty slot.
+The pieces that already exist are the statistical-mechanical partition-function primitives and a way to read molecular data off a surface. The scaffold below makes the existing primitives concrete and leaves the rate model as an empty slot.
 
 ```python
 import math

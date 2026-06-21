@@ -15,14 +15,9 @@ learner may legally use information no agent could access at execution: the glob
 agent's observation, shared gradients and shared parameters. This is **centralised training with
 decentralised execution (CTDE)**. The standard CTDE actor-critic recipe is settled in its skeleton:
 one decentralised actor `π^a(u^a|τ^a)` per agent (often parameter-shared), trained by a policy
-gradient with a learned value function as a variance-reducing baseline. What is *not* settled — and
-is the entire question here — is the **value function (critic)**: what it should condition on and how
-it should be built. The actor is fixed in form; the critic's input set is the free design variable,
-and that single choice fixes the bias-variance behaviour of every advantage estimate and decides
-whether the method survives the pathologies of multi-agent learning. A viable solution has to (1) give a
-low-variance, low-bias advantage to each decentralised actor, (2) remain learnable as the number of
-agents and the observation dimension grow, and (3) not be destabilised by the fact that, from any one
-agent's viewpoint, the *other* learning agents make the environment non-stationary.
+gradient with a learned value function as a variance-reducing baseline. The actor is fixed in form;
+the **value function (critic)** — what it should condition on and how it should be built — is the
+open design variable.
 
 ## Background
 
@@ -64,7 +59,7 @@ critic inside its own trust region; others use an unclipped squared TD error. A 
 `R_t^{(n)} = Σ_{l=0}^{n-1} γ^l r_{t+l} + γ^n V(x_{t+n})`, with advantage
 `Â_t^{(n)} = R_t^{(n)} - V(x_t)`.
 
-Carrying this into the multi-agent case raises the difficulties that have shaped the field:
+Carrying this into the multi-agent case introduces several well-documented phenomena:
 
 - **Non-stationarity from co-learners.** If one agent treats the other `N-1` agents as part of the
   environment, then because those agents are themselves learning and exploring, the effective
@@ -93,10 +88,7 @@ feeding it every variable available during training.
 **Independent actor-critic / independent Q-learning (IAC, IQL; Tan, 1993; Foerster et al., 2018
 ablation).** Decompose the `N`-agent problem into `N` single-agent problems: each agent runs vanilla
 actor-critic or Q-learning on its own `(τ^a, u^a, r)`, treating peers as environment. Trivially
-decentralisable and cheap. *Limitation:* on cooperative deep benchmarks these independent learners are
-observed to be unstable and to converge to poor policies — the non-stationarity from co-learners and
-the confounded-stochasticity pathology bite in practice, and a single bad update can be catastrophic
-because nothing restrains the per-step policy change.
+decentralisable and cheap.
 
 **Centralised joint critic (Central-V, COMA; Foerster et al., 2018) and MADDPG (Lowe et al., 2017).**
 Keep decentralised actors but train a critic that conditions on centralised information — the global
@@ -104,28 +96,12 @@ state `s`, or the concatenation of all agents' observations/actions. Because the
 at execution, the policies stay decentralisable. COMA additionally uses a counterfactual baseline
 (comparing an agent's action to a marginal over its other actions, holding peers fixed) to sharpen
 credit assignment. The premise is that seeing the whole picture removes the non-stationarity from the
-critic's view and makes value learning easier. *Limitations:* (i) when the critic conditions on
-information outside one agent's actor input, the actor update has to average over that extra
-information; in practice this marginalisation is often estimated by sampling and raises variance in
-the per-agent update; (ii) it scales poorly as the number of agents and the observation/action
-dimensions grow, both in input width and in learnability; (iii) a critic keyed on the bare state `s`
-is biased in partial observability because it discards history information, so the central information helps only when
-the critic retains history information rather than discarding it for `s`.
+critic's view and makes value learning easier.
 
 **Value-function factorisation (VDN, QMIX; Sunehag et al., 2018; Rashid et al., 2018).** Sidestep the
 joint-action explosion by writing the joint `Q_tot` as a function of per-agent utilities —
 `Q_tot = Σ_a Q_a` (VDN) or a state-conditioned monotonic mixing network with `∂Q_tot/∂Q_a ≥ 0`
 (QMIX) — so that greedy decentralised action selection is consistent with the centralised value.
-*Limitation:* the monotonicity that makes factorisation decentralisable also restricts what team-
-reward functions it can represent; it is prone to *relative overgeneralisation*, where the policies
-converge to a suboptimal joint action because a non-monotonic reward surface (coordinated success is a
-needle in a haystack, partial coordination is penalised) cannot be represented by a monotonic mix.
-
-Across all three families the unexamined common assumption is that *more centralised information in
-the value function is better*. The cost each pays — instability without any restraint on the policy
-step (IAC/IQL), variance and poor scaling and state-induced bias from centralising the critic
-(Central-V/COMA/MADDPG), representational limits from monotone factorisation (VDN/QMIX) — is the gap
-left open.
 
 ## Evaluation settings
 

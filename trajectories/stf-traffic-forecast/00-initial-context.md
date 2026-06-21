@@ -4,10 +4,10 @@ What spatial-temporal forecasting component generalizes across traffic-sensor ne
 
 ## Prior art / background / baselines
 
-- **Vanilla Transformer for forecasting.** A token per timestamp, self-attention over time, and an autoregressive decoder that emits the horizon one step at a time. Gap: self-attention scales quadratically with sequence length, and the autoregressive decoder accumulates error across the horizon.
-- **Informer.** A sparse attention approximation that reduces complexity to `O(L log L)`, paired with a generative decoder that predicts all horizon steps at once. Gap: because the attention approximation and the output generation changed together, the source of any reported gain is unclear.
-- **Autoformer.** A moving-average decomposition of each series into trend and seasonal parts, wired through the network alongside an Auto-Correlation mechanism over FFT-identified dominant lags. Gap: the decomposition block and the autocorrelation block are bundled with the rest of the architecture, so their individual contributions to accuracy have not been isolated.
-- **FEDformer / Pyraformer.** Frequency-domain attention with a mixture of decomposition kernels, and pyramidal `O(L)` multi-scale attention over time. Gap: increasing the look-back length does not reliably improve accuracy, which suggests these architectures are not effectively exploiting longer temporal context.
+- **Vanilla Transformer for forecasting.** A token per timestamp, self-attention over time, and an autoregressive decoder that emits the horizon one step at a time.
+- **Informer.** A sparse attention approximation that reduces complexity to `O(L log L)`, paired with a generative decoder that predicts all horizon steps at once.
+- **Autoformer.** A moving-average decomposition of each series into trend and seasonal parts, wired through the network alongside an Auto-Correlation mechanism over FFT-identified dominant lags.
+- **FEDformer / Pyraformer.** Frequency-domain attention with a mixture of decomposition kernels, and pyramidal `O(L)` multi-scale attention over time.
 
 ## The fixed substrate
 

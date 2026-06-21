@@ -2,9 +2,7 @@
 
 A seller has one indivisible item and several risk-neutral bidders. Bidder i privately knows a value v_i drawn independently from a known distribution F_i with density f_i. The seller wants a direct mechanism that maximizes expected revenue while making truthful reporting incentive compatible and participation individually rational.
 
-The difficulty is that the seller's objective is money, not total value. Under full information, the seller could simply choose the buyer and price after seeing values. Under private information, the allocation rule and payment rule cannot be chosen point by point independently: a high type must prefer its own outcome to a lower type's outcome, and every type who participates must receive nonnegative utility. The useful formulation has to keep these IC and IR constraints explicit enough to prevent cheating, but simple enough to optimize over.
-
-A satisfactory solution should identify the revenue-maximizing allocation, not merely a familiar auction format with an added reserve. It should explain when withholding the item is optimal, how payments are pinned down by truthful allocation behavior, and what to do when the natural revenue objective pushes allocation in a nonmonotone direction.
+The seller's objective is money, not total value. Under private information, the allocation rule and payment rule cannot be chosen point by point independently: a high type must prefer its own outcome to a lower type's outcome, and every type who participates must receive nonnegative utility. The useful formulation keeps IC and IR constraints explicit enough to prevent cheating, but simple enough to optimize over.
 
 ## Background
 
@@ -20,15 +18,15 @@ For profit rather than surplus, withholding the item can be valuable. A single p
 
 ## Baselines
 
-**Posted price for one buyer.** A seller facing one buyer can announce a price r. The buyer accepts if v >= r, so expected revenue is r(1-F(r)). This directly handles the no-sale option and gives the monopoly reserve, but it does not explain how to allocate among multiple bidders or how competition and asymmetric distributions should affect the rule.
+**Posted price for one buyer.** A seller facing one buyer can announce a price r. The buyer accepts if v >= r, so expected revenue is r(1-F(r)). This directly handles the no-sale option and gives the monopoly reserve.
 
-**Second-price auction.** Allocating to the highest bidder and charging the second-highest bid is dominant-strategy incentive compatible and individually rational. It maximizes realized surplus among bidders, but it can be revenue-suboptimal because it sells even when all bids are below the seller's revenue-maximizing cutoff.
+**Second-price auction.** Allocating to the highest bidder and charging the second-highest bid is dominant-strategy incentive compatible and individually rational. It maximizes realized surplus among bidders.
 
-**Second-price auction with a reserve.** Adding a reserve price combines competition with the possibility of no sale. For identical regular distributions, this format is the right object, but as a baseline it still leaves the real design question open: why the reserve should be what it is, how to handle nonidentical distributions, and whether ranking by bids is still the right allocation rule.
+**Second-price auction with a reserve.** Adding a reserve price combines competition with the possibility of no sale. For identical regular distributions, this format links the reserve to the distribution.
 
-**Surplus maximization with externality payments.** In general single-parameter environments, the VCG/externality-pricing template maximizes total value subject to truthful incentives. It is powerful because the allocation that maximizes surplus is monotone and the payments are critical values. Its gap is objective mismatch: seller revenue is not social surplus, so the allocation rule that is efficient for bidders need not be optimal for the seller.
+**Surplus maximization with externality payments.** In general single-parameter environments, the VCG/externality-pricing template maximizes total value subject to truthful incentives. The allocation that maximizes surplus is monotone and the payments are critical values.
 
-**Arbitrary direct mechanisms.** A direct mechanism can specify any feasible allocation probability and payment for every bid profile, but IC couples all reports by one bidder. Without reducing those constraints, the design problem is an infinite-dimensional constrained optimization problem over allocation and payment functions.
+**Arbitrary direct mechanisms.** A direct mechanism can specify any feasible allocation probability and payment for every bid profile, with IC coupling all reports by one bidder.
 
 ## Evaluation settings
 
@@ -57,10 +55,4 @@ Implementability checks:
   for each bidder i, the interim allocation q_i(z) must be nondecreasing in z
   payments must make truthful reporting optimal
   lowest-type utility must satisfy individual rationality
-
-Optimization slot:
-  define the revenue-relevant score for serving each reported type
-  choose a feasible allocation that maximizes the resulting score
-  if the score creates a nonmonotone allocation rule, replace it with a monotone implementable rule
-  recover payments from the allocation rule
 ```

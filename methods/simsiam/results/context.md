@@ -4,17 +4,17 @@
 
 We want to learn visual representations from images without labels. The common shape is a Siamese network: take one image, draw two random augmentations, encode both views, and make the two outputs agree. The obstacle is collapse. If every input maps to one constant vector, the two views agree perfectly while the representation contains no usable information.
 
-The question is how little machinery is actually needed to avoid that failure. Existing successful systems add explicit repulsion, online clustering, a second slowly updated encoder, or large-batch infrastructure. Are those components intrinsically necessary, or can a direct shared-weight Siamese network learn nontrivial image features if the right minimal asymmetry is present?
+The question is what components are actually required to train a direct shared-weight Siamese network to learn nontrivial image features while avoiding collapse.
 
 ## Background
 
 A Siamese network applies weight-sharing functions to multiple inputs and compares the outputs. In self-supervised vision, the inputs are two augmentations of the same image, so the objective asks the representation to become invariant to the augmentation distribution. Collapse is the degenerate fixed point: agreement is maximized because all samples receive the same code.
 
-Contrastive learning prevents that fixed point by using negative pairs. Two views of one image are pulled together, and views from different images are pushed apart. If every image mapped to one point, the negative terms would be violated. This makes the number and quality of negatives central.
+Contrastive learning prevents that fixed point by using negative pairs. Two views of one image are pulled together, and views from different images are pushed apart. This makes the number and quality of negatives central.
 
 Clustering-based self-supervision avoids pairwise negatives but introduces another anti-collapse mechanism. It assigns images to prototypes or clusters and prevents all samples from choosing the same cluster through balanced assignment constraints or repeated re-clustering.
 
-Momentum-target methods remove explicit negatives and instead make an online network predict targets produced by a second network. The target network changes slowly, so the prediction target is more stable than the online branch. A prediction MLP on the online side is part of this recipe, but the moving-average target and the target-side training rule are coupled together.
+Momentum-target methods remove explicit negatives and instead make an online network predict targets produced by a second network. The target network changes slowly, so the prediction target is more stable than the online branch. A prediction MLP on the online side is part of this recipe, coupled with a moving-average target network.
 
 Batch normalization, projection heads, predictor heads, and strong augmentations are also in the design space. BN can stabilize deep optimization. Projection heads improve the representation learned before the loss. Predictor heads introduce an asymmetry between the two branches. Augmentations define the invariances being learned.
 
@@ -24,13 +24,13 @@ Alternating optimization is a separate classical tool. When an objective has two
 
 **Contrastive loss / DrLIM.** Hadsell, Chopra, and LeCun formulate a Siamese-style loss with similar pairs attracted and dissimilar pairs repelled by a margin. The dissimilar term prevents the all-constant solution.
 
-**SimCLR.** A direct weight-sharing Siamese network uses two augmented views per image and the NT-Xent loss. Other views in the minibatch act as negatives. A nonlinear projection head before the contrastive loss improves representation quality. The recipe benefits from very large batches, commonly 4096 examples, and LARS.
+**SimCLR.** A direct weight-sharing Siamese network uses two augmented views per image and the NT-Xent loss. Other views in the minibatch act as negatives. A nonlinear projection head before the contrastive loss improves representation quality. The recipe uses very large batches, commonly 4096 examples, and LARS.
 
 **MoCo.** A query encoder is trained with a contrastive loss against a large dictionary of keys. The dictionary is maintained as a queue, and a momentum encoder keeps queued keys relatively consistent. The queue decouples the negative set size from the current minibatch size.
 
-**DeepCluster and SwAV.** DeepCluster alternates between clustering image features and training a network to predict the cluster assignments. SwAV makes clustering online by predicting assignments between views and computing batch assignments with a Sinkhorn-Knopp balanced partition. The assignment machinery is the nontrivial anti-collapse device.
+**DeepCluster and SwAV.** DeepCluster alternates between clustering image features and training a network to predict the cluster assignments. SwAV makes clustering online by predicting assignments between views and computing batch assignments with a Sinkhorn-Knopp balanced partition. The assignment machinery is the anti-collapse device.
 
-**BYOL.** An online branch predicts the projection of a target branch for another augmented view. The target branch uses a moving average of the online parameters, and the prediction MLP is applied only on the online branch. BYOL shows that explicit negatives are not required, but leaves open which part of the target-side machinery is doing the essential work.
+**BYOL.** An online branch predicts the projection of a target branch for another augmented view. The target branch uses a moving average of the online parameters, and the prediction MLP is applied only on the online branch. BYOL shows that explicit negatives are not required.
 
 ## Evaluation Settings
 

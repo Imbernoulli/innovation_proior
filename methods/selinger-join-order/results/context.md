@@ -15,14 +15,11 @@ the two tables whose join is most selective first and the running result stays s
 first and you carry a near-Cartesian blow-up through every later step. So a chosen order is, in effect, a
 chosen cost, and the spread between the best and the worst is large.
 
-The catch is the size of the search space. With n tables in the FROM-list there are n! left-deep table
+The size of the search space is large. With n tables in the FROM-list there are n! left-deep table
 orders before access paths and join methods are considered. If bushier binary combinations are also admitted,
 a common broad enumeration count adds a factorial-scale nesting factor, often summarized as n!·(n−1)!; for a
-20-way join that shorthand is 20!·19! ≈ 2.96×10³⁵. The exact tree-counting convention is less important than
-the conclusion: enumerating all plans is hopeless. What a solution must achieve is to search this space
-implicitly, costing only a tractable number of plans, yet still land on (or very near) the cheapest one, and
-do it fast enough that the optimization itself is cheap relative to running the query, especially when a query
-is compiled once and run many times.
+20-way join that shorthand is 20!·19! ≈ 2.96×10³⁵. The optimization cost also matters because a query can be
+compiled once and run many times, so optimization time is amortized across executions.
 
 ## Background
 
@@ -87,10 +84,6 @@ operator: an ORDER BY or GROUP BY over that column can skip a final sort, and a 
 column can skip sorting that input. Producing an output in a given order may itself cost more than producing
 it unordered.
 
-**Crudeness of the model.** The selectivity model rests on strong simplifications — uniform value
-distributions, independence between predicates, fixed default fractions when statistics are missing — so its
-absolute cardinality and cost predictions can be far from the true runtime numbers.
-
 ## Baselines
 
 **INGRES query decomposition (Wong & Youssefi 1976; Stonebraker, Wong, Kreps & Held 1976).** The
@@ -100,9 +93,7 @@ remain, perform **tuple substitution** — pick one relation, and for each of it
 constant values into the rest of the query, recursively solving the smaller query that results. It is a
 dynamic, runtime, heuristic strategy: the order in which variables are substituted is chosen by rules of
 thumb (e.g. substitute the smallest relation), decisions are made tuple-by-tuple at execution time, and
-nothing is compiled or globally costed. Gap: there is no global, quantitative minimization over the whole
-join order — the heuristic can pick a poor substitution order, and because the work is interpreted at
-runtime there is no compiled plan to amortize over repeated executions of the same query.
+nothing is compiled or globally costed.
 
 **Exhaustive enumeration.** The conceptually obvious baseline — generate every join order, every tree shape,
 every method/access-path assignment, cost each, take the min — is correct but the ordering-and-nesting space is
@@ -110,11 +101,8 @@ factorial-scale and computable only for tiny n. It is the thing a real method mu
 its price.
 
 **Single-table access-path selection in isolation.** Choosing the cheapest index-or-scan for *one* table
-against a set of local predicates is the easy, already-solved sub-problem (cost each available path from the
-catalog statistics, take the minimum). Gap: it says nothing about how to
-combine tables — the join-order problem is exactly what it leaves open, and naively optimizing each table's
-access in isolation and then joining ignores that the right access path for a table depends on its role
-(outer vs inner) in the join.
+against a set of local predicates is the already-solved sub-problem (cost each available path from the
+catalog statistics, take the minimum).
 
 ## Evaluation settings
 

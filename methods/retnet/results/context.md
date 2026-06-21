@@ -2,36 +2,21 @@
 
 ## Research question
 
-The dominant architecture for large language models is the Transformer. It earned that
-position by solving the training bottleneck of recurrent networks: because self-attention
-compares every position to every other position in one matrix operation, a Transformer can
-be trained teacher-forced over a whole sequence in parallel, saturating modern accelerators
-in a way that a step-by-step recurrence never could.
+The dominant architecture for large language models is the Transformer. Because self-attention
+compares every position to every other position in one matrix operation, a Transformer can be
+trained teacher-forced over a whole sequence in parallel, saturating modern accelerators.
 
-That same design, however, makes *autoregressive inference* expensive. To generate token
-\(n\), the model forms a query and compares it against the keys of all \(n-1\) previous
-tokens, which is \(O(n)\) work for that single step; over a full sequence the decode cost is
-quadratic. Worse, the standard remedy — caching the past keys and values so they are not
-recomputed — produces a key–value cache whose size grows linearly with the sequence length.
-Decoding becomes memory-bound: GPU memory, latency, and throughput all degrade as the
-context grows, which is exactly the regime large language models are pushed into.
+For *autoregressive inference*, the cost profile is different. To generate token \(n\), the
+model forms a query and compares it against the keys of all \(n-1\) previous tokens, which is
+\(O(n)\) work for that single step; over a full sequence the decode cost is quadratic. The
+standard implementation caches the past keys and values so they are not recomputed, producing
+a key–value cache whose size grows linearly with the sequence length, so GPU memory, latency,
+and throughput depend on how long the context is.
 
-The goal, then, is a sequence-modeling primitive that holds three properties at once:
-
-1. **Training parallelism** — the whole sequence processed in parallel, like attention, so
-   training scales on GPUs.
-2. **\(O(1)\) inference** — a constant amount of work and a constant amount of state per
-   generated token, like a recurrent network, so decode cost is independent of how much has
-   already been generated.
-3. **Strong performance** — modeling quality on par with a Transformer of the same size,
-   with favorable scaling as the model grows.
-
-These three pull against each other. Parallel training wants an all-pairs operation that can
-be evaluated at once; cheap inference wants a fixed-size summary of the past that is updated
-one step at a time; and previous attempts to get the second have given up the third. A
-solution would have to be one operator that admits both a parallel evaluation for training
-and a recurrent evaluation for inference, *provably computing the same function*, without
-conceding quality.
+The question is how to build a sequence-modeling primitive for autoregressive language
+modeling whose training can be evaluated over a whole sequence in parallel, like attention,
+while its decoding carries a fixed amount of work and state per generated token, like a
+recurrent network — and that matches a same-size Transformer in modeling quality.
 
 ## Background
 

@@ -8,11 +8,11 @@ A better method moves the time-accuracy-cost frontier: it reaches the same accur
 
 The starting point is the vanilla ResNet-50 / ImageNet supervised recipe with no efficiency methods stacked on top.
 
-- **Vanilla ResNet-50 with SGD + momentum, cosine/step LR decay, and standard crops/flips.** Core idea: a 50-layer residual network is trained with SGD with momentum 0.9, a learning rate decayed over roughly 90 epochs, L2 weight decay, and random-resized-crop plus horizontal-flip augmentation, reaching about 76% top-1. Gap: it is slow and expensive — every step passes a full-resolution image through the full-capacity network, the only time-accuracy knob is the number of epochs, and nothing in the recipe exploits problem structure to get the same accuracy for less compute.
+- **Vanilla ResNet-50 with SGD + momentum, cosine/step LR decay, and standard crops/flips.** Core idea: a 50-layer residual network is trained with SGD with momentum 0.9, a learning rate decayed over roughly 90 epochs, L2 weight decay, and random-resized-crop plus horizontal-flip augmentation, reaching about 76% top-1.
 
-- **Weight decay folded into SGD as L2 regularization.** Core idea: the optimizer penalizes weight magnitude through a loss term whose update scaling is tied to the learning rate. Gap: this couples the learning rate and the effective regularization strength, so changing one during a sweep changes the other and makes independent tuning difficult when other schedule changes are stacked on top.
+- **Weight decay folded into SGD as L2 regularization.** Core idea: the optimizer penalizes weight magnitude through a loss term whose gradient update is η·λ·θ, where η is the learning rate and λ is the weight-decay coefficient. The penalty is added to the gradient before the parameter step.
 
-- **Schedule scaling: training longer or shorter.** Core idea: vary the number of epochs to trade accuracy for wall-clock time. Gap: halving the schedule roughly halves training time but drops accuracy (for example, from 76.6% to about 75.6%), so it slides along the existing frontier rather than pushing it outward.
+- **Schedule scaling: training longer or shorter.** Core idea: vary the number of epochs to trade accuracy for wall-clock time.
 
 ## Fixed substrate / Code framework
 

@@ -4,9 +4,7 @@
 
 Given one RGB image, produce every object instance as a class label and a tight bounding box. The practical yardstick is not only accuracy: the detector has to sit on a speed/accuracy frontier, measured as mean Average Precision and frames per second on a single GPU.
 
-By late 2015, the most accurate detectors share a costly shape. They first generate many candidate regions, then resample pixels or feature-map cells for each candidate, and finally classify and refine each candidate. That recipe is accurate because the classifier sees a normalized region, but it is slow because the number of candidate regions is large. The fastest high-accuracy model in this family reports about 7 FPS with VGG-style features.
-
-The open problem is to remove the per-candidate resampling and second-stage classification without falling back to a weak coarse-grid detector. A single forward pass should emit all candidate boxes and class scores, but it still needs enough spatial, scale, and shape resolution to cover small objects, large objects, and crowded scenes.
+By late 2015, the most accurate detectors share a costly shape. They first generate many candidate regions, then resample pixels or feature-map cells for each candidate, and finally classify and refine each candidate. The fastest high-accuracy model in this family reports about 7 FPS with VGG-style features. The open question is how to build a single-pass fully convolutional detector that covers small objects, large objects, and crowded scenes without a second classification stage.
 
 ## Background
 
@@ -16,21 +14,21 @@ Faster R-CNN removes the hand-engineered proposal generator by adding a Region P
 
 MultiBox shows another route: predict a fixed set of prior boxes and confidences, then train by matching priors to ground-truth boxes. Its priors and matching loss are directly relevant, but its outputs are class-agnostic proposals that still need downstream classification.
 
-Single-pass detectors already exist. OverFeat predicts from a top feature map in a sliding-window style. YOLO predicts from a coarse grid with fully connected layers on top of whole-image features. These systems are fast, but the single low-resolution prediction surface leaves poor support for small or dense objects, and the fully connected coordinate head is a heavy way to produce spatially local boxes.
+Single-pass detectors already exist. OverFeat predicts from a top feature map in a sliding-window style. YOLO predicts from a coarse grid with fully connected layers on top of whole-image features, achieving around 45 FPS for the standard model.
 
 Feature maps inside a CNN are not interchangeable. Earlier maps have finer spatial sampling; deeper maps have larger receptive fields and stronger semantics. Dense prediction work such as FCN and hypercolumns uses this fact for localization. Dilated convolution provides a way to keep resolution while increasing receptive field, and VGG-16 is the common ImageNet-pretrained backbone available to the detector.
 
 ## Baselines
 
-Fast R-CNN takes external proposals, RoI-pools each proposal from a shared convolutional map, and applies classification plus class-specific box regression. It establishes the Smooth L1 localization term and multi-task detection training, but the proposal generator is outside the network and dominates full-pipeline latency.
+Fast R-CNN takes external proposals, RoI-pools each proposal from a shared convolutional map, and applies classification plus class-specific box regression. It establishes the Smooth L1 localization term and multi-task detection training.
 
-Faster R-CNN adds the RPN. It uses tiled anchors, convolutional prediction, and center/log-size offset regression, then uses those proposals in a second RoI-pooled classification/regression stage. This leaves two gaps: all anchors are attached to one feature map, and final detection still uses per-proposal feature pooling.
+Faster R-CNN adds the RPN. It uses tiled anchors, convolutional prediction, and center/log-size offset regression, then uses those proposals in a second RoI-pooled classification/regression stage.
 
-MultiBox directly regresses a fixed set of priors and confidences using a matching loss. It supplies the idea that a fixed output set can be supervised by overlap matching, but it does not by itself produce per-class detections.
+MultiBox directly regresses a fixed set of priors and confidences using a matching loss. It supplies the idea that a fixed output set can be supervised by overlap matching.
 
-YOLO uses one network pass over a whole image and predicts a 7 by 7 grid with two boxes per cell and class probabilities. It demonstrates real-time speed, around 45 FPS for the standard model, but reports a large mAP gap relative to Faster R-CNN and struggles with small or clustered objects.
+YOLO uses one network pass over a whole image and predicts a 7 by 7 grid with two boxes per cell and class probabilities. It demonstrates real-time speed at around 45 FPS for the standard model.
 
-OverFeat runs a convolutional classifier and regressor over a top feature map. It is spatially shared and simple, but it uses a single prediction scale.
+OverFeat runs a convolutional classifier and regressor over a top feature map. It is spatially shared and simple.
 
 ## Evaluation settings
 
@@ -42,13 +40,13 @@ ILSVRC DET has 200 detection classes and tests whether the architecture scales b
 
 Speed is reported as FPS on a single Nvidia GPU, often with batch size stated. Since candidate resampling can dominate runtime, the evaluation has to include the full detector, not only a classifier head.
 
-Error analysis tools decompose false positives into localization, similar-category, other-category, and background errors, and also break performance down by object size and aspect ratio. Those diagnostics are needed because a fast detector can look good on average while failing on small objects.
+Error analysis tools decompose false positives into localization, similar-category, other-category, and background errors, and also break performance down by object size and aspect ratio.
 
 ## Code framework
 
 The starting code already has an ImageNet-pretrained VGG-style backbone, IoU computation, Smooth L1, softmax or cross-entropy, the standard center/log-size box-offset parameterization, non-maximum suppression, and an SGD training loop.
 
-What is not fixed yet is the detector head: where the reference boxes live, how many shapes each location owns, which feature maps provide predictions, how class scores and offsets are emitted, how references are matched to ground truth, and how the loss handles the large background imbalance.
+The detector head is left open: where the reference boxes live, how many shapes each location owns, which feature maps provide predictions, how class scores and offsets are emitted, how references are matched to ground truth, and how the loss handles the large background imbalance.
 
 ```python
 import torch

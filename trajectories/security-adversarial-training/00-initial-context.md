@@ -4,13 +4,13 @@ A convolutional classifier can reach 99%+ clean accuracy on MNIST and 95% on CIF
 
 ## Prior art / Background / Baselines
 
-Existing defenses fall into three families; each leaves a concrete gap.
+Existing defenses fall into three families.
 
-- **Gradient masking / obfuscation defenses (defensive distillation, bit-depth reduction, detector front-ends).** They hide or flatten the gradient that a particular attack relies on. Gap: attacks that do not need that gradient — transfer, decision-based, or adaptive gradient estimators — still succeed, so the defense is brittle to the choice of attack.
+- **Gradient masking / obfuscation defenses (defensive distillation, bit-depth reduction, detector front-ends).** They hide or flatten the gradient that a particular attack relies on, making gradient-based attacks less effective.
 
-- **FGSM adversarial training.** It augments each minibatch with the one-step sign perturbation `x + eps * sign(grad_x J)`. Gap: the model overfits to that specific one-step perturbation, and other points in the allowed perturbation set still cause errors.
+- **FGSM adversarial training.** It augments each minibatch with the one-step sign perturbation `x + eps * sign(grad_x J)`.
 
-- **Min-max robust optimization with one-step inner approximation.** It frames training as `min_theta E max_{||delta||_inf <= eps} L(theta, x+delta, y)` and approximates the inner maximization by a single linearized step. Gap: the one-step approximation can miss the true worst-case loss inside the `L_inf` ball, so adversarial examples remain.
+- **Min-max robust optimization with one-step inner approximation.** It frames training as `min_theta E max_{||delta||_inf <= eps} L(theta, x+delta, y)` and approximates the inner maximization by a single linearized step.
 
 ## Fixed substrate / Code framework
 

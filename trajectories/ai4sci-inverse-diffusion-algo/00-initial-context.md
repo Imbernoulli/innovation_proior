@@ -4,16 +4,12 @@ A pretrained diffusion model supplies a denoiser `net(x_t, sigma)` that returns 
 
 The object of study is the **measurement-conditioning rule**: how the denoiser, the noise schedule, the forward operator, and its gradient are combined into a sampler that draws from `p(x | y) ∝ p(y | x) p(x)`. The denoiser weights, forward operators, and evaluation tasks are fixed; only the conditioning rule is designed.
 
-The rule must handle general (possibly nonlinear) `A`, remain stable under measurement noise, and need little per-problem tuning, across three inverse problems with very different forward operators.
-
 ## Prior art / Background / Baselines
 
-All of these methods face the same obstacle: the *time-level likelihood score* `∇_{x_t} log p_t(y | x_t)` has no closed form, because `y` depends on the noised iterate `x_t` only through the unknown clean `x_0`.
-
-- **Reverse-SDE / score-based generative modeling.** Generation follows the reverse of the diffusion SDE using the score `∇_{x_t} log p_t(x_t)` supplied by the denoiser. Conditioning on `y` splits the score into the prior score plus the likelihood score. Gap: the decomposition exposes the likelihood score but does not supply it.
-- **Projection-onto-measurement-subspace solvers (score-SDE, ILVR).** Take an unconditional diffusion step, then project the iterate onto `{x : A x = y}` to enforce data consistency. Gap: with noisy `y`, hard projection forces the reconstruction to reproduce the measurement noise, and it presupposes a linear, easily projectable `A`, excluding nonlinear operators.
-- **Spectral-domain solvers (SNIPS / DDRM).** Diagonalize `A` by its SVD and treat measurement-domain Gaussian noise in closed form in the spectral basis. Gap: they require an explicit, cheap SVD of the forward operator, which is unavailable for PDE scattering solvers, sparse interferometry, or general nonlinear `A`.
-- **Tweedie's formula.** The denoiser's output `E[x_0 | x_t]` is a closed-form clean estimate at any noise level. Gap: it is only the posterior *mean*, not a draw from the posterior.
+- **Reverse-SDE / score-based generative modeling.** Generation follows the reverse of the diffusion SDE using the score `∇_{x_t} log p_t(x_t)` supplied by the denoiser. Conditioning on `y` splits the score into the prior score plus the likelihood score `∇_{x_t} log p_t(y | x_t)`.
+- **Projection-onto-measurement-subspace solvers (score-SDE, ILVR).** Take an unconditional diffusion step, then project the iterate onto `{x : A x = y}` to enforce data consistency.
+- **Spectral-domain solvers (SNIPS / DDRM).** Diagonalize `A` by its SVD and treat measurement-domain Gaussian noise in closed form in the spectral basis.
+- **Tweedie's formula.** The denoiser's output is a closed-form estimate of the posterior mean `E[x_0 | x_t]` at any noise level.
 
 ## Fixed substrate / Code framework
 

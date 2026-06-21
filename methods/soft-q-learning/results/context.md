@@ -4,13 +4,11 @@
 
 How can an agent learn a genuinely stochastic, *multimodal* policy over continuous states and actions — one that captures the entire range of good ways to perform a task, not just one — and do so with a policy representation expressive enough to be arbitrarily multimodal?
 
-The standard reinforcement-learning objective maximizes expected return, and under full observability its optimum is a deterministic policy. Stochasticity, when present, is added by hand: injecting exploration noise, or initializing a parametric stochastic policy with high entropy that then collapses. But there are tasks where a stochastic policy is genuinely preferable as the *solution*, not just as an exploration trick:
+The standard reinforcement-learning objective maximizes expected return, and under full observability its optimum is a deterministic policy. Stochasticity, when present, is added by hand: injecting exploration noise, or initializing a parametric stochastic policy with high entropy that then collapses. There are tasks where a stochastic policy is genuinely preferable as the *solution*, not just as an exploration trick:
 
-- **Multimodal reward landscapes.** When several distinct behaviors are (near-)equally good, a unimodal policy must pick one mode early and risks committing to a suboptimal one. A policy that keeps all good modes alive explores better.
-- **Compositionality / transfer.** A policy that has learned *all* the ways to, say, move forward is a far better initialization for finetuning to a specific skill than a near-deterministic expert that only knows one way.
-- **Robustness** to perturbations and uncertain dynamics — multiple ways to accomplish a task give more options to recover.
-
-Achieving this requires two things at once: (1) an *objective* that rewards stochasticity rather than penalizing it, and (2) a *representation* for the policy distribution rich enough to be multimodal in a high-dimensional continuous action space — together with a *tractable* way to train it and to draw actions from it online.
+- **Multimodal reward landscapes.** When several distinct behaviors are (near-)equally good, a policy that keeps all good modes alive explores more of the reward landscape.
+- **Compositionality / transfer.** A policy that has learned *all* the ways to, say, move forward is a potentially better initialization for finetuning to a specific skill.
+- **Robustness** to perturbations and uncertain dynamics — multiple ways to accomplish a task provide more recovery options.
 
 ## Background
 
@@ -26,13 +24,11 @@ Achieving this requires two things at once: (1) an *objective* that rewards stoc
 
 ## Baselines
 
-- **DDPG** (Lillicrap et al. 2015; deterministic policy gradient, Silver 2014; NFQCA, Hafner 2011). Maintains a Q-function critic updated with *hard* Bellman targets, and an actor trained by backpropagating the critic's action-gradient `∇_a Q` into the policy network. The actor thus chases the single `argmax_a Q(s,a)` — a deterministic, unimodal MAP action. Strong sample efficiency on continuous control, but cannot represent or explore multiple modes; it commits to one.
-- **Normalized advantage functions (NAF)** (Gu et al. 2016). Makes continuous Q-learning tractable by forcing the Q-function to be quadratic in the action (advantage = a negative-definite quadratic), so the max and the greedy action are closed-form. Tractable but the implied action distribution is a single Gaussian — unimodal by construction.
-- **PGQ / entropy-regularized policy gradient** (O'Donoghue et al. 2016). Connects Boltzmann exploration and policy gradients by adding a per-step entropy bonus. But it maximizes entropy only at the *current* timestep, not the trajectory's entropy, so it does not plan toward future high-entropy states, and it is demonstrated with simple (e.g. discrete multinomial) policy classes.
-- **Stochastic policies with simple parametric families** (e.g. conditional Gaussian, as in Rawlik 2012; multinomial in PGQ). Even with a neural network producing the *parameters*, the distribution itself stays unimodal — the representational power is capped by the family, so it cannot capture genuinely multimodal behavior.
-- **Tabular / analytically-normalizable maximum-entropy methods** (Z-learning, MaxEnt IRL, message-passing inference, G-learning). Solve the maximum-entropy problem exactly but only in discrete/tabular settings or with normalizable distributions; they do not scale to high-dimensional continuous spaces with expressive energies.
-
-The common gap: prior continuous methods are either deterministic/unimodal, or capped by a simple distribution family; prior expressive maximum-entropy methods stall at discrete/tabular settings. No existing approach delivers a genuinely multimodal policy in high-dimensional continuous spaces while staying fast enough to act online.
+- **DDPG** (Lillicrap et al. 2015; deterministic policy gradient, Silver 2014; NFQCA, Hafner 2011). Maintains a Q-function critic updated with *hard* Bellman targets, and an actor trained by backpropagating the critic's action-gradient `∇_a Q` into the policy network. The actor pursues the `argmax_a Q(s,a)` — a deterministic, unimodal MAP action. Strong sample efficiency on continuous control.
+- **Normalized advantage functions (NAF)** (Gu et al. 2016). Makes continuous Q-learning tractable by forcing the Q-function to be quadratic in the action (advantage = a negative-definite quadratic), so the max and the greedy action are closed-form. The implied action distribution is a single Gaussian.
+- **PGQ / entropy-regularized policy gradient** (O'Donoghue et al. 2016). Connects Boltzmann exploration and policy gradients by adding a per-step entropy bonus, and is demonstrated with simple (e.g. discrete multinomial) policy classes.
+- **Stochastic policies with simple parametric families** (e.g. conditional Gaussian, as in Rawlik 2012; multinomial in PGQ). Even with a neural network producing the *parameters*, the distribution itself belongs to the chosen family (Gaussian, multinomial, etc.).
+- **Tabular / analytically-normalizable maximum-entropy methods** (Z-learning, MaxEnt IRL, message-passing inference, G-learning). Solve the maximum-entropy problem exactly in discrete/tabular settings or with normalizable distributions.
 
 ## Evaluation settings
 

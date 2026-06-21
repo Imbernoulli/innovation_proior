@@ -19,11 +19,9 @@ h*(z) = z1 + z1 z2 + z1 z2 z3   (a "staircase" of growing degree)
 ```
 
 Both depend on only three coordinates, and both contain a degree-3 term, so a fixed-feature
-(kernel / random-feature) method needs `Omega(d^3)` samples for either. The open question is whether
-SGD on a network *separates* them — whether one is `O(d)`-learnable and the other is not — and what
-structural property of `h*` decides it. A solution has to (1) go beyond the linear/lazy regime so the
-network genuinely builds features adapted to the unknown `I`, (2) come with a *necessity* direction
-(some sparse functions must be hard), and (3) give complexity finer than "polynomial in `d`".
+(kernel / random-feature) method needs `Omega(d^3)` samples for either. The open question is
+whether SGD on a network *separates* them — whether one is `O(d)`-learnable and the other is not —
+and what structural property of `h*` decides it.
 
 ## Background
 
@@ -71,9 +69,7 @@ the square loss, they observe a dramatic split: the network learns `S_10` to van
 *cannot* learn the isolated degree-10 monomial `chi_{1..10}` at all — and when one plots the network's
 Fourier coefficients against training iteration, on the staircase target they come up *in order of
 increasing degree* (degree 1 first, then degree 2, ...), whereas on the bare monomial no coefficient
-ever moves. The reading of this is that the degree-1 part is learned first, which makes the degree-2
-part easier to pick up, and so on — the network "climbs the staircase." This is a pre-method fact about
-how SGD behaves on structured Boolean targets.
+ever moves.
 
 **Why fixed features can't compete.** Lower bounds for linear methods (Ghorbani, Mei, Misiakiewicz &
 Montanari 2021; Hsu, Sanford, Servedio & Vlatakis-Gkaragkounis 2021; Kamath, Montasser & Srebro 2020)
@@ -89,33 +85,25 @@ same two-layer architecture but freeze the first layer at a random initializatio
 random biases) and train only the linear readout. The network is then exactly a random-feature model:
 `fhat(x) = sum_j a_j phi_j(x)` with `phi_j(x) = sigma(<w_j,x>)` fixed, and the readout is fit by linear
 least squares. Core math: with frozen features the optimization is convex and the model lives in the span
-of a *fixed* feature map. **Limitation:** the feature map is chosen before seeing which coordinates are
-relevant, so it spends representational budget uniformly over all `d` inputs; to express a degree-`k`
-component over an unknown subset it needs `min(n, q) = Omega(d^k)` samples-or-features. It does not move
-its weights toward `I`, so it cannot exploit the sparsity, and it learns the staircase and the bare
-monomial at the same prohibitive cost.
+of a *fixed* feature map. The feature map is chosen before seeing which coordinates are relevant, so it
+spends representational budget uniformly over all `d` inputs; to express a degree-`k` component over an
+unknown subset it needs `min(n, q) = Omega(d^k)` samples-or-features.
 
 **Layerwise coordinate-descent training of deep sparse nets on staircases (Abbe et al. 2021).** This
-prior work proves that staircase functions are learnable by *regular* networks, establishing that
-hierarchical structure is exploitable in principle. Core idea: a deep (e.g. `P`-layer) network with
-sparse random connectivity, trained by a layerwise *stochastic coordinate descent* variant of SGD,
-builds the degree-`k` feature at depth `k` from the degree-`(k-1)` feature below it. **Limitations,
-stated as where it stops short:** the construction needs depth that grows with the degree and a training
-algorithm that is not plain SGD (sparse layers plus coordinate descent rather than a standard optimizer);
-its guarantee is only "polynomial in `d`" with no finer rate; it covers only single nested chains where
-each support grows by exactly one (no merging of separately-grown chains); and it gives a sufficiency
-result with no matching necessity — it does not say which sparse functions are *out of reach*.
+prior work proves that staircase functions are learnable by *regular* networks. Core idea: a deep (e.g.
+`P`-layer) network with sparse random connectivity, trained by a layerwise *stochastic coordinate descent*
+variant of SGD, builds the degree-`k` feature at depth `k` from the degree-`(k-1)` feature below it.
+The construction needs depth that grows with the degree and a training algorithm with sparse layers plus
+coordinate descent rather than a standard optimizer. The guarantee is "polynomial in `d`" and covers
+single nested chains where each support grows by exactly one.
 
 **Mean-field analyses keyed to rotational symmetry (Mei, Montanari & Nguyen 2018; Mei et al. 2019).**
 For special data distributions (e.g. classifying isotropic or anisotropic Gaussians) the mean-field PDE
 admits a low-dimensional reduction and one can prove global convergence. Core math: the Wasserstein
 gradient flow above, with the low-dimensional reduction coming from the *rotational invariance* of the
-Gaussian problem. **Limitation:** the reduction is driven by symmetry of the input distribution, not by
-sparsity of the target; the dimension `d` does not really shrink for a sparse Boolean target, and these
-results give no sample-complexity statement tied to the structure of `h*`. More broadly, generic global-
-convergence results for the mean-field flow (Chizat & Bach 2018; Nguyen 2020; Wojtowytsch 2020) need a
-"spread-out" initialization with density on an open set around the origin and an assumption that the flow
-converges to a limit — assumptions that are exactly what is in question here.
+Gaussian problem. More broadly, generic global-convergence results for the mean-field flow (Chizat &
+Bach 2018; Nguyen 2020; Wojtowytsch 2020) assume a "spread-out" initialization with density on an open
+set around the origin and that the flow converges to a limit.
 
 ## Evaluation settings
 

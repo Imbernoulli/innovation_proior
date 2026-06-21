@@ -12,21 +12,19 @@ The mathematical question is representational. Given a compact domain such as `[
 
 ## Earlier Representation Tools
 
-Exact superposition results already show that continuous multivariate functions can be written using continuous functions of one variable and addition. The catch is that those representations may use specially chosen univariate functions. They do not force every component to be a shifted and scaled copy of one fixed curve.
+Exact superposition results already show that continuous multivariate functions can be written using continuous functions of one variable and addition. Those representations may use specially chosen univariate functions.
 
-Classical approximation theory offers nearby tools. Fourier series approximate with trigonometric systems. Stone-Weierstrass proves density for subalgebras that separate points. Tauberian theorems handle translation-invariant spans. These tools show that simple families can be complete, but none by itself answers the fixed-activation ridge span.
+Classical approximation theory offers nearby tools. Fourier series approximate with trigonometric systems. Stone-Weierstrass proves density for subalgebras that separate points. Tauberian theorems handle translation-invariant spans.
 
 ## Neural Network Motivation
 
 In pattern classification and nonlinear prediction, a hidden unit turns an affine score into a scalar response, and the output layer adds many such responses. This makes a single hidden layer look like a linear span of hyperplane-oriented features.
 
-Finite point separation was already plausible: with enough hidden units, a network can separate finite training samples in many ways. The harder question is what happens on a continuum of inputs, where the topology of `C(K)` and the uniform norm matter.
+Finite point separation was already plausible: with enough hidden units, a network can separate finite training samples in many ways. The topology of `C(K)` and the uniform norm govern what happens on a continuum of inputs.
 
 ## Decision Regions
 
-Decision functions add a second pressure. A continuous network cannot uniformly equal a discontinuous indicator of an arbitrary measurable region. The right formulation must allow approximation except on a small-measure set or away from a narrow boundary band.
-
-This keeps the problem honest: a network output can be continuous and still support useful classification if the ambiguous region is made small enough.
+Decision functions add a second consideration. A network output can be continuous and still support useful classification if the ambiguous region is made small enough.
 
 ## Evaluation Criteria
 

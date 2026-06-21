@@ -8,25 +8,19 @@ candidate solution as correct (1) or incorrect (0). Two kinds of training data a
 for every prompt `q`: *online* data, the model's own sampled rollouts `τ ~ π_θ(·|q)` scored
 by the verifier; and *offline* data, a high-quality demonstration trajectory `τ★` for the
 same prompt produced by a stronger teacher or a human. These two data sources are consumed by
-two different and seemingly opposed training paradigms — reinforcement learning on the scored
-rollouts, and supervised fine-tuning on the demonstrations — and the field treats them as
-distinct objectives glued together by hand (a fixed coefficient, a schedule, a two-stage
-pipeline).
+two training paradigms — reinforcement learning on the scored rollouts, and supervised
+fine-tuning on the demonstrations.
 
-The precise goal is to train from these two signals inside one post-training pass on a mixed
-dataset without losing the strengths of either source. Such a procedure has to explain when
-verifier feedback is informative, when sparse rewards leave little policy-gradient signal, and how
-demonstration data can be used without turning the whole run into copying. The difficult part is
-that prompt difficulty and model competence are not fixed during training.
+The question is how to train from these two signals inside one post-training pass on a mixed
+dataset that pairs each prompt with both a demonstration and on-policy rollouts.
 
 ## Background
 
 By this time, reinforcement learning with verifiable rewards (RLVR) is the engine behind the
 reasoning gains of frontier models (o1-style systems, DeepSeek-R1, Kimi). The dominant
 on-policy recipe samples a group of rollouts per prompt, scores them, and pushes up the
-likelihood of the better ones. The competing recipe, supervised fine-tuning (SFT) on teacher
-demonstrations, is the classical way to distill a skill quickly. The load-bearing concepts
-and the pain points of the time:
+likelihood of the better ones. Supervised fine-tuning (SFT) on teacher demonstrations is the
+classical way to distill a skill quickly. The load-bearing concepts of the time:
 
 - **The policy-gradient frame.** Post-training is policy optimization: a trajectory `τ` is a
   sequence of token-actions, `π_θ(τ|q)` is the policy, and a generic gradient ascent step on an
@@ -38,18 +32,16 @@ and the pain points of the time:
   `E_{τ~π_θ}[f ∇log π_θ] = E_{τ~s}[(π_θ/s) f ∇log π_θ] = E_{τ~s}[(1/s) f ∇π_θ]`, which lets a
   gradient defined as an expectation under one distribution be estimated from samples of another.
 
-- **Generalized Advantage Estimation as a template (Schulman et al. 2015).** GAE established
-  the idea that there is a *family* of estimators of the same underlying policy gradient,
-  indexed by knobs that trade bias against variance; one chooses an instance from the family
-  rather than a single fixed formula. This "one true gradient, many estimators" stance is the
-  conceptual ancestor of viewing different post-training losses as instances of one thing.
+- **Generalized Advantage Estimation (Schulman et al. 2015).** GAE established the idea that
+  there is a *family* of estimators of the same underlying policy gradient, indexed by knobs
+  that trade bias against variance; one chooses an instance from the family rather than a single
+  fixed formula.
 
 - **Trust regions and clipping (TRPO; PPO, Schulman et al. 2015, 2017).** Conservative updates
   that keep the new policy close to the rollout policy stabilize RL; PPO's clipped surrogate is
   the standard practical realization, and its piecewise objective acts as a stop-gradient that
-  switches off the update on samples that have moved too far — a stabilization device that many
-  later methods modify (DAPO, CISPO, GSPO, Clip-Cov), each trading stability against the bias of
-  dropping informative tokens.
+  switches off the update on samples that have moved too far. Several methods modify this
+  stabilization device (DAPO, CISPO, GSPO, Clip-Cov).
 
 - **Behavior cloning / SFT as next-token NLL.** SFT minimizes
   `−Σ_t log π_θ(τ★_t | q, τ★_{<t})` on demonstrations. The corresponding
@@ -57,59 +49,44 @@ and the pain points of the time:
   descent on the NLL follows the negative loss gradient. Demonstration tokens the model assigns
   low probability get pulled up hardest.
 
-Several diagnostic findings about *existing* systems set up the problem:
+Several contemporaneous empirical findings about these systems:
 
-- **On-policy RL cannot bootstrap a weak model on a hard prompt.** "Zero-RL" applied directly
-  to a base model presupposes the model can already stumble onto reward; on weak models or
-  hard tasks, exploration fails to discover any correct rollout, so the reward signal is
-  absent and training stalls (SimpleRL-Zoo, Zeng et al. 2025). Notably, RL-zero works for the
-  Qwen family but largely fails for Llama, while SFT helps both — the right signal depends on
-  the model.
+- **"Zero-RL" behavior across model families (SimpleRL-Zoo, Zeng et al. 2025).** Applying RL
+  directly to a base model relies on the model sampling reward-bearing rollouts. RL-zero works
+  for the Qwen family but largely fails for Llama, while SFT helps both.
 - **SFT memorizes, RL generalizes (Chu et al. 2025).** On rule-based textual and visual
   reasoning variants, RL with outcome rewards generalizes out-of-distribution while SFT tends
-  to memorize the demonstrations and degrades OOD — yet SFT is still needed first, because it
-  stabilizes the output format that lets subsequent RL take off. The two are complementary,
-  not interchangeable.
-- **RLVR does not expand the capability boundary (Yue et al. 2025).** RLVR lifts Pass@1 but
-  not large-`k` Pass@k: it sharpens what the base model can already do rather than adding new
-  reasoning the model could never reach on its own — so a method that hopes to acquire genuinely
-  new capability needs an external signal and needs to preserve exploration.
-- **Order and combination matter, and are brittle.** The standard `SFT → RL` pipeline is
-  effective but multi-stage and resource-heavy, and `SFT → RL` differs markedly from `RL → SFT`
-  on the same model (Fu et al. 2025); a fixed coefficient or schedule for combining the two has
-  to be re-tuned per setting.
-- **A per-question failure mode of on-policy RL.** When every rollout in a prompt's group
-  receives the same reward — in particular when all of them are wrong on a hard prompt — the
-  group-relative advantage is identically zero for that prompt, so the on-policy update
-  contributes no gradient there at all. Tracking per-question rollout accuracy across training
-  shows dense bands of such all-wrong prompts that on-policy RL simply never moves on.
+  to memorize the demonstrations; SFT is commonly applied first because it stabilizes the
+  output format that subsequent RL builds on.
+- **RLVR and the capability boundary (Yue et al. 2025).** RLVR lifts Pass@1 but not large-`k`
+  Pass@k: it sharpens what the base model can already do rather than adding reasoning the model
+  does not sample on its own.
+- **Order and combination (Fu et al. 2025).** The standard `SFT → RL` pipeline is multi-stage,
+  and `SFT → RL` differs markedly from `RL → SFT` on the same model.
+- **Group-relative advantage on uniform groups.** When every rollout in a prompt's group
+  receives the same reward, the group-relative advantage is identically zero for that prompt.
+  Per-question rollout accuracy can be tracked across training to see which prompts the model
+  solves over time.
 
 ## Baselines
 
-These are the prior methods a new procedure would be measured against and would react to.
+These are the prior methods a new procedure would be measured against.
 
 **Supervised fine-tuning / behavior cloning (Wei et al. 2021; Torabi et al. 2018).** Treat
 the demonstration set `D_SFT = {(q, τ★)}` as the target and minimize token-level
-cross-entropy `L_SFT(θ) = −Σ_i Σ_t log π_θ(τ★_{i,t} | q_i, τ★_{i,<t})`. Fast and direct: it
-fits the teacher distribution and reliably raises competence on prompts the model could not
-solve. The log-likelihood ascent direction is `Σ_t (1/π_θ)∇π_θ`. **Gap:** it learns only to copy; it injects no
-signal about which of the model's *own* behaviors are good, curtails exploration, overfits and
-memorizes the demonstrations, and degrades on out-of-distribution prompts. It is also static —
-an easy prompt the model already solves and a hard prompt it fails get the identical
-copy-the-teacher treatment, even though the easy one no longer needs it.
+cross-entropy `L_SFT(θ) = −Σ_i Σ_t log π_θ(τ★_{i,t} | q_i, τ★_{i,<t})`. It fits the teacher
+distribution and raises competence on prompts the model could not solve. The log-likelihood
+ascent direction is `Σ_t (1/π_θ)∇π_θ`.
 
 **GRPO (Shao et al. 2024, DeepSeekMath).** A value-function-free on-policy RL method. For each
 prompt sample a group of `G` rollouts from the rollout policy `π_{θ_old}`, score them with the
 verifier `R(τ) ∈ {0,1}`, and form a group-relative advantage by standardizing within the group:
 `Â_{i} = (R(τ_i) − mean_{k}{R(τ_k)}) / std_{k}{R(τ_k)}`. Optimize the clipped surrogate
 `L = −(1/G)Σ_i Σ_t min(r_{i,t} Â_i, clip(r_{i,t}, 1−ε, 1+ε) Â_i)` with the per-token ratio
-`r_{i,t} = π_θ / π_{θ_old}`, the baseline being the group mean (no critic). Excellent at
-sharpening reasoning the model can already partly do, and cheap (no value network). **Gap:** it
-is purely on-policy, so it is bounded by what the base model can sample — it cannot acquire a
-solution the model never produces. Worse, on a prompt where all `G` rollouts get the same score
-(every one wrong on a hard prompt is the common case for a weak model), the within-group
-advantage collapses to zero and GRPO contributes no gradient on that prompt — exactly the
-prompts where help is most needed.
+`r_{i,t} = π_θ / π_{θ_old}`, the baseline being the group mean (no critic). It sharpens
+reasoning the model can already partly do, and is cheap (no value network). It is purely
+on-policy, drawing its signal from what the rollout policy samples; when all `G` rollouts in a
+group get the same score the within-group advantage is zero for that prompt.
 
 **LUFFY (Yan et al. 2025).** Augment on-policy RLVR with off-policy reasoning traces from a
 stronger policy. Concatenate the off-policy demonstrations with the on-policy rollouts and
@@ -119,25 +96,16 @@ behavior policy that produced them is unavailable. To stop the model from rigidl
 off-policy traces and collapsing its entropy, it adds *policy shaping* via regularized
 importance sampling, amplifying the learning signal on low-probability but crucial tokens.
 This lets the model imitate the strong traces when its own rollouts fail and explore when they
-succeed, and it trains weak models where on-policy RLVR fails outright. **Gap:** the balance
-between imitation and exploration is governed by a *fixed* mechanism (a preset mixing/shaping),
-not adapted to how competent the current model is on each individual prompt; it consumes the
-off-policy traces as an RL signal through an importance ratio whose reference policy must be
-assumed (`π_ref ≡ 1`), an assumption that injects bias; and it keeps the off-policy traces
-tied to the on-policy advantage group and its combined statistics.
+succeed, and it trains weak models with on-policy RLVR alongside the off-policy traces. The
+balance between imitation and exploration is governed by a preset mixing/shaping mechanism; the
+off-policy traces are consumed as an RL signal through an importance ratio with reference policy
+`π_ref ≡ 1`, and they are kept in the on-policy advantage group with combined statistics.
 
 **SRFT (Fu et al. 2025).** A single-stage method that combines SFT-style imitation with an
-offline-RL objective derived from the GRPO loss by setting `π_ref ≡ 1` and dropping clipping
-(it becomes imbalanced when the denominator is constant). It folds offline and online learning
-into one stage rather than a pipeline. **Gap:** the combination is again a fixed recipe; and
-the `π_ref ≡ 1` offline-RL term turns importance sampling into rejection sampling, which is
-heavily biased — leaving open whether the offline data is best used through an RL importance
-ratio at all, versus a plain likelihood objective.
-
-Across these, the recurring limitation is a *static* treatment: each method commits in advance
-to how much to imitate versus explore, even though the diagnostic findings show that the
-usefulness of each signal depends on whether the current rollout group contains any reward
-contrast and on how the model's competence changes during training.
+offline-RL objective derived from the GRPO loss by setting `π_ref ≡ 1` and dropping clipping.
+It folds offline and online learning into one stage rather than a pipeline, using a fixed recipe
+to weight the two terms; the `π_ref ≡ 1` offline-RL term reduces the importance ratio to a
+rejection-sampling form.
 
 ## Evaluation settings
 

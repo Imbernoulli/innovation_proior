@@ -2,14 +2,14 @@
 
 ## Research question
 
-Given a physical system discretized on a mesh, can we learn a fast surrogate for one time step of its evolution — a map from the state at time *t* to the state at *t+Δt* — that runs orders of magnitude faster than a numerical solver, and that **scales to large meshes with complex, irregular geometry** (3D surfaces, tetrahedral solids, self-contact)?
+Given a physical system discretized on a mesh, can we learn a fast surrogate for one time step of its evolution — a map from the state at time *t* to the state at *t+Δt* — that runs orders of magnitude faster than a numerical solver, and that scales to large meshes with complex, irregular geometry (3D surfaces, tetrahedral solids, self-contact)?
 
-The difficulty is not learning the local update; a graph network already does that on small meshes. The difficulty is *scale*. Information in a PDE propagates across the whole domain, so a surrogate must move signal from any node to any other. On a mesh of N nodes with diameter D, a graph network that passes messages only along edges needs on the order of D rounds to connect the far corners, and both N and D grow with the mesh. Two failures follow:
+A graph network already learns the local update on small meshes. The setting that this question is about is *scale*. Information in a PDE propagates across the whole domain, so a surrogate must move signal from any node to any other. On a mesh of N nodes with diameter D, a graph network that passes messages only along edges needs on the order of D rounds to connect the far corners, and both N and D grow with the mesh. Two effects follow:
 
-1. **Cost.** The number of nodes to process and the number of message-passing rounds both grow with mesh size, so the time and memory of the unrolled computational graph grow super-linearly. Large industrial meshes become untrainable.
-2. **Over-smoothing.** A graph convolution acts as a low-pass filter on the node signal. Stacking many rounds repeatedly projects the signal onto the low-frequency eigenvectors of the graph and erases high-frequency detail, so deeper stacks are progressively harder to train and lose the sharp features a simulation needs.
+1. **Cost.** The number of nodes to process and the number of message-passing rounds both grow with mesh size, so the time and memory of the unrolled computational graph grow super-linearly.
+2. **Spectral behavior.** A graph convolution acts as a low-pass filter on the node signal. Stacking many rounds repeatedly projects the signal onto the low-frequency eigenvectors of the graph and attenuates high-frequency components.
 
-A multi-resolution (U-Net-like) hierarchy resolves both at once: coarse levels give long-range coupling in a handful of hops, so few rounds suffice and the signal is never smoothed to death. But that only moves the problem. The open question becomes: **how do you build the coarse levels of an arbitrary mesh?** A usable coarsening operation would have to (a) preserve the correct connectivity at every coarse level — never split a connected region into pieces that can no longer talk; (b) never invent edges that jump across a geometric boundary (two surfaces that are close in space but far along the material); (c) work for any mesh type — 2D triangles, 3D tetrahedra, 3D surfaces; and (d) run automatically, with no human drawing coarse meshes. No prior coarsening operation satisfied all four.
+A multi-resolution (U-Net-like) hierarchy addresses both at once: coarse levels give long-range coupling in a handful of hops, so few rounds suffice. This raises the question this work takes up: **how do you build the coarse levels of an arbitrary mesh** — a coarsening operation that runs automatically on any mesh type (2D triangles, 3D tetrahedra, 3D surfaces)?
 
 ## Background
 
@@ -20,27 +20,23 @@ A multi-resolution (U-Net-like) hierarchy resolves both at once: coarse levels g
 
 with residual, LayerNorm MLPs. Because rollouts drift, the standard training trick is to supervise a single step with an L2 loss while injecting Gaussian noise into the inputs, so the model learns to correct the kind of error it will later feed itself.
 
-**The low-pass / over-smoothing view.** Treating message passing as repeated multiplication by a normalized adjacency, the iteration converges toward the dominant (smooth) eigenvector; high-frequency components decay geometrically. This is why "just stack more rounds" both costs more and works worse — it is the analytic reason a hierarchy is needed rather than a deeper flat stack.
+**The low-pass / over-smoothing view.** Treating message passing as repeated multiplication by a normalized adjacency, the iteration converges toward the dominant (smooth) eigenvector; high-frequency components decay geometrically. This is the analytic lens through which a flat stack of rounds is understood.
 
-**Why a hierarchy needs a coarsening operator, and what was known about building one.** Two families existed. (i) **Graph-information-only** coarsening selects a subset of nodes from the graph itself. The known hazard is that dropping nodes can disconnect the survivors. The known mitigation is *adjacency enhancement* by graph powers: replace the adjacency A by A^K, where A^K(i,j), read as a boolean, is 1 exactly when j is reachable from i within K hops; raising K rebuilds links between survivors that a drop would have severed. (ii) **Geometry-based** coarsening places coarse nodes on a grid or by spatial clustering and connects them by Euclidean proximity. The known hazard here is geometric: two nodes near in space but far along the mesh (opposite banks of a thin channel, the two faces of a contact gap) get wrongly linked.
+**Coarsening operators known for building a hierarchy.** Two families existed. (i) **Graph-information-only** coarsening selects a subset of nodes from the graph itself. Dropping nodes can disconnect the survivors. A known mitigation is *adjacency enhancement* by graph powers: replace the adjacency A by A^K, where A^K(i,j), read as a boolean, is 1 exactly when j is reachable from i within K hops; raising K rebuilds links between survivors that a drop would have severed. (ii) **Geometry-based** coarsening places coarse nodes on a grid or by spatial clustering and connects them by Euclidean proximity.
 
-**A diagnostic that pins down the geometry hazard.** Consider one-dimensional steady-state heat conduction on two short rods laid head-to-tail with a tiny air gap between them, so no heat should cross the gap. A coarsening that connects by spatial proximity inserts an edge straight across the gap; the surrogate then conducts heat between rods that are physically disconnected and predicts the wrong field at the boundary. The error is intrinsic to using spatial proximity on geometry with near-but-disconnected parts; it cannot be tuned away on connected complex shapes (imagine the two parallel arms of a U-shaped channel — spatially close, geodesically distant).
-
-**Adjacency powers and the cost of over-enhancing.** Enhancement is not free. As K grows, the booleanized A^K fills in: in the limit it becomes the all-ones matrix, i.e. a fully connected graph, and then a single convolution averages every node into the same vector — the extreme of over-smoothing. So there is pressure toward the smallest enhancement that can reconnect survivors after intermediate nodes are removed. K=1 leaves only original survivor-survivor edges; on a path kept-dropped-kept, the two survivors are disconnected. So a small power is enough to bridge across one removed node, while larger K over-connects. The graph-information methods used A^2 in exactly this regime, but their node-selection rules came with no guarantee that the survivors stay connected even after the enhancement.
+**Adjacency powers as enhancement.** As K grows, the booleanized A^K fills in: in the limit it becomes the all-ones matrix, i.e. a fully connected graph, and then a single convolution averages every node into the same vector. K=1 leaves only original survivor-survivor edges; on a path kept-dropped-kept, the two survivors are disconnected. So a small power bridges across one removed node, while larger K connects more broadly. The graph-information methods used A^2 in this regime.
 
 ## Baselines
 
-**MeshGraphNets (Pfaff et al., 2020).** The single-scale backbone. Builds a graph from the mesh, adds dynamic *world edges* for contact/collision, and runs encode–process–decode with K (typically 5–20) message-passing rounds on a persistent edge-and-node latent; the decoder outputs a per-node acceleration/increment integrated to the next state; trained on single-step L2 with input noise. It is accurate and general, but **flat**: connecting distant parts of a large mesh needs many rounds, so cost grows with size and the deep stack over-smooths. It is the method a hierarchy must beat on scale.
+**MeshGraphNets (Pfaff et al., 2020).** The single-scale backbone. Builds a graph from the mesh, adds dynamic *world edges* for contact/collision, and runs encode–process–decode with K (typically 5–20) message-passing rounds on a persistent edge-and-node latent; the decoder outputs a per-node acceleration/increment integrated to the next state; trained on single-step L2 with input noise. It is flat: connecting distant parts of a large mesh is done by message passing along edges over many rounds. It is the reference point on scale.
 
-**Graph U-Nets (Gao & Ji, 2019).** Brought the U-Net (encode → pool → … → unpool → decode) to graphs. Pooling (*gPool*) learns a projection vector p, scores each node as x_i·p/‖p‖, and keeps the top-k by score; *gUnpool* restores dropped positions with zeros. To fight the disconnection that top-k causes, it replaces A with A^2 (the smallest power that helps; larger powers over-connect). Its gaps: (1) a *learned* top-k score offers **no guarantee** of preserving connectivity even after A^2 — for some graphs it still carves the coarse graph into pieces that cannot exchange information; (2) the original implementation used dense adjacency multiplications suited to ~100-node graphs and does not scale to thousands of nodes; (3) the learned scorer **generalizes poorly to unseen geometries** — on a mesh it was not trained on it pools unfairly, isolating nodes.
+**Graph U-Nets (Gao & Ji, 2019).** Brought the U-Net (encode → pool → … → unpool → decode) to graphs. Pooling (*gPool*) learns a projection vector p, scores each node as x_i·p/‖p‖, and keeps the top-k by score; *gUnpool* restores dropped positions with zeros. It replaces A with A^2 between levels to reconnect survivors after top-k. The original implementation used dense adjacency multiplications on ~100-node graphs.
 
-**Spatial-proximity multi-scale GNNs (Lino et al., 2021/2022; Liu et al., 2021).** Build coarse levels by laying down coarser nodes (a rasterized grid or spatial clustering) and connecting them by Euclidean radius, with learnable down/up transitions between levels and several message-passing rounds per level. The gap is the geometry hazard above: proximity edges cross boundaries and corrupt the physics (the heat-rod diagnostic). They also introduce per-case knobs — grid resolution, inflation rate between levels.
+**Spatial-proximity multi-scale GNNs (Lino et al., 2021/2022; Liu et al., 2021).** Build coarse levels by laying down coarser nodes (a rasterized grid or spatial clustering) and connecting them by Euclidean radius, with learnable down/up transitions between levels and several message-passing rounds per level. Per-case knobs include grid resolution and the inflation rate between levels.
 
-**Manually drawn coarse meshes (Liu et al., 2021; Fortunato et al., 2022).** Two- or multi-level message-passing networks whose coarse meshes are drawn by hand in CAE software. Accurate, but coarsening is **not automatic** — one coarse mesh per trajectory means tens of thousands of hand-drawn meshes for a dataset. Their learnable per-level transition is also heavy.
+**Manually drawn coarse meshes (Liu et al., 2021; Fortunato et al., 2022).** Two- or multi-level message-passing networks whose coarse meshes are drawn by hand in CAE software, with a learnable per-level transition; one coarse mesh per trajectory.
 
-**Power-of-the-line: Guillard coarsening / multipole (Lino et al., 2022; Li et al., 2020).** Guillard node-nesting coarsens only 2D triangle meshes; the multipole approach pools nodes randomly and learns coarse kernels by multi-level matrix factorization — random pooling again risks partitions, and the factorization is heavy. Neither is general across mesh types.
-
-The common thread: every prior coarsening is missing at least one of {guaranteed connectivity, boundary-safe edges, generality across mesh types, full automation}.
+**Guillard coarsening / multipole (Lino et al., 2022; Li et al., 2020).** Guillard node-nesting coarsens 2D triangle meshes; the multipole approach pools nodes randomly and learns coarse kernels by multi-level matrix factorization.
 
 ## Evaluation settings
 
@@ -101,12 +97,11 @@ def build_coarse_levels(flat_edges, num_levels, num_nodes, pos):
     """Turn one mesh-graph into a stack of progressively coarser graphs.
 
     Must return, per level: the node subset kept and the (re-enhanced,
-    re-indexed) edges of the coarser graph. The selection rule that keeps
-    the right nodes and the edge rebuild that preserves connectivity are
-    the open problem.
+    re-indexed) edges of the coarser graph. The selection rule and the
+    edge rebuild are the open problem.
     """
     # TODO: choose which nodes survive at each coarser level
-    # TODO: rebuild coarse-level edges so connectivity is preserved
+    # TODO: rebuild coarse-level edges
     raise NotImplementedError
 
 class LevelTransition(nn.Module):

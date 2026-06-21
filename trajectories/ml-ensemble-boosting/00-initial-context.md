@@ -4,9 +4,9 @@ Boosting builds a predictor as a sum of weak learners fit one after another, eac
 
 ## Prior art / Background / Baselines
 
-- **Weighted majority / multiplicative weights.** Maintain a weight per expert, multiply down the ones that err, and predict by weighted vote. It reweights mistakes, but it combines a *fixed* pool of experts and cannot synthesize new hypotheses aimed at the current failures.
-- **Boosting by filtering / majority-of-three.** Run the weak learner on filtered distributions and combine the results to show that weak learnability implies strong learnability. The construction is a rigid recursive circuit with fixed error thresholds, so it cannot take advantage of a weak learner that performs better than expected in a given round.
-- **Forward stagewise additive modeling.** Fit an additive model greedily, one term at a time, by least-squares against the current residual. This gives a clean stage-wise update for squared error, but for other losses the per-stage optimization has no convenient closed form, so each loss needs its own derivation.
+- **Weighted majority / multiplicative weights.** Maintain a weight per expert, multiply down the ones that err, and predict by weighted vote.
+- **Boosting by filtering / majority-of-three.** Run the weak learner on filtered distributions and combine the results to show that weak learnability implies strong learnability. The construction is a recursive circuit with fixed error thresholds.
+- **Forward stagewise additive modeling.** Fit an additive model greedily, one term at a time, by least-squares against the current residual. This gives a clean stage-wise update for squared error.
 
 ## Fixed substrate / Code framework
 

@@ -7,20 +7,14 @@ paired distributions — a sketch and a photograph, a masked image and its compl
 degraded scan and its clean original — not the data-to-Gaussian transport that ordinary
 diffusion models perform. A recently introduced family builds a stochastic process pinned
 at both ends (a *diffusion bridge*) and learns to run it in reverse, achieving strong
-fidelity on these tasks. The catch is cost. To draw one sample you must simulate a reverse
-stochastic (or ordinary) differential equation, and for high-resolution images this takes
-well over a hundred network evaluations; even the bridge's own hybrid sampler stays in the
-hundreds. Meanwhile, *ordinary* diffusion models can already produce strong samples in about
-ten network calls, because a decade of work has built training-free fast samplers for them.
-None of that machinery transfers directly: it is all written for a non-informative Gaussian
-prior, and a bridge has a fixed, informative endpoint instead. The precise problem is to
-sample a *pretrained* diffusion bridge under a strict small evaluation budget — no retraining,
-no change to the learned predictor — by replacing only the rule that advances the state from
-one timestep to the next. A solution must (1) reuse the existing predictor exactly; (2)
-make a tiny per-sample budget viable (each network call is the dominant cost and is metered);
-(3) preserve the genuine stochasticity of the task (one masked image admits many completions); and
-(4) remain numerically well-behaved at the very first step, where a bridge — unlike an
-ordinary diffusion — starts from a single deterministic endpoint.
+fidelity on these tasks. To draw one sample one simulates a reverse stochastic (or ordinary)
+differential equation; at high resolution this is run for well over a hundred network
+evaluations. Ordinary diffusion models, by contrast, are routinely sampled in about ten
+network calls using training-free fast samplers built up over years of work for the
+Gaussian-prior setting. The question is how to sample a *pretrained* diffusion bridge under
+a small per-sample evaluation budget — reusing the learned predictor unchanged, with each
+metered network call being the dominant cost — by choosing only the rule that advances the
+state from one timestep to the next along the bridge dynamics.
 
 ## Background
 
@@ -31,46 +25,41 @@ schedule and `f = d log alpha_t/dt`, `g^2 = d sigma_t^2/dt - 2 (d log alpha_t/dt
 (Kingma et al. 2021). Sampling reverses a probability-flow ODE (PF-ODE) or reverse SDE
 (Song et al. 2021) whose only unknown is the score `nabla log q_t`, learned by denoising
 score matching. The signal-to-noise ratio `SNR_t = alpha_t^2/sigma_t^2` summarizes the
-schedule. Two complementary, training-free accelerations are well established for this
-Gaussian-prior setting: *reduce stochasticity*, and *use higher-order information*. Both
-exploit a structural fact about the diffusion ODE that prior work made precise.
+schedule. Two training-free accelerations are well established for this Gaussian-prior
+setting: *reduce stochasticity*, and *use higher-order information*. Both exploit a
+structural fact about the diffusion ODE that prior work made precise.
 
 **The semi-linear structure and the log-SNR change of variable.** The diffusion ODE
 `dx = [f(t) x + (g^2/2 sigma) eps_theta] dt` is *semi-linear*: the part `f(t) x` is linear in
-`x` and exactly integrable, and only `eps_theta` is nonlinear. Treating the whole right-hand
-side as a black box (generic Runge-Kutta / Heun) incurs discretization error on *both*
-parts; a dedicated solver should cancel the linear part analytically. Variation-of-constants
-does exactly that: `x_t = e^{int_s^t f} x_s + int_s^t e^{int_tau^t f} (g^2/2 sigma) eps_theta
-dtau`. Changing the time variable to the half-log-SNR `lambda_t = log(alpha_t/sigma_t)`
-collapses the remaining integral into an *exponentially weighted integral* of the predictor,
-`int e^{-lambda} eps_theta dlambda` (Lu et al. 2022a). This is the entry point both for
-reducing stochasticity and for higher-order solvers; the integrals of `e^{-lambda}
-(lambda - lambda_s)^n/n!` against the predictor are analytic (the φ-functions of exponential
-integrators; Hochbruck & Ostermann 2010).
+`x` and exactly integrable, and only `eps_theta` is nonlinear. A dedicated solver cancels
+the linear part analytically by variation-of-constants: `x_t = e^{int_s^t f} x_s +
+int_s^t e^{int_tau^t f} (g^2/2 sigma) eps_theta dtau`. Changing the time variable to the
+half-log-SNR `lambda_t = log(alpha_t/sigma_t)` collapses the remaining integral into an
+*exponentially weighted integral* of the predictor, `int e^{-lambda} eps_theta dlambda`
+(Lu et al. 2022a). This is the entry point both for reducing stochasticity and for
+higher-order solvers; the integrals of `e^{-lambda} (lambda - lambda_s)^n/n!` against the
+predictor are analytic (the φ-functions of exponential integrators; Hochbruck & Ostermann
+2010).
 
 **Diffusion bridges and Doob's h-transform.** To pin a diffusion at a chosen endpoint
 `x_T = y` almost surely, condition it via Doob's h-transform (Doob 1984): add a drift
 `g^2(t) nabla_{x_t} log q(x_T = y | x_t)` to the forward SDE. With a linear base SDE this
 conditioned process again has an analytic Gaussian transition kernel — now interpolating
 between the two endpoints — and a reverse SDE / PF-ODE driven by the *bridge score*
-`nabla_{x_t} log q(x_t | x_T)`, which is learned by denoising bridge score matching. This is
-what makes high-fidelity translation possible: the prior `y` carries the source image rather
-than being noise. The diagnostic that motivates the whole effort is empirical:
-the bridge's reverse SDE/ODE, simulated with a generic high-order hybrid step, needs many
-denoiser evaluations (over 100 at high resolution) to reach good quality, an order of
-magnitude more than the ~10 that Gaussian-prior diffusion samplers need — because that
-sampler is a generic ODE/SDE discretizer, not one built around the bridge's structure.
+`nabla_{x_t} log q(x_t | x_T)`, which is learned by denoising bridge score matching. The
+prior `y` carries the source image rather than being noise, which is what enables
+high-fidelity translation. The bridge's reverse SDE/ODE is simulated with a generic
+high-order hybrid step, using over 100 denoiser evaluations at high resolution.
 
 **The non-Markovian, marginal-preserving construction for ordinary diffusion.** A separate
 line of work observed that the diffusion *training* objective depends only on the marginals
 `q(x_t|x_0)`, never on the joint `q(x_{1:T}|x_0)`. Many different joints share those
 marginals, so one can swap in an *alternative*, non-Markovian inference process — keeping the
-same marginals, hence the same trained network — and read off a new, faster sampler from it
+same marginals, hence the same trained network — and read off a new sampler from it
 (Song et al. 2021). The family is indexed by a variance vector `sigma`; the deterministic end
 of the family turns the sampler into an implicit map from a latent to a sample, and a special
-nonzero `sigma` recovers the original Markovian sampler. This idea is the conceptual lever for
-"reduce stochasticity," but it was developed entirely for the Gaussian-prior case with no
-endpoint condition.
+nonzero `sigma` recovers the original Markovian sampler. This is developed for the
+Gaussian-prior case with no endpoint condition.
 
 ## Baselines
 
@@ -84,11 +73,8 @@ depend on the learned bridge score `s_theta(x_t,t,x_T)`; equivalently one trains
 predictor `x_theta(x_t,t,x_T)` that recovers `x_0`. For sampling, DDBM uses an EDM-style
 *hybrid Heun* sampler (Karras et al. 2022) that alternates an Euler/SDE "churn" step with a
 second-order Heun correction, with an Euler step ratio (e.g. 0.33) controlling injected
-stochasticity. **Gap (observed limitation):** the hybrid Heun sampler is a *generic*
-ODE/SDE discretizer applied to the bridge's reverse dynamics; it is not tailored to the
-bridge's semi-linear structure and offers no analytic cancellation of the easy part of the
-dynamics, so it converges slowly — high-resolution translation still costs over a hundred
-denoiser calls.
+stochasticity. This is a generic ODE/SDE discretizer applied to the bridge's reverse
+dynamics; high-resolution translation runs it for over a hundred denoiser calls.
 
 **DDIM — denoising diffusion implicit models (Song et al. 2021, arXiv:2010.02502).** For
 ordinary (Gaussian-prior) diffusion: a family of non-Markovian forward processes
@@ -98,10 +84,9 @@ ordinary (Gaussian-prior) diffusion: a family of non-Markovian forward processes
 reads "predicted `x_0`" + "direction pointing to `x_t`" + `sigma_t` noise; `sigma=0` is
 deterministic (an implicit model), a particular `sigma` is DDPM. Rewriting the deterministic
 update exposes an Euler-ODE form `d(x/sqrt(alpha)) = eps_theta d(sqrt((1-alpha)/alpha))`.
-**Gap:** the entire construction assumes a Gaussian prior with no endpoint — the mean has a
-single `sqrt(alpha_{t-1}) x_0` data term and no `x_T` term, the marginals are
-`N(sqrt(alpha_t) x_0, ...)`, and there is no fixed endpoint to honor — so it does not, as
-written, describe transport between two arbitrary distributions.
+The construction is for a Gaussian prior with no endpoint: the mean has a single
+`sqrt(alpha_{t-1}) x_0` data term and no `x_T` term, and the marginals are
+`N(sqrt(alpha_t) x_0, ...)`.
 
 **DPM-Solver (Lu et al. 2022a, arXiv:2206.00927).** Exploits the semi-linear diffusion ODE:
 variation-of-constants cancels `f(t) x` exactly, the change of variable `lambda = log
@@ -109,20 +94,18 @@ variation-of-constants cancels `f(t) x` exactly, the change of variable `lambda 
 {lambda_t} e^{-lambda} eps_theta dlambda`, and Taylor-expanding `eps_theta` in `lambda` makes
 each term an *analytic* exponentially-weighted integral; dropping `O(h^{k+1})` gives a
 `k`-th-order solver (`h = lambda_t - lambda_s`). It reaches good samples in ~10-20 calls.
-**Gap:** it is built on the *noise* predictor and uses *single-step* high-order stages (an
-extra intermediate evaluation per step, so `k` denoiser calls per step), and — like all of
-the above — it is derived for the Gaussian-prior diffusion ODE, with no endpoint and no
-bridge kernel.
+It is built on the *noise* predictor and uses *single-step* high-order stages (an extra
+intermediate evaluation per step, so `k` denoiser calls per step), and is derived for the
+Gaussian-prior diffusion ODE with the log-SNR `lambda = log(alpha/sigma)`.
 
 **DPM-Solver++ (Lu et al. 2022b, arXiv:2211.01095).** Re-derives the exponential integrator
 for the *data* predictor `x_theta` (better-behaved, thresholdable), `x_t = (sigma_t/sigma_s)
 x_s + sigma_t int_{lambda_s}^{lambda_t} e^{lambda} x_theta dlambda`, and replaces single-step
 stages with a *multistep* (Adams-Bashforth) scheme: the high-order derivatives of `x_theta`
 are estimated from *previously computed* outputs, so each step costs exactly one denoiser
-call and an `N`-call budget buys `M = N` steps (vs. `N/k` for single-step). **Gap:** still the
-Gaussian-prior diffusion ODE with `lambda = log(alpha/sigma)` and the linear factor
-`sigma_t/sigma_s` — there is no endpoint term, so it does not apply to a bridge whose linear
-dynamics and log-SNR surrogate are different.
+call and an `N`-call budget buys `M = N` steps (vs. `N/k` for single-step). It is derived for
+the Gaussian-prior diffusion ODE with `lambda = log(alpha/sigma)` and the linear factor
+`sigma_t/sigma_s`.
 
 ## Evaluation settings
 

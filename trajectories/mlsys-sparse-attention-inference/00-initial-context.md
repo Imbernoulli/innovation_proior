@@ -4,10 +4,10 @@ A pretrained 1.5B-parameter causal LLM must run long-context tasks at inference 
 
 ## Prior art / Background / Baselines
 
-- **Full scaled-dot-product attention.** `softmax(QK^T/√d)V` attends every query to every key in one hop. Gap: it materializes an N×N score matrix per head per layer, so cost grows quadratically with context length and exceeds the budget.
-- **Sliding-window / local attention.** Each query attends only to the nearest `W` keys. Gap: any token older than the window is unreachable, so long-range content is invisible.
-- **Static block-sparse patterns (sink+window, global+window+random).** A fixed mask adds always-attended anchor tokens and, in some variants, random long-range links to a local window. Gap: the mask is chosen before the query is seen, so a relevant block in the middle of the context is reached only by chance.
-- **KV-cache compression (H2O, SnapKV, Quest).** These methods select important keys from the attention accumulated over a mutable KV cache during autoregressive decode. Gap: the importance signal depends on the decode window, and the methods do not transfer cleanly to the benchmark's parallel-forward setting, where every forward processes the full prefix in one shot and the same module replays at every generation step with `use_cache=False`.
+- **Full scaled-dot-product attention.** `softmax(QK^T/√d)V` attends every query to every key in one hop, materializing an N×N score matrix per head per layer.
+- **Sliding-window / local attention.** Each query attends only to the nearest `W` keys.
+- **Static block-sparse patterns (sink+window, global+window+random).** A fixed mask adds always-attended anchor tokens and, in some variants, random long-range links to a local window. The mask is chosen once, independent of the query.
+- **KV-cache compression (H2O, SnapKV, Quest).** These methods select important keys from the attention accumulated over a mutable KV cache during autoregressive decode. The importance signal depends on the decode window.
 
 ## Fixed substrate / Code framework
 

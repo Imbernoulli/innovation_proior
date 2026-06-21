@@ -11,11 +11,8 @@ transfer** setting the attacker has no access to the target and instead crafts o
 model, relying on the empirical fact that adversarial examples often transfer; the figure of
 merit is the transfer success rate against a held-out model.
 
-The pain point is that the existing attacks are good at one axis and bad at the other.
-One-step gradient attacks transfer reasonably but are weak white-box adversaries; multi-step
-iterative attacks are strong white-box adversaries but transfer poorly. The precise goal is a
-gradient-based attack that respects the same `L_inf` budget and the same one-backprop-per-step
-cost, while avoiding this attack-ability-versus-transferability trade-off.
+The question is how to design a gradient-based attack that respects the same `L_inf` budget
+and the same one-backprop-per-step cost, while performing well across both settings.
 
 ## Background
 
@@ -44,28 +41,11 @@ Goodfellow et al. 2015). The load-bearing concepts:
   well-tuned momentum stabilizes stochastic gradient descent enough to rival Hessian-free
   second-order optimization.
 
-- **Why transfer happens, and where it breaks (Liu et al. 2017, "Delving into transferable
-  adversarial examples").** Different models trained on the same task learn decision
-  boundaries that *align* well around a data point, which is why an example adversarial for one
-  is often adversarial for another. But the boundaries are not identical — DNNs are highly
-  non-linear — so around any point each model has idiosyncratic, model-specific regions
-  ("holes") that do not match other models. A diagnostic geometric finding from the same study
-  is that the input-gradient directions of different models are close to orthogonal even while
-  their boundaries align.
-
-Relevant diagnostic findings about the existing attacks:
-
-- The one-step attack's linear assumption degrades as the distortion grows: at larger `eps`
-  its white-box success rate falls, because the loss surface around `x` is not actually linear
-  over a large box. It "underfits" the model.
-
-- The iterative attack is the reverse. It reaches very high white-box success, but its
-  transfer success rate *decreases* as the number of iterations increases — more iterations
-  fit the surrogate more tightly and generalize less. Tracking the cosine similarity between
-  successive perturbation increments shows the iterative attack's direction is unstable: it
-  changes sharply from step to step, consistent with the greedy steps diving into the
-  surrogate's model-specific local maxima rather than following a direction shared across
-  models.
+- **Why transfer happens (Liu et al. 2017, "Delving into transferable adversarial examples").**
+  Different models trained on the same task learn decision boundaries that *align* well around
+  a data point, which is why an example adversarial for one is often adversarial for another.
+  A diagnostic geometric finding from the same study is that the input-gradient directions of
+  different models are close to orthogonal even while their boundaries align.
 
 ## Baselines
 
@@ -78,13 +58,8 @@ The relevant prior attacks are:
 x* = x + eps · sign(∇_x J(x, y)).
 ```
 
-One backprop, no iteration. Because it commits a single large step in the direction every
-coordinate's gradient sign agrees on, the resulting perturbation tends to reflect a coarse,
-broadly-shared direction and transfers reasonably. **Limitation:** the linearization is only
-accurate for small distortion; at the budgets used in practice the single step lands in a
-region where the true loss is far from its linear extrapolation, so it fails to push the
-white-box model as far as it could — a comparatively low white-box success rate, the worse the
-larger `eps` is.
+One backprop, no iteration. The resulting perturbation takes a single large step in the
+direction every coordinate's gradient sign agrees on and transfers reasonably across models.
 
 **I-FGSM / basic iterative method (Kurakin et al. 2016/2017).** Apply the fast gradient sign
 repeatedly with a small step `alpha`, clipping back into the `eps`-ball after each step:
@@ -96,18 +71,11 @@ x*_0 = x,   x*_{t+1} = Clip_{x, eps}{ x*_t + alpha · sign(∇_x J(x*_t, y)) }.
 Kurakin et al. used `alpha = 1` on the `[0,255]` pixel scale with `min(eps + 4, 1.25·eps)`
 iterations; another common way to keep the total path length tied to the budget is
 `alpha = eps/T`. Re-computing the gradient at the current point each step lets it follow the
-curved loss surface, so it reaches high white-box success —
-a much stronger white-box adversary than the one-step attack. **Limitation:** that very
-greediness is the problem for transfer. Each step chases the local sign of the surrogate's
-gradient, the per-step direction is unstable, and the trajectory settles into local maxima
-that are specific to the surrogate's idiosyncratic boundary regions. The transfer success rate
-is low and gets *worse* as iterations increase — the attack overfits the surrogate.
+curved loss surface, reaching high white-box success.
 
 **Optimization-based attacks (Szegedy et al. 2014; Carlini & Wagner 2017).** Directly minimize
 a Lagrangian `λ · ||x* - x||_p − J(x*, y)` with a general-purpose optimizer (box-constrained
-L-BFGS, or Adam in C&W). Strong on the white-box model. **Limitation:** they do not explicitly
-bound the `L_inf` distance (it is traded off via `λ`), they are slow (many optimizer steps per
-image), and like the iterative attacks they transfer poorly.
+L-BFGS, or Adam in C&W).
 
 ## Evaluation settings
 

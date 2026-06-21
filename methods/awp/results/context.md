@@ -2,24 +2,22 @@
 
 ## Research question
 
-Adversarially trained image classifiers do not generalize their robustness. A
-PreAct ResNet-18 trained on CIFAR-10 with standard PGD adversarial training for 200 epochs
-reaches roughly 84% robust accuracy on the *training* set under a 10-step PGD attack, yet
-only about 43% under the same attack on the *test* set — a robust generalization gap near
-41%. Standard (non-robust) training on the same architecture keeps its train/test accuracy
-gap under 10%. Worse, the gap is not static: in adversarial training the best test
-robustness is reached early (around the first learning-rate decay), and from then on test
-robustness *falls* as training robustness keeps rising. This is robust overfitting, and it
-is the dominant obstacle to robustness; early stopping alone recovers much of the apparent
-benefit of several stronger training recipes.
+Adversarially trained image classifiers show a large gap between their training and
+test robustness. A PreAct ResNet-18 trained on CIFAR-10 with standard PGD adversarial
+training for 200 epochs reaches roughly 84% robust accuracy on the *training* set under a
+10-step PGD attack, yet only about 43% under the same attack on the *test* set — a robust
+generalization gap near 41%. Standard (non-robust) training on the same architecture keeps
+its train/test accuracy gap under 10%. The gap also moves during training: in adversarial
+training the best test robustness is reached early (around the first learning-rate decay),
+and from then on test robustness *falls* as training robustness keeps rising. This behaviour
+is called robust overfitting; early stopping recovers much of the apparent benefit of several
+stronger training recipes by halting before this point.
 
-The precise goal is a training procedure that narrows the robust generalization gap
-*without* giving up training robustness. Early stopping narrows the gap only by halting
-before the model has learned enough, so its test robustness is capped by its lower training
-robustness. A useful answer should preserve the existing adversarial-training interface:
-plain PGD-AT, the KL-regularized variant, the misclassification-aware variant, and
-semi-supervised variants already define natural losses and attacks, so the missing piece
-should remain compatible with the existing training stack.
+The question is what training procedure narrows the robust generalization gap. Such a
+procedure should fit the existing adversarial-training interface: plain PGD-AT, the
+KL-regularized variant, the misclassification-aware variant, and semi-supervised variants
+already define natural losses and attacks, so it should remain compatible with the existing
+training stack.
 
 ## Background
 
@@ -40,41 +38,39 @@ x'  <-  Pi_eps( x' + eta_1 * sign( grad_{x'} ell(f_w(x'), y) ) ).
 ```
 
 Geometrically, training on these worst-case inputs flattens the **input loss landscape** —
-the loss varies little as the input is perturbed inside the ball. Madry's PGD adversary has
-held up as a reliable first-order attack, and adversarial training remains the most effective
-defense that has not been broken by adaptive attacks.
+the loss varies little as the input is perturbed inside the ball. Madry's PGD adversary is a
+reliable first-order attack, and adversarial training remains the most effective defense that
+has not been broken by adaptive attacks.
 
-The diagnostic facts that frame the problem are empirical and about *existing* systems:
+Several empirical facts about *existing* systems frame the setting:
 
 - **Robust overfitting is real and large.** Across SVHN, CIFAR-10, CIFAR-100, and ImageNet,
   and across `L_inf` and `L_2` threat models, adversarially trained networks overfit the
-  training set badly; test robustness peaks early and then degrades while training robustness
-  keeps improving (Rice, Wong & Kolter, ICML 2020, arXiv:2002.11569). Early stopping recovers
-  most of the apparent gains of fancier methods, but at the cost of low training robustness.
+  training set; test robustness peaks early and then degrades while training robustness keeps
+  improving (Rice, Wong & Kolter, ICML 2020, arXiv:2002.11569). Early stopping recovers most
+  of the apparent gains of fancier methods.
 
-- **In standard training, flatness predicts generalization.** A network that sits in a
+- **In standard training, flatness relates to generalization.** A network that sits in a
   *flat* region of its loss-vs-weight surface generalizes better than one in a *sharp* region
   (Keskar et al. 2017; Neyshabur et al. 2017; Li et al. 2018). The surface here is the
   **weight loss landscape**: how the loss changes as the *weights* move, not as the input
-  moves. Whether the same flatness/generalization link holds under adversarial training had
-  not been established — earlier attempts (Prabhu et al. 2019; Yu et al. 2018) used a fixed
-  set of adversarial examples pre-generated on the unperturbed model to probe the surface,
-  which underestimates the adversarial loss because the examples were crafted for a different
-  (unperturbed) model than the one being evaluated.
+  moves. Earlier probes of this surface under adversarial training (Prabhu et al. 2019;
+  Yu et al. 2018) used a fixed set of adversarial examples pre-generated on the unperturbed
+  model.
 
 - **Comparing weight loss landscapes requires removing scale invariance.** A ReLU network is
   scale-invariant: multiply one layer's weights by `c` and divide the next layer's by `c` and
   the function is unchanged, but a naive random perturbation of fixed size means something
-  completely different for the two scalings. Li et al. (2018, arXiv:1712.09913) fix this with
-  **filter normalization**: to plot `g(alpha) = rho(w + alpha*d)` along a random direction
-  `d ~ N(0, I)`, rescale each filter of the direction to match the norm of the corresponding
-  filter of the weights, `d_{l,j} <- (d_{l,j} / ||d_{l,j}||_F) * ||w_{l,j}||_F`. Only then are
-  two networks' landscapes comparable.
+  completely different for the two scalings. Li et al. (2018, arXiv:1712.09913) address this
+  with **filter normalization**: to plot `g(alpha) = rho(w + alpha*d)` along a random
+  direction `d ~ N(0, I)`, rescale each filter of the direction to match the norm of the
+  corresponding filter of the weights,
+  `d_{l,j} <- (d_{l,j} / ||d_{l,j}||_F) * ||w_{l,j}||_F`. Only then are two networks'
+  landscapes comparable.
 
-There is one more background frame that turns flatness from a heuristic into a bound. The
-PAC-Bayes analysis of Neyshabur et al. (2017, arXiv:1706.08947) bounds the expected error of
-a randomized predictor whose weights are `w + nu`. With probability at least `1 - delta`
-over the training draw,
+A further background frame connects flatness to a bound. The PAC-Bayes analysis of
+Neyshabur et al. (2017, arXiv:1706.08947) bounds the expected error of a randomized predictor
+whose weights are `w + nu`. With probability at least `1 - delta` over the training draw,
 
 ```
 E_nu[ L(f_{w+nu}) ]  <=  Lhat(f_w)
@@ -100,8 +96,7 @@ and how the inner adversarial example is crafted.
 **Vanilla PGD adversarial training (Madry et al., 2018).** Inner PGD attack on the
 cross-entropy loss; outer SGD on the cross-entropy of the resulting adversarial examples. It
 flattens the input loss landscape and gives the strongest broken-attack-free robustness of
-its time. **Gap:** it leaves an enormous robust generalization gap and overfits — test
-robustness peaks early then declines while training robustness keeps climbing.
+its time.
 
 **TRADES (Zhang et al., ICML 2019, arXiv:1901.08573).** Decomposes robust error into natural
 error plus boundary error and minimizes a differentiable surrogate that trades the two off
@@ -115,11 +110,8 @@ The inner example is crafted by maximizing `KL(f_w(x) || f_w(x'))`, the divergen
 clean prediction distribution to the perturbed prediction distribution,
 `x' <- Pi_eps( x' + eta_1 * sign( grad_{x'} KL(f_w(x) || f_w(x')) ) )`, and `beta`
 (the usual implementation name for the inverse trade-off coefficient, default 6) controls the
-accuracy/robustness trade-off.
-TRADES decouples keeping clean accuracy (the CE term) from pushing the decision boundary away
-from data (the KL term). **Gap:** it is still an input-space regularizer; it improves the
-trade-off but does not act directly on the weight surface, and it too overfits as training
-proceeds.
+accuracy/robustness trade-off. TRADES decouples keeping clean accuracy (the CE term) from
+pushing the decision boundary away from data (the KL term).
 
 **MART (Wang et al., ICLR 2020).** Adds an explicit emphasis on misclassified examples:
 
@@ -128,26 +120,15 @@ proceeds.
 ```
 
 where the boosted-CE term and the KL term are reweighted by how confidently the *clean* input
-is classified, `lambda` default 5. **Gap:** another input-space loss design; the same robust
-overfitting persists.
+is classified, `lambda` default 5.
 
 **Semi-supervised robust training / RST (Carmon et al., NeurIPS 2019).** Generate pseudo-labels
 for extra unlabeled data with a natural model, then apply an adversarial loss (TRADES-style) on
 labeled plus pseudo-labeled data, `rho^SSL(w) = rho^labeled(w) + lambda * rho^unlabeled(w)`.
-**Gap:** improves robustness through *more data*, not through the optimization geometry; it
-needs an external unlabeled corpus, and it likewise overfits the robust objective over a long
-schedule.
 
 **Random weight perturbation (He et al., CVPR 2019; flipout-style noise injection).** Inject a
 *random* direction into the weights during training, `w + nu` with `nu` sampled from a fixed
-distribution, in the spirit of the PAC-Bayes expectation `E_nu[rho(w+nu)]`. **Gap:** a random
-direction is an inefficient probe in a high-dimensional surface; much of the noise can land in
-directions that the loss barely uses, while large noise can make the optimization problem itself
-harder.
-
-Across these, the common limitation is that every method shapes the *input* side or adds
-*data*. None directly controls the geometry of the robust objective around the learned
-weights, and each one still overfits the robust objective over a long training schedule.
+distribution, in the spirit of the PAC-Bayes expectation `E_nu[rho(w+nu)]`.
 
 ## Evaluation settings
 
@@ -180,9 +161,8 @@ pipeline, the model, the learning-rate schedule, and the SGD optimizer (with `lr
 `momentum`, and `weight_decay` already configured) all live outside and call into a single
 `train_step`. The substrate already exists for the KL-regularized adversarial loss: craft
 `x_adv` by maximizing the divergence between clean and perturbed predictions, then descend on
-clean cross-entropy plus the same divergence term. What is unsettled is how the minibatch
-update should be modified so that reducing the robust loss on the training set does not simply
-sharpen the solution and widen the robust generalization gap.
+clean cross-entropy plus the same divergence term. The open slot is how the minibatch update
+is modified.
 
 ```python
 import torch

@@ -6,38 +6,28 @@ Spatial database systems — earth-observation archives, astronomical catalogs, 
 crystallography data, satellite imagery — accumulate enormous numbers of objects, each
 carrying a position in some `k`-dimensional feature space, and a recurring task is *class
 identification*: grouping the objects into meaningful subclasses purely from their spatial
-distribution, with no labels. Automating this matters because the databases are far too large
-to inspect by hand and the structure is exactly what downstream knowledge discovery wants
-(e.g. picking out the houses strung along a river in an earth-observation database).
+distribution, with no labels. The databases are far too large to inspect by hand, and the
+structure is exactly what downstream knowledge discovery wants (e.g. picking out the houses
+strung along a river in an earth-observation database).
 
-A clustering algorithm fit for this setting has to meet three demands *at once*, and that
-simultaneity is the whole difficulty:
-
-1. **Minimal domain knowledge to set its parameters.** On a database we are exploring for the
-   first time, we typically do *not* know how many groups there are, and any parameter the
-   user is asked to supply must be one a non-expert can actually choose.
-2. **Discovery of clusters of arbitrary shape.** Spatial clusters are not tidy balls — they
-   can be spherical, linear, elongated, drawn-out, sinuous, or wrapped around one another,
-   because the physical processes that lay points down in space produce shapes like these. An
-   algorithm that can only return round groups will mis-segment real spatial data.
-3. **Good efficiency on large databases**, meaning databases of far more than a few thousand
-   objects — so an all-pairs `O(n^2)` cost is already too expensive.
-
-On top of these three: real spatial data contains *noise* — outliers belonging to no group —
-and a usable method must be able to leave such points out rather than forcing every point into
-some cluster. The prevailing methods of the day each satisfy a subset of these and miss the
-rest; closing the gap between "satisfies some" and "satisfies all four" is the problem.
+The setting brings several demands to bear at once. On a database explored for the first time
+the number of groups is typically *not* known in advance, and any parameter the user supplies
+should be one a non-expert can choose. Spatial clusters are not tidy balls — they can be
+spherical, linear, elongated, drawn-out, sinuous, or wrapped around one another, because the
+physical processes that lay points down in space produce shapes like these. The databases hold
+far more than a few thousand objects, so an all-pairs `O(n^2)` cost is expensive. And real
+spatial data contains *noise* — outliers belonging to no group. The question is how to group
+the objects of such a database into meaningful spatial classes under these conditions.
 
 ## Background
 
-The empirical fact every clustering method is implicitly chasing is simple to state and easy
-to see by eye. Look at a scatter of spatial points containing a few groups plus scattered
-outliers, and what makes the groups perceptible is that **within a group the points sit close
-together — the local density of points is markedly higher than in the surrounding space — and
-the regions between groups, and the regions where the outliers live, are comparatively
-sparse.** The groups are the dense patches; the gaps between them, and the thin scatter of
-outliers, are the low-density background. This is visible in any such scatter before any
-algorithm is written, and it is the raw phenomenon a spatial clustering method has to capture.
+One empirical fact about such data is simple to state and easy to see by eye. Look at a
+scatter of spatial points containing a few groups plus scattered outliers, and what makes the
+groups perceptible is that **within a group the points sit close together — the local density
+of points is markedly higher than in the surrounding space — and the regions between groups,
+and the regions where the outliers live, are comparatively sparse.** The groups are the dense
+patches; the gaps between them, and the thin scatter of outliers, are the low-density
+background.
 
 A handful of standard ingredients are on the table for building such a method:
 
@@ -66,13 +56,13 @@ A handful of standard ingredients are on the table for building such a method:
 - **Cluster-validity scores.** The **silhouette coefficient** (Kaufman & Rousseeuw 1990) rates
   a clustering by, for each point, comparing its mean distance to its own cluster against its
   mean distance to the nearest other cluster; averaging gives a score in `[-1, 1]` used to
-  *select* the number of groups by trying several and keeping the best — but each trial is a
-  full clustering, so this selection is only as cheap as the underlying method run many times.
+  *select* the number of groups by trying several and keeping the best. Each trial is a full
+  clustering.
 
 ## Baselines
 
 The prior methods a new spatial-clustering algorithm would be measured against, with the core
-idea, the actual objective/procedure, and where each one stalls.
+idea and the actual objective/procedure of each.
 
 **Partitioning around representatives — k-means and k-medoid (Lloyd 1957; MacQueen 1967;
 Kaufman & Rousseeuw 1990).** Fix the number of groups `k` up front. Choose `k` representatives
@@ -83,58 +73,38 @@ member. The procedure is two interleaved steps iterated to convergence: given re
 assign each object to the closest one; given the assignment, recompute each representative to
 minimize the cost. Because every object goes to its single nearest representative, the
 resulting partition is exactly the **Voronoi diagram** of the representatives, and each cluster
-is contained in one Voronoi cell. **Gaps:** (a) `k` must be supplied in advance, which on an
-unexplored database is precisely the unknown; (b) a Voronoi cell is convex, so every returned
-cluster is convex — an elongated, sinuous, or nested group cannot be represented and will be
-sliced across several cells; (c) there is no notion of an outlier — every object is forced into
-some cluster, and a far-off point drags its representative toward itself, distorting the group.
+is contained in one Voronoi cell.
 
 **k-medoid for larger databases — CLARANS (Ng & Han 1994).** Clustering Large Applications
 based on RANdomized Search improves the older k-medoid solvers (PAM, CLARA of Kaufman &
 Rousseeuw 1990). It recasts the search as moving through a graph whose nodes are sets of `k`
 medoids and whose edges connect node-sets differing in a single medoid; it does a randomized
 hill-climb — from the current set, sample a bounded number of single-medoid swaps, move to one
-that lowers the objective `E`, and restart a few times to escape poor local optima. This is more
-effective and more efficient than evaluating every swap as PAM does. To address "what is the
-*natural* number of groups," Ng & Han run CLARANS once for each `k` from 2 to `n`, score each
-clustering by its silhouette coefficient, and keep the `k` with the best score. **Gaps:** (a)
-it is still a partitioning method, so it inherits the convex-Voronoi-cell limitation — clusters
-of arbitrary shape are out of reach; (b) the run time is prohibitive on large databases: a
-single CLARANS run is roughly quadratic in `n`, and the silhouette-driven search for `k`
-multiplies that by a sweep over candidate `k` values; (c) it assumes all objects reside in
-main memory simultaneously, which fails for large databases; (d) it has no explicit noise
-model — every object is assigned to its closest medoid.
+that lowers the objective `E`, and restart a few times to escape poor local optima. Ng & Han
+report this more effective and more efficient than evaluating every swap as PAM does. To address
+"what is the *natural* number of groups," they run CLARANS once for each `k` from 2 to `n`, score
+each clustering by its silhouette coefficient, and keep the `k` with the best score. A single
+CLARANS run is roughly quadratic in `n`, and the method assumes all objects reside in main
+memory simultaneously.
 
 **Hierarchical methods (agglomerative / divisive; Kaufman & Rousseeuw 1990).** Build a
 *dendrogram*: agglomerative methods start with every object its own group and repeatedly merge
 the two closest groups; divisive methods start with one group and repeatedly split. No `k` is
-required as input — but a *termination condition* is, telling the process when to stop merging
-or splitting, e.g. a threshold `D_min` on the inter-cluster distance below which two groups are
-considered one. **Gap:** that condition is hard to set — it must be small enough to keep
-genuinely separate groups apart, yet large enough not to chop a single group into pieces, and
-no single value does both across a database with groups of differing tightness. A recent
-variant, *Ejcluster* (García, Fdez-Valdivia, Cortijo & Molina 1994), sidesteps the termination
-problem with a connectivity idea — two objects belong to the same group if one can "walk" from
-one to the other by a sequence of sufficiently small steps — and is reported very effective on
-non-convex groups, deriving its own stopping point; **but** its distance computation is
-`O(n^2)` because it inspects pairs of points, acceptable only for small datasets such as
-character recognition, not for large spatial databases.
+required as input; instead a *termination condition* is supplied, telling the process when to
+stop merging or splitting, e.g. a threshold `D_min` on the inter-cluster distance below which
+two groups are considered one. A recent variant, *Ejcluster* (García, Fdez-Valdivia, Cortijo &
+Molina 1994), replaces the termination condition with a connectivity idea — two objects belong
+to the same group if one can "walk" from one to the other by a sequence of sufficiently small
+steps — and is reported very effective on non-convex groups, deriving its own stopping point;
+its distance computation is `O(n^2)` because it inspects pairs of points, and it is applied to
+small datasets such as character recognition.
 
 **Grid / density-histogram methods (Jain 1988).** Partition the feature space into a grid of
 non-overlapping cells and build a multidimensional histogram of how many objects fall in each
 cell; cells with relatively high counts are candidate cluster centers, and the boundaries
-between groups fall in the "valleys" of the histogram. This *can* recover groups of arbitrary
-shape, since it reads structure off the occupancy pattern rather than fitting representatives.
-**Gaps:** the space and run time to store and search a multidimensional histogram grow
-enormously with dimension, and the result depends crucially on the chosen cell size — too
-coarse and groups merge, too fine and a group fragments — which is itself a parameter the user
-must guess.
-
-Taken together: the partitioning methods need `k` and return convex groups with no notion of
-noise; the hierarchical and connectivity methods avoid `k` but cost `O(n^2)` or need a
-termination threshold no single value satisfies; the grid-histogram methods recover shapes but
-are heavy in space and time and acutely sensitive to cell size. Each clears some of the four
-demands and trips on the others; none clears all four together.
+between groups fall in the "valleys" of the histogram. This reads structure off the occupancy
+pattern rather than fitting representatives, and so can recover groups of arbitrary shape. The
+result depends on the chosen cell size, and the histogram is stored and searched over the grid.
 
 ## Evaluation settings
 

@@ -1,17 +1,16 @@
 ## Research question
 
-The continuous mean-variance rule is useful but incomplete for a trading desk. Given expected
-returns `mu` and a positive semidefinite covariance matrix `Sigma`, the classical long-only
-problem chooses weights `x` by minimizing a convex quadratic risk-return tradeoff under a
-budget constraint and box bounds. The result is a fractional vector on the simplex.
+Given expected returns `mu` and a positive semidefinite covariance matrix `Sigma`, the
+classical long-only problem chooses weights `x` by minimizing a convex quadratic risk-return
+tradeoff under a budget constraint and box bounds. The result is a fractional vector on the
+simplex.
 
-The deployable problem is stricter. A manager may need at most `K` names, every held name may
-need a buy-in floor `alpha_i`, industry-sector changes may need to stay near a benchmark, price
-impact may depend on the size of the rebalance from the current book, and the final trade list
-must become whole shares or round lots. A solution has to keep the covariance-aware quadratic
-objective while expressing constraints of the form "zero or at least the floor" and "no more
-than `K` nonzero holdings". Those are disjunctions, so the feasible set is no longer one convex
-polytope.
+A trading desk works under further conditions. A manager may hold at most `K` names, every
+held name may carry a buy-in floor `alpha_i`, industry-sector changes may stay near a
+benchmark, price impact may depend on the size of the rebalance from the current book, and the
+final trade list must become whole shares or round lots. The question is how to choose a
+portfolio under the covariance-aware quadratic objective while respecting a per-name "zero or
+at least the floor" condition and a limit of at most `K` nonzero holdings.
 
 ## Background
 
@@ -21,60 +20,46 @@ quadratic program. The same two-moment view underlies Roy's safety-first criteri
 CAPM line of Sharpe and Lintner. This machinery works for continuously divisible weights.
 
 The desk constraints change the geometry. The buy-in condition is the one-coordinate set
-`{0} union [alpha_i, u_i]`; it has a gap between zero and `alpha_i`. The holding-count
-condition is a union over all subsets of at most `K` names. Each fixed subset gives a convex
-face of the simplex, but the union of many faces is not convex: averaging two feasible
-portfolios supported on disjoint `K`-name sets can create a portfolio with more than `K`
-nonzero names.
+`{0} union [alpha_i, u_i]`, with a gap between zero and `alpha_i`. The holding-count condition
+is a union over all subsets of at most `K` names. Each fixed subset gives a convex face of the
+simplex; averaging two portfolios supported on disjoint `K`-name sets can create a portfolio
+with more than `K` nonzero names.
 
-Operations research has a long history of modeling such on/off disjunctions, where a
-continuous quantity is either zero or confined to an active interval. Approaches in that
-tradition typically pay for the disjunction with discrete decisions layered on top of the
-convex quadratic objective.
+Operations research has a long history of modeling on/off conditions, where a continuous
+quantity is either zero or confined to an active interval, by layering discrete decisions on
+top of a convex quadratic objective.
 
-Discrete trade size is a separate integer issue. If a lot of asset `i` costs `s_i p_i` and
-the account value is `V`, holding `n_i` lots gives weight `n_i s_i p_i / V`; `n_i` is a
-nonnegative integer. Solving in continuous weights and then naively rounding can overspend,
-leave unused cash, or distort the target weights, so the budget-respecting allocation step is
-its own discrete decision.
+Discrete trade size is an integer matter. If a lot of asset `i` costs `s_i p_i` and the
+account value is `V`, holding `n_i` lots gives weight `n_i s_i p_i / V`, with `n_i` a
+nonnegative integer; the budget-respecting allocation is a separate discrete step.
 
-Rebalancing also matters. If `x0` is the current portfolio, a symmetric quadratic impact model
+Rebalancing also enters. If `x0` is the current portfolio, a symmetric quadratic impact model
 adds `sum_i c_i (x_i - x0_i)^2` with `c_i > 0`. Linear transaction costs can be written with
 buy and sell variables, or in the symmetric case as an `L1` norm of `x - x0`. Fixed ticket
-costs are nonconvex step functions and need another trade indicator if they are modeled
-exactly.
+costs are step functions modeled with a trade indicator.
 
 ## Baselines
 
 - **Continuous mean-variance QP (Markowitz 1952, 1959).** Minimize variance minus return, or
   maximize quadratic utility, over the simplex and ordinary bounds. It is convex and globally
-  solvable. The gap is that the optimizer may spread weight over many names and does not know
-  about buy-in floors, whole shares, sector turnover limits, or fixed ticket decisions.
+  solvable, and works in continuously divisible weights.
 
 - **Truncate and renormalize.** Solve the continuous problem, keep the `K` largest weights,
-  zero the rest, and scale the survivors back to one. This is cheap, but it is not the
-  constrained optimum: when one asset is dropped, the covariance interactions among the
-  survivors change, so the survivors must be reoptimized. The truncation can also violate
-  floors and caps.
+  zero the rest, and scale the survivors back to one.
 
 - **Linear or piecewise-linear risk proxies.** Konno-Yamazaki-style mean absolute deviation
-  and related approximations make integer linear programming easier. The gap is that the
-  covariance quadratic is replaced by a proxy, so the diversification term that defined the
-  mean-variance problem is no longer optimized directly.
+  and related approximations replace the covariance quadratic with a linear proxy that makes
+  integer linear programming easier.
 
 - **Bienstock's tailored branch-and-bound for cardinality-bounded QP (1996).** The quadratic
-  objective is kept, the support constraint is relaxed by the necessary surrogate
+  objective is kept, the support constraint is relaxed by the surrogate
   `sum_i x_i/u_i <= K`, and the algorithm branches directly on continuous weights by forcing
-  a variable down to zero or up above its lower bound. The surrogate is not an exact count:
-  several small positive weights can satisfy it while exceeding the support limit. The branch
-  decisions restore the combinatorial distinction. The gap is that this is a specialized
-  solver design, not a general modeling scaffold for benchmark-relative sector moves,
-  rebalancing impact, and round-lot deployment.
+  a variable down to zero or up above its lower bound. The branch decisions restore the
+  combinatorial distinction between held and unheld names.
 
 - **Metaheuristics for constrained frontiers.** Genetic algorithms, tabu search, simulated
   annealing, and local search encode subsets and search over them, often re-solving a
-  continuous QP inside a fixed subset. They can produce useful feasible portfolios, but they
-  do not provide the same global optimality certificate as branch-and-bound.
+  continuous QP inside a fixed subset.
 
 ## Evaluation settings
 

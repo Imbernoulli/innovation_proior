@@ -17,12 +17,9 @@ change as *few spatial pixels as possible* — minimize `||r||_0` — while each
 move arbitrarily far (within the valid dynamic range). This matters because sparse perturbations
 model a different and very physical threat: a few raindrops glinting on a STOP sign, a handful of
 bright flowers in a crop field, a sticker on a lens — a small set of locations changed a lot,
-rather than a faint film over the whole frame. A solution would have to (1) actually minimize the
-number of perturbed pixels, (2) run fast and scale to high-dimensional inputs like ImageNet, and
-(3) return an image whose pixel values stay inside the valid box `[l, u]` (e.g. `[0, 255]` or
-`[0, 1]`), because a sparse perturbation concentrates large magnitude on few pixels and is
-therefore the regime most likely to drive those pixels out of range. No method available at the
-time meets all three at once; closing that gap is the problem.
+rather than a faint film over the whole frame. The sparse regime also concentrates large magnitude
+on few pixels, so pixel values are more likely to be driven out of the valid box `[l, u]` (e.g.
+`[0, 255]` or `[0, 1]`), making the box constraint a central part of the problem formulation.
 
 ## Background
 
@@ -49,16 +46,14 @@ established (Szegedy et al. 2013; Goodfellow, Shlens & Szegedy 2015), and a fami
   this flatness is *local*: it holds in a neighborhood of `x` but degrades as one moves away, so
   the hyperplane model is trustworthy only near the data point.
 
-- **A diagnostic failure of the naive `L_1` route: ignoring the box destroys the attack.** When a
-  perturbation is dense and small (`L_2` / `L_infinity`), almost no pixel leaves the valid range,
-  so most attacks simply ignore the box constraint and clip at the end with negligible effect.
-  The sparse regime is the opposite. Because the budget is concentrated, each touched pixel
-  carries large magnitude and routinely exceeds the dynamic range, so the final clip removes most
-  of the perturbation's effect. Concretely, on a VGG-16 ImageNet model, an `L_1`-based projection
-  attack reaches almost a 100% fooling rate while perturbing only about 0.037% of the pixels —
-  but clipping the resulting adversarial image to `[0, 255]` collapses the fooling rate to about
-  13%, and folding the clip into the iteration does not recover it. A sparse `L_1` attack that
-  does not *natively* respect the box is therefore not a usable sparse attack.
+- **Observed behavior of the `L_1` route on sparse attacks.** When a perturbation is dense and
+  small (`L_2` / `L_infinity`), almost no pixel leaves the valid range, so most attacks simply
+  ignore the box constraint and clip at the end with negligible effect. The sparse regime is the
+  opposite: because the budget is concentrated, each touched pixel carries large magnitude and
+  routinely exceeds the dynamic range. Concretely, on a VGG-16 ImageNet model, an `L_1`-based
+  projection attack reaches almost a 100% fooling rate while perturbing only about 0.037% of the
+  pixels — but clipping the resulting adversarial image to `[0, 255]` collapses the fooling rate
+  to about 13%, and folding the clip into the iteration does not recover it.
 
 ## Baselines
 
@@ -82,43 +77,28 @@ Holder duality with `q = p / (p - 1)`: the closest-hyperplane test uses `||w'_k|
 `p > 1` the step becomes
 `r_i = (|f'_{l_hat}| / ||w'_{l_hat}||_q^q) |w'_{l_hat}|^{q-1} (.) sign(w'_{l_hat})`. The limiting
 `p = 1` case uses `q = infinity`, so the denominator is `||w'||_infinity` and the optimizer puts
-all mass on a largest-`|w'|` coordinate. **Gap for the sparse problem:** DeepFool was designed to
-*measure robustness* with dense `L_2` / `L_infinity` perturbations; it linearizes the classifier
-and never considers the validity box, and its `L_2` output spreads mass across all coordinates
-rather than concentrating it.
+all mass on a largest-`|w'|` coordinate.
 
 **`L_1`-DeepFool (the `p = 1` limit of the above).** Setting `p = 1` gives `q = infinity`, so
 the closest-hyperplane test uses `||w'_k||_infinity`. If
 `d = argmax_j |w'_{l_hat,j}|`, the projection step is supported on that coordinate:
 `r_i = (|f'_{l_hat}| / |w'_{l_hat,d}|) sign(w'_{l_hat,d}) e_d`. It is therefore a perturbation
-concentrated on a single coordinate per step, hence sparse. **Gap:** as
-the diagnostic above shows, it computes sparse perturbations but does not respect the box; its
-few high-magnitude pixels leave the valid range and clipping destroys the attack (about 100%
-fooling before clipping, about 13% after, on VGG-16/ImageNet). It also linearizes the
-*classifier* globally, which is accurate only very close to the boundary.
+concentrated on a single coordinate per step, hence sparse.
 
 **JSMA — Jacobian Saliency Map Attack (Papernot, McDaniel, Jha, Fredrikson, Celik & Swami,
 2016).** A targeted sparse attack that scores each pixel by a *saliency map* built from the
 Jacobian of the class logits with respect to the input, then greedily perturbs the
 highest-scoring pixels (typically to an extremum) toward a target class, repeating until
-misclassification. **Gap:** it searches over *pairs* of candidate pixels at each step, so its
-cost grows sharply with input dimension — it is reported to be impractical on ImageNet — and as a
-targeted method it must be adapted to the untargeted setting.
+misclassification. The method searches over *pairs* of candidate pixels at each step, so its
+cost grows with input dimension.
 
 **One-pixel attack (Su, Vargas & Sakurai, 2019).** A black-box attack that uses differential
 evolution to search for an extremely small set of pixels (often a single pixel) and their RGB
-values that cause misclassification, querying only the model's outputs. **Gap:** the
-evolutionary search needs many model queries and is very slow; it does not scale to
-high-dimensional inputs and is run by sweeping the number of perturbed pixels `kappa` upward
-until an adversarial example is found.
+values that cause misclassification, querying only the model's outputs. It is run by sweeping
+the number of perturbed pixels `kappa` upward until an adversarial example is found.
 
 **Greedy local search (Narodytska & Kasiviswanathan, 2017).** A black-box method that perturbs a
-small set of pixels chosen by a greedy local search over the image. **Gap:** black-box and
-greedy, again with high query/computational cost and limited scalability.
-
-Across these sparse baselines the common limitations are: high computational complexity, poor
-scaling to large images, and perturbations made of high-magnitude pixels that are perceptible
-and often out of the valid range.
+small set of pixels chosen by a greedy local search over the image.
 
 ## Evaluation settings
 

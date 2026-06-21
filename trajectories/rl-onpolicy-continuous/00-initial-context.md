@@ -1,14 +1,14 @@
 ## Research question
 
-On-policy actor-critic for continuous control. I collect a batch of trajectories with the current Gaussian policy, turn the rewards into advantages with Generalized Advantage Estimation, and then run several epochs of mini-batch optimization over that one freshly-collected batch before throwing it away and collecting the next. The single thing I get to design is the **policy-update rule** — how a mini-batch of `(obs, action, old-logprob, advantage, return, old-value)` becomes a scalar loss whose gradient moves the actor and the critic. Everything else — the rollout, the GAE scan, the optimizer, the network — is frozen. The question is which update rule extracts the most reliable improvement per batch across MuJoCo environments with very different dynamics, without ever destabilizing.
+On-policy actor-critic for continuous control. I collect a batch of trajectories with the current Gaussian policy, turn the rewards into advantages with Generalized Advantage Estimation, and then run several epochs of mini-batch optimization over that one freshly-collected batch before throwing it away and collecting the next. The single thing I get to design is the **policy-update rule** — how a mini-batch of `(obs, action, old-logprob, advantage, return, old-value)` becomes a scalar loss whose gradient moves the actor and the critic. Everything else — the rollout, the GAE scan, the optimizer, the network — is frozen. The question is which update rule produces reliable improvement per batch across MuJoCo environments with very different dynamics.
 
 ## Prior art / Background / Baselines
 
-- **REINFORCE / vanilla policy gradient (Williams 1992).** Estimate the policy gradient by Monte Carlo sampling of log-probability-weighted advantages. Gap: high variance, and reusing a batch after the policy has drifted has no theoretical support.
-- **Conservative policy iteration / surrogate bound (Kakade & Langford 2002).** Write policy improvement as maximizing an importance-weighted surrogate advantage plus a term that keeps the new policy close to the old one. Gap: the result is a bound, not a practical first-order algorithm; enforcing the proximity constraint inside gradient descent is left unspecified.
-- **TRPO (Schulman et al. 2015b).** Approximately maximize the surrogate advantage subject to a hard KL trust region, using conjugate gradients and Fisher-vector products. Gap: the second-order machinery is expensive per update, and the method typically takes only one step per batch.
+- **REINFORCE / vanilla policy gradient (Williams 1992).** Estimate the policy gradient by Monte Carlo sampling of log-probability-weighted advantages.
+- **Conservative policy iteration / surrogate bound (Kakade & Langford 2002).** Write policy improvement as maximizing an importance-weighted surrogate advantage plus a term that keeps the new policy close to the old one.
+- **TRPO (Schulman et al. 2015b).** Approximately maximize the surrogate advantage subject to a hard KL trust region, using conjugate gradients and Fisher-vector products.
 - **GAE (Schulman et al. 2015a).** Estimate advantages by a weighted sum of n-step TD residuals, $\hat A_t=\sum_l(\gamma\lambda)^l\delta_{t+l}$, with $\lambda$ trading bias for variance. This is fixed substrate, not a policy-update rule.
-- **Advantage-weighted regression (Peters & Schaal 2007; Peng et al. 2019).** Treat policy improvement as supervised regression onto past actions, weighted by exponentiated advantages. Gap: performance is sensitive to the temperature and to mismatch between the data distribution and the current policy.
+- **Advantage-weighted regression (Peters & Schaal 2007; Peng et al. 2019).** Treat policy improvement as supervised regression onto past actions, weighted by exponentiated advantages.
 
 ## Fixed substrate / Code framework
 
@@ -20,7 +20,7 @@ The network capacity is **fixed and enforced at runtime** by a parameter-count a
 
 Exactly one region of `custom_onpolicy_continuous.py` is editable (lines 175–221): the `get_action_and_value` method of `Agent` (the action distribution and what it returns) and the free-function `compute_losses(agent, mb_obs, mb_actions, mb_logprobs, mb_advantages, mb_returns, mb_values, args)` (the per-minibatch loss). The contract is fixed: `get_action_and_value(obs, action)` returns `(action, logprob, entropy, value)` summed over action dims; `compute_losses(...)` returns `(loss, pg_loss, v_loss, entropy_loss, approx_kl, clipfrac)`. The loop has already normalized `mb_advantages` per minibatch before handing them in.
 
-The starting point is the scaffold default: a Gaussian policy and a **placeholder** un-clipped policy gradient $-\hat{\mathbb E}[\hat A\,r]$ with plain MSE value loss. It is not meant to be competitive; it is the slot each method fills.
+The starting point is the scaffold default: a Gaussian policy and a **placeholder** un-clipped policy gradient $-\hat{\mathbb E}[\hat A\,r]$ with plain MSE value loss — the slot each method fills.
 
 ```python
     # EDITABLE region of custom_onpolicy_continuous.py (lines 175-221) — default fill

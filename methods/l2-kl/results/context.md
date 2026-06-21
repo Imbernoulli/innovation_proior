@@ -22,7 +22,7 @@ so exact posterior inference is unavailable too. The desired training procedure 
 
 The usual probabilistic goal is maximum likelihood or MAP estimation of the generative parameters. A flexible decoder can represent complex image distributions by transforming simple latent noise into structured pixels, so expressiveness is not the central bottleneck. The bottleneck is optimization: the learning signal must pass through expectations over latent variables whose distribution changes with the encoder parameters.
 
-A variational approximation is the standard way to make posterior inference tractable. It introduces a tractable distribution `q(z|x)` and compares it with either the true posterior or a simple prior by KL divergence. In classical settings this comparison often gives analytic coordinate updates. In a neural likelihood setting those expectations no longer have closed forms, and a separate variational parameter vector per datapoint is too expensive for a large image dataset.
+A variational approximation is the standard way to make posterior inference tractable. It introduces a tractable distribution `q(z|x)` and compares it with either the true posterior or a simple prior by KL divergence. In classical settings this comparison often gives analytic coordinate updates. In a neural likelihood setting those expectations no longer have closed forms.
 
 The observation model fixes what a pixel reconstruction penalty means. If real-valued pixels are modeled with a fixed-variance Gaussian decoder,
 
@@ -40,9 +40,9 @@ Thus squared pixel error is not just a heuristic distance; it is the likelihood 
 
 ## Baselines
 
-**Expectation-Maximization.** EM alternates an E-step that evaluates posterior expectations with an M-step that updates the model. It is not usable here because the nonlinear decoder makes `p_theta(z|x)` intractable.
+**Expectation-Maximization.** EM alternates an E-step that evaluates posterior expectations with an M-step that updates the model. The nonlinear decoder makes `p_theta(z|x)` intractable.
 
-**Conjugate or coordinate-ascent variational Bayes.** Mean-field coordinate updates are effective when expectations of the complete-data log density are analytic. A neural decoder breaks those analytic expectations, and per-datapoint variational parameters do not scale well to large image collections.
+**Conjugate or coordinate-ascent variational Bayes.** Mean-field coordinate updates are effective when expectations of the complete-data log density are analytic. A neural decoder changes the structure of those expectations.
 
 **Score-function stochastic gradients.** The likelihood-ratio identity can differentiate an expectation whose sampling distribution depends on parameters:
 
@@ -50,13 +50,13 @@ Thus squared pixel error is not just a heuristic distance; it is the likelihood 
 grad_phi E_q[f(z)] = E_q[f(z) grad_phi log q_phi(z|x)].
 ```
 
-It is unbiased and applies broadly, including to discrete latent variables, but it is high variance in continuous neural models because each sample contributes only a scalar weight `f(z)` times a score. It does not use the derivative of the decoder output with respect to the latent sample, even though backpropagation can compute that derivative.
+It is unbiased and applies broadly, including to discrete latent variables.
 
-**Wake-sleep and related recognition-network models.** These pair a generative model with an inference network, which is the right computational shape for fast coding. Their limitation is that the two phases optimize different criteria rather than one shared lower-bound objective, so the encoder and decoder updates can point at different targets.
+**Wake-sleep and related recognition-network models.** These pair a generative model with an inference network, which is the right computational shape for fast coding. The two phases optimize different criteria rather than one shared lower-bound objective.
 
-**Monte Carlo EM and per-datapoint MCMC.** Sampling an approximate posterior chain for each image can be accurate but is too slow for online or minibatch training at image-dataset scale.
+**Monte Carlo EM and per-datapoint MCMC.** Sampling an approximate posterior chain for each image can be accurate, though it requires per-image inner-loop computation.
 
-**Plain and regularized autoencoders.** A deterministic encoder-decoder trained only by reconstruction loss gives fast reconstructions, but it is not by itself a normalized latent-variable model with a simple sampling procedure. Sparse, denoising, and contractive variants add useful regularizers, but their weights are hand-set rather than dictated by the probabilistic model.
+**Plain and regularized autoencoders.** A deterministic encoder-decoder trained only by reconstruction loss gives fast reconstructions. Sparse, denoising, and contractive variants add regularizers on top of the reconstruction objective.
 
 ## Evaluation settings
 

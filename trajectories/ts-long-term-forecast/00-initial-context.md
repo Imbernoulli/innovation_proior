@@ -9,15 +9,11 @@ metric computation are fixed by the Time-Series-Library protocol; only the model
 ## Prior art / Background / Baselines
 
 - **Informer.** A Transformer with ProbSparse attention, a distilling encoder, and a generative decoder
-  that emits the whole horizon in one forward pass. Gap: the O(L²) cost is reduced by dropping most
-  query–key pairs, and the reported gains are confounded with the shift from iterated to direct
-  multi-step prediction.
+  that emits the whole horizon in one forward pass.
 - **Autoformer.** Replaces dot-product attention with an Auto-Correlation block that aggregates over
   discovered period lags, and folds a moving-average series decomposition block into the encoder/decoder.
-  Gap: the auto-correlation machinery remains intricate and attention-shaped over the time axis.
 - **FEDformer.** Does attention in the frequency domain with a mixture of decomposition kernels, O(L)
-  cost. Gap: the gains over Autoformer are incremental and come with another specialized attention
-  kernel that is harder to reason about.
+  cost.
 
 ## Fixed substrate / Code framework
 

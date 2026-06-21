@@ -5,21 +5,6 @@
 How can we build a model-free deep reinforcement learning algorithm for continuous state and
 action spaces that is simultaneously **sample-efficient** and **stable**?
 
-Two failure modes dominate continuous-control deep RL at this point. The first is sample
-complexity: the most reliable algorithms are on-policy, and on-policy learning discards every
-batch of experience after a single gradient step, so even modest tasks burn through millions of
-environment interactions. The second is brittleness: the off-policy algorithms that *could* reuse
-old data are notoriously hard to stabilize — small changes in learning rate, exploration constant,
-or target-update rate swing performance between "solved" and "no progress," and the basin of good
-hyperparameters shrinks as the task grows. On the hardest high-dimensional benchmarks, the
-sample-efficient off-policy method fails to make any progress at all while a slower on-policy
-method still works.
-
-A solution would have to combine off-policy data reuse (for efficiency) with a training procedure
-that is robust across random seeds and needs almost no per-task tuning, and it would have to scale
-to high-dimensional action spaces (e.g. a 21-DoF humanoid) where the existing off-policy approach
-breaks down.
-
 ## Background
 
 **Actor-critic from policy iteration.** Actor-critic methods descend from policy iteration, which
@@ -71,32 +56,25 @@ y = r + γ·Q_targ(s', μ_targ(s')), and — because the maximization max_a Q(s,
 is intractable in continuous action spaces — it trains a *deterministic* actor μ_θ(s) to
 approximate the maximizer, updated through the chain rule
 ∇_θ Q(s, μ_θ(s)) = ∇_a Q · ∇_θ μ_θ. It is at once an approximate Q-learning method and a
-deterministic actor-critic. Gap it leaves open: the deterministic actor has no intrinsic
-exploration, so time-correlated (Ornstein-Uhlenbeck) or Gaussian noise must be injected and tuned;
-the actor–Q interplay is extremely brittle and hyperparameter-sensitive; the Q-function
-overestimates; and the method fails to scale to high-dimensional tasks, where on-policy methods
-still win.
+deterministic actor-critic.
 
 **Stochastic value gradients, zero-step — SVG(0) (Heess 2015).** Uses the reparameterization trick
-to push value gradients through a *stochastic* actor. But it optimizes the standard
+to push value gradients through a *stochastic* actor. It optimizes the standard
 maximum-expected-return objective (no entropy term) and uses no separate value network.
 
 **Energy-based / soft Q-learning (Haarnoja 2017; Fox 2016; Ziebart 2008).** These solve the
 maximum-entropy problem by directly learning the optimal soft Q-function, from which the optimal
 policy is recovered as the Boltzmann distribution π ∝ exp(Q/α). The soft value function is the
-log-sum-exp V(s) = α·log ∫ exp(Q(s,a)/α) da. Gap it leaves open: in continuous action spaces there
-is no closed-form way to sample from exp(Q), so an auxiliary sampling network must be trained (via
-amortized Stein variational gradient descent) to approximate draws from the energy-based policy.
-This is a Q-learning method, not a true actor-critic: the Q-function targets the *optimal* Q*, and
-the "actor" is only an approximate sampler whose quality bounds convergence; the inference
-procedure is complex and a source of instability. These methods generally do not exceed the
-performance of the strong off-policy baseline when learning from scratch.
+log-sum-exp V(s) = α·log ∫ exp(Q(s,a)/α) da. In continuous action spaces there is no closed-form
+way to sample from exp(Q), so an auxiliary sampling network is trained (via amortized Stein
+variational gradient descent) to approximate draws from the energy-based policy. This is a
+Q-learning method, not a true actor-critic: the Q-function targets the *optimal* Q*, and the
+"actor" is only an approximate sampler.
 
 **On-policy policy gradients with entropy regularization — TRPO (Schulman 2015), PPO (Schulman
 2017), A3C (Mnih 2016).** Stable and effective; many of them add an entropy *regularizer* to the
 policy-gradient objective (entropy as a bonus, not as the quantity being maximized in the value).
-Gap they leave open: being on-policy, they cannot reuse past experience and so are
-sample-inefficient; the large batch sizes they need on complex tasks make them slow.
+These methods require fresh on-policy rollouts for each update.
 
 **Double Q-learning / clipped double-Q (van Hasselt 2010; concurrent TD3, Fujimoto 2018).**
 Maintains two Q-estimators and uses the minimum to suppress the overestimation bias that degrades

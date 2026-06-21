@@ -4,9 +4,9 @@ Can a stock-return predictor be made robust to *temporal* distribution shift —
 
 ## Prior art / Background / Baselines
 
-- **Empirical risk minimization with one model (single LSTM / GBDT).** A single predictor is trained by averaging loss over all historical samples. Limitation: market relations rotate over time, and a single static parameter vector averages contradictory cross-sectional effects such as momentum and reversal, fitting none of them well.
-- **Mixture-of-experts / conditional computation.** Several expert sub-models are combined by a per-input gate. Limitation: the gate often collapses onto one expert or spreads mass evenly, so the ensemble effectively behaves like a single predictor and its gains are lost.
-- **Domain-adaptation alignment (covariate shift, MMD/CORAL/DANN).** Feature distributions are aligned across domains so a shared conditional can be reused. Limitation: these methods require a predefined source/target split and ignore the sequential order of samples, so a regime that appears mid-test is invisible to them.
+- **Empirical risk minimization with one model (single LSTM / GBDT).** A single predictor is trained by averaging loss over all historical samples.
+- **Mixture-of-experts / conditional computation.** Several expert sub-models are combined by a per-input gate that selects or weights them for each input.
+- **Domain-adaptation alignment (covariate shift, MMD/CORAL/DANN).** Feature distributions are aligned across domains so a shared conditional can be reused.
 
 ## Fixed substrate / Code framework
 

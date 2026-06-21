@@ -3,11 +3,10 @@
 We want to program a controller by demonstration: an expert policy `π*` shows good behavior,
 and we want a learned policy `π` in some class `Π` that reproduces it. The standard move is to
 treat this as supervised learning — collect `(state, expert action)` pairs from the expert's
-trajectories and fit a classifier/regressor. The trouble is that this is a *sequential*
-prediction problem, not an i.i.d. one: the controller's own predictions (actions) determine
-the future states it will see. Once `π` acts, it changes the distribution of inputs it is
-later tested on, so the very assumption supervised learning rests on — that train and test
-states are drawn from the same fixed distribution — is violated.
+trajectories and fit a classifier/regressor. This is a *sequential* prediction problem rather
+than an i.i.d. one: the controller's own predictions (actions) determine the future states it
+will see, so once `π` acts it changes the distribution of inputs it is later evaluated on,
+unlike the fixed-distribution setting supervised learning is built around.
 
 Concretely, write `d^t_π` for the distribution of states at time `t` when `π` is executed
 from step `1`, and `d_π = (1/T) Σ_{t=1}^T d^t_π` for the average state distribution over a
@@ -15,20 +14,18 @@ horizon `T`. With task cost `C(s,a) ∈ [0,1]`, `C_π(s) = E_{a∼π(s)}[C(s,a)]
 cost-to-go is `J(π) = Σ_{t=1}^T E_{s∼d^t_π}[C_π(s)] = T·E_{s∼d_π}[C_π(s)]`. In imitation
 learning we usually do not observe `C`; instead we observe the expert and minimize a surrogate
 loss `ℓ(s,π)` — for instance the expected 0-1 disagreement with `π*` at state `s`, or a
-squared/hinge loss against `π*(s)`. The object we actually care about is the loss *under the
-policy's own induced distribution*:
+squared/hinge loss against `π*(s)`. The object of interest is the loss *under the policy's own
+induced distribution*:
 
 ```
 π̂ = argmin_{π ∈ Π} E_{s ∼ d_π}[ ℓ(s,π) ].
 ```
 
-This is a chicken-and-egg problem: `d_π` depends on `π`, the dynamics are unknown and complex
-so we can only *sample* `d_π` by executing `π`, and the dependence of the input distribution on
-the optimizee makes the objective non-convex even when `ℓ(s,·)` is convex in `π` for every `s`.
-The goal is a practical method that drives the loss under a policy's *own* state distribution
-to a small value, with a number of mistakes/cost that grows gracefully (linearly or
-near-linearly) in `T` and in the per-state error `ε`, while producing a controller that is
-actually deployable.
+Here `d_π` depends on `π`, the dynamics are unknown and complex so we can only *sample* `d_π`
+by executing `π`, and the dependence of the input distribution on the optimizee makes the
+objective non-convex even when `ℓ(s,·)` is convex in `π` for every `s`. The question is how to
+drive the loss under a policy's *own* state distribution to a small value over a horizon `T`,
+given interactive access to the expert and a per-state error `ε`.
 
 ## Background
 
@@ -55,23 +52,21 @@ and a **reductions** viewpoint (Beygelzimer et al. 2005) that relates a hard lea
 to a sequence of simpler classification/optimization calls and tracks how their errors
 compose.
 
-The load-bearing empirical fact that frames everything is the **compounding-error
-phenomenon**, documented since the earliest demonstration-trained controllers. Pomerleau's
-ALVINN road-follower noted that a network "when driving for itself … may occasionally stray
-from the center of road and so must be prepared to recover by steering the vehicle back," yet
-recovery behavior is rare in a good human driver's demonstrations and so is badly represented
-in the training data. The result is a controller that, the first time it drifts, finds itself
-in a state unlike anything it was trained on, makes a worse move, drifts further, and so on —
-errors compound. This is not an artifact of a particular learner; it is structural, and it has
-a sharp quantitative signature (below) that the supervised approach cannot escape.
+A recurring empirical observation in demonstration-trained controllers is the
+**compounding-error phenomenon**. Pomerleau's ALVINN road-follower noted that a network "when
+driving for itself … may occasionally stray from the center of road and so must be prepared to
+recover by steering the vehicle back," yet recovery behavior is rare in a good human driver's
+demonstrations and so is sparsely represented in the training data. When such a controller
+drifts, it can find itself in a state unlike those it was trained on, and subsequent errors
+accumulate over the horizon. This pattern has a quantitative signature (below).
 
 A second background fact, from the policy-iteration side of reinforcement learning, is that
-**changing the executed policy slowly helps**. Conservative Policy Iteration (Kakade &
-Langford 2002) improves a policy by interpolating only a little of a new greedy policy into the
-current one each step, precisely so the state distribution does not lurch and the improvement
-estimates stay valid. The same instinct — keep the data-collecting policy close to something
-trustworthy and let it drift toward the learner gradually — recurs in the structured-prediction
-and imitation methods below.
+**changing the executed policy slowly** is a useful tactic. Conservative Policy Iteration
+(Kakade & Langford 2002) improves a policy by interpolating only a little of a new greedy
+policy into the current one each step, so the state distribution does not lurch and the
+improvement estimates stay valid. The same instinct — keep the data-collecting policy close to
+something trustworthy and let it drift toward the learner gradually — recurs in the
+structured-prediction and imitation methods below.
 
 ## Baselines
 
@@ -82,7 +77,7 @@ that does well under the *expert's* states:
 π̂_sup = argmin_{π ∈ Π} E_{s ∼ d_{π*}}[ ℓ(s,π) ].
 ```
 
-This is any off-the-shelf supervised learner. Its guarantee is exactly the compounding-error
+This is any off-the-shelf supervised learner. Its guarantee carries the compounding-error
 signature: if `ℓ` upper-bounds the 0-1 loss and `E_{s∼d_{π*}}[ℓ] = ε`, then (Ross & Bagnell
 2010)
 
@@ -90,15 +85,13 @@ signature: if `ℓ` upper-bounds the 0-1 loss and `E_{s∼d_{π*}}[ℓ] = ε`, t
 J(π̂_sup) ≤ J(π*) + T² ε.
 ```
 
-The `T²` is the problem. The first time the learner errs (probability `~ε`) it can fall into
-states never visited by `π*` and pay maximal cost `1` for the remaining steps; summed over the
-horizon this is quadratic. **This bound is tight** — Kääriäinen (2006) exhibits a
-sequence-prediction problem where predicting the next output from the previous *correct* output
-with per-step error `ε` yields `T/2 − (1−(1−2ε)^{T+1})/(4ε) + 1/2` expected mistakes, which is
-`Θ(T²ε)` for small `ε`; Ross & Bagnell (2010) give an imitation example with cost
-`(1−εT)J(π*) + T²ε`. **Gap:** the learner is trained on `d_{π*}` but graded on `d_{π̂}`, two
-different distributions, and nothing in the procedure ever exposes it to the states its own
-mistakes produce — so it never sees, and never learns, how to recover.
+The bound is quadratic in `T`: the first time the learner errs (probability `~ε`) it can fall
+into states never visited by `π*` and pay maximal cost `1` for the remaining steps, summed over
+the horizon. The bound is tight — Kääriäinen (2006) exhibits a sequence-prediction problem
+where predicting the next output from the previous *correct* output with per-step error `ε`
+yields `T/2 − (1−(1−2ε)^{T+1})/(4ε) + 1/2` expected mistakes, which is `Θ(T²ε)` for small `ε`;
+Ross & Bagnell (2010) give an imitation example with cost `(1−εT)J(π*) + T²ε`. The learner is
+trained on `d_{π*}` and evaluated on `d_{π̂}`, two different distributions.
 
 **Forward training (Ross & Bagnell 2010).** Train a *non-stationary* policy, one classifier
 `π_t` per time step, sequentially from `t = 1` to `T`; at step `t`, `π_t` is fit to mimic `π*`
@@ -108,10 +101,8 @@ improves to linear in `T` when a *cost-to-go gap* `u` is small: if
 `Q^{π*}_{T-t+1}(s,a) − Q^{π*}_{T-t+1}(s,π*) ≤ u` for all `a,t` (the extra cost-to-go from one
 off-policy action, then reverting to `π*`), and `E_{s∼d_π}[ℓ] = ε`, then
 `J(π) ≤ J(π*) + uTε`, with `u ≤ 1` when the cost *is* the 0-1 imitation loss and `u = O(1)`
-whenever `π*` recovers quickly from disturbances (e.g. a rapidly-mixing chain). **Gap:** it
-must train and store `T` distinct policies *in sequence* and cannot be stopped before all `T`
-iterations finish, so it is impractical when `T` is large or the horizon is ill-defined — which
-is most real applications.
+whenever `π*` recovers quickly from disturbances (e.g. a rapidly-mixing chain). It trains and
+stores `T` distinct policies in sequence, running from `t = 1` to `T`.
 
 **Stochastic Mixing Iterative Learning, SMILe (Ross & Bagnell 2010), and SEARN (Daumé,
 Langford & Marcu 2009).** Get back to a horizon-independent, *stationary* policy by building a
@@ -124,11 +115,9 @@ stops at `N` and returns the renormalized mixture `π̃_N = (π_N − (1−α)^N
 With `α = O(1/T²)` and `N = O(T² log T)` this attains near-linear regret in `T` and `ε`. SEARN
 (treating structured prediction as a degenerate imitation problem with trivial dynamics) and
 Conservative Policy Iteration (Kakade & Langford 2002) are the same family — incrementally
-fold a freshly trained policy into a growing mixture. **Gap:** the result is a *stochastic*
-controller, a distribution over many policies, some of which are worse than others; at run time
-it can randomly select a bad component and behave erratically, and the mixture is awkward and
-potentially unstable to deploy. SMILe also pays a quadratic-in-horizon iteration scale
-(`O(T² log T)` in the standard guarantee).
+fold a freshly trained policy into a growing mixture. The result is a *stochastic* controller,
+a distribution over many policies, with an iteration scale of `O(T² log T)` in the standard
+guarantee.
 
 ## Evaluation settings
 
@@ -159,12 +148,12 @@ The natural yardsticks already in use for imitation learning and structured pred
 
 ## Code framework
 
-A controller-learning procedure can use the interactive imitation-learning harness that already exists: we can
-roll out a policy in the system to collect states, we can query the expert `π*` for its action
-at any state, and we have an off-the-shelf supervised learner that fits a policy to a labeled
-dataset of `(state, action)` pairs. What is *not* settled is the outer procedure that turns
-this interaction into a deployable controller. So the substrate is only the generic pieces,
-with one empty slot for the interaction loop.
+A controller-learning procedure can use the interactive imitation-learning harness that already
+exists: we can roll out a policy in the system to collect states, we can query the expert `π*`
+for its action at any state, and we have an off-the-shelf supervised learner that fits a policy
+to a labeled dataset of `(state, action)` pairs. The substrate provides these generic pieces,
+with one empty slot for the outer interaction loop that turns this interaction into a
+controller.
 
 ```python
 import numpy as np

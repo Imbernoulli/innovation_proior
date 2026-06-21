@@ -12,18 +12,16 @@ The goal is to choose `lambda` so that the model trained under it generalizes we
 min_lambda  f(lambda) = E(w_T(lambda)),   where  w_T(lambda) ≈ argmin_w J(w, lambda).
 ```
 
-The pain point is the dimensionality of `lambda`. Grid and random search, and the Bayesian /
+A central concern is the dimensionality of `lambda`. Grid and random search, and the Bayesian /
 sequential-model-based optimization methods built on top of them, treat `f` as a black box and
-explore the hyperparameter space by repeatedly *retraining* and evaluating. Each query costs a
-full inner optimization, and the number of queries needed grows badly with the number of
-hyperparameters — these methods scale to maybe tens, at a stretch a few hundred,
-hyperparameters. But the interesting modern problems have thousands or millions: one weight per
-training example to down-weight mislabeled data, one regularization strength per parameter, a
-full learning-rate schedule, a dense task-relatedness matrix. For those, the only hope is to get
-the *gradient* of `f` with respect to `lambda` and descend it. The question this raises, and the
-one a solution must answer, is: how do you compute `df/dlambda` when `w_T(lambda)` is not a
-closed-form function of `lambda` but the output of an iterative optimizer, and when `lambda`
-may be enormous?
+explore the hyperparameter space by repeatedly *retraining* and evaluating, each query costing a
+full inner optimization. These methods are applied with tens to a few hundred hyperparameters.
+Modern problems can pose thousands or millions: one weight per training example to down-weight
+mislabeled data, one regularization strength per parameter, a full learning-rate schedule, a
+dense task-relatedness matrix. For those, an approach is to obtain the *gradient* of `f` with
+respect to `lambda` and descend it. The question is: how do you compute `df/dlambda` when
+`w_T(lambda)` is not a closed-form function of `lambda` but the output of an iterative optimizer,
+and when `lambda` may be enormous?
 
 ## Background
 
@@ -108,10 +106,7 @@ against and would react to.
 inner problem to be solved, run the iterative optimizer (gradient descent, momentum) for a fixed
 number of steps and compute the gradient of the validation error of that fixed-length procedure
 by a back-optimization algorithm. Core idea: accept that the minimizer is only approximate, and
-differentiate the *approximation you actually computed*. **Gap:** it is presented as a generic
-recipe with the differentiation handled implicitly; the precise organization of the backward
-computation — what exactly is stored, what each backward quantity means, how constraints on
-`lambda` enter, and how the cost scales with model and hyperparameter dimension — is left open.
+differentiate the *approximation you actually computed*.
 
 **Differentiating an exactly reversed training run (Maclaurin, Duvenaud & Adams 2015).** Treat a
 full training run as a chain of elementary operations and propagate the derivative of the
@@ -128,11 +123,7 @@ fly during the reverse pass. The catch is finite precision — the momentum deca
 multiplies the velocity each step and shifts bits off the bottom, so exact reversal is
 impossible without bookkeeping; they recover exactness by storing the discarded low-order bits
 in an "information buffer" via an integer divide/multiply trick, cutting memory by a factor of
-~200 at `gamma = 0.9`. **Gap:** the scheme is purchased with fragility. It is tied to a specific
-reversible dynamics (momentum with `gamma < 1`; `gamma = 1` is the non-converging leapfrog
-limit, `gamma > 1` is unstable), and it needs the exact-reversal bit machinery; it does not
-extend to an arbitrary optimizer step `Phi_t`, and it inherits the brittleness of reconstructing
-a trajectory from a lossy map.
+~200 at `gamma = 0.9`.
 
 **Implicit differentiation with an approximate gradient (Pedregosa 2016).** Use the
 implicit-function-theorem expression for `∇f` above, but make it practical in two ways: solve
@@ -140,20 +131,11 @@ the inner problem only to a tolerance `epsilon` (so hyperparameters can be updat
 weights have fully converged), and solve the resulting linear system with the training Hessian
 approximately, by an iterative solver that needs only Hessian-vector products rather than the
 explicit inverse. With a schedule of decreasing `epsilon`, the inexact hypergradient steps
-converge. This sidesteps storing any trajectory — the memory is `O(d)`. **Gap:** it leans on the
-inner problem being (near-)solved and well-conditioned: the implicit formula holds at a
-minimizer, the linear solve's cost and accuracy depend on the Hessian's condition number, so the
-inner objective effectively needs a strong-convexity-inducing regularizer, and one must design
-the `epsilon`-decreasing stopping schedule. Most pointedly, because it differentiates the
-*optimum* and not the *optimizer*, it cannot produce gradients for hyperparameters that govern
-the inner optimization dynamics themselves — a learning rate or momentum factor leaves no trace
-in `∇_w J(w*, lambda) = 0`.
+converge. This sidesteps storing any trajectory — the memory is `O(d)`.
 
 **Black-box search (random / Bayesian / SMBO).** Random search (Bergstra & Bengio 2012),
 Bayesian optimization (Snoek et al. 2012), and SMBO (Hutter et al. 2011; Bergstra et al. 2011)
-need no derivatives and make no smoothness assumptions, which is their strength. **Gap:** each
-training run reveals only a scalar, so they do not scale past a few hundred hyperparameters and
-cannot exploit a high-dimensional `lambda` such as one weight per training example.
+need no derivatives and make no smoothness assumptions, which is their strength.
 
 ## Evaluation settings
 

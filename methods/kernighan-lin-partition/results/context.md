@@ -16,10 +16,9 @@ same shape recurs whenever a connected system must be cut into bounded pieces wi
 coupling across the cut as possible — for instance, partitioning a program's procedures into
 fixed-size memory pages to minimize cross-page references.
 
-What a solution must achieve is not a certificate of optimality but **reliably good cuts, fast**:
-near-optimal partitions on realistic instances (tens to a few hundred nodes), with running time
-that grows gently with `n` — close to quadratic rather than exponential — and with the size
-constraint respected exactly, since that constraint is precisely what the application cares about.
+Since the problem is computationally hard, the practical goal is a heuristic that produces good
+partitions quickly on realistic instances (tens to a few hundred nodes), while respecting the size
+constraint exactly.
 
 ## Background
 
@@ -37,18 +36,9 @@ grows exponentially or factorially in `n` is not practical; the target is a poly
 **Iterative improvement / local search.** The dominant framework for hard combinatorial problems
 is: generate a feasible solution; attempt a transformation to a cheaper feasible solution; if one
 is found, move there and repeat; when no transformation improves the current solution, it is a
-**local optimum**; then restart from another initial solution and keep the best. Everything hinges
-on the transformation in the middle: a stronger transformation yields fewer and better local
-optima, so a larger fraction of random starts reaches the global optimum. The recurring failure
-mode of weak transformations is getting **trapped in a poor local minimum** — a solution that no
-small move improves, yet that is far from optimal because the improving move requires a *sequence*
-of steps, some of which temporarily worsen the cut before a later step pays off.
-
-**Out-of-place elements.** A useful way to see "this partition is not optimal" is that there is
-some set of nodes `a_1, …, a_k` on the `A` side and `b_1, …, b_k` on the `B` side that are *out of
-place* and ought to be exchanged together. The prior heuristics are committed in advance to a fixed
-number of simultaneous exchanges, and on instances where the beneficial rearrangement involves a
-different number of nodes than that fixed count, they stall short of it.
+**local optimum**; then restart from another initial solution and keep the best. The design choice
+that matters most is the choice of transformation: a stronger transformation yields fewer and
+better local optima, so a larger fraction of random starts reaches the global optimum.
 
 **Min-cut placement as the downstream use.** In electronic physical design, the natural way to
 place a large netlist on a chip is top-down: recursively cut the cell set (and the chip area) into
@@ -66,27 +56,20 @@ random trial is optimal is below `10^{-7}`.
 
 **Max-flow / min-cut (Ford & Fulkerson).** Treat the graph as a flow network with edge costs as
 capacities; the max-flow–min-cut theorem gives a cut of minimum capacity separating two chosen
-nodes, i.e. a minimum-cost partition into two subsets of **unspecified** sizes. The fatal gap for
-this application is exactly that: the algorithm has no provision for constraining the sizes of the
-two subsets, and there is no natural way to bolt one on. If a balanced split is forced
-afterwards, further processing is needed and the benefit is essentially lost. (Minimizing over the
+nodes, i.e. a minimum-cost partition into two subsets of unspecified sizes. (Minimizing over the
 choice of the two separated nodes gives the *global* unconstrained 2-way min-cut, which is a valid
 lower bound on any partition's cost.)
 
 **Clustering.** Identify "natural clusters" in the cost matrix — groups of strongly connected
-nodes — and build subsets around them. Intuitive, but provides no systematic way to satisfy the
-size constraints and no principled handling of "stragglers" (nodes that belong to no obvious
-cluster).
+nodes — and build subsets around them.
 
 **Single-pair interchange (`λ`-opting, `λ = 1`).** Borrowing the variable-rearrangement idea from
 the traveling-salesman line (Lin 1965), the analogue for partitioning is the `λ`-change: exchange
 `λ` nodes of one set with `λ` of the other. A partition is **1-opt** if no single-pair exchange
 reduces the cost. Experiments on `32×32` 0-1 matrices show 1-opting reaches an apparently optimal
-value in about 10% of trials and gets within 1 or 2 of optimal in about 75% of cases. The trouble:
-fixing `λ` in advance is the wrong knob. Small `λ` (already an `n²`-procedure at `λ = 1`) is too
-weak to find good exchanges and stalls at mediocre 1-opt local optima; larger `λ` raises the
-computational effort steeply, and extending `λ` past 1 looks fruitless. There is no way to know the
-right `λ` for a given instance ahead of time.
+value in about 10% of trials and gets within 1 or 2 of optimal in about 75% of cases. At `λ = 1`
+the procedure is already an `n²`-operation per step; extending to larger `λ` raises the
+computational effort steeply.
 
 ## Evaluation settings
 

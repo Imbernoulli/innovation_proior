@@ -1,8 +1,8 @@
 ## Research question
 
-We need a way to make simple linear learning machinery work after a very rich feature expansion, while keeping the computation finite. The tension is that the useful geometry may live in many coordinates, or even infinitely many, but the data set supplies only finitely many labeled observations.
+We want simple linear learning machinery to work after a very rich feature expansion, while keeping the computation finite. The useful geometry may live in many coordinates, or even infinitely many, but the data set supplies only finitely many labeled observations.
 
-The same tension appears in regularized function estimation. A smoothness penalty is naturally defined over a function space, yet a numerical algorithm must return a finite object that can be evaluated on new inputs.
+The same setting arises in regularized function estimation. A smoothness penalty is naturally defined over a function space, yet a numerical algorithm must return a finite object that can be evaluated on new inputs.
 
 ## Background
 
@@ -12,11 +12,11 @@ Hilbert-space language is available for both settings. Inner products measure ge
 
 ## Baselines
 
-One baseline is to explicitly construct all feature coordinates and run a linear method there. This becomes expensive as the coordinate system grows and breaks down when the desired expansion is infinite.
+One baseline is to explicitly construct all feature coordinates and run a linear method there.
 
-A second baseline is to solve a variational problem directly over an abstract function space. This is mathematically clean but does not by itself explain why a finite data set should produce a finite numerical parameterization.
+A second baseline is to solve a variational problem directly over an abstract function space. This is mathematically clean and gives a principled way to encode smoothness assumptions.
 
-A third baseline is memorization or nearest-prototype comparison in the original input space. That can use finite data directly, but it lacks a general mechanism for encoding nonlinear geometry or smoothness assumptions.
+A third baseline is memorization or nearest-prototype comparison in the original input space. That uses finite data directly.
 
 ## Evaluation settings
 

@@ -5,28 +5,8 @@
 Given a sparse-to-moderate set of RGB photographs of a static scene, each with a known
 camera pose and intrinsics, synthesize photorealistic images of the scene from *new*
 viewpoints that were never captured. This is the novel-view-synthesis problem, and it has
-been open for decades.
-
-A useful solution has to satisfy several demands at once, and existing approaches each
-satisfy only some of them:
-
-- **Continuous / unbounded resolution.** The representation should not have a built-in
-  resolution ceiling. Anything that stores the scene on a discrete grid pays an
-  O(resolution^3) cost in memory and compute, so rendering at higher resolution forces a
-  finer sampling of 3D space and the storage explodes.
-- **Compact.** It should not require gigabytes per scene.
-- **Optimizable from images alone.** The only supervision available in the wild is 2D
-  images with poses. So the rendering procedure that turns the representation into a pixel
-  must be differentiable end-to-end, and there must be no requirement for ground-truth 3D
-  geometry.
-- **Expressive.** It must capture high-frequency geometry and texture (sharp edges, fine
-  detail) *and* view-dependent appearance — specular highlights, reflections, and other
-  non-Lambertian effects that change with the viewing angle.
-
-No prior representation hits all four. The methods that are continuous and compact and the
-methods that are high-frequency and photorealistic (which discrete volumetric methods
-achieve, but at ruinous cost) sit on opposite sides of a gap that no single representation
-has so far bridged.
+been open for decades. The question is how to build a scene representation that can be
+optimized from 2D image supervision alone and rendered from arbitrary camera positions.
 
 ## Background
 
@@ -67,16 +47,6 @@ easier to fit data with high-frequency content. This is a pre-existing diagnosti
 about MLPs: a network fed raw low-dimensional coordinates tends to produce oversmoothed
 outputs.
 
-**Diagnostic observations about existing systems.** The continuous neural-implicit shape
-methods that relax the need for 3D ground truth (by rendering to 2D) had so far been limited
-to simple shapes with low geometric complexity and produced oversmoothed renderings —
-because they collapse each ray to a single opaque surface point. The discrete volumetric
-methods produced impressive quality but their ability to scale to high-resolution imagery
-was fundamentally limited by the discrete sampling of space: one such forward-facing method
-produces over 15 GB of multiplane-image data for a single scene. Mesh-based optimization
-from image reprojection is observed to be difficult — local minima and poor loss
-conditioning — and requires a fixed-topology template mesh as initialization.
-
 ## Baselines
 
 **Differentiable mesh / surface optimization.** Mesh-based scene representations with
@@ -84,9 +54,7 @@ diffuse (Waechter et al., 2014) or view-dependent (Buehler et al., 2001; Debevec
 1996; Wood et al., 2000) appearance, optimized with differentiable rasterizers (Chen et
 al., 2019; Liu et al., 2019, soft rasterizer; Loper and Black, 2014, OpenDR) or
 differentiable pathtracers (Li et al., 2018, redner; Mitsuba 2). Core idea: render the mesh,
-compare to images, backprop to vertices/appearance. Gap: optimization is brittle (local
-minima, poor conditioning), and a template mesh of fixed topology must be supplied up
-front — unavailable for unconstrained real scenes.
+compare to images, backprop to vertices/appearance.
 
 **Discrete volumetric, directly colored or CNN-predicted.** Early methods colored voxel
 grids directly from images (Seitz and Dyer, 1999, voxel coloring; Kutulakos and Seitz,
@@ -95,17 +63,13 @@ representation from input views and render by alpha-compositing or learned compo
 (Flynn et al., 2019; Kar et al., 2017; Penner and Zhang, 2017; Zhou et al., 2018; Mildenhall
 et al., 2019, multiplane images / local light field fusion). Local Light Field Fusion (LLFF)
 predicts a frustum-sampled RGBA multiplane image per input view with a 3D CNN, then blends
-nearby MPIs into a novel view; it is fast (minutes) but produces enormous per-scene storage,
-prescribes a maximum disparity between input views, and blends between per-view
-representations, causing multiview inconsistency. Core idea: discrete RGBA volume +
-alpha-compositing. Gap: discrete sampling caps resolution; storage scales as O(n^3).
+nearby MPIs into a novel view. Core idea: discrete RGBA volume + alpha-compositing.
 
 **Voxel grid + CNN hybrids.** DeepVoxels (Sitzmann et al., 2019) optimizes a learned 3D
 feature grid plus a CNN that compensates for low-resolution discretization artifacts;
 Neural Volumes (Lombardi et al., 2019) optimizes a 3D CNN that predicts a 128^3 RGBA voxel
 grid plus a warp field, rendered by marching rays through the warped grid. Core idea: store
-the scene in an explicit grid, lean on a CNN to hide discretization. Gap: the explicit grid
-(e.g. 128^3) still cannot scale to fine detail at high resolution.
+the scene in an explicit grid, lean on a CNN to hide discretization.
 
 **Continuous neural implicit, 2D-supervised.** Differentiable Volumetric Rendering
 (Niemeyer et al., 2019) represents surfaces as a 3D occupancy field, finds the ray–surface
@@ -113,10 +77,7 @@ intersection numerically, and uses implicit differentiation to get an exact grad
 intersection, which feeds a neural texture field for color. Scene Representation Networks
 (Sitzmann et al., 2019, SRN) map each (x,y,z) to a feature vector and train an RNN to march
 along the ray and decide where the surface is, then decode the final feature into one color.
-Core idea: continuous MLP scene + differentiable ray-marching, supervised by 2D images. Gap:
-both reduce each ray to a single opaque surface point with one color, so they cannot model
-semi-transparency or rich view-dependent volumetric appearance, and in practice they yield
-oversmoothed, low-complexity geometry.
+Core idea: continuous MLP scene + differentiable ray-marching, supervised by 2D images.
 
 ## Evaluation settings
 

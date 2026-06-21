@@ -18,10 +18,8 @@ d_λ f = ∇_λ f + ∇_λ ŵ*(λ) · ∇_{ŵ*} f      (the "hypergradient")
 
 where `∇_λ f ∈ R^N` and `∇_{ŵ*} f ∈ R^M` are cheap (a stochastic first-order oracle gives them), but the
 matrix-vector product `∇_λ ŵ*(λ) · ∇_{ŵ*} f` is the hard object: it couples the entire inner trajectory to
-`λ`. The precise goal is a way to compute (or usefully approximate) this hypergradient when **both** `λ` and
-`w` are high-dimensional — thousands of hyperparameters and thousands of parameters at once. That regime is
-exactly where the established tools below either blow up in memory, blow up in time, or stop being
-trustworthy, and closing that gap is the problem.
+`λ`. The question is how to compute or usefully approximate this hypergradient when both `λ` and `w` are
+high-dimensional — thousands of hyperparameters and thousands of parameters at once.
 
 ## Background
 
@@ -31,9 +29,7 @@ load-bearing facts:
 
 - **Black-box hyperparameter search does not scale in dimension.** Grid search and random search
   (Bergstra & Bengio 2012) and Bayesian optimization (Snoek et al. 2012) work for a handful of
-  hyperparameters but are hopeless once `λ` has thousands of coordinates — the very regime of interest
-  (per-example data weights, per-pixel preprocessing, richly parameterized regularizers, learned
-  initializations). For high-dimensional `λ` one needs the gradient `d_λ F`.
+  hyperparameters. For high-dimensional `λ` one needs the gradient `d_λ F`.
 
 - **The inner optimizer is a dynamical system, and the hypergradient is its sensitivity.** Treat the inner
   iteration as `w_{t+1} = Ξ_{t+1}(w_t, λ)`, `w_0 = Ξ_0(λ)`, `ŵ* = w_T`. For gradient descent
@@ -51,10 +47,9 @@ load-bearing facts:
 - **A contraction fact about the inner map.** If `g` is `α`-strongly convex and `β`-smooth in `w` and the
   step size obeys `γ ≤ 1/β`, then `0 ≼ I - γ ∇²_w g ≼ (1 - γα) I`, so `‖A_t‖ ≤ 1 - γα < 1`. Gradient
   descent on such a `g` converges linearly, `‖w_t - w*‖ ≤ ‖w_0 - w*‖ · (1 - γα)^t`. This is a standard
-  property (Hazan et al. 2016) and will turn out to matter a great deal for the structure of that
-  trajectory sum.
+  property (Hazan et al. 2016).
 
-- **Implicit differentiation gives a trajectory-free formula — at a price.** If the inner problem is solved
+- **Implicit differentiation gives a trajectory-free formula.** If the inner problem is solved
   *exactly* to a unique `w*(λ)`, the implicit function theorem (Larsen et al. 1996; Bengio 2000; Domke 2012)
   yields
 
@@ -62,22 +57,12 @@ load-bearing facts:
   d_λ f = ∇_λ f - ∇_{λ,w} g · (∇_{w,w} g)^{-1} · ∇_{ŵ*} f
   ```
 
-  with all derivatives at `(w*(λ), λ)`. This needs no trajectory in memory, but it (i) assumes the inner
-  problem was solved to optimality, (ii) requires applying the inverse Hessian `(∇_{w,w} g)^{-1}`, and
-  (iii) cannot express any dependence on the inner optimizer's own knobs (step size, number of steps),
-  because those have been abstracted away into "the exact minimizer."
-
-- **Observed pain in practice.** Reverse-mode differentiation through the inner trajectory has been reported
-  to work well on small problems (Maclaurin et al. 2015; Franceschi et al. 2017), but practitioners report
-  that storing the entire trajectory `w_1, …, w_T` is the binding constraint: for a network whose parameter
-  vector is on the order of a gigabyte, updated tens of thousands of times, the stored history is
-  unmanageable even with disk (Maclaurin et al. 2015). On problems that need long inner horizons (`T` in the
-  thousands), full reverse-mode is simply out of memory on a GPU, while forward-mode is out of time. This is
-  the empirical wall that motivates everything below.
+  with all derivatives at `(w*(λ), λ)`. This needs no trajectory in memory; it assumes the inner
+  problem was solved to optimality and requires applying the inverse Hessian `(∇_{w,w} g)^{-1}`.
 
 ## Baselines
 
-These are the prior methods a new hypergradient estimator would be measured against and would react to.
+These are the prior methods for estimating the hypergradient.
 
 **Reverse-mode differentiation / Reverse-HG (Maclaurin et al. 2015; Franceschi et al. 2017).** Compute the
 trajectory sum by back-propagation through the unrolled inner optimization. Initialize
@@ -90,44 +75,33 @@ h_{t-1} = h_t + B_t α_t,        α_{t-1} = A_t α_t,        d_λ f = h_{-1}.
 This is structurally identical to back-propagation through time. Franceschi et al. (2017) derive it cleanly
 from a Lagrangian: introduce multipliers `α_t` for each constraint `w_t = Ξ_t(w_{t-1}, λ)`, and the
 stationarity conditions reproduce exactly this backward recursion. Cost: time `O(cT)` (one inner-step cost
-`c` per backward step), but **space `O(MT)`** — every intermediate iterate `w_t` must be kept to evaluate
-`A_t` and `B_t` on the way back. **Gap:** the `O(MT)` memory is the hard ceiling. When `M` (parameters) and
-`T` (inner steps) are both large it does not fit; one is forced either to shrink the model, shrink the inner
-horizon, or abandon reverse-mode.
+`c` per backward step) and space `O(MT)` — every intermediate iterate `w_t` must be kept to evaluate
+`A_t` and `B_t` on the way back.
 
 **Forward-mode differentiation / Forward-HG (Franceschi et al. 2017).** Propagate the sensitivity matrix
 `Z_t = ∇_λ w_t` forward alongside the inner iteration: `Z_0 = B_0`, `Z_{t+1} = Z_t A_{t+1} + B_{t+1}`, and
 `d_λ f = Z_T ∇_{ŵ*} f + ∇_λ f`. No trajectory needs to be stored (each `w_t` can be overwritten). Cost: space
 `O(MN)` (the matrix `Z_t`), time `O(cNT)` — `N` times slower than reverse-mode, since the cost scales with the
-number of hyperparameters. **Gap:** the `MN` memory and the factor-`N` slowdown make it viable only when `N`
-(hyperparameters) is small; in the high-`N` regime of interest it is the one that blows up.
+number of hyperparameters.
 
 **Reversible-dynamics reverse-mode (Maclaurin et al. 2015).** Avoid storing the trajectory by *reconstructing*
 it: run the backward pass while exactly reversing the inner SGD-with-momentum dynamics, recovering each `w_t`
-on the fly. With exact arithmetic this gives `O(M)` storage. **Gap:** finite precision breaks it. Each
-momentum-decay multiply by `γ < 1` discards low-order bits; reversing requires repeated multiply by `1/γ`, so
-errors accumulate exponentially and the reconstructed trajectory drifts away from the real one. The fix is an
-"information buffer" that stores the discarded bits (about `log₂(1/γ)` per step) — workable but delicate, and
-it is specific to the SGD-with-momentum update; a different inner optimizer needs a different reversal scheme.
+on the fly. With exact arithmetic this gives `O(M)` storage. Finite precision introduces drift, so an
+"information buffer" stores the discarded bits (about `log₂(1/γ)` per step) to maintain accuracy. The approach
+is specific to the SGD-with-momentum update.
 
 **Checkpointing (Hascoet & Araya-Polo 2006).** Store the inner state only every `√T` steps and recompute the
-intervening segments forward during the backward pass. Space drops to `O(M√T)`. **Gap:** it *doubles* the
-computation time (every forward segment is recomputed once), and `O(M√T)` is still a growing function of the
-horizon `T` — it softens the memory wall but does not remove it for long horizons.
+intervening segments forward during the backward pass. Space drops to `O(M√T)` with doubled computation time.
 
 **Implicit differentiation with conjugate gradient (Domke 2012; Pedregosa 2016; Gould et al. 2016).** Use the
 IFT formula above and approximate the inverse-Hessian-vector product `(∇_{w,w} g)^{-1} ∇_{ŵ*} f` by `K` steps
-of conjugate gradient (only Hessian-vector products needed, never the full Hessian). Space `O(M)`. **Gap:**
-it presumes the inner problem reached its exact minimizer `w*`; when only an approximate `ŵ*` from a finite
-run is available, the formula has no control on the resulting error and need not even point downhill. It also
-inherently cannot tune hyperparameters that live *inside* the inner optimizer (its step size, its horizon),
-because those vanish in the exact-minimizer abstraction.
+of conjugate gradient (only Hessian-vector products needed, never the full Hessian). Space `O(M)`. This
+presumes the inner problem has reached its exact minimizer `w*`.
 
 **One-step heuristics (Luketina et al. 2016; Finn et al. 2017; Baydin et al. 2018).** In learning-rate
-adaptation and first-order MAML, practitioners simply back-propagate through the single most recent inner step
+adaptation and first-order MAML, practitioners back-propagate through the single most recent inner step
 and use that as the hyperparameter gradient — cheap, `O(M)` memory. Promising empirical results have been
-reported. **Gap:** there is no analysis of when this one-step gradient is a valid direction or how far it is
-from the true hypergradient; it is used as a heuristic, with its bias uncharacterized.
+reported.
 
 ## Evaluation settings
 

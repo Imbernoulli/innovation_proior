@@ -2,24 +2,22 @@
 
 ## Research question
 
-Designing convolutional architectures for image classification takes enormous manual engineering -- the progression from AlexNet through VGG, Inception, and ResNet was driven by expert intuition about how to wire convolutions, nonlinearities, and connections. Automating that design with search is attractive, but running architecture search *directly on a large dataset like ImageNet* is computationally prohibitive: each candidate must be trained on millions of high-resolution images. The question: can we search on a small **proxy dataset** (CIFAR-10) cheaply, and design the search so that whatever is discovered **transfers** to ImageNet and scales to arbitrary input sizes and compute budgets without re-searching for every target?
+Designing convolutional architectures for image classification has historically relied on manual engineering -- the progression from AlexNet through VGG, Inception, and ResNet was driven by expert intuition about how to wire convolutions, nonlinearities, and connections. The question is how to use automated search to discover competitive architectures when the target dataset is large and high-resolution.
 
 ## Background
 
 The field state: convolutional architecture progress comes from hand-designed *repeated motifs* -- Inception modules, residual blocks -- combinations of filter banks, nonlinearities, and a careful choice of connections, stacked many times to form the full network.
 
-- **Neural Architecture Search with RL (Zoph & Le, 2016).** A controller RNN samples a full network architecture token by token; each sampled child is trained to convergence; its validation accuracy R is the reward; the controller is updated by policy gradient to raise the probability of high-reward architectures. Effective but searches an *entire* network description, which is slow and tied to the target dataset's scale.
+- **Neural Architecture Search with RL (Zoph & Le, 2016).** A controller RNN samples a full network architecture token by token; each sampled child is trained to convergence; its validation accuracy R is the reward; the controller is updated by policy gradient to raise the probability of high-reward architectures.
 - **Policy-gradient / REINFORCE (Williams, 1992).** The controller's expected reward is maximized by scaling the gradient of the log-probability of its choices by the reward (minus a baseline). The joint probability of a sampled architecture is the product of the per-decision softmax probabilities.
 - **Proximal Policy Optimization (Schulman et al., 2017).** A policy-optimization method that can replace the earlier REINFORCE update for the controller when faster and more stable training is needed.
 - **Repeated-motif convolutional design (Inception, ResNet; Szegedy et al.; He et al.).** Networks composed of identical-structure blocks with distinct weights, with a common heuristic: when spatial resolution is halved, double the filter count to keep roughly constant per-layer compute.
 - **Stochastic depth / DropPath (Huang et al.; Larsson et al., FractalNet).** Regularize multi-branch nets by stochastically dropping whole paths/branches during training and rescaling at test time.
 
-A diagnostic constraint shapes the search problem: applying architecture search directly to ImageNet is computationally expensive, because each candidate must be trained on millions of high-resolution images before its reward is known, and a network found at one input scale and depth has no built-in reason to remain good at another.
-
 ## Baselines
 
-- **Hand-designed architectures (VGG, Inception, ResNet, Inception-ResNet, DenseNet).** Strong accuracy from manual engineering. Gap: require expert effort; not automatically tailorable to new compute budgets.
-- **NAS-RL on full networks (Zoph & Le, 2016).** Searches the whole network with an RNN controller + REINFORCE. Gap: search cost scales with the target dataset; expensive to run on ImageNet; the searched network is specific to one input scale/depth.
+- **Hand-designed architectures (VGG, Inception, ResNet, Inception-ResNet, DenseNet).** Strong accuracy from manual engineering.
+- **NAS-RL on full networks (Zoph & Le, 2016).** Searches the whole network with an RNN controller + REINFORCE.
 - **Random search in the same decision space.** Sample each controller decision uniformly instead of from the learned policy. A strong baseline when the decision space itself already concentrates useful architectures.
 
 ## Evaluation settings

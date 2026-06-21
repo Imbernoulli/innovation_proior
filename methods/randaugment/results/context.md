@@ -1,6 +1,6 @@
 ## Research question
 
-Hand-designed data augmentation (flips, crops, color jitter) reliably improves image models, but the *choice* of transforms and their strengths is domain expertise that does not transfer between tasks. Learning the augmentation policy from data removes that manual work and yields large accuracy gains — but the dominant way to learn it pays a steep price: a *separate search phase*. A controller is trained, by reinforcement learning, on a small *proxy task* (a reduced dataset and a small model) to discover a good policy, which is then transferred to the real, larger task. This second optimization loop is expensive and complicated, and it rests on an assumption — that a policy good on the proxy is good on the target — that is questionable for augmentation specifically. The research question: can automated augmentation keep its accuracy benefit while *eliminating* the separate search, so the augmentation settings become ordinary training hyperparameters tuned directly on the target task — and in doing so, can the augmentation *strength* be adapted to the model and dataset at hand?
+Hand-designed data augmentation (flips, crops, color jitter) reliably improves image models, but the *choice* of transforms and their strengths is domain expertise that does not transfer between tasks. Learning the augmentation policy from data removes that manual work and yields large accuracy gains — the dominant approach trains a controller by reinforcement learning on a small *proxy task* to discover a good policy, which is then transferred to the real, larger task. The research question: how should an automated augmentation procedure be designed for image classification and detection?
 
 ## Background
 
@@ -8,7 +8,7 @@ Hand-designed data augmentation (flips, crops, color jitter) reliably improves i
 
 **Learned augmentation policies.** AutoAugment (Cubuk et al., 2018) frames augmentation as a search problem. A policy is a set of sub-policies; each is applied stochastically, so a network sees many transformed variants. The policy is found by a controller (an RNN trained with reinforcement learning, specifically Proximal Policy Optimization) that proposes policies, trains a child network with each, and is rewarded by the child's validation accuracy. Follow-ups made the search cheaper — Fast AutoAugment (Lim et al., 2019) via density matching, Population Based Augmentation (Ho et al., 2019) via an evolutionary schedule — but all retain a *separate* search procedure.
 
-**The proxy-task assumption, and a diagnostic against it.** Like neural architecture search, learned augmentation searches on a small proxy task and transfers the result, assuming the proxy predicts the target. For augmentation this assumption is suspect: the *optimal augmentation strength* is observed to depend on both model size and dataset size — larger models and larger datasets benefit from *stronger* augmentation. A policy whose strength was fixed by a small proxy model is therefore systematically mis-strengthened when applied to a large target model, and the search has no way to re-adjust it. This is a pre-method observation about existing learned-augmentation pipelines, and it argues directly that searching on a proxy is the wrong move for augmentation.
+**The proxy-task assumption.** Like neural architecture search, learned augmentation searches on a small proxy task and transfers the result, assuming the proxy predicts the target. For augmentation this assumption is relevant to consider: the *optimal augmentation strength* is observed to depend on both model size and dataset size — larger models and larger datasets benefit from *stronger* augmentation.
 
 **A magnitude regularity.** Population Based Augmentation reported that the optimal transform *magnitudes* tend to follow a similar schedule over the course of training — rising together — rather than each evolving independently.
 
@@ -16,13 +16,13 @@ Hand-designed data augmentation (flips, crops, color jitter) reliably improves i
 
 ## Baselines
 
-**Hand-designed augmentation.** Fixed flips, crops, color jitter, plus operations like Cutout and Mixup. Core idea: inject prior knowledge of label-preserving transforms. Gap: requires per-domain expertise; the strengths are tuned by hand and do not adapt or transfer.
+**Hand-designed augmentation.** Fixed flips, crops, color jitter, plus operations like Cutout and Mixup. Core idea: inject prior knowledge of label-preserving transforms. Strengths are tuned by hand.
 
-**AutoAugment (Cubuk et al., 2018).** Search space: a policy of 5 sub-policies, each sub-policy 2 operations applied in sequence; each operation is (type ∈ ~16 transforms, probability ∈ 11 discrete values, magnitude ∈ 10 discrete values). The space has size ≈ (16 × 10 × 11)^10 ≈ 2.9 × 10^32. An RNN controller trained with RL/PPO maximizes child-network validation accuracy on a proxy task; the found policy (30+ parameters) is transferred. Core idea: stochasticity at multiple levels (which sub-policy, per-operation probability, direction) maximizes diversity. Gap: a separate, costly search loop; and because the policy is fixed on a small proxy, its strength cannot adapt to the target model/dataset, which the diagnostic above shows matters.
+**AutoAugment (Cubuk et al., 2018).** Search space: a policy of 5 sub-policies, each sub-policy 2 operations applied in sequence; each operation is (type ∈ ~16 transforms, probability ∈ 11 discrete values, magnitude ∈ 10 discrete values). The space has size ≈ (16 × 10 × 11)^10 ≈ 2.9 × 10^32. An RNN controller trained with RL/PPO maximizes child-network validation accuracy on a proxy task; the found policy (30+ parameters) is transferred. Core idea: stochasticity at multiple levels (which sub-policy, per-operation probability, direction) maximizes diversity.
 
-**Fast AutoAugment (Lim et al., 2019).** Same search space and formalism, but the policy is found by density matching rather than RL, far faster. Gap: still a separate search phase.
+**Fast AutoAugment (Lim et al., 2019).** Same search space and formalism, but the policy is found by density matching rather than RL, far faster.
 
-**Population Based Augmentation (Ho et al., 2019).** Evolves an augmentation *schedule* with a population-based method; cheaper than AutoAugment. Core idea: optimal magnitudes change (increase) during training. Gap: still a separate search procedure on a proxy.
+**Population Based Augmentation (Ho et al., 2019).** Evolves an augmentation *schedule* with a population-based method; cheaper than AutoAugment. Core idea: optimal magnitudes change (increase) during training.
 
 ## Evaluation settings
 

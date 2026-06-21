@@ -1,10 +1,6 @@
 ## Research Question
 
-High-resolution adversarial image synthesis has a specific failure mode: the samples can be sharp at modest resolution, but training becomes brittle, slow, and low-variety as the target resolution approaches megapixel scale. The goal is to train a generator that produces convincing and varied natural images up to 1024x1024, while keeping the adversarial game stable enough to finish.
-
-Two constraints define the problem. First, the generator receives its learning signal only through the discriminator or critic. If the generated and real distributions are easy to separate, that signal can stop being useful. Second, memory grows quadratically with image side length, so the highest-resolution stages force small minibatches and noisier optimization exactly where the game is already hardest.
-
-The wanted artifact is not just a larger convolutional network. It has to make the high-resolution optimization tractable, keep the critic from becoming a useless near-perfect separator, encourage coverage of the data variation, and prevent the two networks from escalating signal magnitudes during the adversarial competition.
+High-resolution adversarial image synthesis is an active area of interest: the goal is to train a generator that produces convincing and varied natural images up to 1024x1024 while keeping the adversarial game stable enough to complete. Memory grows quadratically with image side length, so the highest-resolution stages force small minibatches and noisier optimization. How can GAN training be made to work reliably at this scale?
 
 ## Background Facts
 
@@ -14,7 +10,7 @@ In the original GAN objective, a generator G maps a latent code z to an image an
 min_G max_D E_{x~P_data}[log D(x)] + E_z[log(1 - D(G(z)))].
 ```
 
-At the inner optimum this corresponds to a Jensen-Shannon divergence. Arjovsky and Bottou's diagnosis is that when real and generated samples lie on low-dimensional manifolds with little overlap, a discriminator can separate them essentially perfectly; as it approaches that separator, the generator can receive vanishing or unstable directions rather than a reliable path toward the data distribution.
+At the inner optimum this corresponds to a Jensen-Shannon divergence. Arjovsky and Bottou's diagnosis is that when real and generated samples lie on low-dimensional manifolds with little overlap, a discriminator can separate them essentially perfectly, which can cause the generator to receive vanishing or unstable gradient directions.
 
 Wasserstein GAN replaces the saturating classifier view with a critic whose objective estimates the Wasserstein-1 distance. The critic must be Lipschitz. WGAN-GP avoids crude weight clipping by penalizing the critic's input-gradient norm on interpolates between real and fake images:
 
@@ -23,25 +19,23 @@ L_D = E[D(fake)] - E[D(real)] + lambda E[(||grad_xhat D(xhat)||_2 - 1)^2],
 L_G = -E[D(fake)].
 ```
 
-This supplies a more useful loss, but it does not by itself make a generator learn global layout and fine texture in one shot.
+Convolutional GAN practice before this point uses DCGAN-style stacks: strided or fractional-strided convolutions, BatchNorm in the generator, leaky ReLU in the discriminator, and small random weight initialization. These ingredients make lower-resolution image generation reproducible.
 
-Convolutional GAN practice before this point uses DCGAN-style stacks: strided or fractional-strided convolutions, BatchNorm in the generator, leaky ReLU in the discriminator, and small random weight initialization. These ingredients make lower-resolution image generation reproducible, but they do not remove the high-resolution separation problem.
-
-GANs also tend to drop variation. Minibatch discrimination lets the discriminator inspect cross-sample statistics by learning a projection tensor and comparing feature vectors across the minibatch. It helps with collapse, but it adds learned parameters, placement choices, and hyperparameters to an already sensitive game.
+GANs also tend to drop variation. Minibatch discrimination lets the discriminator inspect cross-sample statistics by learning a projection tensor and comparing feature vectors across the minibatch.
 
 ## Baselines And Gaps
 
-**Direct high-resolution GAN training.** Enlarge the generator and discriminator to the final image size and train from random initialization. The gap is that the critic immediately sees many high-frequency defects, while the generator has to learn every scale of structure at once.
+**Direct high-resolution GAN training.** Enlarge the generator and discriminator to the final image size and train from random initialization.
 
-**DCGAN-style normalization.** BatchNorm and related normalizers can stabilize ordinary deep networks, but their original motivation is internal covariate shift. In adversarial training the observed failure can instead be magnitude escalation between the two players, and high-resolution minibatches are often too small for comfortable batch-statistic dependence.
+**DCGAN-style normalization.** BatchNorm and related normalizers stabilize ordinary deep networks by addressing internal covariate shift. In adversarial training the generator and discriminator receive each other as the source of learning signal, and high-resolution minibatches are often small.
 
-**WGAN-GP.** A stronger loss that keeps gradients informative under support mismatch. The gap is architectural and procedural: the objective is better behaved, but a randomly initialized full-resolution generator still faces a very hard map from latent vector to image.
+**WGAN-GP.** A stronger loss that keeps gradients informative under support mismatch, with the objective formulated around the Wasserstein-1 distance and gradient penalty on interpolates.
 
-**Minibatch discrimination.** A direct anti-collapse signal. The gap is complexity: the learned projection tensor and extra choices are not ideal when the training recipe is already fragile.
+**Minibatch discrimination.** A direct anti-collapse signal. The learned projection tensor enables the discriminator to compare feature statistics across samples in the minibatch.
 
 ## Evaluation Setup
 
-A candidate solution should be judged by both fidelity and variation. Existing choices include Inception Score for class-confident, class-diverse samples, and MS-SSIM for measuring similarity among generated images. MS-SSIM can expose severe lack of variation, but it does not compare generated images to the training distribution and can miss small-scale texture or color defects.
+A candidate solution should be judged by both fidelity and variation. Existing choices include Inception Score for class-confident, class-diverse samples, and MS-SSIM for measuring similarity among generated images. MS-SSIM can expose severe lack of variation, but it does not compare generated images to the training distribution.
 
 High-resolution claims need datasets whose native quality supports the target resolution. CelebA, LSUN categories, and CIFAR-10 cover different regimes: faces at high resolution, scene categories at moderate to high resolution, and a low-resolution benchmark with established Inception Score comparisons.
 

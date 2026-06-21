@@ -5,9 +5,7 @@ pixel space, one trains a compact latent with a variational autoencoder (VAE) an
 model there. The latent is small (a few dozen channels) and is optimized purely for pixel
 reconstruction, so it is not *semantic*: a model that must both *understand* an image and *generate*
 one needs two different visual spaces — a high-dimensional semantic encoder for perception and a
-low-dimensional VAE latent for generation. This split is awkward. It forces unified
-understanding-and-generation systems into a two-tower design, and it caps reconstruction fidelity
-because aggressive compression throws information away.
+low-dimensional VAE latent for generation.
 
 A tempting alternative is to diffuse directly in the *semantic representation space* of a powerful
 pretrained vision encoder — the same high-dimensional tokens used for perception. If a generator could
@@ -15,17 +13,12 @@ produce those tokens and a lightweight decoder could render them to pixels, a si
 both seeing and generating. The Representation Autoencoders (RAE) line gives this route a
 controlled-setting proof of concept: on class-conditional ImageNet, diffusion in a frozen
 representation space (encoder frozen, only a decoder trained) converges faster and reconstructs better
-than VAE-based diffusion. But ImageNet is a best case — fixed resolution, curated object-centric
-content, a single class label as the only condition.
+than VAE-based diffusion.
 
-The open question is therefore: **can representation-space diffusion be carried from that controlled
-setting to large-scale, freeform text-to-image generation?** That regime brings open-ended prompts,
-enormous visual diversity (including hard cases like rendered text/typography), billion-parameter
-models, and an LLM as the conditioning source. A successful method would have to (i) train a decoder
-that inverts the frozen tokens across this open world, not just on curated images; (ii) keep diffusion
-trainable when the *token dimension itself* is large; (iii) connect a text LLM to the
-representation-space generator; and (iv) match or beat the established VAE pipeline on convergence and
-quality, ideally with a *simpler* recipe than the one ImageNet required.
+The open question is: **can representation-space diffusion be carried from that controlled setting to
+large-scale, freeform text-to-image generation?** That regime brings open-ended prompts, enormous
+visual diversity (including hard cases like rendered text/typography), billion-parameter models, and an
+LLM as the conditioning source.
 
 ## Background
 
@@ -74,67 +67,45 @@ there to make representation-space diffusion work at ImageNet scale:
 - A decoder trained with the usual reconstruction stack: L1 + perceptual (LPIPS) + adversarial losses,
   encoder kept frozen.
 
-It was left open which of these are *fundamental* to high-dimensional diffusion and which are
-*adaptations to a low-capacity regime* that might fall away once models grow.
-
-**Measured behavior of decoders and of the inherited design choices.** Several measurements about
-existing components frame the problem:
+**Measured behavior of decoders.** Several measurements frame the landscape:
 - *Decoder data composition vs. scale.* Training a frozen-encoder decoder on data beyond ImageNet
   yields only marginal gains on ImageNet reconstruction, moderate gains on diverse web imagery (e.g.,
   YFCC), but essentially no improvement on rendered-text reconstruction until *text-specific* data is
   added — at which point text reconstruction improves sharply (rFID on a text-rendering set dropping
   from ~2.64 with ImageNet-only data to ~1.62 once text data is included).
-- *The wide head was tied to a narrow backbone.* It was introduced on ImageNet-scale denoisers whose
-  width (~1024) fell short of the latent dimension (1152); modern T2I transformers at billions of
-  parameters already carry hidden widths of 2048 and up.
-- *Noise-augmented decoding has a stability cap.* Too large a `tau` makes decoder training fail to
-  converge, so it is capped (~0.2).
-- *VAE latents are insufficient for perception.* Unified systems that try to use a VAE latent for
-  generation still need a separate semantic encoder for understanding, which is exactly why two-tower
-  designs persist.
+- Modern T2I transformers at billions of parameters carry hidden widths of 2048 and up.
+- Noise-augmented decoding uses a `tau` parameter that must be kept moderate (~0.2) to maintain
+  decoder training stability.
 
 **The conditioning interface.** MetaQuery shows that a text LLM can condition a generator through a
 set of *learnable query tokens* placed at the image-generation slots in the sequence: the LLM processes
 text plus queries, and the query-token hidden states (after a small MLP connector) become the diffusion
-model's conditioning, trained with ordinary image-caption pairs and the standard diffusion loss. Its
-earlier instantiation reported limited benefit from scaling the LLM — a claim worth re-examining with
-larger denoisers and a finetuned (rather than frozen) LLM.
+model's conditioning, trained with ordinary image-caption pairs and the standard diffusion loss.
 
 ## Baselines
 
 **VAE-based latent diffusion (the incumbent T2I pipeline).** Encode with a strong VAE (e.g., the FLUX
 VAE), run a transformer/U-Net diffusion model in the compressed latent, decode to pixels. Core math:
 VAE gives latent `z = E(x)` with low channel count; the diffusion model is trained on `z` and decoded
-by `D`. Strengths: mature, low-dimensional latents keep the denoiser easily trainable, excellent
-reconstruction at the chosen compression. Gap: the latent is non-semantic, so a unified model needs a
-*second* encoder for understanding (a two-tower design); compression imposes a reconstruction ceiling;
-and in a from-scratch comparison the convergence behavior on freeform T2I is exactly what is in
-question. For perception the VAE latent is unusable, which is why such baselines retain a separate
-semantic encoder for the understanding path.
+by `D`.
 
 **Standard transformer denoiser (DiT).** Patchify the latent into tokens, add positional embeddings,
 process with transformer blocks conditioned on timestep (+ class/text) through adaptive LayerNorm —
 the conditioning vector predicts per-block (shift, scale, gate) modulations applied around attention
 and the MLP, with the gates zero-initialized. LightningDiT modernizes this backbone with RMSNorm,
 SwiGLU feed-forward layers, QK-normalized attention, rotary position embeddings on the vision grid,
-and Gaussian Fourier timestep embeddings. Strength: scales cleanly with width and depth. Gap:
-demonstrated on low-dimensional VAE latents; when the *token dimension* is large it must be at least as
-wide as that dimension or it provably cannot fit the target (the tail-eigenvalue bound above).
+and Gaussian Fourier timestep embeddings.
 
 **Rectified-flow / flow-matching diffusion.** Define a straight path `x_t = (1 - t) x + t eps` from
 data `x` at `t=0` to noise `eps ~ N(0, I)` at `t=1`; the time-derivative is the constant velocity
 `v = eps - x`; train a network `v_theta(x_t, t)` with plain MSE to that target; sample by integrating
 the ODE backward from noise with Euler steps `x_{t-} = x_t + (sigma_{t-} - sigma_t) v_theta`. This is
-the modern default (SD3, FLUX). Strength: simple objective, fast convergence. Relevant gap: its
-dimension correction was derived for spatial resolution in a low-channel latent, not for a
-high-channel semantic latent.
+the modern default (SD3, FLUX).
 
-**Compressed-representation unified models.** Several unified systems try to use continuous
-representation features but heavily downsample them for generation, or use compressed embeddings for
-both paths (limiting perception), or pair a semantic encoder for understanding with a different encoder
-for generation that relies on a strong separate diffusion decoder to return to pixels. Gap: none
-generate in the *same* uncompressed high-dimensional space they perceive in, so they cannot let the
-understanding model directly read what the generator produced.
+**Compressed-representation unified models.** Several unified systems use continuous representation
+features but heavily downsample them for generation, or use compressed embeddings for both paths, or
+pair a semantic encoder for understanding with a different encoder for generation that relies on a
+strong separate diffusion decoder to return to pixels.
 
 ## Evaluation settings
 

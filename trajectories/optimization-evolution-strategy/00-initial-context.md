@@ -4,14 +4,12 @@ Continuous black-box minimization: minimize a scalar objective `f(x)` over a box
 
 ## Prior art / Background / Baselines
 
-Current population-based continuous optimizers and the gaps they leave:
+Current population-based continuous optimizers:
 
-- **Binary genetic algorithms.** Core idea: represent real vectors as bit strings and apply selection, single-point crossover, and bit-flip mutation. Gap: the bit encoding imposes a precision limit and a Hamming cliff (adjacent reals can differ in many bits), so the search wastes effort on the encoding rather than the function.
-- **Classical evolution strategies.** Core idea: mutate a parent by adding isotropic normal noise `x ← x + N(0, σ²)` and adapt the global step size σ with the 1/5 success rule or by co-evolving it. Gap: σ is an extra control variable that must track the landscape; extensions add further step-size controls that are themselves difficult to tune.
-- **Real-coded crossovers.** Core idea: recombine parent reals directly (linear blending, or interval sampling like BLX-α). Gap: linear recombination produces nearly deterministic offspring; BLX-α samples uniformly inside a box around the parents, giving no higher density near either parent.
-- **Simulated annealing.** Core idea: escape local minima by accepting uphill moves with probability `exp(−Δ/T)` while cooling `T`. Gap: the cooling schedule is a sensitive external control, and the method consumes many function evaluations.
-
-The common limitation: perturbation scale is set by an external device (encoding granularity, σ, a cooling schedule, a fixed mutation width) that is brittle and must be retuned per landscape.
+- **Binary genetic algorithms.** Represent real vectors as bit strings and apply selection, single-point crossover, and bit-flip mutation.
+- **Classical evolution strategies.** Mutate a parent by adding isotropic normal noise `x ← x + N(0, σ²)` and adapt the global step size σ with the 1/5 success rule or by co-evolving it.
+- **Real-coded crossovers.** Recombine parent reals directly (linear blending, or interval sampling like BLX-α). BLX-α samples uniformly inside a box around the parents.
+- **Simulated annealing.** Escape local minima by accepting uphill moves with probability `exp(−Δ/T)` while cooling `T`.
 
 ## Fixed substrate / Code framework
 

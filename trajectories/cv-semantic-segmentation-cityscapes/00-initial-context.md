@@ -11,12 +11,12 @@ Image classification networks shrink spatial resolution and grow channel depth t
 - **Dilated (atrous) convolution** spreads kernel taps apart, enlarging receptive field without extra downsampling or extra parameters. The fixed R-50-D8 backbone replaces the last two stride-2 stages with dilation, giving `strides=(1, 2, 1, 1)` and `dilations=(1, 1, 2, 4)`, so its deepest feature map is 1/8 resolution.
 - **Bilinear upsampling** resizes any low-resolution class score map to full input resolution for the final loss and metric.
 
-The methods a new segmentation architecture is measured against, and the gap each leaves:
+The methods a new segmentation architecture is measured against:
 
-- **Per-patch / sliding-window classification.** Run a classification CNN on a fixed-size patch centered at each pixel and take its class. It is extremely slow because overlapping patches repeat almost all computation, and every prediction is tied to one context window, so the same patch size must cover small objects and large scene regions alike.
-- **Backbone + global head, upsampled.** Drop the global pooling and fully-connected classifier, attach a 1×1 conv to the deepest 1/32-resolution feature map, and bilinearly upsample the scores. This is fast and reuses pretrained features, but fine boundaries, thin structures, and small objects have already been lost to pooling before upsampling can recover them.
+- **Per-patch / sliding-window classification.** Run a classification CNN on a fixed-size patch centered at each pixel and take its class.
+- **Backbone + global head, upsampled.** Drop the global pooling and fully-connected classifier, attach a 1×1 conv to the deepest 1/32-resolution feature map, and bilinearly upsample the scores to full resolution.
 
-The shared gap is that prior work either pays an unsustainable cost to recover resolution or accepts a coarse, blurry prediction. The open question is what architecture to place on top of the fixed backbone to raise mIoU.
+The open question is what architecture to place on top of the fixed backbone to raise mIoU.
 
 ## Fixed substrate / Code framework
 

@@ -4,11 +4,11 @@ A fraction of the training labels has been adversarially flipped — each poison
 
 ## Prior art / Background / Baselines
 
-- **ERM with cross entropy.** Train the softmax classifier by minimizing the mean `-log f_y` over the batch. Gap: it has no way to treat a label as potentially corrupt, so high-capacity networks can drive training error to zero even on flipped labels.
+- **ERM with cross entropy.** Train the softmax classifier by minimizing the mean `-log f_y` over the batch.
 
-- **Symmetric losses / noise-tolerance criterion (Ghosh, Kumar & Sastry, 2017).** A sufficient condition for noise tolerance is a loss whose class scores sum to a constant; mean absolute error satisfies this. Gap: the MAE gradient `−2 f_y(1−f_y)` vanishes as `f_y → 0`, so hard examples receive almost no update and training progresses very slowly.
+- **Symmetric losses / noise-tolerance criterion (Ghosh, Kumar & Sastry, 2017).** A sufficient condition for noise tolerance is a loss whose class scores sum to a constant; mean absolute error satisfies this. The MAE gradient for a sample is `−2 f_y(1−f_y)`.
 
-- **Label smoothing (Szegedy et al., 2016).** Replace one-hot targets with a soft distribution that spreads a fixed mass over every class. Gap: it biases every example, clean or corrupt, and does not reduce the weight placed on flipped labels in particular.
+- **Label smoothing (Szegedy et al., 2016).** Replace one-hot targets with a soft distribution that spreads a fixed mass over every class.
 
 ## Fixed substrate / Code framework
 

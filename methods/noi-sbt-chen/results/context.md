@@ -1,6 +1,6 @@
 ## Problem
 
-Maintain a dynamic set of distinct keys under insertions while supporting the order-statistic queries: report the $k$-th smallest key, and report the rank of a given key (one plus the number of stored keys less than it). The underlying binary search tree must stay balanced -- its height kept $O(\log n)$ -- without expensive extra bookkeeping.
+Maintain a dynamic set of distinct keys under insertions while supporting the order-statistic queries: report the $k$-th smallest key, and report the rank of a given key (one plus the number of stored keys less than it). The underlying binary search tree must stay balanced, keeping its height $O(\log n)$.
 
 ## Code framework
 

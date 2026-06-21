@@ -6,11 +6,11 @@ Difficulty is set by the **information exponent** `k`, the index of the first no
 
 ## Prior art / Background / Baselines
 
-- **Textbook recipe (control).** Kaiming init and vanilla SGD with momentum on all parameters, with fresh mini-batches each step. Gap: within the standard budget it often fails to align the first-layer directions with `theta*`, so direction recovery and test MSE stay poor on harder links.
-- **Random-feature / kernel models (Rahimi & Recht 2007; Jacot et al. 2018).** Freeze the first layer at its random init and fit only the head. Gap: the features point in fixed random directions that do not adapt to `theta*`, so sample complexity scales polynomially with `d` even for a link that lives on a single direction.
-- **Teacher-student single-neuron analyses (Saad & Solla 1995; Goldt et al. 2019).** Study hidden-direction recovery under gradient descent when the student activation equals the true link `g`. Gap: assumes the link is known, removing the non-parametric part of the problem.
-- **Information-exponent thresholds for online SGD (Ben Arous, Gheissari & Jagannath 2021).** Characterize online-SGD sample complexity for a single neuron as `n = Theta(d^{k-1})`, driven by the information exponent `k`. Gap: the analysis applies to a single neuron with known link and predicts that for `k >= 3` the per-mini-batch signal is very weak.
-- **Classical semi-parametric estimators (Dudeja & Hsu 2018).** Recover `theta*` and `g` via moment-based estimators built around individual Hermite moments. Gap: direction recovery and link fitting use separate, hand-engineered machinery rather than end-to-end gradients on the fixed MLP.
+- **Textbook recipe (control).** Kaiming init and vanilla SGD with momentum on all parameters, with fresh mini-batches each step.
+- **Random-feature / kernel models (Rahimi & Recht 2007; Jacot et al. 2018).** Freeze the first layer at its random init and fit only the head.
+- **Teacher-student single-neuron analyses (Saad & Solla 1995; Goldt et al. 2019).** Study hidden-direction recovery under gradient descent when the student activation equals the true link `g`.
+- **Information-exponent thresholds for online SGD (Ben Arous, Gheissari & Jagannath 2021).** Characterize online-SGD sample complexity for a single neuron as `n = Theta(d^{k-1})`, driven by the information exponent `k`.
+- **Classical semi-parametric estimators (Dudeja & Hsu 2018).** Recover `theta*` and `g` via moment-based estimators built around individual Hermite moments.
 
 ## Fixed substrate / Code framework
 

@@ -3,42 +3,34 @@
 ## Research question
 
 The aim is to learn speech representations from raw audio without transcripts,
-such that downstream recognition needs very little labeled data. The sharp
-difficulty, unique to speech, is that the self-supervision target is not given.
-Text comes pre-segmented into a known lexicon of word-pieces, so a masked-token
-objective has obvious discrete targets to predict. An image is one instance, so
-the instance-discrimination objectives of vision apply. Speech is a
-*continuous-valued sequence* with three problems at once: (1) each utterance
-contains many sounds, breaking the one-instance-per-input assumption; (2) there is
-no pre-existing inventory of discrete sound units to predict; and (3) the
-boundaries between sound units are unknown, so even masked prediction has nothing
-clean to predict. A solution must manufacture its own targets from audio,
-robustly enough that a masked-prediction objective on them yields representations
-that transfer to recognition with a thin head.
+such that downstream recognition needs very little labeled data. Speech differs
+from the settings where self-supervision is well established. Text comes
+pre-segmented into a known lexicon of word-pieces, so a masked-token objective
+has obvious discrete targets to predict; an image is one instance, so the
+instance-discrimination objectives of vision apply. Speech is a
+*continuous-valued sequence*: each utterance contains many sounds, there is no
+pre-existing inventory of discrete sound units, and the boundaries between sound
+units are not marked. The question is how to learn transferable representations
+from unlabeled audio when the self-supervision target is not given.
 
 ## Background
 
-**Self-supervised pre-training, and why the targets are the crux.** The general
-recipe — pretext task on unlabeled data, then fine-tune — is established across
-NLP (masked-token prediction, BERT; Devlin et al. 2018) and vision (instance
-discrimination, contrastive or not; He et al. 2020; Grill et al. 2020). The
-pretext target in NLP is the masked token's identity, scored by cross-entropy
-against the word-piece vocabulary. The whole question for speech is what plays
-the role of that vocabulary when none is given.
+**Self-supervised pre-training.** The general recipe — pretext task on unlabeled
+data, then fine-tune — is established across NLP (masked-token prediction, BERT;
+Devlin et al. 2018) and vision (instance discrimination, contrastive or not; He
+et al. 2020; Grill et al. 2020). The pretext target in NLP is the masked token's
+identity, scored by cross-entropy against the word-piece vocabulary.
 
 **Acoustic unit discovery.** A long line of work shows that *unsupervised*
 clustering of acoustic frames recovers structure correlated with phonetic units
 even without labels. Simple discrete-latent models — k-means, Gaussian mixtures —
 applied to frame features such as MFCCs yield cluster assignments that correlate
 non-trivially with underlying phones (Lee & Glass 2012), and richer graphical or
-neural latent-variable models do better. The clusters are noisy, but they are not
-random: they carry phonetic signal. This is the raw material from which discrete
-targets can be built.
+neural latent-variable models do better. The clusters carry phonetic signal.
 
 **Masked prediction.** BERT-style pre-training masks a span of the input and
 scores a prediction of its content against the surviving context. Where the
-targets are discrete tokens, this is a cross-entropy over the vocabulary; the
-recipe is well-studied in NLP but assumes the target inventory is given.
+targets are discrete tokens, this is a cross-entropy over the vocabulary.
 
 **DeepCluster (Caron et al. 2018).** In vision, alternate between clustering the
 current representations to produce pseudo-labels and training the network to
@@ -57,10 +49,9 @@ over all blank-augmented frame alignments that collapse to the target transcript
 **DiscreteBERT (Baevski et al. 2019).** Two stages: first learn a vector
 quantization of audio (vq-wav2vec) so each frame is a discrete token, then run a
 BERT masked-token model over those tokens and fine-tune for recognition. Core
-idea: discretize first so the NLP masked-LM machinery applies. Gaps: the
-Transformer ingests only the *quantized* tokens as input, discarding information
-that the limited-capacity quantizer dropped; and the discretization is fixed
-before the masked-prediction model is trained, so the teacher cannot improve.
+idea: discretize first so the NLP masked-LM machinery applies; the Transformer
+ingests the quantized tokens as input, and the discretization is fixed before the
+masked-prediction model is trained.
 
 **wav2vec 2.0 (Baevski et al. 2020).** A convolutional waveform encoder feeds a
 Transformer; spans of the *continuous* latents are masked, and a contrastive loss
@@ -68,18 +59,14 @@ identifies the true quantized latent among same-utterance distractors, with a
 jointly-learned Gumbel-softmax product quantizer and an auxiliary codebook
 diversity loss. Core idea and math: InfoNCE,
 −log[exp(sim(c_t,q_t)/κ)/Σ exp(sim(c_t,q̃)/κ)], with targets quantized but inputs
-continuous. Gaps it leaves: the contrastive loss requires careful negative
-sampling, a diversity loss to prevent codebook collapse, and a Gumbel-softmax
-temperature-annealing schedule; the quantization is applied only to the
-shallow convolutional encoder output, which may not be the best feature to
-quantize; and target generation and representation learning are entangled in a
-single end-to-end objective rather than separated.
+continuous. The quantization is applied to the convolutional encoder output, and
+target generation and representation learning are coupled in a single end-to-end
+objective.
 
 **Pseudo-labeling / self-training (Kahn et al. 2020; Xu et al. 2020).** Train a
 teacher on labels, label the unlabeled audio, retrain a student on the union,
-iterate. Strong for semi-supervision, but it needs labels to begin, forces the
-representation toward a single downstream task, and merely mimics a
-supervised-data-limited teacher rather than compressing the full input signal.
+iterate. A semi-supervised approach: it starts from labels and trains the
+representation toward a single downstream task.
 
 ## Evaluation settings
 
@@ -90,7 +77,7 @@ low-label fine-tuning subsets of 10 minutes, 1 hour, and 10 hours. **LibriSpeech
 fine-tuning** also uses the 100-hour `train-clean-100` split and the full 960-hour
 training set for studying low-resource transfer and scale. Audio is 16 kHz raw
 waveform. Optional external language-model fusion at decoding. These datasets and
-the WER metric predate the method and are the fixed yardsticks.
+the WER metric are the fixed yardsticks.
 
 ## Code framework
 

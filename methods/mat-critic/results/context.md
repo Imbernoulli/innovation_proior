@@ -4,21 +4,12 @@ We have `n` agents acting in a shared, partially-observed environment and earnin
 reward. The standard model is a cooperative Markov game `⟨N, O, A, R, P, γ⟩`: each agent `i` sees a
 local observation `o^i`, takes an action `a^i` under its policy `π^i`, the team collects a joint
 reward `R(o, a)`, and the objective is the discounted joint return `J(π) = E[Σ_t γ^t R(o_t, a_t)]`.
-Two difficulties are coupled and both must be solved at once. First, for *each* agent we must find a
-direction that improves its contribution. Second — and this is the hard one — the per-agent updates
-must *combine* so that the **joint** return goes up. These are not the same problem: it is entirely
-possible for every agent to move in a locally improving direction and for the joint return to drop.
 
-On top of that, the search space is brutal. If we reason about the joint action directly, its size is
-the product `∏_i |A^i|`, which explodes with the number of agents. We would like a method whose
-per-iteration search cost grows additively, like `Σ_i |A^i|`, rather than multiplicatively. We want
-it to work for **heterogeneous** agents (different roles, different action meanings) as well as
-**homogeneous** ones (interchangeable units), to scale to many agents, and ideally to come with a
-guarantee that each training step does not make the team worse. A practical solution should also be
-parallelizable: anything that forces the `n` agents to be updated strictly one after another becomes
-a wall-clock bottleneck when `n` is large. The gap to close is a single training paradigm that gives
-all of (a) joint — not just individual — improvement, (b) additive search cost, (c) a monotonic
-joint-improvement guarantee, (d) heterogeneity and variable agent counts, and (e) parallel updates.
+The joint action space has size `∏_i |A^i|`, which grows multiplicatively with the number of agents,
+whereas each agent's individual action space contributes additively `Σ_i |A^i|`. The question is how
+to train cooperative multi-agent policies — handling both **homogeneous** agents (interchangeable
+units with shared parameters) and **heterogeneous** agents (agents with different roles and action
+spaces) — in a way that accounts for the shared reward and joint dependencies.
 
 ## Background
 
@@ -38,7 +29,7 @@ Maximizing the surrogate inside a small KL ball therefore cannot decrease `J`. P
 `E[min(r·A, clip(r, 1±ε)·A)]`, `r = π_θ(a|s)/π_{θ_k}(a|s)`, keeping the trust-region effect with only
 first-order gradients.
 
-The **credit-assignment** problem is the defining pain of the cooperative setting: because the reward
+The **credit-assignment** problem is the defining challenge of the cooperative setting: because the reward
 is shared, an individual agent cannot read off its own contribution from the team's success or
 failure (Chang et al. 2003). Naively plugging the joint value function into a multi-agent policy
 gradient (MAPG) makes the estimate's variance grow with the number of agents (Kuba et al. 2021).
@@ -81,9 +72,7 @@ positions `< i`, plus cross-attention into the encoder output, with residual con
 `LayerNorm(x + Sublayer(x))` around every sublayer and a position-wise feed-forward block (inner
 width `4·d_model`). These same techniques were already being imported into single-agent RL — e.g.
 casting offline trajectories as return-conditioned sequences and predicting actions auto-regressively
-(Chen et al. 2021). That line of work showed that RL objects could be represented as sequences, but
-it did not solve the cooperative MARL problem of guaranteeing a jointly improving update across
-multiple policies.
+(Chen et al. 2021).
 
 ## Baselines
 
@@ -94,23 +83,13 @@ value function `V_φ(s)` used only during training for variance reduction. A car
 value-function input found that the global-state representation matters a lot: concatenating all local
 observations grows in dimension with `n` and can still omit truly global features; the
 environment-provided global state omits agent-specific features; an agent-specific state that
-concatenates the global state with `o^i` helps but adds redundancy. **Gap:** parameter sharing imposes
-the constraint `θ^i = θ^j` for all `i, j`; on tasks where the optimal joint policy is genuinely
-heterogeneous this constraint caps the achievable return, and the cap can be exponentially below
-optimal as `n` grows. Concretely, in a one-state game with joint action space `{0,1}^n` and reward 1
-only on the two patterns `(0^{n/2}, 1^{n/2})` and `(1^{n/2}, 0^{n/2})`, the best shared-parameter
-return over the optimum is `2 / 2^n` (Kuba et al. 2021, Prop. 1). And the centralized critic
-itself is a plain MLP over a hand-chosen state vector: it conditions on global information but does
-not model how the agents relate to one another, and the policy side has no built-in awareness that the
-agents are supposed to cooperate.
+concatenates the global state with `o^i` helps but adds redundancy.
 
 **COMA / MADDPG (Foerster et al. 2018; Lowe et al. 2017).** Actor-critic methods with a centralized
 critic that conditions on the joint action and global state during training while keeping
 decentralized actors. COMA adds a counterfactual baseline: it marginalizes out a single agent's
 action (keeping the others fixed) to produce an agent-specific advantage, attacking credit assignment
-in one forward pass. **Gap:** the critic is again a monolithic feed-forward network over the joint
-input; it does not represent the ordered "who acts in light of whom" structure of a team's decision,
-and the actors come with no monotonic joint-improvement guarantee.
+in one forward pass.
 
 **Sequential trust-region MARL: the multi-agent advantage decomposition and HAPPO (Kuba et al.
 2021).** This line establishes a decomposition of the joint advantage into per-agent terms and uses
@@ -129,12 +108,7 @@ iteration and updates agents in that order, each agent `i_m` maximizing a clip o
 *newly updated* policies of its predecessors `i_{1:m-1}`. Each no-op update leaves its corresponding
 trust-region surrogate contribution at zero, so selecting nonnegative conditioned updates makes the
 telescoped lower bound on `J` nondecreasing; randomizing the order yields Nash limit points at
-convergence. **Gap:** the update is
-*strictly sequential* — agent `i_m` must wait for `i_{1:m-1}` to finish updating (and uses their
-updated distributions for the importance-sampling term) before it can be optimized, so the `n` updates
-cannot run in parallel and the procedure becomes a wall-clock bottleneck as `n` grows. The agents also
-still optimize a handcrafted maximization objective rather than being trained as one cooperating
-whole.
+convergence.
 
 ## Evaluation settings
 

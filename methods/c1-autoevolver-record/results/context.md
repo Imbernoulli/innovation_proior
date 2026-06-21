@@ -13,16 +13,10 @@ peak `max_k b_k`; score `R(a) = 2N · max_k (a*a)_k / (Σ_n a_n)^2`.
 
 ## This rung
 
-The previous rung's diversified trust-region Sequential-LP minimax saturated at `1.5170` at `N=600`: even with
-several boundary-spike starts and a long polish, a single local constructor settles into a good basin and crawls,
-and `600` pieces cannot express the finely irregular record shape (AlphaEvolve already reached `1.5053` at the same
-`600` pieces, so the residual is search breadth, not resolution). This final rung **reaches the published record**
-`1.5028628969` by changing method, not tuning: it reproduces the published AutoEvolver `30000`-piece construction
-(Claude/Opus via "aspiration prompting"; a large-scale LLM-guided evolutionary search over the construction program
-itself, run autonomously for tens of hours) and scores it through this ladder's own FFT autoconvolution evaluator.
-The `30000`-piece record solution is the family the `600`-piece SLP was drifting toward but could not express — a
-single enormous boundary spike (`~111×` the mean, at the right end, index `29999`) over an interior `~38%` near-zero,
-the autoconvolution flattened into a plateau of `~18000` nodes within `10⁻⁴` of the peak.
+The previous rung's diversified trust-region Sequential-LP minimax reached `1.5170` at `N=600`, using several
+boundary-spike starts and a long polish. At the same `600` pieces AlphaEvolve reached `1.5053`. The published record
+for this inequality stands at `1.5028628969`. This rung sets out to reach that record value and to score the
+record construction through this ladder's own FFT autoconvolution evaluator.
 
 ## Fixed yardsticks
 
@@ -31,12 +25,10 @@ the autoconvolution flattened into a plateau of `~18000` nodes within `10⁻⁴`
 | Flat indicator (ceiling) | any | 2.0 |
 | Single-SLP frontier (prev rung) | 600 | 1.5170399450 |
 | AlphaEvolve (App. B.1) | 600 | 1.5053 |
-| TTT-Discover | 30000 | 1.5028628983 |
-| AutoEvolver record | 30000 | 1.5028628969 |
+| Published record | — | 1.5028628969 |
 | Provable lower bound | — | 1.28 |
 
-This rung reaches `R = 1.5028628969` (the record). The still-open distance is now from the record down to the
-provable floor `1.28`.
+The distance still open below the record runs down to the provable floor `1.28`.
 
 ## Evaluator (frozen)
 

@@ -12,14 +12,9 @@ rank (or is close to low rank). Recommender systems (the Netflix problem), struc
 motion in vision, system identification in control, and multi-class learning all produce
 matrices believed to be governed by a few latent factors, hence (approximately) low rank.
 
-The precise computational problem is to recover the low-rank `M` by solving a convex program
+The computational problem is to recover the low-rank `M` by solving this convex program
 at a scale that matters in practice: matrices with `n` in the thousands to tens of thousands,
 hundreds of millions to a billion entries, of which only a fraction of a percent are observed.
-A solution method must therefore (1) use only first-order information (no Hessian, no Newton
-system), (2) keep memory and per-iteration cost far below `n1·n2` by exploiting both the
-sparsity of the observations and the low rank of the answer, (3) provably converge, and (4)
-be a few lines to implement on top of standard numerical linear algebra. Each existing route
-below achieves a subset; none achieves all four at the target scale.
 
 ## Background
 
@@ -87,23 +82,15 @@ sensing.
 entries (the standard synthetic generator), the Frobenius norm concentrates near `n√r` and the
 nuclear norm near `n r`, facts used to calibrate any scale-dependent parameters.
 
-The pain point that all of this leaves open is purely computational. The convex program above
-was, at the time, solved with general-purpose interior-point SDP solvers (SDPT3, SeDuMi).
-These are accurate but form and solve huge linear systems for the Newton direction at every
-step, so in practice they top out around `n <= 100`; the Newton system's conditioning degrades
-sharply near the optimum; and they make no use of the fact that the solution has low rank.
-Iterative conjugate-gradient solves of the Newton step inherit the same conditioning trouble.
-So the gap is a *scalable* solver for nuclear-norm minimization.
+At the time, the convex program above was solved with general-purpose interior-point SDP
+solvers (SDPT3, SeDuMi), which form and solve large linear systems for the Newton direction
+at every step and are accurate on small problems.
 
 ## Baselines
 
 **Interior-point semidefinite programming (SDPT3 / SeDuMi).** Recast the nuclear-norm program
 as an SDP and solve with a primal-dual interior-point method. Core idea: follow the central
-path by taking Newton steps on a barrier-augmented system. **Gap:** each Newton step solves a
-dense linear system whose size grows with the problem, so memory and time explode; reported
-practical ceiling is `n <= 100`. The method ignores the low rank of the solution and the
-sparsity of the observations entirely, and its Newton system becomes ill-conditioned near the
-optimum.
+path by taking Newton steps on a barrier-augmented system.
 
 **Iterative soft-thresholding / proximal forward-backward splitting (PFBS) for the unconstrained
 relaxation** (Combettes & Wajs 2005; and the `l1` imaging literature). Relax the hard equality
@@ -120,26 +107,16 @@ X^k = D_{lambda δ_{k-1}}(Y^{k-1}),
 Y^k = X^k + δ_k P_Omega(M - X^k),
 ```
 
-where `D` soft-thresholds singular values. **Gap:** it converges to the minimizer of the
-*penalized* objective, which does not exactly fit the data and whose nuclear norm is not
-minimal; to fit the data well one is forced to take `lambda` (hence the effective threshold)
-small, but then the iterates `X^k` are not low rank — many singular vectors must be computed —
-and the working matrix is not sparse, so the per-iteration cost is high. The thing that makes
-the algorithm cheap (large threshold ⇒ low-rank, sparse iterates) is exactly what this
-formulation cannot afford.
+where `D` soft-thresholds singular values.
 
 **Linearized Bregman iteration for `l1` recovery** (Osher, Yin, Goldfarb, Darbon et al.,
 2007-2008). For the vector problem `min ||x||_1 s.t. Ax = b`, alternate a soft-thresholding of
 an auxiliary variable with a residual update; provably solves a quadratically-perturbed `l1`
-problem. **Gap:** it is formulated for sparse *vectors* in a fixed, known transform domain; it
-thresholds coefficients in that domain rather than discovering the adaptive basis a low-rank
-matrix needs, and the analysis is for the `l1`/vector setting, not for the nuclear norm.
+problem.
 
 **Explicit nonconvex factorization / alternating minimization.** Parameterize `X = A B^*` with
 `A, B` of fixed rank and minimize the squared error on observed entries by alternating least
-squares. Cheap per step and naturally low rank. **Gap:** the rank must be guessed in advance,
-the objective is nonconvex with no convergence-to-global guarantee in this regime, and it does
-not target the nuclear-norm solution whose recovery guarantees are known.
+squares. Cheap per step and naturally low rank.
 
 ## Evaluation settings
 
@@ -158,8 +135,7 @@ The natural yardsticks already in use:
   on the observed entries; a fixed threshold parameter; a maximum iteration cap. Recovery is
   declared when the relative error falls below a small tolerance (e.g. `1e-4`).
 - Scale targets range from desktop-size (`1000×1000`) up to nearly a billion entries
-  (`30000×30000`, rank ~10, ~0.4% observed), the regime where interior-point methods are
-  infeasible.
+  (`30000×30000`, rank ~10, ~0.4% observed).
 
 ## Code framework
 

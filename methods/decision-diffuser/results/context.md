@@ -10,15 +10,12 @@ policy from this static log. This matters because in the real world (robotics, h
 driving) online exploration is expensive or unsafe, so the only thing we can count on having
 is a pile of previously logged behavior, much of it mediocre.
 
-The hard part is *stitching*: the optimal trajectory may never appear in the dataset, yet it
-can be assembled from fragments of several sub-optimal ones (a good A→B segment from one
-trajectory, a good B→C segment from another). A method that merely imitates the data cannot
-produce a behavior better than the data; a method that can recombine fragments can. So the
-precise objective is a procedure that (1) extracts high-return behavior from a dataset of
-mostly low-return behavior, (2) recombines fragments across trajectories rather than copying
-whole ones, (3) does not drift to actions or states unsupported by the data (where any model
-is guessing), and (4) does so without a brittle training pipeline that needs heavy per-task
-tuning. Each existing route below buys some of these and pays for it elsewhere.
+A central phenomenon here is *stitching*: the optimal trajectory may never appear in the
+dataset, yet it can be assembled from fragments of several sub-optimal ones (a good A→B
+segment from one trajectory, a good B→C segment from another). Recovering behavior better than
+any single logged trajectory requires recombining such fragments rather than copying whole
+ones. The question is what procedure, trained purely on this static log, produces a
+high-return policy.
 
 ## Background
 
@@ -32,18 +29,13 @@ L_TD(theta) = E_{(s,a,r,s')~D} [ ( r + gamma·max_{a'} Q_theta(s',a') - Q_theta(
 
 and, for continuous actions, a parametric policy `pi_phi(a|s)` is trained to maximize
 `J(phi) = E_{s~D, a~pi_phi}[Q(s,a)]`. The max/argmax over actions is what implements
-dynamic programming — it propagates value backward and is exactly what lets a learner stitch
-sub-optimal pieces into something better than any single logged trajectory. But this estimator
-combines function approximation, bootstrapping (the target contains `Q_theta` itself), and
-off-policy data — the *deadly triad* (Sutton & Barto), which makes the iteration prone to
-divergence and over-estimation. The instability is sharper offline: as `pi_phi` shifts the
-induced state-visitation `d^{pi_phi}` away from the data distribution `d^{mu}`, the policy
-queries `Q_theta` at actions never seen in `D`, where the network freely extrapolates large
-values, and there is no environment feedback to correct the error. Offline RL therefore adds
-an explicit in-distribution constraint of the form `D(d^{pi_phi} || d^{mu})` (a divergence
-penalty / conservative regularizer / behavior constraint) folded into the TD objective. That
-turns training into a constrained optimization whose balance must be re-tuned per task, with
-implementation heuristics, to get reasonable performance.
+dynamic programming — it propagates value backward and lets a learner stitch sub-optimal
+pieces into something better than any single logged trajectory. This estimator combines
+function approximation, bootstrapping (the target contains `Q_theta` itself), and off-policy
+data — the *deadly triad* (Sutton & Barto). Offline RL adds an explicit in-distribution
+constraint of the form `D(d^{pi_phi} || d^{mu})` (a divergence penalty / conservative
+regularizer / behavior constraint) folded into the TD objective, turning training into a
+constrained optimization with `D` as a tunable term.
 
 A separate body of work — generative modeling — had just shown that diffusion probabilistic
 models (Sohl-Dickstein et al. 2015; Ho et al. 2020, DDPM) can learn extremely expressive data
@@ -66,8 +58,8 @@ score. Two guidance mechanisms existed:
 - *Classifier guidance* (Dhariwal & Nichol 2021): separately train a classifier
   `p_phi(y | x_k)` on noised data and sample with the perturbed noise
   `eps_theta(x_k,k) - omega·sqrt(1-bar_alpha_k)·∇_{x_k} log p(y | x_k)`, where `omega` is the
-  guidance scale. It works but requires an extra network trained on noisy inputs, and the
-  sampling direction is literally a classifier gradient.
+  guidance scale. The sampling direction is a classifier gradient, and the classifier is an
+  extra network trained on noisy inputs.
 - *Classifier-free guidance* (Ho & Salimans 2022): train one network jointly as a conditional
   `eps_theta(x_k, y, k)` and an unconditional `eps_theta(x_k, ∅, k)` model (by replacing `y`
   with a null token `∅` with some probability during training), then sample with
@@ -84,20 +76,15 @@ single training example satisfied them jointly.
 
 In these control datasets, states are continuous and state sequences along a trajectory are
 relatively smooth, whereas actions — frequently joint torques — are higher-frequency, less
-smooth, and sometimes discrete or sharply varied; high-frequency targets are harder for a
-denoiser to fit than smooth ones. The datasets are also mixtures: a conditional model trained
-naively on `(trajectory, return)` pairs inherits the sub-optimal behavior that dominates the
-data.
+smooth, and sometimes discrete or sharply varied. The datasets are also mixtures of behavior
+of varying quality, with sub-optimal trajectories dominating the data.
 
 ## Baselines
 
 **TD-based offline RL — CQL (Kumar et al. 2020), IQL (Kostrikov et al. 2021).** Learn a
 conservative or expectile-regressed `Q` plus a constrained policy; the `max_{a'} Q(s',a')`
 backup performs the stitching, and a behavior/conservatism term keeps the policy in
-distribution. *Limitation:* the value estimate sits on the deadly triad and, offline,
-over-estimates `Q` on out-of-distribution actions with no environment to correct it; the
-in-distribution constraint is an extra knob that demands per-task tuning and heuristics, and
-the whole pipeline is fragile and hard to scale.
+distribution.
 
 **Diffuser (Janner et al. 2022).** The first to bring diffusion to planning: learn an
 *unconditional* diffusion model over full state-action trajectories `x_k(tau) = (s_t, a_t,
@@ -105,22 +92,14 @@ the whole pipeline is fragile and hard to scale.
 trajectory as a 1D image (state-action dimension × horizon). To plan for high return, train a
 *separate* return/value predictor `J_phi(x_k)` on noised trajectories and guide the reverse
 process by its gradient: `eps_hat = eps_theta(x_k,k) - omega·sqrt(1-bar_alpha_k)·∇ J_phi(x_k)`
-— i.e. classifier guidance with the value function as the classifier. *Limitations:* (i) it
-still trains a value-style function and uses its gradient, so the value-estimation machinery
-(and its instability) is not removed, only relocated to a guidance term; (ii) the sampling
-procedure differs from the training procedure — training fits an unconditional model, sampling
-bolts on a separately learned objective — so what is sampled is not what was modeled; (iii) it
-diffuses over actions jointly with states, and the action channel is the high-frequency, hard
-part of the trajectory.
+— i.e. classifier guidance with the value function as the classifier. It diffuses over actions
+jointly with states.
 
 **Return-conditioned sequence models — Decision Transformer (Chen et al. 2021), RvS (Emmons
 et al. 2021).** Cast policy learning as conditional behavioral cloning: a transformer (DT) or
 a carefully tuned MLP (RvS) models `p(a_t | return-to-go, past states/actions)` and, at test,
 is conditioned on a high target return. Competitive with offline RL without any value
-function. *Limitations:* it is an autoregressive likelihood model of the next action, so it
-inherits no score-composition — it cannot combine several conditioning attributes that were
-never seen together — and its stitching ability is limited by how well return-conditioning
-alone reorganizes the data.
+function. It is an autoregressive likelihood model of the next action.
 
 ## Evaluation settings
 

@@ -1,17 +1,13 @@
-# Context: the second autocorrelation (autoconvolution Hölder-ratio) inequality — reaching the record
+# Context: the second autocorrelation (autoconvolution Hölder-ratio) inequality
 
 ## Research question
 
-For a non-negative `f`, the autoconvolution Hölder ratio `R(f) = ||f*f||_2^2 / (||f*f||_inf·||f*f||_1) ≤ 1`
-is unattained, and `C2 := sup_f R(f)` (Barnard–Steinerberger, arXiv:1903.08731) is approached by explicit
-constructive lower bounds. A single bounded hierarchical β-annealed gradient constructor saturates at
-`~0.9018` — the floor of the smooth spike-and-shoulder basin, matching the best published `~575`/`539`-piece
-results (Boyer–Li `0.901564`, Jaech–Joseph `~0.9016`). The published record is far higher: AlphaEvolve-V2's
-deliberately irregular `~50000`-piece step function at `0.96102`, found by a large-scale evolutionary /
-test-time search. The question here is the record itself: obtain the released record construction and verify
-its ratio under the exact evaluator, since no single local constructor reaches it from a bump-like start —
-the path to it runs through worse-scoring intermediate shapes that only a population/program-level search
-traverses.
+For a non-negative `f`, the autoconvolution Hölder ratio
+`R(f) = ||f*f||_2^2 / (||f*f||_inf·||f*f||_1) ≤ 1`,
+and `C2 := sup_f R(f)` (Barnard–Steinerberger, arXiv:1903.08731) is approached by explicit constructive
+lower bounds. The question is to push the lower bound on `C2` as high as possible: over non-negative step
+functions, produce a construction whose ratio `R` is as close to `1` as can be achieved, scored under the
+exact evaluator.
 
 ## Construction class and scoring
 
@@ -25,8 +21,5 @@ Because `R` is invariant to grid spacing and offset, the unit-grid `fftconvolve`
 ## Known reference points
 
 Flat floor `0.6667`; Matolcsi–Vinuesa 20-step `0.88922`; AlphaEvolve 50-step `0.89628`; Boyer–Li 575-step
-`0.901564`; Jaech–Joseph 539-step `~0.9016`; AlphaEvolve-V2 record `~50000`-step `0.96102` (TTT-Discover
-`50000`-step `0.959180`; Together AI `100000`-point `0.961206`, the best publicly reproducible; ImprovEvolve
-`0.96258`, solution not released); Hölder ceiling `1.0`. This method obtains and verifies the canonical
-record — AlphaEvolve-V2's `0.961021` — leaving the `0.0390` residual to `1.0` as the open part of the
-problem.
+`0.901564`; Jaech–Joseph 539-step `~0.9016`; AlphaEvolve-V2 `~50000`-step `0.96102` (TTT-Discover
+`50000`-step `0.959180`; Together AI `100000`-point `0.961206`; ImprovEvolve `0.96258`); Hölder ceiling `1.0`.

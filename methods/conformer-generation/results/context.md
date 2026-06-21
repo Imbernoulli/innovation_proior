@@ -8,18 +8,9 @@ molecule downstream — dock it into a protein pocket, match it against a pharma
 3D shape to another molecule, compute a 3D descriptor, feed it to a property model — needs actual
 Cartesian coordinates, and not just one set: a flexible molecule populates many conformations, and
 the relevant one for binding is rarely the single lowest-energy gas-phase structure. So the problem
-is to take the graph and emit an *ensemble* of 3D conformers.
-
-The ensemble has to satisfy three things at once, and they pull against each other. It must be
-**realistic** — bond lengths and angles right, rings closed and (where appropriate) flat, chirality
-correct, and torsions sitting in the basins that real molecules actually occupy. It must be
-**diverse** — genuinely covering the accessible conformational space, not collapsing to one family of
-near-identical structures, because the conformer you need might be a few kcal/mol above the minimum.
-And it must be **cheap** — a virtual screen touches millions of molecules, so per-molecule cost of
-seconds, not minutes, with no human babysitting and no dependence on a good starting geometry (there
-*is* no starting geometry; all you have is the graph). A method that produces realistic-but-collapsed
-ensembles, or diverse-but-distorted ones, or correct-but-slow ones, fails. The open problem is a
-generator that hits all three.
+is to take the graph and emit an *ensemble* of 3D conformers, with no starting geometry available
+(there *is* none; all one has is the graph) and at a per-molecule cost low enough to run across the
+millions of molecules in a virtual screen.
 
 ## Background
 
@@ -41,17 +32,16 @@ statement is that two atoms cannot interpenetrate — a van der Waals lower boun
 from the molecule's overall extent. The natural object is therefore an N×N **bounds matrix** holding,
 for each atom pair (i,j), a lower bound L_ij and an upper bound U_ij on their distance.
 
-**The bounds are loose and must be tightened — the triangle inequality.** Bounds read off locally
-from the graph ignore global consistency. But distances in any metric space obey the triangle
-inequality: for any third atom k, d_ij ≤ d_ik + d_kj and d_ij ≥ |d_ik − d_kj|. This means an upper
-bound can be lowered, U_ij ← min(U_ij, U_ik + U_kj), and a lower bound raised,
-L_ij ← max(L_ij, L_ik − U_kj, L_kj − U_ik), using any intermediary k. Iterating to convergence over
-all triples is equivalent to an all-pairs-shortest-paths computation on a graph whose edge lengths are
-the bounds (Floyd–Warshall, O(N³)); Havel works this out as the "triangle inequality limits." It is
-the cheap, reliable, and most important smoothing step; it also detects contradictions (a lower bound
-forced above an upper bound). Tighter limits exist — the tetrangle (four-point Cayley–Menger)
-inequalities — but cost O(N⁴) and yield large improvements only on near-coplanar atom subsets, so in
-practice they are seldom used.
+**The bounds are tightened by the triangle inequality.** Bounds read off locally from the graph
+ignore global consistency. But distances in any metric space obey the triangle inequality: for any
+third atom k, d_ij ≤ d_ik + d_kj and d_ij ≥ |d_ik − d_kj|. This means an upper bound can be lowered,
+U_ij ← min(U_ij, U_ik + U_kj), and a lower bound raised, L_ij ← max(L_ij, L_ik − U_kj, L_kj − U_ik),
+using any intermediary k. Iterating to convergence over all triples is equivalent to an
+all-pairs-shortest-paths computation on a graph whose edge lengths are the bounds (Floyd–Warshall,
+O(N³)); Havel works this out as the "triangle inequality limits." It is the cheap and reliable
+smoothing step; it also detects contradictions (a lower bound forced above an upper bound). Tighter
+limits exist — the tetrangle (four-point Cayley–Menger) inequalities — but cost O(N⁴) and yield large
+improvements only on near-coplanar atom subsets, so in practice they are seldom used.
 
 **From a distance matrix to coordinates: the metric-matrix (EMBED) algorithm.** Given an actual
 distance matrix, coordinates that best reproduce it can be recovered in closed form, with no local
@@ -77,48 +67,39 @@ specific distance matrix from within the smoothed bounds — each d_ij drawn in 
 embedding gives one conformer; a different random draw gives another. It was observed early that
 drawing each distance independently produces structures that are over-expanded and more similar to one
 another than they should be; *metrization* (fix one distance, re-smooth the bounds so the rest stay
-mutually consistent, repeat) markedly improves the sampling, at O(N³) cost.
+mutually consistent, repeat) improves the sampling, at O(N³) cost.
 
-**The embedded structure is rough and needs cleanup.** Sampled distances only approximately satisfy
-all bounds simultaneously, and chirality can come out inverted (the distance matrix is blind to
-reflection). So the embedded coordinates are refined against an error function: a penalty for every
-pair whose distance leaves [L_ij, U_ij], plus chiral-volume penalties to fix stereocenters. A useful
-trick is to embed in *four* dimensions and penalize the fourth coordinate: the extra room lets
-tangled or wrong-handed structures relax continuously before the fourth dimension is squeezed out.
-After this, a classical molecular-mechanics minimization (MMFF94 or UFF) can be run to give a clean
-local-minimum geometry.
+**The embedded structure is refined.** Sampled distances only approximately satisfy all bounds
+simultaneously, and chirality can come out inverted (the distance matrix is blind to reflection). So
+the embedded coordinates are refined against an error function: a penalty for every pair whose
+distance leaves [L_ij, U_ij], plus chiral-volume penalties to fix stereocenters. A useful trick is to
+embed in *four* dimensions and penalize the fourth coordinate: the extra room lets tangled or
+wrong-handed structures relax continuously before the fourth dimension is squeezed out. After this, a
+classical molecular-mechanics minimization (MMFF94 or UFF) can be run to give a clean local-minimum
+geometry.
 
-**Generic-bounds distance geometry is geometrically valid but physically smeared.** Two
-well-documented symptoms matter here: (1) torsion angles come out roughly uniformly distributed,
-whereas the torsions of real molecules are sharply *non-uniform* — small-molecule crystal structures
-in the Cambridge Structural Database (CSD) show, for each local torsion motif, a characteristic
-multimodal preferred-angle distribution, and generic bounds reproduce none of that; (2) planar
-fragments buckle — nothing in a pairwise van der Waals lower bound forces an aromatic ring or an sp2
-center to stay flat, or a triple bond to stay linear, so the raw embedding lets them pucker. The usual
-fix, a full classical-force-field minimization, is expensive and drags every structure toward the
-force-field minimum, eroding the very diversity the ensemble was meant to provide.
+**What generic bounds encode.** Bounds built from generic bond/angle/torsion ranges and van der Waals
+radii are purely geometric: the 1-4 range spans the full cis-to-trans torsion sweep with no
+preference among torsion values, and a pairwise van der Waals lower bound is the only constraint on
+more-distant pairs. The error-function refinement enforces the distance bounds and chirality; the
+optional MMFF/UFF minimization adds a molecular-mechanics energy surface on top.
 
 ## Baselines
 
 **Classical distance geometry (the EMBED pipeline; Crippen, Havel; Blaney & Dixon).** Build the bounds
 matrix from generic bond/angle/torsion ranges and van der Waals radii; triangle-smooth; sample a
 distance matrix; metric-matrix embed; refine against the distance/chirality error function; optionally
-MMFF/UFF minimize. Core math as above. *Gap:* generic bounds encode no information about which
-torsions or ring geometries are actually preferred, so conformers are realistic only after an
-expensive force-field cleanup, and even then the torsion distribution is whatever the force field
-happens to give, not what crystallography says. It also tends to over-expand structures and
-under-sample.
+MMFF/UFF minimize. Core math as above. The bounds are generic, and torsion values within the sampled
+range are unweighted; conformers are typically cleaned up with a force-field minimization.
 
 **Systematic / rule-based torsion enumeration (e.g. knowledge-based template builders).** Fragment the
 molecule, place each fragment from a library of preferred geometries, and enumerate combinations of
-preferred torsion values. *Gap:* relies on a curated fragment/template library and combinatorial
-enumeration; coverage is bounded by the library, and stitching fragments while respecting ring
-closure and long-range clashes is awkward.
+preferred torsion values. Coverage is set by the curated fragment/template library and the
+combinatorial enumeration over its preferred geometries.
 
 **Force-field / stochastic search (e.g. low-mode or random-start MMFF minimization).** Start from
-random or perturbed coordinates and minimize/sample on a molecular-mechanics surface. *Gap:* needs
-starting coordinates, is prone to local minima, and is slow per conformer; the energy surface's
-torsion preferences are those of the force field, which may not match experiment.
+random or perturbed coordinates and minimize/sample on a molecular-mechanics surface; the torsion
+preferences are those of the force field.
 
 ## Evaluation settings
 
@@ -128,9 +109,9 @@ Cambridge Structural Database (CSD), and ligand geometries extracted from protei
 the Protein Data Bank (PDB). For a molecule whose graph is taken from such a structure, one generates
 an ensemble and measures how well some generated conformer matches the experimental geometry, by
 heavy-atom RMSD after optimal alignment (e.g. the minimum RMSD over the ensemble, as a function of
-ensemble size), alongside the wall-clock cost per molecule. The CSD torsion-angle histograms — the
-empirical distributions of each torsion motif across many crystal structures — are themselves a
-pre-existing resource.
+ensemble size), alongside the wall-clock cost per molecule. A further pre-existing resource is the set
+of CSD torsion-angle histograms — the empirical distributions of each torsion motif (each local
+torsion pattern of bonded atoms) measured across many crystal structures.
 
 ## Code framework
 

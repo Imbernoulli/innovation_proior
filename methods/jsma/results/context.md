@@ -15,15 +15,11 @@ argmin_δ  ‖δ‖   s.t.  F(X + δ) = Y*.
 ```
 
 The question is which norm `‖·‖` to control, and how to solve the program on a real DNN, where
-`F` is non-linear and non-convex so the constraint `F(X+δ)=Y*` has no closed-form inverse. The
-specific pressure here is on the *number of input features the adversary has to touch*: a
-solution that flips the label by nudging a handful of pixels (each possibly by a large amount)
-is qualitatively different from — and for several threat models more dangerous than — one that
-spreads a tiny change across the entire image. The adversary has white-box access: the
-architecture and trained weights of an acyclic feedforward network with differentiable
-activations, but not necessarily the training data. The deliverable is an algorithm that takes
-`X`, a target `Y*`, the network `F`, and a budget on how much of the input may be altered, and
-returns an `X*` that the network reads as `Y*` while disturbing as little of the input as it can.
+`F` is non-linear and non-convex so the constraint `F(X+δ)=Y*` has no closed-form inverse.
+The adversary has white-box access: the architecture and trained weights of an acyclic feedforward
+network with differentiable activations, but not necessarily the training data. The deliverable is
+an algorithm that takes `X`, a target `Y*`, the network `F`, and a budget parameter, and returns
+an `X*` that the network reads as `Y*`.
 
 ## Background
 
@@ -64,10 +60,9 @@ a trained classifier. For a fixed image `I` and a class `c`, one can backpropaga
 score `S_c` to the input and rearrange the resulting vector `∂S_c/∂I` into an image-shaped map;
 taking the per-pixel magnitude (e.g. the max over color channels of `|∂S_c/∂I|`) yields a
 "class saliency map" highlighting which pixels most affect the score of class `c`. This was
-introduced as a visualization / weakly-supervised-localization tool: it is single-class,
+introduced as a visualization and weakly-supervised-localization tool: it is single-class,
 magnitude-only (it discards the sign of the derivative), and it requires only one backward
-pass. It says where a class "lives" in an image; it was not built to drive an attack and carries
-no notion of a target-versus-rest trade-off.
+pass.
 
 The general lesson the field has internalized: gradients computed during training, normally used
 to update *weights*, can instead be used to update the *input*, because the same backpropagation
@@ -88,11 +83,7 @@ minimize ‖r‖₂   s.t.   f(x + r) = l   and   x + r ∈ [0,1]^m,
 approximated by the penalty form: line-search over `c > 0` to find the smallest `c` whose
 box-constrained L-BFGS minimizer of `c·‖r‖ + loss_f(x + r, l)` actually satisfies
 `f(x+r) = l`. This reliably finds visually-imperceptible adversarial examples and is where
-transferability was first observed. *Limitation:* the optimizer runs an iterative,
-box-constrained second-order optimization per example, which is computationally heavy; and the
-objective is an `L2` magnitude penalty, so the minimizer it returns is a *dense* perturbation —
-a small change smeared across essentially every input coordinate. The procedure has no term
-that counts, or tries to limit, how many input features are altered.
+transferability was first observed.
 
 **Fast Gradient Sign Method (Goodfellow et al. 2014).** Motivated by the linearity view above,
 this replaces the per-example optimization with a single closed-form step. Linearize the
@@ -105,23 +96,11 @@ training loss `J(θ,x,y)` around the input and take the max-norm-optimal step:
 One backpropagation pass through the loss yields the gradient; the `sign` makes `η` the optimal
 perturbation under an `L_∞ ≤ ε` constraint, and it generalizes the linear `ε·sign(w)` argument to
 non-linear nets that "behave linearly enough." It is fast and exposes a wide variety of models.
-*Limitation:* the step writes a nonzero perturbation into *every* input dimension at once — by
-construction it is the densest possible perturbation under the `L_∞` ball — and it is organized
-around the loss gradient and the untargeted "raise the loss" direction rather than around
-steering the network into one specific class while touching as little of the input as possible.
 
 **Class-saliency visualization via input gradients (Simonyan et al. 2013).** As described in
 Background, this produces a single-class, magnitude-only map `M_ij = max_c |(∂S_c/∂I)_{i,j,c}|`
-from one backward pass. *Limitation:* it ranks pixels by how much they affect *one* class's
-score in either direction, with no sign and no comparison against the other classes; it is a
-visualization, not a procedure for choosing and modifying features to achieve a chosen
-misclassification.
-
-Common gap across all three: each maps an output-side scalar (a loss, or one class score) back
-to the input via a gradient, and either solves for a dense magnitude-minimizing perturbation or
-merely visualizes importance. None of them is built to control how many input features change,
-and none provides a concrete procedure for choosing a small set of altered features that pushes
-the network into a specific class.
+from one backward pass. It ranks pixels by how much they affect one class's score, with no sign
+and no comparison against the other classes.
 
 ## Evaluation settings
 
@@ -135,7 +114,7 @@ The natural yardsticks already in use at the time:
   the network is fixed; only the input is altered, after training. Inputs must stay in the valid
   range `[0,1]`.
 - **Metrics.** Attack success — the fraction of (initially correctly-classified) inputs that are
-  pushed to the adversary's target — and *distortion*, here measured as how much of the input is
+  pushed to the adversary's target — and *distortion*, measured as how much of the input is
   changed: the number (or percentage) of input features altered. A pixel/feature counts as
   modified if it differs from the original. (For multi-channel inputs, a spatial pixel counts as
   modified if any of its channels changes.)
@@ -148,12 +127,9 @@ The natural yardsticks already in use at the time:
 
 The attack plugs into a standard white-box harness: a frozen, differentiable classifier and a
 batch of clean inputs in `[0,1]`, and it must return adversarial inputs of the same shape, in
-the same range, under a budget on changed input features. The substrate that
-already exists is automatic differentiation (we can backpropagate any scalar built from the
-network's outputs to the input), an `argmax` read-out for the predicted label, and clamping to
-the valid range. What is *not* given — the contribution to be designed — is the rule that
-decides, for a given input and target, which feature(s) to change and by how much, iterated
-until the network flips or the budget is spent.
+the same range, under a budget. The substrate that already exists is automatic differentiation
+(we can backpropagate any scalar built from the network's outputs to the input), an `argmax`
+read-out for the predicted label, and clamping to the valid range.
 
 ```python
 import torch
@@ -190,6 +166,4 @@ def run_attack(
     return adv.clamp(0.0, 1.0)
 ```
 
-The harness supplies the frozen model, the clean batch, the budget, and the range constraint;
-the single empty slot is the feature-selection-and-modification rule that turns a clean input
-into a budget-respecting adversarial one.
+The harness supplies the frozen model, the clean batch, the budget, and the range constraint.

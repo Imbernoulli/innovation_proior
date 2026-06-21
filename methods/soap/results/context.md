@@ -3,30 +3,25 @@
 ## Research question
 
 Optimizers for large-model training fall into two camps. Diagonal adaptive methods (Adam/AdamW) keep
-one scalar preconditioner per coordinate — cheap, but blind to correlations between coordinates of a
-weight matrix. Non-diagonal (second-order) methods precondition with an actual matrix that captures
-those correlations and converge in far fewer steps, but the matrices involved are enormous and have to
-be inverted or eigendecomposed, which is expensive enough that practitioners refresh them only
-occasionally — and the staler the matrix, the more the benefit erodes. The question is whether the
-convergence advantage of a non-diagonal preconditioner can be retained at close to diagonal-method cost
-and stability: an optimizer that preconditions with cross-coordinate curvature, costs only a little
-more than Adam, adds essentially no new hyperparameters, and — crucially — does not fall apart when its
-expensive part is computed infrequently.
+one scalar preconditioner per coordinate — cheap. Non-diagonal (second-order) methods precondition with
+an actual matrix that captures correlations between coordinates and converge in fewer steps, but the
+matrices involved are large and must be inverted or eigendecomposed, which is expensive enough that
+practitioners refresh them only occasionally. The question is whether the convergence advantage of a
+non-diagonal preconditioner can be retained at close to diagonal-method cost and stability.
 
 ## Background
 
 **Full-matrix Adagrad (Duchi et al. 2011).** For a weight matrix W ∈ ℝ^{m×n} with vectorized gradient
-g = vec(G) ∈ ℝ^{mn}, accumulate H = Σ g gᵀ ∈ ℝ^{mn×mn} and step w ← w − η H^{-1/2} g. This is the ideal
-non-diagonal preconditioner — it whitens the gradient using the full second-moment matrix — but H is
-mn×mn and its inverse square root is hopeless at scale.
+g = vec(G) ∈ ℝ^{mn}, accumulate H = Σ g gᵀ ∈ ℝ^{mn×mn} and step w ← w − η H^{-1/2} g. This is the
+non-diagonal preconditioner — it whitens the gradient using the full second-moment matrix.
 
 **Adam as a diagonal approximation (Kingma & Ba 2015).** Adam keeps only the diagonal of the
 second-moment matrix: an EMA of the elementwise squared gradient Vₜ, and steps W ← W − η Mₜ/√Vₜ (Mₜ the
-first-moment EMA). Cheap, but it sees no correlation between coordinates.
+first-moment EMA).
 
 **Adafactor (Shazeer & Stern 2018; Zhai et al. variant).** A memory-light Adam: replace the
 second-moment matrix Vₜ by its best rank-1 approximation V'ₜ (outer product of a row factor and a
-column factor) and step W ← W − η Mₜ/√V'ₜ. Still diagonal in spirit, but factored to save memory.
+column factor) and step W ← W − η Mₜ/√V'ₜ.
 
 **Shampoo (Gupta et al. 2018; Anil et al. 2020).** A structured (Kronecker) approximation of
 full-matrix Adagrad. Maintain two per-side preconditioners Lₜ = Σ Gₜ Gₜᵀ ∈ ℝ^{m×m} and
@@ -37,13 +32,9 @@ findings the method rests on: using power 1/2 instead of 1/4 (i.e. L^{-1/2} G R^
 and aligns with the optimal Kronecker approximation of the Adagrad preconditioner (Anil et al. 2020;
 Morwani et al. 2024); and a scalar per-layer learning-rate correction normalizes the
 Kronecker factor as L ⊗ R / Trace(L), so each eigen-coordinate is scaled by
-(λ_i μ_j / Trace(L))^{-1/2}. The attraction is that Shampoo is a practical non-diagonal optimizer
-already used in optimization-efficiency benchmarks and large training runs. The drawbacks: it carries
-extra hyperparameters (the exponent, learning-rate grafting), and the L^{-1/2}, R^{-1/2} require an
-eigendecomposition / inverse-root of L and R, which is costly enough that implementations compute it
-only every f steps — between refreshes the preconditioner is stale, so the diagnostic observation is
-that Shampoo's effective adaptivity is limited to the cadence at which L and R are refreshed, and its
-performance degrades as f grows.
+(λ_i μ_j / Trace(L))^{-1/2}. The L^{-1/2}, R^{-1/2} require an eigendecomposition / inverse-root of L
+and R, computed every f steps in practice. Shampoo is used in optimization-efficiency benchmarks and
+large training runs.
 
 **K-FAC and E-KFAC (Martens & Grosse 2015; George et al. 2018).** A separate second-order family that
 preconditions with a Kronecker-factored Fisher. E-KFAC maintains a *diagonal* preconditioner expressed
@@ -54,28 +45,19 @@ factor.
 *current* gradient to save memory: the subspace comes from the instantaneous gradient SVD, momentum is
 kept in the projected space, and it projects only one side.
 
-The standing tension among these: the diagonal methods (Adam, Adafactor, Lion, Sophia) are cheap but
-do not surpass AdamW for LLM pretraining (Kaddour et al. 2023; Zhao et al. 2024), pointing to non-diagonal
-preconditioning as the lever; but the non-diagonal method (Shampoo) pays for its eigen-refresh and
-loses adaptivity when that refresh is infrequent.
-
 ## Baselines
 
 **AdamW (Loshchilov & Hutter 2019).** Mₜ = β₁Mₜ₋₁ + (1−β₁)Gₜ; Vₜ = β₂Vₜ₋₁ + (1−β₂)Gₜ²; bias-correct;
-W ← (1−ηλ)W − η Mₜ̂/(√Vₜ̂ + ε). The robust diagonal default. Gap: per-coordinate preconditioning only;
-no cross-coordinate curvature, so more steps to a given loss on large-model pretraining.
+W ← (1−ηλ)W − η Mₜ̂/(√Vₜ̂ + ε). The robust diagonal default.
 
 **Shampoo, power-1/2 variant (Gupta et al. 2018; Anil et al. 2020).** Lₜ = ΣGGᵀ, Rₜ = ΣGᵀG;
 W ← W − η Trace(Lₜ)^{1/2} Lₜ^{-1/2} Gₜ Rₜ^{-1/2}, equivalently scaling eigen-coordinate (i,j) by
-(λ_i μ_j / Trace(Lₜ))^{-1/2}. Non-diagonal Kronecker preconditioning; strong convergence. Gap: needs an
-eigendecomposition / inverse-root of L and R, computed only every f steps; its adaptivity is tied to
-that cadence and degrades as f grows; extra hyperparameters (exponent, grafting).
+(λ_i μ_j / Trace(Lₜ))^{-1/2}. Non-diagonal Kronecker preconditioning.
 
 **Adafactor (Shazeer & Stern 2018).** W ← W − η Mₜ/√V'ₜ with V'ₜ the rank-1 factorization of the
-second moment. Memory-light diagonal method. Gap: still diagonal — no cross-coordinate structure.
+second moment. Memory-light diagonal method.
 
-**E-KFAC (George et al. 2018).** Diagonal preconditioner expressed in K-FAC's eigenbasis. Gap: built for
-the Fisher, not for the Shampoo (GGᵀ/GᵀG) factors.
+**E-KFAC (George et al. 2018).** Diagonal preconditioner expressed in K-FAC's eigenbasis.
 
 ## Evaluation settings
 

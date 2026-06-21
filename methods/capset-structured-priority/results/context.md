@@ -1,4 +1,4 @@
-# Context: the cap-set problem and the greedy-construction baseline
+# Context: the cap-set problem and greedy construction
 
 ## Research question
 
@@ -18,7 +18,7 @@ Croot–Lev–Pach / Ellenberg–Gijswijt upper bound is `O(2.756^n)`):
 | max `|cap|` | 2 | 4 | 9 | 20 | 45 | 112 | 236 | ≥ 512 |
 
 Values through `n = 6` are proven optima; `n = 7` is `236`; at `n = 8` the best known lower
-bound `512` is the cap FunSearch discovered (Nature 2024), improving the prior best `496`.
+bound is `512`.
 
 ## How the score is defined
 
@@ -30,17 +30,20 @@ cap, checked by the standard incremental procedure: index each vector as `idx(v)
 ever already blocked when replayed in order (and there are no duplicates). This is `O(c^2 n)`;
 small instances are also cross-checked by an independent `O(c^3)` triple scan.
 
-## Where this method sits
+## Greedy construction
 
-This method, **structured symmetric priority-function greedy**, replaces the random order with a
-deterministic *priority*: score every vector by a hand-designed function rewarding the symmetry of
-`F_3^n` — a bonus per matched reflection pair `el[i] == el[n−1−i]`, a preference for a coherent
-weight-mod-3 layer, and a sum tie-break — then greedily add the highest-priority valid vector
-(blocking the completing point of every line it forms). The greedy-priority *skeleton* is the
-correct machinery (it is exactly the skeleton the strong constructions use), but a *hand-designed*
-priority is a guess: it beats the lexicographic floor yet lands in the same band as — often below —
-best-of-thousands random restarts, which is the lesson that motivates handing the priority to
-search.
+The standard constructive approach is *greedy admission*: maintain a running set, and repeatedly
+add a vector that keeps the set a valid cap, blocking the completing point `r = (−p − q) mod 3` of
+every line `{p, q, r}` the new point forms with an earlier point `q`. The order in which candidate
+vectors are considered determines the result. Two simple orderings are practiced:
+
+- **Lexicographic**: walk the vectors of `{0,1,2}^n` in index order and add each one that is still
+  admissible. Deterministic, a single fixed pass.
+- **Random multi-start**: shuffle the vectors and greedily admit in that random order, repeating
+  over many independent shuffles and keeping the largest cap found.
+
+Both plug into the same greedy skeleton; they differ only in how they choose which valid vector to
+admit next.
 
 ## Code framework
 

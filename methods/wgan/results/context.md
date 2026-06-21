@@ -10,8 +10,7 @@ low-dimensional set. Two such sets, in general position, intersect on a set of m
 zero — so the model density and the true density effectively do not overlap, and the KL
 (and the likelihood) is undefined or infinite. The usual patch is to convolve the model
 with Gaussian noise so a density exists everywhere; the required noise is large enough
-(σ ≈ 0.1 per pixel on `[0,1]` images) to visibly blur the samples, and practitioners
-quietly drop it when displaying results — a sign the patch is wrong for the problem.
+(σ ≈ 0.1 per pixel on `[0,1]` images) to visibly blur the samples.
 
 The implicit-sample approach — fix a prior `z ~ p(z)`, push it through `g_theta` to get
 `P_theta`, vary `theta` to bring `P_theta` close to `P_r` — sidesteps densities entirely
@@ -19,9 +18,7 @@ and can represent manifold-supported distributions. The open question is how to 
 "close": which distance `rho(P_theta, P_r)` should be the training loss? The choice is not
 cosmetic. A distance defines which sequences of distributions converge, and the
 training loss `theta -> rho(P_theta, P_r)` can only be descended by gradient methods if it is
-continuous in `theta` — yet, as the diagnostics below record, the distances in current use go
-flat or infinite exactly in the non-overlapping-support regime that the manifold geometry forces.
-The problem is to find a training loss that survives that regime.
+continuous in `theta`.
 
 # Background
 
@@ -60,24 +57,17 @@ provable and have been observed:
 2. In that regime `JS(P_r,P_g) = log 2` is constant, `KL` is `+∞` both ways, and total
    variation is `1`, so the JS loss is flat and its gradient is zero.
 3. As the trained `D` approaches `D*` (`||D−D*|| < ε`), the generator gradient
-   `||∇_theta E_z[log(1−D(g_theta(z)))]||` is bounded by `M·ε/(1−ε) -> 0` — it vanishes.
-   This forces a delicate balance: a discriminator that is too good gives no signal, one
-   that is too weak gives an inaccurate one.
+   `||∇_theta E_z[log(1−D(g_theta(z)))]||` is bounded by `M·ε/(1−ε) -> 0`.
 
 The common workaround is the `−log D` generator step, `∇_theta E_z[−log D(g_theta(z))]`.
 Its inner-optimal form equals `∇_theta[ KL(P_g||P_r) − 2 JS(P_g||P_r) ]`: the JS term
-carries the wrong sign (pushing the distributions apart), and the KL is the *reverse* KL,
-which charges almost nothing for dropping modes and a huge amount for atypical samples —
-matching the observed mode-dropping of GANs. Worse, because `D*` is a singular density ratio
-that fails to exist under disjoint supports, the gradient acquires exploding variance as `D`
-sharpens, and the updates become unstable; empirically the generator gradient norms grow as
-the discriminator is trained, and momentum-based optimizers were seen to make this worse.
+carries the wrong sign, and the KL is the *reverse* KL, which charges almost nothing for
+dropping modes and a large amount for atypical samples.
 
 **Why "use another f-divergence" does not help.** GAN objectives can be generalized to any
 f-divergence (Nowozin et al. 2016, f-GAN), but every f-divergence is a functional of the
 density ratio `dP_r/dP_g`, which is ill-defined or saturated precisely when the supports do
-not overlap. Switching f-divergences does not change the topology and does not escape the
-flat-loss / vanishing-gradient regime.
+not overlap.
 
 **Integral Probability Metrics.** A different family (Müller 1997):
 `d_F(P,Q) = sup_{f∈F} E_P[f] − E_Q[f]`. Different function classes `F` give radically
@@ -94,23 +84,17 @@ class `F` thus yield IPMs that recover quite different distances and topologies.
 **GAN (Goodfellow et al. 2014).** Minimax game `min_G max_D
 E_{x~P_r}[log D(x)] + E_z[log(1 − D(g(z)))]`. At the inner optimum `D*=P_r/(P_r+P_g)`, the
 generator minimizes `2·JS − 2 log 2`. The `−log D` variant is used in practice to avoid
-early saturation. Gap: the JS objective is flat with zero/vanishing gradient on
-non-overlapping supports, requires careful D/G capacity balancing, gives no loss curve that
-tracks sample quality, and exhibits mode collapse.
+early saturation.
 
 **f-GAN (Nowozin et al. 2016).** Generalizes GAN to minimize any f-divergence via a
-variational bound `sup_T E_{P_r}[T] − E_{P_g}[f*(T)]`. Gap: still a density-ratio quantity,
-so it inherits the same disjoint-support pathology as JS.
+variational bound `sup_T E_{P_r}[T] − E_{P_g}[f*(T)]`.
 
 **MMD / Generative Moment Matching Networks (Gretton et al. 2012; Li et al. 2015).** IPM
 with `F` the unit ball of an RKHS; closed-form via the kernel trick, no auxiliary net to
-train. Gap: `O(samples^2)` cost, needs large batches to be reliable in high dimensions, and
-low-bandwidth kernels saturate similarly to TV — limited scalability for `64x64` images.
+train.
 
 **Energy-based GAN (Zhao et al. 2016).** Discriminator is a non-negative energy; generator
-pushes its energy down. At the optimal energy its signal is tied to total variation, the
-same strong topology obtained by bounded-score IPMs. Gap: TV has the same strong topology
-as JS, so EBGAN cannot be trained to discriminator optimality without the same saturation.
+pushes its energy down. At the optimal energy its signal is tied to total variation.
 
 **DCGAN (Radford et al. 2015).** Not a new objective but the standard architecture: a
 transpose-convolution generator and strided-convolution discriminator with batch

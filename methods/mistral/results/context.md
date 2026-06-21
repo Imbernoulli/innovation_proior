@@ -2,9 +2,7 @@
 
 ## Research question
 
-A decoder-only language model around the 7B scale can be attractive only if it is also cheap to serve. Autoregressive serving spends cost in two coupled places: every new token streams cached keys and values from prior tokens, and attention over a long history grows with sequence length. The research question is how to keep the quality benefits of a modern Transformer decoder while making decode-time memory traffic, cache size, and long-prompt attention cost small enough for high-throughput deployment.
-
-The design has to preserve useful long-range dependence. A naive efficiency change that simply discards old context may make inference cheaper but fails the language-modeling problem. The interesting target is a compact decoder that keeps a route for old information to affect later predictions while bounding the most expensive inference state.
+A decoder-only language model around the 7B scale is attractive only if it is also cheap to serve. Autoregressive serving spends cost in two coupled places: every new token streams cached keys and values from prior tokens, and attention over a long history grows with sequence length. The research question is how to keep the quality benefits of a modern Transformer decoder while managing decode-time memory traffic, cache size, and long-prompt attention cost for high-throughput deployment.
 
 ## Background
 
@@ -14,25 +12,23 @@ The design has to preserve useful long-range dependence. A naive efficiency chan
 
 **KV cache bottleneck.** During incremental decoding, the current query is transient, but keys and values from prior tokens persist. Per layer and per sequence, a dense multi-head cache stores one key and one value vector per attention head per cached position. This makes memory traffic scale with both the number of stored key/value heads and the number of cached positions.
 
-**Sparse/local attention lineage.** Prior sparse-attention systems restrict the set of visible keys per query to reduce the full $n \times n$ attention matrix. A fixed local band gives linear work in sequence length for fixed band width, but each layer directly sees only nearby states. Whether depth can compensate for that local restriction is the central architectural question.
+**Sparse/local attention lineage.** Prior sparse-attention systems restrict the set of visible keys per query to reduce the full $n \times n$ attention matrix. A fixed local band gives linear work in sequence length for fixed band width, with each layer directly seeing only nearby states.
 
 **Efficient kernels.** Memory-efficient attention kernels can apply causal and local masks without materializing the full score matrix. Such kernels make a sparse attention pattern an actual implementation strategy rather than just an asymptotic argument.
 
 ## Baselines
 
-**Dense causal multi-head attention.** This baseline keeps separate query, key, and value projections for each head and attends to the full causal history. It gives direct access to all previous positions but cache memory and decode bandwidth grow with sequence length and with the number of heads.
+**Dense causal multi-head attention.** This baseline keeps separate query, key, and value projections for each head and attends to the full causal history. It gives direct access to all previous positions, with cache memory and decode bandwidth growing with sequence length and with the number of heads.
 
-**Shared-key/value-head attention.** Existing variants keep multiple query heads while sharing fewer key/value heads. The extreme form shares a single key/value head across query heads; intermediate forms use more than one shared key/value head but fewer than the query-head count. These variants reduce per-position cache width, but by themselves they do not bound cache length.
+**Shared-key/value-head attention.** Existing variants keep multiple query heads while sharing fewer key/value heads. The extreme form shares a single key/value head across query heads; intermediate forms use more than one shared key/value head but fewer than the query-head count. These variants reduce per-position cache width.
 
-**Fixed local attention.** A local mask gives each query access only to a recent band of keys. It reduces attention cost for long sequences, but one layer alone no longer has direct access to arbitrary old tokens.
+**Fixed local attention.** A local mask gives each query access only to a recent band of keys, reducing attention cost for long sequences.
 
-**Prompt prefill with a growing cache.** Prompt tokens are known in advance and can be processed in parallel, unlike later generation. For very long prompts, a dense prefill still forms large attention blocks and leaves a cache whose length grows with the prompt.
+**Prompt prefill with a growing cache.** Prompt tokens are known in advance and can be processed in parallel, unlike later generation. For very long prompts, a dense prefill forms large attention blocks.
 
 ## Evaluation settings
 
 The natural quality yardsticks are held-out language modeling and standard open LLM evaluations: commonsense reasoning, world knowledge, reading comprehension, mathematics, code generation, and aggregate multitask benchmarks. The efficiency yardsticks are decode latency, throughput at batch, cache memory per sequence, cache bandwidth per generated token, and prefill cost for long prompts.
-
-The comparison should separate quality from serving cost. A useful method should maintain competitive task performance while reducing the per-token KV cache width, bounding the number of cached positions used by attention, and allowing long prompts to be ingested without forming dense long-context attention.
 
 ## Code framework
 

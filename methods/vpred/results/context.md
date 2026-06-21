@@ -9,21 +9,9 @@ optimized by a squared-error loss, then a sampler runs the trained denoiser back
 noise to an image. A free design choice sits at the center of this: **what quantity should the
 network's output represent?** The network could be read as predicting the clean image, the
 added noise, or something else, and a fixed conversion turns its output into the clean-image
-estimate `x_hat` that the sampler actually consumes at every step.
-
-The choice looks cosmetic — the noise, the clean image, and the latent are linearly related, so
-in principle any one can be converted into the others, and at infinite precision with infinite
-sampling steps they are interchangeable. But they are not interchangeable under a finite
-training budget and a finite number of sampling steps. Different choices place the network's
-limited capacity and its gradient signal at different noise levels, and — critically — the
-linear conversion from the network's output to `x_hat` can divide by a schedule coefficient
-that goes to zero at one end of the noise range, so a small output error can be amplified
-without bound exactly where the sampler is most exposed. The precise goal is to pick the
-predicted quantity (and the matching loss and the matching inverse conversion the sampler uses)
-so that the implied clean-image estimate `x_hat` stays well-behaved across the *entire* range of
-signal-to-noise ratios, especially the low-SNR end and the few-step sampling regime, where the
-standard choice is most exposed. Getting this right under a fixed backbone, schedule,
-optimizer and sampler is the problem.
+estimate `x_hat` that the sampler actually consumes at every step. The question is how to choose
+the predicted quantity, the training loss, and the corresponding inverse conversion used at
+sampling time.
 
 ## Background
 
@@ -53,27 +41,15 @@ understood.
 - **The deterministic ODE view.** Song et al. (2021) show the trained denoiser defines a
   probability-flow ODE whose solution maps noise to data deterministically; numerically
   integrating it generates samples, and the integration error vanishes as the step count grows.
-  In this view the denoiser must define a *smooth* vector field across noise levels: a
-  parameterization whose implied `x_hat` swings wildly as the noise level changes makes the ODE
-  stiff and hard to integrate in few steps.
+  In this view the denoiser must define a *smooth* vector field across noise levels.
 - **The few-step pressure.** Drawing a sample requires running the denoiser many times in
   sequence, which is the dominant cost. There is heavy pressure to cut the number of sampling
-  steps to a few dozen or fewer. With many steps, an inaccurate `x_hat` at one step is masked —
-  the latent is clipped back to a valid range and later steps correct the mistake — so the
-  standard parameterization survives. As the step count drops, there is no later step to fix an
-  early misstep, and at the extreme of a single step the input is pure noise (SNR exactly zero);
-  any pathology in how the network output maps to `x_hat` at low SNR is exposed directly in the
-  sample.
+  steps to a few dozen or fewer.
 - **Cosine noise schedules.** Nichol & Dhariwal (2021) replace the original linear beta schedule
   with a cosine cumulative schedule, using a small offset in their implementation to avoid the
   endpoint singularity. In a continuous variance-preserving harness the same idea can be written
   as the simpler `alpha_t = cos(0.5 * pi * t)`, `sigma_t = sin(0.5 * pi * t)`, so the path spans
-  pure signal at one end and pure noise at the other. Either way, the low-SNR regime is a
-  non-negligible part of the problem rather than a corner case that can be ignored.
-
-The prevailing recipe — predict the noise, weight the loss by the signal-to-noise ratio, sample
-with many steps — was tuned in the many-step regime and inherits a specific blind spot at the
-low-SNR / few-step end, described next.
+  pure signal at one end and pure noise at the other.
 
 ## Baselines
 
@@ -92,34 +68,16 @@ The training loss is mean-squared error in noise space, `|| eps - eps_hat_theta(
 which equals a clean-image reconstruction loss weighted by the signal-to-noise ratio:
 `|| eps - eps_hat ||^2 = (alpha_t^2 / sigma_t^2) * || x - x_hat ||^2`, i.e. `w(lambda_t) =
 exp(lambda_t)`. This is the dominant choice and produces excellent samples in the many-step
-regime. **Limitation:** the recovery of `x_hat` divides by `alpha_t`. As the noise level rises
-toward the low-SNR end, `alpha_t -> 0`, so a small error in the network output is multiplied by
-`1 / alpha_t -> infinity` when expressed as a clean-image error — the implied `x_hat` becomes
-increasingly sensitive to the output. At the very end of the range, `alpha_t = 0` and
-`sigma_t = 1`: the observed latent is pure noise, carrying no information about `x`, and the
-signal-to-noise weight `w(lambda_t) = exp(lambda_t)` collapses to zero, so noise space stops
-constraining the clean-image estimate at all. With many sampling steps this instability is
-absorbed by clipping and subsequent corrections; with few steps, and in the limit of a single
-step starting from pure noise, it is not absorbed and degrades the sample.
+regime.
 
 **Clean-image prediction.** The network output is read directly as the clean image
 `x_hat_theta(z_t)`, with the identity conversion (the output *is* `x_hat`). The loss is
-`|| x - x_hat_theta(z_t) ||^2`. **Limitation:** this is well-behaved at the low-SNR end (the
-target is the very quantity the sampler wants, with no division), but it is the mirror-image
-problem at the high-SNR end. There `alpha_t -> 1`, `sigma_t -> 0`, the latent already nearly
-equals `x`, so demanding the network reproduce `x` from `z_t ≈ x` is asking little and spends
-capacity poorly; and the implied noise estimate `eps_hat = (z_t - alpha_t * x_hat) / sigma_t`
-divides by `sigma_t -> 0`, so the *noise* side blows up where noise prediction was fine. Each of
-the two natural choices is well-conditioned at one end of the schedule and ill-conditioned at
-the other.
+`|| x - x_hat_theta(z_t) ||^2`. The implied noise estimate is recovered as
+`eps_hat = (z_t - alpha_t * x_hat) / sigma_t`.
 
 **Loss weightings already in use.** Beyond the predicted quantity, the loss weighting is its own
-lever. The standard signal-to-noise weighting `w(lambda_t) = exp(lambda_t)` puts essentially all
-weight at high SNR and zero weight at SNR zero, which is precisely the wrong emphasis for
-few-step sampling, where the low-SNR end matters most. The open question is how to choose the
-output target and the weighting together so the loss still trains the quantity the sampler needs at
-the exposed low-SNR endpoint, without giving up the high-SNR behavior that made noise prediction
-useful.
+lever. The standard signal-to-noise weighting `w(lambda_t) = exp(lambda_t)` concentrates weight
+at high SNR; uniform weighting (`w = 1`) treats all noise levels equally.
 
 ## Evaluation settings
 
@@ -135,8 +93,7 @@ varying only the predicted-quantity / loss choice.
   `t ~ U[0, 1]`; AdamW; an exponential moving average of the weights; a fixed number of
   optimization steps per setting; multi-device data-parallel training.
 - **Sampler:** deterministic DDIM (Song, Meng & Ermon 2021) with a fixed, small number of steps
-  (tens of steps), since the few-step regime is exactly where the parameterization choice is
-  expected to matter.
+  (tens of steps).
 - **Metric:** Fréchet Inception Distance against the training set (50,000 samples), lower is
   better; Inception Score as a secondary readout. The protocol holds backbone, dataset,
   optimizer, schedule, sampler and metric fixed, isolating the effect of the predicted-quantity

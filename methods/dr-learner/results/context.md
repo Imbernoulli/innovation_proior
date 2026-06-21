@@ -20,23 +20,16 @@ data as a difference of two regression functions,
 tau(x) = mu_1(x) - mu_0(x),    mu_a(x) = E(Y | X = x, A = a).
 ```
 
-The problem is hard for three reasons that interact. (1) **Confounding**: because `A` depends on
-`X`, naive treated-minus-control comparisons are biased, and any honest estimator must adjust for
-`X` either through the outcome models `mu_a` or through the propensity `pi`. (2) **Heterogeneity**:
-`tau(x)` can vary across the covariate space in complex, nonlinear ways, so we need a flexible,
-nonparametric estimate of the *whole function*, not a single scalar. (3) **Differential
-complexity**: the individual response surfaces `mu_a` are often complicated and hard to estimate,
-yet their *difference* `tau` can be far simpler — even constant or zero — and we want an estimator
-that can exploit that simplicity rather than inheriting the complexity of `mu_1` and `mu_0`.
+Three features characterize the setting. (1) **Confounding**: `A` depends on `X`, so an estimator
+adjusts for `X` either through the outcome models `mu_a` or through the propensity `pi`.
+(2) **Heterogeneity**: `tau(x)` can vary across the covariate space in complex, nonlinear ways, so
+the target is a flexible, nonparametric estimate of the *whole function*, not a single scalar.
+(3) **Differential complexity**: the individual response surfaces `mu_a` can be complicated, yet
+their *difference* `tau` can be far simpler — even constant or zero.
 
-What a good solution must achieve, beyond accuracy: it should be **flexible** (usable with any
-modern machine-learning regressor for the various sub-models), **robust to confounding**, and
-ideally enjoy a guarantee that it stays accurate even when the components used to fight confounding
-are themselves estimated only crudely — in particular, a guarantee that the final CATE error does
-not simply equal the (potentially slow) error of estimating `mu_a` or `pi`. The flagship pain point
-is the gap between what we can estimate well (a scalar summary of the effect) and what we want (the
-full heterogeneous function), under nuisances that machine learning estimates at slower-than-`sqrt(n)`
-rates.
+We want a CATE estimator that is **flexible** (usable with any modern machine-learning regressor for
+the various sub-models) and **robust to confounding**, in a regime where the nuisance functions are
+estimated by machine learning at slower-than-`sqrt(n)` rates.
 
 ## Background
 
@@ -46,18 +39,12 @@ functions of `X`: the propensity `pi(x) = P(A=1|X=x)`, the two arm-specific outc
 `eta(x) = E(Y|X=x) = pi(x) mu_1(x) + (1-pi(x)) mu_0(x)`. The CATE is the contrast
 `mu_1 - mu_0`; the average treatment effect (ATE) is its mean, `E{tau(X)}`.
 
-**A diagnostic phenomenon that drives everything.** Consider a one-dimensional design where the
-treatment is strongly confounded — say `pi(x) = 0.5 + 0.4 sign(x)`, so the left half of the
-covariate space is mostly untreated and the right half mostly treated — while the two response
-surfaces are *equal*, `mu_1 = mu_0`, and are an awkward, non-smooth piecewise-polynomial function.
-The true CATE is then exactly the constant zero, the simplest possible function. But estimate each
-surface separately: where treated units are scarce (the left), `mu_1` is fit from little data and
-oversmooths; where controls are scarce (the right), `mu_0` undersmooths. Their difference is
-therefore a complicated, spurious bump — large error for a target that is identically zero. This is
-not a quirk of one dataset; it is the generic consequence of estimating two hard surfaces under
-confounding and subtracting them, and it is the empirical fact any method here must answer to: the
-difficulty of `tau` can be *much* lower than the difficulty of the `mu_a`, and an estimator built
-by differencing the `mu_a` cannot see that.
+**A reference design.** Consider a one-dimensional setup where the treatment is strongly confounded
+— say `pi(x) = 0.5 + 0.4 sign(x)`, so the left half of the covariate space is mostly untreated and
+the right half mostly treated — while the two response surfaces are *equal*, `mu_1 = mu_0`, and are
+an awkward, non-smooth piecewise-polynomial function. The true CATE is then exactly the constant
+zero, the simplest possible function, while the individual surfaces are difficult to estimate.
+The difficulty of `tau` can be *much* lower than the difficulty of the `mu_a`.
 
 **Semiparametric efficiency theory for the average.** For the *scalar* ATE there is a mature,
 load-bearing theory. The functional `psi(P) = E{E(Y|X,A=1)}` (and the analogous control mean) is
@@ -77,26 +64,25 @@ phi(Z; P) = 1(A=1)/pi(X) {Y - mu_1(X)} + mu_1(X) - psi,
 R_2(Pbar, P) = ∫ {1/pibar(x) - 1/pi(x)} {mu_1(x) - mubar_1(x)} pi(x) dP(x).
 ```
 
-The remainder being a *product* of the propensity error and the outcome error is the crucial
-structural fact: each individual error can be large (slow nonparametric rate) yet the product can
-be small. This is the source of the robustness property people want — and it is stated, in the
+The remainder is a *product* of the propensity error and the outcome error: each individual error
+can be large (slow nonparametric rate) yet the product can be small. This is stated, in the
 classical theory, for the *scalar* functional.
 
-**Regularization bias and why plug-in machine learning fails.** Chernozhukov, Chetverikov, Demirer,
-Duflo, Hansen, Newey & Robins (2018) made the practical mechanism precise. If you estimate a
-nuisance `g_0` with a regularized machine learner (lasso, forests, boosting, nets — all of which
-trade variance for bias) and plug it into an estimating equation for the target, the scaled error
-picks up a term like `(1/sqrt(n)) sum_i m_0(X_i){g_0(X_i) - ghat_0(X_i)}` whose summands do *not*
-have mean zero; with a nuisance rate `n^{-phi_g}` and `phi_g < 1/2`, this term is of order
-`sqrt(n) n^{-phi_g} -> infinity`, so the naive plug-in is not even `sqrt(n)`-consistent. Two
-ingredients fix it. **Orthogonalization**: reformulate the estimating equation so it is *Neyman
-orthogonal* — first-order insensitive to nuisance perturbations — which makes the leading bias the
-*product* `(mhat_0 - m_0)(ghat_0 - g_0)`, of order `sqrt(n) n^{-(phi_m + phi_g)}`, which can vanish
-even when each nuisance converges slowly. **Cross-fitting**: estimate the nuisances on one part of
-the data and evaluate the target on an independent part, then swap and average; this kills the
-empirical-process / own-observation coupling that would otherwise reintroduce a non-vanishing
-remainder, with no Donsker-class restriction on the (highly complex) ML estimators. All of this,
-again, is developed for `sqrt(n)`-estimable *scalar* parameters.
+**Regularization bias and plug-in machine learning.** Chernozhukov, Chetverikov, Demirer, Duflo,
+Hansen, Newey & Robins (2018) made the practical mechanism precise. If a nuisance `g_0` is estimated
+with a regularized machine learner (lasso, forests, boosting, nets — all of which trade variance for
+bias) and plugged into an estimating equation for the target, the scaled error picks up a term like
+`(1/sqrt(n)) sum_i m_0(X_i){g_0(X_i) - ghat_0(X_i)}` whose summands do *not* have mean zero; with a
+nuisance rate `n^{-phi_g}` and `phi_g < 1/2`, this term is of order `sqrt(n) n^{-phi_g} -> infinity`,
+so the naive plug-in is not `sqrt(n)`-consistent. Two ingredients address this.
+**Orthogonalization**: reformulate the estimating equation so it is *Neyman orthogonal* — first-order
+insensitive to nuisance perturbations — which makes the leading bias the *product*
+`(mhat_0 - m_0)(ghat_0 - g_0)`, of order `sqrt(n) n^{-(phi_m + phi_g)}`, which can vanish even when
+each nuisance converges slowly. **Cross-fitting**: estimate the nuisances on one part of the data and
+evaluate the target on an independent part, then swap and average; this removes the empirical-process
+/ own-observation coupling that would otherwise reintroduce a non-vanishing remainder, with no
+Donsker-class restriction on the (highly complex) ML estimators. All of this is developed for
+`sqrt(n)`-estimable *scalar* parameters.
 
 **Residualization / partialling out.** A second classical idea targets the effect directly rather
 than through the outcome levels. If we write `m(x) = E(Y|X=x)` for the marginal outcome regression,
@@ -114,46 +100,34 @@ governed by `tau`. It is the basis of the partially-linear-model machinery and o
 (Hölder class `H(s)`) on `R^d`, a minimax-optimal regression estimates it at the pointwise rate
 `n^{-1/(2 + d/s)}`; if it is `s`-sparse, at roughly `sqrt(s log d / n)`. An *oracle* who could
 observe the true individual treatment contrast `Y^1 - Y^0` and regress it on `X` would attain the
-rate set by the smoothness/sparsity of `tau` *alone*. That oracle rate is the benchmark a good CATE
-estimator should aspire to match — converging at the complexity of `tau`, not of the harder `mu_a`.
+rate set by the smoothness/sparsity of `tau` *alone* — the complexity of `tau`, not of the `mu_a`.
+That oracle rate is the natural benchmark for a CATE estimator.
 
 ## Baselines
 
-These are the prior CATE estimators a new method is measured against, with the gap each leaves open.
+These are the prior CATE estimators a new method is measured against.
 
 **S-learner (single model).** Fit one regression `mu(x, a)` of `Y` on `(X, A)` jointly, then set
-`tau_hat(x) = mu_hat(x, 1) - mu_hat(x, 0)`. Simple and data-efficient, but the learner is free to
-treat `A` as just another weak feature; regularization shrinks the fitted `A`-dependence, biasing
-`tau` toward zero and often washing out genuine heterogeneity. **Gap:** the treatment can be
-under-weighted by the very regularization that makes the model work, and there is no mechanism that
-ties the estimator's error to the (possibly low) complexity of `tau` rather than that of `mu`.
+`tau_hat(x) = mu_hat(x, 1) - mu_hat(x, 0)`. Simple and data-efficient; the learner treats `A` as one
+feature among many, and regularization acts on the fitted `A`-dependence.
 
 **T-learner (two models / plug-in).** Fit `mu_1` on the treated and `mu_0` on the controls
 separately, and difference them: `tau_hat = mu_1_hat - mu_0_hat` (Künzel, Sekhon, Bickel & Yu 2019
-name this the T-learner). This is the natural plug-in for `tau = mu_1 - mu_0`. **Gap:** it is
-exactly the differencing estimator the diagnostic phenomenon above indicts. Each arm is fit only on
-its own (possibly scarce, confounding-skewed) sub-sample, the two fits oversmooth/undersmooth in
-opposite regions, and the difference inherits the *larger* of the two surface errors. When `tau` is
-much simpler than `mu_0, mu_1`, the plug-in cannot exploit that simplicity — its error is the
-nuisance error, with no second-order cancellation.
+name this the T-learner). This is the natural plug-in for `tau = mu_1 - mu_0`: each arm is fit on its
+own sub-sample, and the two fitted surfaces are subtracted.
 
 **Inverse-probability weighting (IPW) of a transformed outcome.** With a known or estimated
 propensity, the weighted transform `(A - pi(X)) Y / {pi(X)(1 - pi(X))}` has conditional mean
-exactly `tau(x)` (Athey & Imbens-style weighting; Tian et al.). So one can regress this transformed
-outcome on `X` and, up to constants, behave like an oracle with access to the counterfactual
-contrast — adapting to the smoothness of `tau`. **Gap:** it is *singly* robust (consistent only if
-`pi` is correct) and, more painfully, high-variance: dividing by `pi(1 - pi)` explodes wherever the
-propensity approaches 0 or 1, which is precisely where overlap is weakest and the data are most
-informative. It throws away the outcome models entirely, so it pays full variance for the weighting.
+exactly `tau(x)` (Athey & Imbens-style weighting; Tian et al.). One regresses this transformed
+outcome on `X`, behaving up to constants like an oracle with access to the counterfactual contrast
+and adapting to the smoothness of `tau`. It is consistent when `pi` is correct, and uses the
+propensity alone, weighting `Y` by `1/{pi(1 - pi)}`.
 
 **X-learner.** Künzel et al. (2019) impute pseudo-effects: on the treated units form
 `D_i = Y_i - mu_0_hat(X_i)` and regress to get `tau_1_hat`; symmetrically on the controls form
 `mu_1_hat(X_i) - Y_i` to get `tau_0_hat`; then blend with the propensity,
-`tau_hat(x) = {1 - pi_hat(x)} tau_1_hat(x) + pi_hat(x) tau_0_hat(x)`. This is more efficient than
-the T-learner when one arm is much larger, and it does smooth the effect rather than the levels.
-**Gap:** it is not doubly robust — the imputation `Y - mu_0_hat` carries the full first-order error
-of `mu_0_hat`, so the estimator inherits a first-order (not product) dependence on nuisance error,
-and there is no guarantee the CATE error decouples from the nuisance rate.
+`tau_hat(x) = {1 - pi_hat(x)} tau_1_hat(x) + pi_hat(x) tau_0_hat(x)`. It is more efficient than the
+T-learner when one arm is much larger, and it smooths the effect rather than the levels.
 
 **R-learner / double-residual regression.** Building on the Robinson decomposition, Nie & Wager
 (2021) form an objective from estimated residuals (the "R-loss"),
@@ -164,12 +138,8 @@ tau_hat = argmin_tau  (1/n) sum_i [ {Y_i - m_hat(X_i)} - {A_i - pi_hat(X_i)} tau
 
 minimized over any flexible function class, with the nuisances `m, pi` cross-fit. The construction
 is Neyman-orthogonal, so the leading nuisance dependence is second-order, and it adapts to the
-complexity of `tau`. **Gap:** the orthogonality here is of the loss, and the published oracle
-guarantees require both nuisances to be estimated at `n^{-1/4}` or faster — the same demanding,
-ATE-like rate condition — leaving open whether a CATE estimator can be oracle-efficient under
-*weaker* conditions when `tau` is smoother than the nuisances, and whether a doubly-robust (rather
-than merely orthogonal) error bound is available so that different nuisances may converge at
-different rates.
+complexity of `tau`. The published oracle guarantees require both nuisances to be estimated at
+`n^{-1/4}` or faster.
 
 ## Evaluation settings
 
@@ -180,8 +150,7 @@ the truth cannot be measured directly.
 - **A low-dimensional, strongly-confounded smooth-CATE design.** Covariates `X` uniform on
   `[-1, 1]`; propensity a sharp step in `sign(x)` (heavy confounding); response surfaces an awkward
   non-smooth piecewise polynomial that is *equal* across arms, so the true CATE is constant (zero).
-  This is the design that exposes plug-in differencing. Nuisances and second-stage fits via
-  smoothing splines.
+  Nuisances and second-stage fits via smoothing splines.
 - **A high-dimensional sparse design.** `X ~ N(0, I_d)` with `d` large (e.g. 500); a logistic
   propensity and logistic outcome surfaces depending on a sparse subset of `alpha` and `beta`
   coordinates respectively, normalized so propensities stay in a moderate overlap range; CATE again

@@ -4,33 +4,28 @@
 
 Unconditional generation of high-resolution photographic images with a generative
 adversarial network has reached the point where the best generators produce convincing
-faces and objects at 1024×1024. Yet the leading style-based generator exhibits two
-families of **characteristic, recognizable artifacts** that betray its outputs and cap
-their quality:
+faces and objects at 1024×1024. The leading style-based generator, while achieving
+state-of-the-art image quality, exhibits two families of **characteristic, recognizable
+artifacts** visible in its outputs:
 
 - **Blob / "water-droplet" artifacts.** A consistent blob-shaped anomaly appears in the
-  generated images and, more tellingly, in essentially *all* of the generator's
-  intermediate feature maps. It starts to appear around 64×64 resolution and grows
-  stronger at higher resolutions. It is so consistent that its presence is itself a clue:
-  the discriminator ought to be able to penalize such a stereotyped feature, yet it
-  persists. In a small fraction of images (~0.1%) the blob is absent and the image is then
-  severely corrupted — suggesting the network *depends* on the blob.
+  generated images and in essentially *all* of the generator's intermediate feature maps.
+  It starts to appear around 64×64 resolution and grows stronger at higher resolutions.
+  In a small fraction of images (~0.1%) the blob is absent and the image is then severely
+  corrupted — suggesting the network depends on the blob.
 - **Location-locked / "phase" artifacts.** Details such as teeth or eyes that should glide
   smoothly across the frame as the latent moves instead tend to stay pinned to preferred
   pixel positions and then jump to the next preferred position.
 
-Two further questions sit underneath these:
+Two further questions arise from this:
 
-1. The standard distribution-quality metrics have a blind spot. Generators with *identical*
-   density/coverage scores can differ markedly in perceived quality, so a better proxy for
-   "image quality" — and ideally a way to *optimize* for it — is needed.
+1. The standard distribution-quality metrics may not fully capture perceived image quality.
+   Generators with *identical* density/coverage scores can differ markedly in perceived
+   quality.
 2. Inverting the generator (finding the latent code that reproduces a given image) is
-   valuable for editing and for attribution, but is unreliable in practice. A solution
-   that makes the latent→image mapping better behaved would help here too.
+   valuable for editing and for attribution.
 
-A successful answer must remove the artifacts **without** sacrificing the style-based
-generator's signature capability — controlling images by feeding different styles to
-different layers (style mixing) — and should do so without slowing training appreciably.
+How can the style-based generator's image quality and controllability be improved?
 
 ## Background
 
@@ -55,15 +50,8 @@ removes the per-map mean and standard deviation and then re-applies a learned, s
 scale and bias:
 `AdaIN(x_i, s) = s_{scale,i} · (x_i − μ(x_i)) / σ(x_i) + s_{bias,i}`,
 with μ, σ computed *per feature map, per sample*. The normalization makes the style scale
-the dominant control over each map's contribution and is what enables style mixing — but it
-normalizes each map *separately*, discarding the magnitudes of features *relative to each
-other*.
-
-**A diagnostic observation about AdaIN.** AdaIN computes its normalization statistics (mean
-and standard deviation) from the *actual contents* of each feature map, per sample. An
-empirical probe: removing the normalization step is observed to make the blob vanish entirely
-— but at the cost of losing controllability (style mixing). So the blob is somehow tied to the
-data-dependent normalization, though the images degrade without it.
+the dominant control over each map's contribution and is what enables style mixing — it
+normalizes each map *separately*, using data-dependent statistics.
 
 **Initializer-style variance analysis.** A long line of work analyzes signal variance
 through a network analytically rather than empirically. Glorot & Bengio (2010) and He et al.
@@ -77,10 +65,7 @@ weights. It has been reported beneficial in GAN training (Xiang & Li 2017).
 **Progressive growing.** To stabilize high-resolution training, the field grows both
 networks resolution by resolution: train at 4×4, then fade in 8×8, then 16×16, and so on
 (Karras et al. 2017). This gives a coarse-to-fine training schedule and is highly effective
-for stability. A diagnostic concern: because each resolution momentarily *is* the output
-resolution during fade-in, it is pushed to emit maximal-frequency detail, which can leave
-the intermediate layers with excessively high frequencies and compromise shift invariance
-(Zhang 2019) — consistent with the observed location-locked details.
+for stability.
 
 **Architectures for multi-scale generation.** Skip connections (Ronneberger et al. 2015;
 Karnewar & Wang 2019), residual networks (He et al. 2015b; Gulrajani et al. 2017; Miyato et
@@ -93,22 +78,20 @@ and D with multiple skip connections, the generator emitting a multi-resolution 
 of the generator's input→output Jacobian is causally related to GAN performance, and propose
 a Jacobian clamping regularizer that pushes Jacobian-vector-product magnitudes toward a
 target using finite differences. Spectral normalization (Miyato et al. 2018; applied to
-generators by Zhang et al. 2018) constrains only the *largest* singular value of a layer's
-weights, leaving the rest — and hence overall conditioning — unconstrained.
+generators by Zhang et al. 2018) constrains the *largest* singular value of a layer's
+weights.
 
 **Perceptual path length (PPL).** Introduced to quantify the smoothness of the latent→image
 map, PPL measures the average LPIPS perceptual distance (Zhang et al. 2018) between images
-produced under small steps in latent space. A diagnostic observation: generators with the
-same FID and precision/recall but lower PPL tend to look better to humans, so a smoother
-mapping (lower PPL) appears to correlate with perceived quality.
+produced under small steps in latent space. Generators with the same FID and precision/recall
+but lower PPL tend to look better to humans, so a smoother mapping (lower PPL) appears to
+correlate with perceived quality.
 
-**Why the standard metrics miss this.** FID (Heusel et al. 2017) and precision/recall
+**FID and precision/recall.** FID (Heusel et al. 2017) and precision/recall
 (Sajjadi et al. 2018; Kynkäänniemi et al. 2019) are computed in the feature space of
 ImageNet-trained classifiers (InceptionV3, VGG-16; Simonyan & Zisserman 2014). Such
 classifiers have been shown to base decisions on texture more than shape (Geirhos et al.
-2018), whereas humans weight shape heavily (Landau et al. 1988). So the metrics can rate two
-generators equal while a human sees a clear difference — motivating a complementary,
-shape/consistency-sensitive signal.
+2018), whereas humans weight shape heavily (Landau et al. 1988).
 
 ## Baselines
 
@@ -116,40 +99,26 @@ shape/consistency-sensitive signal.
 mapping net f, per-layer affine styles, synthesis net g with AdaIN modulation, per-pixel
 noise, learned constant input, trained with progressive growing. Core algorithm of a style
 block: normalize each feature map (subtract mean, divide by std), then modulate by the
-style's scale and bias. *Gap it leaves:* the per-map normalization is
-data-dependent (its statistics come from the actual map contents) and discards relative
-feature magnitudes between maps, and it coincides with the blob (which vanishes when the
-normalization is removed); separately, the bias/noise applied *inside* the style block have an
-impact inversely proportional to the current style magnitude, making their effect unpredictable.
+style's scale and bias.
 
 **Progressive growing of GANs** (Karras et al. 2017). Trains at increasing resolutions,
-fading each new resolution in. *Gap:* strong location preference for details and broken
-shift invariance, because each resolution is transiently the output resolution and is forced
-to produce maximal-frequency content.
+fading each new resolution in.
 
 **Removing normalization entirely.** Simply dropping instance normalization removes the
-blob and even improves FID slightly (Kynkäänniemi et al. 2019). *Gap:* it also removes
-scale-specific control — style mixing breaks, because styles can amplify a feature map by an
-order of magnitude and nothing counteracts this per sample, so later layers cannot operate
-on the data meaningfully.
+blob and even improves FID slightly (Kynkäänniemi et al. 2019).
 
 **R1 gradient penalty** (Mescheder et al. 2018). Penalizes the squared gradient norm of D on
-real data, `(γ/2)·E‖∇_x D(x)‖²`, improving convergence. *Gap (efficiency only):* it is
-written together with the main loss and thus computed every step, even though it changes
-slowly.
+real data, `(γ/2)·E‖∇_x D(x)‖²`, improving convergence. It is written together with the
+main loss and thus computed every step.
 
 **Jacobian clamping** (Odena et al. 2018). Regularizes the generator's input→output Jacobian
 toward a target conditioning using finite-difference estimates of Jacobian-vector products.
-*Gap:* finite differences are noisy/expensive, and the target scale must be measured
-explicitly.
 
 **Spectral normalization** (Miyato et al. 2018; Zhang et al. 2018 for generators). Divides
-each weight tensor by its largest singular value. *Gap:* bounds only the top singular value,
-so it does not equalize the spectrum and need not improve overall conditioning.
+each weight tensor by its largest singular value.
 
 **MSG-GAN** (Karnewar & Wang 2019). Multiple skip connections between matching resolutions
-of G and D, generator emitting a resolution stack. *Gap:* a building block to adapt, not yet
-a drop-in replacement for progressive growing in a style-based generator.
+of G and D, generator emitting a resolution stack.
 
 ## Evaluation settings
 
@@ -270,5 +239,4 @@ def D_logistic_r1(G, D, training_set, minibatch_size, reals, labels, gamma=10.0)
 # --- Optimizer / training loop ----------------------------------------------
 # Adam(beta1=0, beta2=0.99, eps=1e-8); equalized LR; EMA of G weights;
 # style-mixing regularization; main loss + reg are summed and stepped together.
-# TODO: is it necessary to step the regularizer every iteration? (To be designed.)
 ```

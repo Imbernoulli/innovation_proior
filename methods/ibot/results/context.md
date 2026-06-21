@@ -2,13 +2,11 @@
 
 ## Research Question
 
-Masked language modeling made Transformer pretraining simple: hide some input tokens, predict their identities from bidirectional context, and transfer the resulting encoder. The hidden assumption is that language already has a tokenizer. WordPiece turns text into a finite set of units, so "predict the missing token" is a classification problem over meaningful labels rather than a regression problem over raw characters.
+Masked language modeling made Transformer pretraining simple: hide some input tokens, predict their identities from bidirectional context, and transfer the resulting encoder. Language already has a tokenizer. WordPiece turns text into a finite set of units, so "predict the missing token" is a classification problem over meaningful labels rather than a regression problem over raw characters.
 
-Vision Transformers expose an analogous sequence structure. A 224x224 image with 16x16 patches becomes a sequence of 196 patch tokens plus a class token. The natural question is whether the same local-token pretraining idea can work for images: mask some patches, infer what belongs there, and use the learned encoder for recognition and dense prediction.
+Vision Transformers expose an analogous sequence structure. A 224x224 image with 16x16 patches becomes a sequence of 196 patch tokens plus a class token. The question is whether the same local-token pretraining idea can work for images: mask some patches, infer what belongs there, and use the learned encoder for recognition and dense prediction.
 
-The difficulty is not masking. The difficulty is the target. Raw pixels are continuous, local, and overloaded with high-frequency detail. A 16x16 patch may contain texture, object part, background, or an ambiguous mixture. A BERT-like image objective therefore needs a visual tokenizer: something that maps each patch to a target distribution with enough abstraction to teach semantics, while still being tied to local image structure.
-
-The hard design question is whether that tokenizer must be a separate pretrained object. An offline tokenizer can make masked image modeling possible, but it adds a preprocessing stage, fixes the tokenizer architecture and data distribution, and may encode reconstruction detail rather than the semantic regularities desired from a representation learner. The desired method would keep the BERT-like local objective while making the visual targets semantic, learnable in the same training run, and adaptable to the current image domain.
+A BERT-like image objective needs a target for each masked patch. Raw pixels are continuous, local, and carry high-frequency detail; a 16x16 patch may contain texture, object part, background, or a mixture. One way to obtain discrete, abstract per-patch targets is a visual tokenizer that maps each patch to a target distribution tied to local image structure. The setting is how to define such per-patch targets for masked image modeling on a Vision Transformer.
 
 ## Background
 
@@ -16,7 +14,7 @@ The hard design question is whether that tokenizer must be a separate pretrained
 
 **Vision Transformer patch tokens.** A ViT embeds non-overlapping image patches, prepends a `[CLS]` token, adds positional embeddings, and processes the sequence with self-attention. The `[CLS]` representation is typically used for image-level classification, while the patch tokens preserve local spatial information that can be useful for dense tasks.
 
-**Masked image modeling.** A visual masked-token objective replaces selected patch embeddings with a learned `[MASK]` embedding and asks the encoder output at those positions to recover a target. If the target is raw pixels, the task can reward low-level reconstruction. If the target is a discrete visual token, the task becomes a classification problem closer to MLM, but then the quality of the visual tokenizer becomes load-bearing.
+**Masked image modeling.** A visual masked-token objective replaces selected patch embeddings with a learned `[MASK]` embedding and asks the encoder output at those positions to recover a target. If the target is raw pixels, the task is a regression toward low-level reconstruction. If the target is a discrete visual token, the task becomes a classification problem closer to MLM, with the target supplied by a visual tokenizer.
 
 **Self-distillation in vision.** Methods such as BYOL and DINO train a student view to match a teacher view without labels. In DINO, teacher and student share architecture; the teacher is an exponential moving average of the student; the loss is cross-entropy between teacher and student softmax outputs from the `[CLS]` token. Collapse is controlled by centering the teacher logits with a moving average and sharpening them with a low teacher temperature. Multi-crop training sends global and local crops to the student, but only global crops to the teacher.
 
@@ -24,13 +22,13 @@ The hard design question is whether that tokenizer must be a separate pretrained
 
 ## Baselines
 
-**Pixel or low-level reconstruction.** Early masked-patch objectives can regress pixels or simple patch statistics. They are easy to define, but they put pressure on the model to reproduce short-range texture and color instead of forming semantic categories.
+**Pixel or low-level reconstruction.** Early masked-patch objectives regress pixels or simple patch statistics. They are easy to define and target short-range texture and color.
 
 **BEiT-style masked image modeling.** BEiT makes image masking closer to BERT by using an offline discrete VAE tokenizer. The original image is tokenized into a 14x14 grid of visual-token ids from an 8192-entry vocabulary. The corrupted patch sequence goes through a ViT, and the model predicts the original visual-token id at masked positions. BEiT uses blockwise masking, roughly 40 percent of patches, so the model cannot rely only on immediate neighboring pixels.
 
-**DINO-style global self-distillation.** DINO uses two global crops and optional local crops. The student sees all crops; the EMA teacher sees global crops. For each teacher global crop, the student is trained to match its centered and sharpened `[CLS]` distribution on the other crops. This gives strong global image representations, but by itself it does not define a target for each masked patch.
+**DINO-style global self-distillation.** DINO uses two global crops and optional local crops. The student sees all crops; the EMA teacher sees global crops. For each teacher global crop, the student is trained to match its centered and sharpened `[CLS]` distribution on the other crops. This produces global image representations from the `[CLS]` token.
 
-**Multi-crop augmentation.** SwAV and DINO show that using multiple views of different resolutions can improve self-supervised learning. The usual pattern is two high-resolution global crops and several lower-resolution local crops. Local crops are useful for view agreement, but a local crop has fewer patch tokens and less surrounding context, so applying a patch reconstruction objective to every local crop is not automatically well-posed.
+**Multi-crop augmentation.** SwAV and DINO use multiple views of different resolutions for self-supervised learning. The usual pattern is two high-resolution global crops and several lower-resolution local crops. A local crop has fewer patch tokens and less surrounding context than a global crop.
 
 ## Evaluation Settings
 

@@ -1,4 +1,4 @@
-# Context: clipped importance sampling without dropped gradients for LLM RL (circa 2025)
+# Context: clipped importance sampling for LLM RL (circa 2025)
 
 ## Research question
 
@@ -12,19 +12,11 @@ the data is off-policy. The single design axis under study is **how the per-toke
 is formed, clipped, and turned into a loss** — the advantage estimator, reward, rollout, and KL
 configuration are held fixed.
 
-The specific problem this addresses is a side effect of the PPO/GRPO clip itself. The clip
-removes the incentive to push a token's ratio outside a band around 1 by *zeroing that token's
-gradient* once the ratio leaves the band (the `min`/`max` of clipped and unclipped surrogate has
-zero slope in the clipped region). In ordinary supervised settings that is harmless, but in
-reasoning RL the tokens whose ratio moves the most after an update are frequently the
-*low-probability, high-entropy "fork" tokens* — the ones that begin a reflection or a
-correction ("However", "Wait", "Recheck"). These are exactly the tokens that change the
-trajectory of a long reasoning chain. When the current policy increases their probability
-substantially in a single update — which is common precisely because they were rare under
-`π_old` — their ratio leaves the clip band and the clip deletes their gradient. So the standard
-clip systematically discards the learning signal on the tokens that matter most for reasoning,
-and it does so on every update. The goal is a clipped, off-policy-corrected objective that keeps
-training stable *without ever zeroing a token's contribution to the gradient*.
+Within reasoning RL, the tokens whose ratio moves the most after an update are frequently the
+low-probability, high-entropy "fork" tokens — the ones that begin a reflection or a correction
+("However", "Wait", "Recheck"). Because they were rare under `π_old`, even a modest absolute
+change in their probability is a large *ratio*. The question is how to form a clipped,
+off-policy-corrected per-token objective for this setting.
 
 ## Background
 
@@ -37,29 +29,22 @@ gradient. The PPO clipped surrogate enforces this by the pessimistic combination
 `min( r A, clip(r, 1−ε, 1+ε) A )`, whose gradient is zero once the ratio leaves `[1−ε, 1+ε]` in
 the direction that would over-improve.
 
-**Where the PPO/GRPO clip throws signal away.** The token-level objective is
+**The PPO/GRPO token-level objective.** The token-level objective is
 `E_t[ min( r_{i,t} Â_{i,t}, clip(r_{i,t}, 1−ε, 1+ε) Â_{i,t} ) ]`. For a positive-advantage token
 whose probability the policy raises past `1+ε`, the clipped branch is flat: `∂/∂θ` of that term
-is zero, so the token contributes nothing to the update. The tokens most often pushed past the
-band are the rare fork tokens that start a reflection, because their old probability was small
-and even a modest absolute change is a large *ratio*. The clip therefore deletes precisely the
-gradients that drive long-horizon reasoning, and in hybrid-attention / large-scale models this
-loss of signal is observed to slow or destabilize RL.
+is zero. The clip band `ε` is typically symmetric, with optional asymmetric edges `ε_low` and
+`ε_high`.
 
 **REINFORCE with an IS weight.** The off-policy policy gradient can also be written without a
 clipped surrogate at all: the score-function estimator `E[ w · A · ∇_θ log π_θ ]`, where `w` is
 an importance weight correcting the `π_old`→`π_θ` mismatch. Here the IS weight `w` multiplies the
-gradient as a *scalar coefficient*, and the gradient flows through `log π_θ` directly — no token
-is ever clipped out, because the clip would act on `w`, not on the gradient path. This is the
-structural opening: if instability comes from large IS weights rather than from any need to mask
-tokens, then bounding `w` while leaving the `∇ log π_θ` path intact keeps every token in the
-update.
+gradient as a *scalar coefficient*, and the gradient flows through `log π_θ` directly. In this
+form the clip would act on `w`, the coefficient, rather than on the gradient path.
 
 **Stop-gradient as an available primitive.** PyTorch's `detach` (`sg[·]`) lets a quantity
 contribute its forward *value* while contributing *no gradient*. It is the standard tool when a
 factor in a loss should set a magnitude without itself being a path the optimizer can move along —
-the surrounding live factors carry the gradient. Whether and how it applies to the IS weight is
-part of the design question below.
+the surrounding live factors carry the gradient.
 
 ## The editable interface (this study's scaffold)
 

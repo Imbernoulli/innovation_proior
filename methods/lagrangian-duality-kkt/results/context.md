@@ -18,14 +18,7 @@ present. Inequalities change the geometry in a way equalities do not: the feasib
 longer a smooth manifold but a region with a boundary; at a candidate optimum some inequality
 constraints are *active* (g_i = 0, the point sits on that wall) while others are *slack*
 (g_i < 0, the wall is far away and irrelevant); and the set of feasible directions is a cone, not
-a subspace. So "∇f is a combination of constraint gradients" can no longer be a two-sided span
-condition — it has to become a one-sided, conic condition, and we have to say *which* constraints
-enter the combination and with what sign. A complete answer must (i) give necessary conditions an
-inequality-constrained optimum satisfies, including a rule for the slack constraints; (ii) say
-under what regularity those conditions can fail; and (iii) connect to the duality theory that has
-just appeared for the linear case, where a maximization "primal" and a minimization "dual" share
-the same optimal value. A solution would let one *certify* optimality and bound the optimum from
-below without solving the problem to completion.
+a subspace.
 
 ## Background
 
@@ -44,9 +37,7 @@ proved elementarily by a quadratic penalty: minimize φ_k(x) = f(x) + ½‖x−x
 small ball; the unconstrained minimizers x_k converge to x̄, ∇φ_k(x_k)=0 gives
 ∇f(x_k) + (x_k−x̄) + Σ_j λ_j^k ∇h_j(x_k) = 0 with λ_j^k = k h_j(x_k), and under linear independence
 the λ^k stay bounded, so a limit point yields true multipliers (Haeser–dos Santos 2022, an
-elementary modern proof of Lagrange's rule). This is the result I will be trying to extend, and its
-limitation is exactly that the argument is two-sided: it uses that both +δ and −δ along a feasible
-direction stay feasible, which is true for equalities and false for inequalities.
+elementary modern proof of Lagrange's rule).
 
 **The principle of virtual work and the entry of inequalities (Fourier 1798; Ostrogradsky 1838;
 Farkas 1895–1901).** In mechanics, Lagrange's multipliers express equilibrium under *reversible*
@@ -86,10 +77,7 @@ whenever either is feasible and bounded. The mechanism is a saddle point: form t
 Lagrangian φ(x,u) = cᵀx + uᵀ(b − Ax); then x⁰ solves the primal and u⁰ the dual exactly when (x⁰,u⁰)
 is a saddle point, φ(x,u⁰) ≤ φ(x⁰,u⁰) ≤ φ(x⁰,u) for all x ≥ 0, u ≥ 0. The bilinear symmetry of φ in
 x and u is what produces the primal–dual symmetry. The same circle of ideas connects LP to
-two-person zero-sum games (von Neumann & Morgenstern 1944): a saddle point is a game solution. The
-visible gap: this is all *linear*. There is no comparable first-order optimality theory or duality
-theory once the objective or the constraints become nonlinear — quadratic, say — and that is the
-territory just opening up.
+two-person zero-sum games (von Neumann & Morgenstern 1944): a saddle point is a game solution.
 
 ## Baselines
 
@@ -97,31 +85,25 @@ The prior treatments of inequality-constrained optimality, against which a new t
 measured:
 
 - **The classical multiplier rule (equality constraints).** Core idea: ∇f + Σ ν_j ∇h_j = 0 under
-  linear independence of the ∇h_j. Gap: it handles only equalities; there is no rule for which
-  inequality constraints to include, no sign condition, and no mechanism for slack constraints. A
-  naive transcription "∇f + Σ λ_i ∇g_i + Σ ν_j ∇h_j = 0" is incomplete — it does not say λ_i ≥ 0,
-  nor that a far-away constraint should drop out.
+  linear independence of the ∇h_j. Handles only equality constraints; the setting where each h_j = 0
+  defines a smooth manifold and the multipliers are unrestricted in sign.
 
 - **Fourier–Ostrogradsky equilibrium conditions.** Core idea: for irreversible (inequality)
   constraints, equilibrium ⟺ virtual work nonpositive for all feasible displacements, with
   multipliers sign-restricted opposite to the constraint differentials. Algorithm/math: a
   coordinate change to "generalized" variables, then the conclusion that the transformed
-  coefficients vanish. Gap: tied to the mechanical interpretation (a potential V must exist), and
-  Ostrogradsky's coordinate trick only works when #constraints ≤ #variables. No treatment of the
-  general optimization problem, no regularity analysis of when the conditions fail.
+  coefficients vanish. Developed within the mechanical interpretation (a potential V must exist),
+  with Ostrogradsky's coordinate trick applicable when #constraints ≤ #variables.
 
 - **Farkas' programme.** Core idea: a rigorous theory of homogeneous linear inequalities (the
-  lemma) sufficient to derive the equilibrium conditions for any number of constraints. Gap: it is
-  developed inside analytical mechanics and stops at the *linear* (first-order) inequality system;
-  it supplies the algebraic engine but not the optimization theory built on it, and it does not
-  address the nonlinear constrained-optimum problem or duality.
+  lemma) sufficient to derive the equilibrium conditions for any number of constraints. Developed
+  inside analytical mechanics for the linear (first-order) inequality system; supplies the algebraic
+  engine connecting sign-restricted multipliers to polyhedral cones.
 
 - **Linear-programming duality (Gale–Kuhn–Tucker).** Core idea: primal max cᵀx and dual min bᵀu
-  coincide; the saddle point of the bilinear Lagrangian solves both. Gap: linearity is used
-  everywhere — the dual is read off by symmetry of a *bilinear* form, and the equivalence between
-  optimum and saddle point rests on linear algebra. Nothing here tells me whether a *nonlinear*
-  program has a dual, whether the primal optimum equals a dual optimum, or what first-order
-  conditions a nonlinear constrained optimum obeys.
+  coincide; the saddle point of the bilinear Lagrangian solves both. Linearity of the objective and
+  constraints enters through the bilinear form; the dual is read off by symmetry of that form, and
+  the equivalence between optimum and saddle point rests on linear algebra.
 
 ## Evaluation settings
 
@@ -144,4 +126,3 @@ problem classes and self-consistency checks that any proposed conditions must pa
 - **The mechanical sanity check.** A spring/contact system whose equilibrium minimizes a (convex)
   potential energy subject to non-penetration inequalities, where the multipliers should come out
   as physical contact forces — nonnegative, and nonzero only where there is contact.
-

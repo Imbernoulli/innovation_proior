@@ -16,10 +16,7 @@ the effect is a contrast between an observed quantity and a counterfactual. The 
 fix — compare the average outcome of the treated to the average outcome of the untreated,
 `E[Y | T = 1] - E[Y | T = 0]` — is biased whenever the treatment was not randomized, because
 the treated and the untreated differ systematically in `X`, and some of the outcome gap is
-that `X` difference rather than the treatment. A solution has to disentangle the effect of the
-treatment from the effect of being the *kind of unit that tends to get treated*, using only
-the covariates we observed, ideally without committing to a rigid parametric model of how `Y`
-depends on `X` (which would just trade confounding bias for misspecification bias).
+that `X` difference rather than the treatment.
 
 ## Background
 
@@ -100,62 +97,36 @@ designs, with the requirement that every element have positive inclusion probabi
 linear-unbiasedness argument is exact: if a sampled element `u_i` is weighted by `beta_i`, then
 unbiasedness of `sum_{i in sample} beta_i x_i` for `sum_i x_i`, for every possible population
 vector, forces `P(u_i) beta_i = 1` term by term, hence `beta_i = 1 / P(u_i)`. That body of
-theory about reweighting a non-representative sample by its selection probabilities is sitting
-in the background, in a different subfield, waiting to be connected to the observational-causal
-problem where the "selection probability" into the treated group is exactly `e(X)`.
+theory about reweighting a non-representative sample by its selection probabilities sits
+in the survey-sampling literature.
 
 ## Baselines
 
-These are standard estimators for the unconfounded-observational problem, each with its
-concrete form and the gap it leaves.
+These are standard estimators for the unconfounded-observational problem.
 
 **S-learner (single model / regression with a treatment indicator).** Fit one regression
 `mu(x, t) = E[Y | X = x, T = t]` on the pooled data, treating `T` as just another feature, and
 estimate `tau_hat(x) = mu(x, 1) - mu(x, 0)`. Concretely one might fit `Y ~ alpha + beta'X +
 gamma T` and read off `gamma`, or use a flexible learner on the augmented feature vector
-`[X, T]`. Core idea: model the response surface directly and difference it. **Gap:** the single
-model can shrink the treatment indicator's influence toward zero — when `T` is one weak
-feature among many strong covariates, a regularized or tree-based learner may barely split on
-it, biasing the estimated effect toward zero; and a misspecified `mu` produces a biased effect
-with no second line of defense.
+`[X, T]`. Core idea: model the response surface directly and difference it.
 
 **T-learner (separate outcome models per arm).** Fit two regressions,
 `mu_1(x) = E[Y | X = x, T = 1]` on the treated and `mu_0(x) = E[Y | X = x, T = 0]` on the
 controls, and difference them: `tau_hat(x) = mu_1(x) - mu_0(x)`. The population effect is the
 average of the differenced predictions over the empirical covariate distribution,
 `(1/N) sum_i [mu_1_hat(X_i) - mu_0_hat(X_i)]`. Core idea: let each arm have its own response
-surface. **Gap:** each model is fit on only its own arm's data, so in regions where one arm is
-sparse (exactly the low-overlap regions) that arm's surface is extrapolated, and two
-independently-fit, separately-regularized surfaces can have systematically different bias whose
-difference is spurious heterogeneity; the procedure depends entirely on getting both outcome
-surfaces right and never uses the assignment mechanism.
+surface.
 
 **Subclassification / stratification on the propensity score.** Estimate `e(x)`, partition
 units into strata of similar `e(x)` (e.g. quintiles), take the treated-minus-control mean
 difference within each stratum, and average across strata weighted by stratum size. Core idea:
 within a propensity stratum the groups are approximately balanced (the balancing-score
 property), so the within-stratum contrast is approximately unbiased; this is the direct
-operationalization of Rosenbaum & Rubin's Theorem 4. **Gap:** it is a coarse, piecewise-constant
-use of `e(x)` — residual within-stratum imbalance remains, the number and placement of strata
-are arbitrary, and it does not naturally yield a smooth `tau(x)` over the covariate space.
+operationalization of Rosenbaum & Rubin's Theorem 4.
 
 **Propensity-score matching.** For each treated unit find one or more control units with
 similar `e(x)` and contrast their outcomes; average over matches. Core idea: rebuild a
-balanced comparison set by pairing on the scalar score. **Gap:** discards unmatched units,
-introduces dependence on the match count and caliper, and the estimate is a sum of local
-contrasts rather than a single closed-form quantity; like stratification it gives a number, not
-a function `tau(x)`.
-
-**Outcome-model averaging without the assignment mechanism, generally.** All of the regression
-routes above (S- and T-learner) share one structural commitment: they put the entire burden of
-removing confounding on correctly estimating one or two high-dimensional outcome surfaces
-`mu_w(x)`. When those surfaces are nonlinear and the covariate dimension is high, this is
-exactly where flexible learners are least reliable, and there is no use made of the comparatively
-low-dimensional object — the one-dimensional `e(x)` — that the balancing-score theory says is
-sufficient to remove the bias. The prior art either models the outcome while ignoring `e`, or uses
-`e` only through coarse grouping or pair construction, so the remaining gap is variance- and
-bias-prone adjustment in the high-overlap and low-overlap regions where a smooth heterogeneity
-estimate is still desired.
+balanced comparison set by pairing on the scalar score.
 
 ## Evaluation settings
 

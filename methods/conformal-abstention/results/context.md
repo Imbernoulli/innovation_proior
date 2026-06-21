@@ -10,16 +10,11 @@ the train/calibration/test pipeline. The only thing we get to design is the **ac
 rule**: given a target coverage `c` (the fraction of the test stream we are willing to keep),
 decide which test examples the model answers itself and which it *defers* to the reviewer.
 
-What a good rule must achieve is sharper than "abstain when unsure". The model's score vector
-is only a *heuristic* notion of confidence: it may be badly miscalibrated, overfit, or simply
-wrong, and we have no parametric model of the data. So the rule must turn that heuristic score
-into a cutoff with a **rigorous, finite-sample, distribution-free** statement about how often
-future exchangeable points clear it, computed offline on modest compute and stated at the
+The model's score vector is a *heuristic* notion of confidence: it may be miscalibrated,
+overfit, or simply wrong, and we have no parametric model of the data. The question is how to
+turn the calibration-time scores into the cutoff (or cutoffs) the policy will use at the
 user-specified target coverage. Selective risk on the accepted examples and subgroup deferral
-gaps remain important evaluation metrics, but a label-free confidence cutoff does not by
-itself certify them. The pain point is that the natural thing one does today — pick a cutoff
-on the model's confidence — can match a calibration fraction yet still give no exact
-finite-sample accounting for the fresh-test acceptance probability.
+gaps are the metrics by which the rule is judged.
 
 ## Background
 
@@ -31,10 +26,9 @@ true posteriors `P(Y=j | x)` were known, the Bayes-optimal rule for a fixed cost
 is to *reject* (abstain on) an input when its maximum posterior `max_j P(Y=j | x)` falls below
 a threshold `t`, and otherwise predict the argmax. Chow showed this rule is optimal in a
 precise sense: for the reject rate induced by `t`, no other rule attains a lower error rate on
-the accepted region, and sweeping `t` traces the optimal error-reject curve. The catch baked
-in from the start: this is optimal *only if the posteriors are exact*. With an estimated,
-possibly miscalibrated `f(x)` in place of the true posterior, thresholding `max_j f(x)_j`
-is a heuristic with no guarantee.
+the accepted region, and sweeping `t` traces the optimal error-reject curve. The optimality
+statement holds when the posteriors are exact; in practice one thresholds the estimated
+`max_j f(x)_j`.
 
 **Risk-coverage / selective classification.** El-Yaniv & Wiener (2010), *On the foundations of
 noise-free selective classification*, formalized abstention for modern predictors as a
@@ -43,35 +37,26 @@ Two quantities trade off — the **coverage** `phi = E[g(X)]` (fraction accepted
 **selective risk** `R = E[loss · g(X)] / E[g(X)]` (error on the accepted set). For deep nets,
 Geifman & El-Yaniv (2017) took `g` to threshold the **softmax response** (SR), the maximum
 softmax value, and reported smooth risk-coverage curves: a single confidence threshold yields
-a usable accept/defer rule. The recurring fact about all of these: they rank examples well in
-practice, but the threshold is chosen by *looking at* a held-out risk-coverage curve and
-picking a point, with no finite-sample certificate that the chosen operating point will hold
-on the test stream. The selective risk and fresh-test coverage they actually deliver are
-whatever they turn out to be.
+a usable accept/defer rule, with the threshold chosen by reading a held-out risk-coverage curve
+and picking an operating point.
 
-**Exchangeability and order statistics.** The other strand is a distribution-free idea from
+**Exchangeability and order statistics.** A separate strand is a distribution-free idea from
 classical statistics. A sequence of random variables is **exchangeable** if its joint law is
-invariant to permutation; i.i.d. is a special case. The key consequence used everywhere below:
-if `Z_1,...,Z_{n+1}` are exchangeable real scalars (assume no ties), then the rank of
-`Z_{n+1}` among all `n+1` of them is **uniformly distributed on {1,...,n+1}** — every ordering
-is equally likely, so the new point is equally likely to land in any of the `n+1` gaps. This
-turns a statement about an unknown distribution into pure combinatorics. The same fact powered
+invariant to permutation; i.i.d. is a special case. A standard consequence: if
+`Z_1,...,Z_{n+1}` are exchangeable real scalars (assume no ties), then the rank of `Z_{n+1}`
+among all `n+1` of them is **uniformly distributed on {1,...,n+1}** — every ordering is equally
+likely, so the new point is equally likely to land in any of the `n+1` gaps. This turns a
+statement about an unknown distribution into pure combinatorics. The same fact underlies
 classical **tolerance intervals** (Wilks 1941; Wald 1943; Tukey 1947): the order statistics of
 a sample carve out a region whose coverage probability is governed by a Beta law, because for a
 uniform sample the order statistics are Beta-distributed — coverage controlled with no model of
-the data. This distribution-free tradition is exactly what is missing from the reject-option /
-softmax-response threshold: those build the cutoff from a heuristic score with no finite-sample
-coverage statement attached.
+the data.
 
 **Marginal versus conditional coverage.** A guarantee can be *marginal* — averaged over all
 inputs — or *conditional* — required to hold within each subgroup `g` separately. For
 prediction sets this is usually phrased as true-label inclusion; for an abstention score it
 becomes the analogous question of whether the accept/defer event clears the target rate
-overall or within each group. A marginal promise can be met while one subgroup is
-systematically worse off: all the failures, or all the deferrals, can concentrate in a single
-group and the average still looks fine. This gap is the reason a rule that controls only the
-average behaves unevenly across subgroups under shift, and it is a known limitation, not
-something one observes only after the fact.
+overall or within each group.
 
 ## Baselines
 
@@ -79,34 +64,17 @@ something one observes only after the fact.
 model's top score `s_conf(x) = max_j f(x)_j` as a confidence signal, pick a single global
 threshold `t`, accept when `s_conf(x) >= t`, defer otherwise. To hit a target acceptance rate
 `c`, set `t` to the empirical `(1-c)`-quantile of `s_conf` on a held-out set so that a `c`
-fraction clears it. Core idea, exactly the reject option with estimated posteriors. **Gap:**
-the threshold is fit to an *empirical* quantile of a *heuristic* score, so the rule comes with
-no exact finite-sample, distribution-free statement about the fresh acceptance probability,
-and there is no `n`-dependent correction acknowledging that `t` was estimated from finite
-calibration data. It also says nothing about the selective risk of the accepted examples or
-how deferrals distribute across subgroups.
+fraction clears it. This is the reject option with estimated posteriors.
 
 **Learned deferral / learning-to-defer (Mozannar & Sontag 2020; Cortes, DeSalvo, Mohri 2016).**
 Train a compact meta-model to predict whether the base classifier will be wrong on a given
-example (or to jointly optimize a classifier-plus-rejector with a consistent surrogate loss),
-then defer the examples it flags as likely errors. **Gap:** it needs its own training, can
-itself overfit or be miscalibrated, and inherits any distribution shift between its training
-data and deployment; like confidence thresholding it offers no distribution-free accounting
-of the fresh acceptance event, and its performance is only as good as the meta-model's own
-generalization.
+example (or jointly optimize a classifier-plus-rejector with a consistent surrogate loss),
+then defer the examples it flags as likely errors.
 
 **Per-subgroup thresholding (group-stratified reject option).** Run the confidence-threshold
 rule separately within each subgroup, tuning each group's cutoff to hit the target acceptance
-rate on that group. This equalizes acceptance across groups by construction. **Gap:** it
-requires the subgroup label at decision time and enough calibration data *per group* for each
-empirical quantile to be stable; small groups give noisy thresholds, and like the global
-version each per-group cutoff is still a heuristic empirical quantile with no finite-sample
-rank correction.
-
-The shared limitation across all three: every one of them sets a cutoff on a score and then
-*hopes* the operating point holds, with no statement that survives the fact that the cutoff was
-estimated from a finite calibration sample, and no acceptance-rate guarantee that is agnostic
-to the model and the distribution.
+rate on that group, using the subgroup label at decision time. This equalizes acceptance
+across groups by construction.
 
 ## Evaluation settings
 

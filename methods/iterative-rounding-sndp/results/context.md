@@ -8,17 +8,11 @@ the generalized Steiner network problem): build the cheapest network that keeps 
 connected even after up to `r(uv) - 1` edge failures.
 
 The problem is NP-hard and APX-hard even in special cases, so an exact polynomial-time algorithm is
-out of reach. The target is an approximation guarantee that does **not** degrade as the requirements
-grow: for every feasible instance and every requirement vector, a polynomial-time algorithm returning a
-feasible subgraph whose cost is at most a fixed constant factor times the optimum `OPT`. The whole
-difficulty is the proof of the factor; when the input graph can meet the requirements, taking all
-edges proves feasibility, but gives no useful cost guarantee.
-
-The defining technical obstacle: the natural lower bound on `OPT` is a linear program with one
-constraint per cut of the graph — exponentially many constraints — and the gap between that LP and
-the integer optimum is what any rounding must overcome. Converting a fractional solution of that LP
-into an integral one while losing only a constant factor, uniformly in the requirements, demands some
-structural control over the relaxation that prior art has not supplied.
+out of reach. The question is what approximation ratio a polynomial-time algorithm can achieve, and
+how it depends (if at all) on the requirement values. The natural lower bound on the integer optimum
+is a linear program with one constraint per cut of the graph — exponentially many constraints — and
+rounding a fractional solution of that LP into an integral feasible subgraph is the core
+algorithmic step.
 
 ## Background
 
@@ -89,27 +83,18 @@ Plotkin, Shmoys, Tardos, and Williamson (1994), building on the Goemans-Williams
 for constrained forest problems. It raises the connectivity one unit at a time: at phase `k`, it has a
 subgraph that is `(k-1)`-connected where required and runs a primal-dual `0/1` cut-covering step to
 buy a layer raising deficient pairs to `k`. Each phase is a `2`-approximation against the *residual*
-LP, but the phases stack, giving a total ratio of about `2 H(r_max) = 2 (1 + 1/2 + ... + 1/r_max)`.
-The gap it leaves open: the factor grows logarithmically in the maximum requirement `r_max`, because
-the analysis charges each connectivity layer separately, accumulating one residual `2`-approximation
-per unit of connectivity.
+LP, giving a total ratio of about `2 H(r_max) = 2 (1 + 1/2 + ... + 1/r_max)`.
 
 **Doubling-based bounds for uniform connectivity.** For the special case of `k`-edge-connected
 spanning subgraph (all `r(uv) = k`), one can take a fractional solution and exploit even-ness or
 splitting-off to get small constants, and for `2`-edge-connected spanning subgraph there are
-combinatorial `2`-approximations. These do not extend to arbitrary pairwise requirements: with
-Steiner vertices (vertices that need not be connected to anything) and heterogeneous `r(uv)`,
-doubling a tree or a single fractional structure neither yields feasibility cheaply nor gives a
-constant independent of the requirements.
+combinatorial `2`-approximations.
 
 **Threshold LP rounding.** A direct idea is to solve the covering LP and round up every edge whose
 fractional value clears a fixed threshold `tau`, since an edge with `x_e >= tau` is rounded at a cost
 blow-up of only `1/tau` on that edge. Whether this buys anything depends entirely on how large a
 coordinate the relaxation can be forced to expose, and on whether rounding a few edges and re-solving
-actually drives the requirements down. Where this stalls in prior attempts: an arbitrary optimal point
-of the polytope carries no such guarantee — on highly symmetric instances the optimum face can contain
-a point that is `1/3`-ish on every coordinate, leaving a threshold above one third nothing to commit
-to.
+actually drives the requirements down.
 
 ## Evaluation settings
 

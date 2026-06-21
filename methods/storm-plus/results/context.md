@@ -10,22 +10,14 @@ general intractable, so the goal is relaxed to finding an *approximate stationar
 oracle calls, output a point `xbar` with `E||grad F(xbar)||` as small as possible. We have access
 only to first-order stochastic gradients `grad f(x; xi)`, no Hessians.
 
-The precise target is an optimizer that simultaneously: (1) attains the *optimal* convergence rate
-for the stationarity measure on the class of objectives that are an expectation over smooth losses;
-(2) needs **no large "mega-batches"** and **no anchor / checkpoint gradients**; (3) **adapts to the
-noise level** — fast when the problem is nearly noiseless, gracefully slower when it is noisy —
-without being told the variance; and crucially (4) is **parameter-free**: it must set its own step
-size and momentum from observed gradient feedback alone, **without prior knowledge of the smoothness
-constant, the gradient-norm bound, or the noise variance**. Each existing method below achieves some
-of these; the open problem is achieving all four at once. What makes (4) hard is that the methods
-that reach the optimal rate set their step size and momentum using formulas that bake in exactly
-those unknown constants, and their convergence proofs collapse if the constants are removed.
+How can we choose the step size and momentum coefficient each iteration, from observed gradient
+feedback alone, for the class of objectives that are an expectation over smooth losses?
 
 ## Background
 
 By this time, stochastic gradient descent is the workhorse for training non-convex models — deep
 networks, but also phase retrieval (Candes et al. 2015), non-negative matrix factorization
-(Hoyer 2004), matrix completion (Ge et al. 2016). The relevant theory and pain points:
+(Hoyer 2004), matrix completion (Ge et al. 2016). The relevant theory:
 
 - **The two rate regimes.** For general smooth non-convex `F`, Ghadimi & Lan (2013) show SGD with a
   suitably tuned step size drives the gradient norm down at rate `O(1/T^{1/4})`, and this is tight
@@ -78,27 +70,18 @@ finite sums `F = (1/n) sum_i f_i`, keep a periodically refreshed snapshot `xtild
 gradient** `mu = (1/n) sum_i grad f_i(xtilde)`, then use the control variate
 `v_t = grad f_i(x_t) - grad f_i(xtilde) + mu`, which is unbiased for `grad F(x_t)` and whose variance
 collapses as `x_t, xtilde -> x*`. Gives linear convergence for strongly convex finite sums.
-**Gap:** it requires a periodic full-gradient (or large-batch) snapshot, and when ported to
-non-convex problems (Allen-Zhu & Hazan 2016; Reddi et al. 2016) it only reaches `O(1/T^{1/4})` to
-`O(1/T^{3/10})`, short of the optimal `1/T^{1/3}` — and despite the theory it underperforms in
-practice on deep non-convex tasks.
 
 **SARAH (Nguyen, Liu, Scheinberg & Takac 2017).** Replace SVRG's control variate by a *recursive*
 estimate that reuses the same sample at consecutive iterates,
 `v_t = grad f_i(x_t) - grad f_i(x_{t-1}) + v_{t-1}`, initialized each outer loop at the full gradient
 `v_0 = grad F(x_0)`. The recursion threads a within-sample gradient *difference* through the estimate.
-**Gap:** the estimate is biased, and the method still needs at least one full-gradient checkpoint per
-outer loop; its non-convex guarantee does not beat SGD.
 
 **SPIDER / SpiderBoost / PAGE (Fang et al. 2018; Li et al. 2021).** Push the SARAH-style recursive
 estimator to optimal complexity: periodically compute a **mega-batch** checkpoint gradient on
 `N` samples (`N` as large as `O(T)`, typically no smaller than `O(T^{2/3})`), then run many cheap
 recursive steps between checkpoints, with a step size capped so that `||x_t - x_{t-1}||` stays below
 a tolerance tied to `L`. This reaches the optimal `O(1/T^{1/3})` for the expectation-over-smooth-
-losses setting. **Gap:** the mega-batch is expensive and wasteful (it makes no progress while it is
-computed), and the method has several entangled knobs — the batch size `N`, the checkpoint frequency,
-and the `L`-dependent step cap — that must be balanced against unknown problem constants to obtain the
-improved rate, which is both important and hard to tune.
+losses setting.
 
 **STORM (Cutkosky & Orabona 2019).** The first method to reach the optimal `O(1/T^{1/3})` for this
 setting **without any checkpoint or mega-batch**. It keeps a *corrected momentum* estimate, computed
@@ -120,14 +103,11 @@ step and the momentum small. STORM sets, AdaGrad-style,
 
 and proves the rate via a Lyapunov potential `Phi_t = F(x_t) + z_t ||eps_t||^2` with a
 **time-varying** weight `z_t proportional to 1/eta_{t-1}` (a constant weight appears to force at
-least one checkpoint). **Gap:** the constants are not free — `k = b G^{2/3}/L`,
-`c = 28 L^2 + ...`, `w = max((4Lk)^3, 2G^2, ...)` — so STORM must be **told the smoothness `L` and a
-gradient-norm bound `G`** to set its step size and (especially) its momentum
-`a_{t+1} = c eta_t^2 propto L^2 eta_t^2`. Its convergence proof relies on encoding `L` and `G` into
-`eta_t` and `a_t`, and does not go through with these constants removed. Its variance-adaptive rate
-also carries a `(log T)^{3/4}` factor on the leading `1/sqrt(T)` term. (Concurrently, Tran-Dinh et
-al. 2019 obtained the same rate with a similar update, but still using one checkpoint and knowledge
-of `L` and `sigma`.)
+least one checkpoint). The constants are `k = b G^{2/3}/L`, `c = 28 L^2 + ...`,
+`w = max((4Lk)^3, 2G^2, ...)`, so the step size and momentum are set using the smoothness `L` and a
+gradient-norm bound `G`. Its variance-adaptive rate also carries a `(log T)^{3/4}` factor on the
+leading `1/sqrt(T)` term. (Concurrently, Tran-Dinh et al. 2019 obtained the same rate with a similar
+update, still using one checkpoint and knowledge of `L` and `sigma`.)
 
 ## Evaluation settings
 
@@ -150,10 +130,9 @@ The natural yardsticks for a method in this regime, all pre-existing:
 The optimizer plugs into the corrected-momentum template that the no-checkpoint baseline already
 established: maintain a gradient *estimate* `d`, take SGD-style steps along it, and refresh `d` each
 iteration from two gradient calls on the same fresh sample at the current and previous iterate. That
-recursion and the two-oracle-calls-per-step structure are fixed and known. What is **not** settled —
-and is exactly what must be designed — is *how to choose the step size `eta_t` and the momentum
-coefficient `a_t` each iteration* from the gradient feedback the algorithm has seen. The substrate
-below is the generic harness with those two schedule choices left as empty slots.
+recursion and the two-oracle-calls-per-step structure are fixed and known. The substrate below is the
+generic harness with the step size `eta_t` and momentum coefficient `a_t` schedule choices left as
+empty slots.
 
 ```python
 import torch

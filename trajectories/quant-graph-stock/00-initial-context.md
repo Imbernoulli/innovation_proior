@@ -1,16 +1,16 @@
 ## Research question
 
-Can a relation-aware predictor exploit cross-stock structure — sector / concept membership, learned relations, attention across instruments — to deliver consistently better next-day return rankings than an instrument-independent model, with the data, labels, splits, and backtest held fixed? Only the `CustomModel` implementation is open to change; the Alpha360 features, label, universes, splits, and TopkDropout backtest are frozen.
+Can the `CustomModel` implementation be improved to better predict next-day return rankings within the fixed qlib pipeline — keeping the Alpha360 features, label, universes, splits, and TopkDropout backtest unchanged?
 
 ## Prior art / Background / Baselines
 
-- **Per-stock linear / factor models (Ridge, OLS).** Fit a linear mapping from the 360 Alpha360 features to next-day return, treating each `(stock, day)` independently. Limitation: enforces a global linear response and sees no cross-stock information.
+- **Per-stock linear / factor models (Ridge, OLS).** Fit a linear mapping from the 360 Alpha360 features to next-day return, treating each `(stock, day)` independently.
 
-- **Gradient-boosted trees (GBDT) on the flat feature table.** Train a histogram-based boosted forest over the same 360 features per row. Limitation: captures non-linear feature interactions but still treats every row in isolation, so the cross-section of stocks on a given day is invisible.
+- **Gradient-boosted trees (GBDT) on the flat feature table.** Train a histogram-based boosted forest over the same 360 features per row. The histogram engine bins each feature, accumulates gradient/hessian statistics per bin, and grows trees leaf-wise with second-order regularized gain.
 
-- **Sequence encoders (LSTM / GRU).** Reshape Alpha360 into `[N, 60, 6]` windows and encode each stock's own history. Limitation: recovers temporal structure, but each stock's representation is still built only from its own series.
+- **Sequence encoders (LSTM / GRU).** Reshape Alpha360 into `[N, 60, 6]` windows and encode each stock's own temporal history with a recurrent network.
 
-- **Stock-relation graph methods (GAT-style attention over a static relation graph).** Build a graph from shared sector / concept memberships and propagate messages so related stocks can influence each other. Limitation: the graph is fixed and sparse; information flows only along predefined edges and most stock pairs have no direct relation.
+- **Stock-relation graph methods (GAT-style attention over a static relation graph).** Build a graph from shared sector / concept memberships and propagate messages so related stocks can influence each other's representations.
 
 ## Fixed substrate / Code framework
 

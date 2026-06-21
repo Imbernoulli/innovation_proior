@@ -3,27 +3,24 @@
 ## Research question
 
 In the automotive and semiconductor industries — and across engineering generally — designs
-are increasingly explored through math/computer models rather than hardware prototypes. The
-trouble is that one evaluation of such a model is *expensive*: an automotive crash simulation
-can take twenty hours; a circuit or finite-element code can take minutes to hours per run. The
-function `y(x)` we want to minimize over a box of design variables is therefore an expensive,
-deterministic black box. We can call it, but only a few dozen times. We get no gradient (the
-code is a black box), the function is typically nonlinear and may be multimodal, and we have no
-analytic form for it — if we did, we would not have built the expensive code in the first place.
+are increasingly explored through math/computer models rather than hardware prototypes. One
+evaluation of such a model is *expensive*: an automotive crash simulation can take twenty hours;
+a circuit or finite-element code can take minutes to hours per run. The function `y(x)` we want
+to minimize over a box of design variables is therefore an expensive, deterministic black box.
+We can call it, but only a few dozen times. We get no gradient (the code is a black box), the
+function is typically nonlinear and may be multimodal, and we have no analytic form for it — if
+we did, we would not have built the expensive code in the first place.
 
 The precise goal: find the global minimum of `y(x)` in as *few evaluations as possible*, and,
 ideally, know when to stop — a credible, self-contained estimate of how much more there is to
-gain from further sampling. A method that needs hundreds or thousands of evaluations, or that
-silently converges to a local minimum, is unusable here. The challenge is that the two things
-one would naturally do — sample where the function looks lowest, and sample where the function
-is poorly understood — pull in opposite directions, and neither alone solves the problem. Any
-solution must balance *exploiting* what is already known about the surface against *exploring*
-regions where the surface is uncertain, and must do so automatically, without hand-tuning a
-trade-off knob per problem.
+gain from further sampling. Two impulses are in play: sample where the function looks lowest,
+and sample where the function is poorly understood. The question is how to drive a sequential
+search that weighs *exploiting* what is already known about the surface against *exploring*
+regions where the surface is uncertain.
 
 ## Background
 
-The dominant pain points of the time, and the load-bearing concepts a solution rests on:
+The load-bearing concepts a solution rests on:
 
 - **Function evaluations are the budget.** Because each call to `y(x)` is so costly, the figure
   of merit is the number of evaluations to reach the optimum, not CPU time spent reasoning
@@ -32,35 +29,29 @@ The dominant pain points of the time, and the load-bearing concepts a solution r
 
 - **Deterministic codes have no measurement noise — but their "error" is correlated.** A
   deterministic computer model returns the same output for the same input every time. So when a
-  simple model `Σ_h β_h f_h(x) + ε` fails to fit, the residual `ε(x)` is not noise; it is the
+  simple model `Σ_h β_h f_h(x) + ε` is used, the residual `ε(x)` is not noise; it is the
   collection of left-out terms in `x`. If `y(x)` is continuous, so is that residual, which means
   the residuals at two nearby points `x_i` and `x_j` are nearly equal — *correlated*, with the
-  correlation high when the points are close and low when they are far apart. Treating those
-  residuals as independent (as classical regression does) is a structurally false assumption for
-  a deterministic code, and it is the conceptual wedge that the whole approach turns on.
+  correlation high when the points are close and low when they are far apart.
 
-- **A surrogate must do two jobs at once.** To choose evaluations wisely we need a cheap stand-in
+- **A surrogate can do two jobs at once.** To choose evaluations one wants a cheap stand-in
   for `y(x)` that supplies, at any candidate `x`, both a prediction `μ(x)` of the function value
-  *and* an honest measure `σ(x)` of how uncertain that prediction is. The prediction lets us
-  exploit; the uncertainty lets us explore. A surrogate giving only a point prediction (ordinary
-  regression, splines) cannot drive global search, because it cannot say where it is ignorant.
+  *and* a measure `σ(x)` of how uncertain that prediction is. The prediction speaks to
+  exploitation; the uncertainty speaks to exploration.
 
-- **Multimodality defeats local and surrogate-greedy search.** It is well understood that on a
-  multimodal objective, local methods (and the naive scheme of fitting a surface, jumping to its
-  minimum, resampling, and iterating) converge to whichever basin they start in. The minimum of
-  a fitted surface sits at a *local* minimum of the data; chasing it just refines that local
-  minimum. This failure is the motivating phenomenon: pure exploitation of a surrogate is not
-  global optimization.
+- **Multimodality on a fitted surface.** On a multimodal objective, local methods (and the
+  scheme of fitting a surface, jumping to its minimum, resampling, and iterating) converge to
+  whichever basin they start in. The minimum of a fitted surface sits at a *local* minimum of
+  the data, and chasing it refines that local minimum.
 
-- **The opposite extreme is just as bad.** Sampling wherever the surrogate is most uncertain
-  spends the entire (tiny) budget on charting empty regions of the box and never converges on the
-  optimum either. So the real problem is the *balance*, not either pole.
+- **The opposite extreme.** Sampling wherever the surrogate is most uncertain spends the budget
+  on charting empty regions of the box. The central question is the *balance* between the two.
 
 Two bodies of theory sit in the background and supply the pieces. First, **geostatistics /
 kriging** (Matheron 1963, *Principles of geostatistics*; Krige; surveyed by Cressie): model an
 unknown spatial field as a realization of a correlated random process, with a correlation that
 decays with distance, and derive the best linear unbiased predictor of the field at an unsampled
-location together with its mean-squared prediction error. This is exactly a surrogate that emits
+location together with its mean-squared prediction error. This is a surrogate that emits
 both `μ(x)` and `σ(x)`, and it *interpolates* the data. Second, the **Bayesian / random-function
 view of global optimization**: treat the unknown objective as a draw from a stochastic process,
 so that the value at an unevaluated point is a random variable with a computable distribution,
@@ -72,20 +63,14 @@ The prior methods a new global optimizer would be measured against or built upon
 
 - **Linear-regression response surfaces / classical RSM** (Box, Hunter & Hunter 1978). Fit
   `y(x_i) = Σ_h β_h f_h(x_i) + ε_i` with independent zero-mean errors of variance `σ²`, estimate
-  the `β_h` by least squares, optimize the fitted surface. Two gaps for an expensive deterministic
-  code: (1) one must *choose* the regressors `f_h`, but the right functional form is unknown
-  (that is why the expensive code exists); a flexible form has many parameters and so needs many
-  evaluations to fit. (2) The independent-error assumption is false for a deterministic code — the
-  "errors" are correlated continuous residuals — so the fit does not interpolate the data and the
-  model gives no trustworthy local measure of its own uncertainty. It cannot tell you where it is
-  ignorant, so it cannot drive global search.
+  the `β_h` by least squares, and optimize the fitted surface. One chooses the regressors `f_h`,
+  and a flexible form has many parameters; the errors `ε_i` are modeled as independent.
 
 - **Kriging / DACE — the "Design and Analysis of Computer Experiments" stochastic-process model**
   (Sacks, Welch, Mitchell & Wynn 1989; building on Matheron 1963 and the kriging literature).
-  Replace the false independent-noise model with a constant mean plus a *correlated* random
-  field: `y(x_i) = μ + ε(x_i)`, where `ε(x)` is a zero-mean Gaussian process with variance `σ²`
-  and a correlation that decays with a special weighted distance,
-  `d(x_i, x_j) = Σ_h θ_h |x_{ih} − x_{jh}|^{p_h}` (with `θ_h ≥ 0`, `p_h ∈ [1,2]`) and
+  Use a constant mean plus a *correlated* random field: `y(x_i) = μ + ε(x_i)`, where `ε(x)` is a
+  zero-mean Gaussian process with variance `σ²` and a correlation that decays with a weighted
+  distance, `d(x_i, x_j) = Σ_h θ_h |x_{ih} − x_{jh}|^{p_h}` (with `θ_h ≥ 0`, `p_h ∈ [1,2]`) and
   `Corr(ε(x_i), ε(x_j)) = exp(−d(x_i, x_j))`. Here `θ_h` encodes the *activity* / relevance of
   variable `h` (large `θ_h` ⇒ correlation falls off fast in that coordinate ⇒ the function is
   sensitive to it) and `p_h` encodes *smoothness* (`p_h = 2` smooth, near 1 rougher). The model
@@ -93,25 +78,20 @@ The prior methods a new global optimizer would be measured against or built upon
   correlation parameters, `μ̂` and `σ̂²` have closed forms, leaving a concentrated likelihood in
   the `θ_h, p_h` to maximize. The resulting best linear unbiased predictor
   `ŷ(x*) = μ̂ + r' R⁻¹ (y − 1μ̂)` interpolates the data, and its mean-squared error `s²(x*)` is
-  zero at sampled points and rises to about `σ²` far from them. This *is* the `μ(x), σ(x)`
-  surrogate the problem demands; what it does not yet supply is a rule for *where to sample next*.
+  zero at sampled points and rises to about `σ²` far from them. This supplies the `μ(x), σ(x)`
+  surrogate.
 
 - **Probability-of-improvement search** (Kushner 1964). Model the 1-D objective as a Wiener
   process; at each step sample the point that maximizes the probability that the new value beats
   the current best, `P(Y(x) < f_min)`, with a parameter that nudges the search "more global" or
-  "more local". Gap: the criterion is observed to be biased toward exploitation — it favors points
-  clustered just below the incumbent where a near-certain but tiny gain is almost guaranteed, and
-  the global/local trade-off has to be set by hand and per problem. And it is posed in one
-  dimension on a Wiener model.
+  "more local". It is posed in one dimension on a Wiener model, and the global/local parameter is
+  set by the user.
 
 - **Bayesian extremum-seeking / random-function global optimization** (Mockus, Tiesis &
   Zilinskas 1978; Mockus 1994). Poses global optimization in the random-function framework: treat
   the unknown objective as a draw from a stochastic process and choose each evaluation by a
   decision-theoretic criterion over the resulting distribution at a candidate point. This is the
-  general program — a criterion scored against the surrogate's predictive distribution — rather
-  than a worked-out algorithm. What it lacks for an expensive deterministic code is a concrete
-  surrogate to evaluate any such criterion on, a way to optimize the (multimodal) criterion over
-  the box to guaranteed optimality, and a stopping rule; it had not become a turnkey method.
+  general program — a criterion scored against the surrogate's predictive distribution.
 
 ## Evaluation settings
 

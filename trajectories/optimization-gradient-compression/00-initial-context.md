@@ -4,12 +4,12 @@ Data-parallel training spends most of its wall-clock time communicating gradient
 
 ## Prior art / Background / Baselines
 
-Several families of gradient compressors exist, and each leaves a concrete gap.
+Several families of gradient compressors exist.
 
-- **Full dense gradient (no compression).** All-reduce the entire float32 gradient every step. Convergence is whatever SGD gives, but the communication is `O(d)` per step — the bottleneck the whole task exists to remove. Gap: no compression at all.
-- **Sign compression.** Send one bit per coordinate, the sign. Maximally cheap. Gap: the sign operator is biased and magnitude-blind; small consistent coordinates are repeatedly mis-signed, and the expected update can point the wrong way.
-- **Magnitude sparsification (top-k / gradient dropping).** Keep only the `k` largest-magnitude coordinates, send their values and indices, and zero the rest. Empirically strong at 99–99.9% drop. Gap: top-k is biased; persistently small coordinates are never transmitted, so naive top-k stalls.
-- **Error feedback.** For any biased, contractive compressor, accumulate the compression residual in local memory and add it back before the next compression. The virtual iterate then runs exact SGD, recovering the convergence rate. Gap: it fixes convergence for contractive compressors but still stores a full-dimension residual and leaves the base compressor's message structure unchanged.
+- **Full dense gradient (no compression).** All-reduce the entire float32 gradient every step. Convergence is whatever SGD gives, and the communication is `O(d)` per step.
+- **Sign compression.** Send one bit per coordinate, the sign. Maximally cheap in terms of communicated bits.
+- **Magnitude sparsification (top-k / gradient dropping).** Keep only the `k` largest-magnitude coordinates, send their values and indices, and zero the rest. Empirically strong at 99–99.9% drop.
+- **Error feedback.** For any biased, contractive compressor, accumulate the compression residual in local memory and add it back before the next compression. The virtual iterate then runs exact SGD, recovering the convergence rate. The method stores a full-dimension residual and leaves the base compressor's message structure unchanged.
 
 ## Fixed substrate / Code framework
 

@@ -8,7 +8,7 @@ The available pre-1947 quantitative tool is the Erdos-Szekeres inductive proof. 
 
 ## Lower-Bound Obstruction
 
-To prove `f(k,k) > n`, one must certify that some `n`-vertex graph has no `K_k` and no independent `k`-set. A direct route asks for an explicit graph and then verifies every forbidden substructure is absent. Small examples exist, but this verification style does not scale to the exponential regime suggested by the upper bound. The difficulty is simultaneous avoidance: every `k`-set must fail to be a clique and must also fail to be independent.
+To prove `f(k,k) > n`, one must certify that some `n`-vertex graph has no `K_k` and no independent `k`-set. A direct route asks for an explicit graph and then verifies every forbidden substructure is absent. Small examples exist for this verification style.
 
 ## Counting Ingredients
 
@@ -16,4 +16,4 @@ There are `2^binom(n,2)` labeled graphs on `n` vertices. For a fixed `k`-set, re
 
 ## Evaluation Yardstick
 
-The result is judged by how large an `n` can be certified while still avoiding all forbidden `k`-sets, measured asymptotically against the upper scale `binom(2k-2,k-1) < 4^(k-1)`. The central proof gap is to pass from aggregate counts over all labeled graphs to the existence of a single graph outside all forbidden cases, without constructing or naming that graph.
+The result is judged by how large an `n` can be certified while still avoiding all forbidden `k`-sets, measured asymptotically against the upper scale `binom(2k-2,k-1) < 4^(k-1)`.

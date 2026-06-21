@@ -10,8 +10,7 @@ future reward is geometrically discounted by a factor `0 < β < 1`. The goal is 
 for deciding, at every step, which activity to advance, so as to maximize the total
 expected discounted reward over an infinite horizon.
 
-Three concrete instances make the problem vivid and sharpen what a solution must
-achieve:
+Three concrete instances make the problem vivid:
 
 - **Sequential clinical trials / the Bernoulli multi-armed bandit.** Each of `n`
   treatments has an unknown success probability `θ_i`; a convenient state records
@@ -34,10 +33,7 @@ achieve:
 What unites them: **effort is allocated sequentially among competing candidates**, each
 candidate is a self-contained stochastic process whose state only moves when you touch
 it, and the candidates do not interact except through the constraint that you can only
-touch one per step. A good solution would have to handle an effectively enormous joint
-state space without enumerating it. Practitioners also tend to reason one candidate at a
-time ("how promising is treatment 3 right now?"), so interpretability at that level would
-be welcome.
+touch one per step.
 
 ## Background
 
@@ -52,81 +48,66 @@ functional equation is
 
     R(F, x) = max_{u} { R(F, x, u) + β · E_{x,u}[ R(F, y) ] },
 
-the max running over which activity to advance. This is a complete answer in principle.
-The catastrophe is dimensionality: the state of `F` is the **product** of the per-activity
-state spaces. With `n` activities of `k` states each, the joint space has `k^n` states;
-for the Bayesian bandit each activity's posterior state already lives in an infinite
-space, and the product is hopeless. Backward induction over
-the product MDP is exponential in `n`. This is the wall every direct approach hits.
+the max running over which activity to advance. The state of `F` is the **product** of
+the per-activity state spaces: with `n` activities of `k` states each, the joint space
+has `k^n` states; for the Bayesian bandit each activity's posterior state already lives
+in an infinite space, so the product is infinite-dimensional. Backward induction runs
+over this product MDP.
 
 **Existence of a clean optimal policy (Blackwell, 1965).** For a discounted MDP with
 finite control sets and uniformly bounded rewards, Blackwell proved that the supremum of
 total expected discounted reward is attained, and attained by a *deterministic,
 stationary, Markov* policy that satisfies the DP functional equation. So a well-behaved
 optimal policy is guaranteed to exist and to be expressible as a fixed function of the
-current (joint) state. This is the ground on which everything stands: it tells us there
-*is* an optimal stationary rule to find — it says nothing yet about whether that rule
-factors across activities.
+current (joint) state.
 
-**The Bayesian two-armed bandit (Bellman, 1956).** The earliest scalable-looking attack
-formulated the two-armed bandit with a Bayesian prior and obtained properties of the
-optimal policy and value function for the special case of two arms, one of them a
-"standard" arm of *known* reward. This already contains, in embryo, the idea of measuring
-an uncertain arm against a known yardstick — but it was confined to `n = 2` and produced
-no structure that scales.
+**The Bayesian two-armed bandit (Bellman, 1956).** This formulation treats the
+two-armed bandit with a Bayesian prior and obtains properties of the optimal policy and
+value function for the special case of two arms, one of them a "standard" arm of *known*
+reward — measuring an uncertain arm against a known yardstick, for `n = 2`.
 
 **Optimal stopping (Chow, Robbins & Siegmund, 1971).** The theory of when to stop a
 single evolving process to maximize an expected payoff. Two features matter here. First,
 its central object is a *stopping time* `τ` — a rule, depending only on the observed
 history, for when to quit. Second, its "monotone case": when the one-step-lookahead rule
-keeps recommending the same action, that lookahead rule is actually optimal — a situation
+keeps recommending the same action, that lookahead rule is optimal — a situation
 where the otherwise hard stopping problem collapses to a myopic comparison. This theory
 is developed for a single evolving process in isolation.
 
-**Priorities and the `cμ` heuristic.** In scheduling and queueing it was folklore (and in
+**Priorities and the `cμ` heuristic.** In scheduling and queueing it was known (and in
 restricted settings provable, e.g. Sevcik 1972 for computer job scheduling, and the
-classical `cμ`-rule for a single server) that one should give priority by a per-job
+classical `cμ`-rule for a single server) that one can give priority by a per-job
 index — roughly, holding cost times completion rate — and serve the highest-index job.
-These per-job priority indices were known to be optimal only in special, often myopic,
-regimes; outside those regimes there was no account of why, when, or whether such a
-ranking could be justified in the general stochastic case.
+These per-job priority indices are established as optimal in special, often myopic,
+regimes.
 
-**The diagnostic fact that frames the whole subject.** A simple but load-bearing
-observation about these allocation problems: an activity you decline to advance *now* is
-not lost. Because its state is frozen while ignored, you can come back to it later and
+**A structural fact about the problem class.** An activity you decline to advance *now*
+is not lost: because its state is frozen while ignored, you can come back to it later and
 get *exactly the same* sequence of rewards from it — only shifted in time, hence only
 re-discounted. There is no "the road not taken closes behind you" effect, unlike, say,
-choosing a fork on a journey where the unchosen exits vanish. This non-irrevocability is
-a structural property of the problem class.
+choosing a fork on a journey where the unchosen exits vanish.
 
 ## Baselines
 
 - **Full backward induction on the product MDP (Bellman 1957; Blackwell 1965).**
-  Core idea: solve `R(F,x) = max_u { R(F,x,u) + β E_{x,u}[R(F,y)] }` by value/policy
-  iteration over the joint state `x = (x_1, …, x_n)`. Exact and general. **Gap:** the
-  joint state space is the product of the per-arm spaces — `k^n`, or infinite-dimensional
-  for Bayesian arms — so it is computationally infeasible beyond a couple of arms. It also
-  yields no interpretable per-arm quantity.
+  Solve `R(F,x) = max_u { R(F,x,u) + β E_{x,u}[R(F,y)] }` by value/policy
+  iteration over the joint state `x = (x_1, …, x_n)`. Exact and general; the joint state
+  space is the product of the per-arm spaces — `k^n`, or infinite-dimensional for
+  Bayesian arms.
 
-- **Bayesian two-armed bandit, special-case analysis (Bellman 1956).** Core idea:
-  with one known "standard" arm and one unknown arm, characterize the optimal switch via
-  the DP equation in the unknown arm's posterior. **Gap:** restricted to `n = 2` and to
-  one-unknown-one-known; gives no construction that extends to many genuinely competing
-  unknown arms.
+- **Bayesian two-armed bandit, special-case analysis (Bellman 1956).** With one known
+  "standard" arm and one unknown arm, characterize the optimal switch via the DP equation
+  in the unknown arm's posterior, for `n = 2`.
 
 - **Myopic / one-step-lookahead and `cμ`-type priority rules (Sevcik 1972; classical
-  `cμ`).** Core idea: rank candidates by an easily computed scalar — immediate expected
+  `cμ`).** Rank candidates by an easily computed scalar — immediate expected
   reward, or holding-cost × completion-rate — and serve the top one. Cheap and
-  per-candidate. **Gap:** optimal only in special "deteriorating"/monotone regimes; in
-  general a candidate whose prospects *improve* with work (e.g. an arm you are still
-  learning about) is undervalued by a myopic index, so these rules are provably
-  suboptimal when the future matters (β near 1).
+  per-candidate; established as optimal in special "deteriorating"/monotone regimes.
 
 - **Optimal-stopping solutions for a single process (Chow–Robbins–Siegmund 1971).**
-  Core idea: for one process, choose a stopping time to maximize expected discounted
-  payoff; in the monotone case the myopic rule is optimal. **Gap:** addresses one process
-  in isolation, with no notion of *competing* processes and no rule for interleaving
-  several. It is a tool, not yet an allocation policy.
+  For one process, choose a stopping time to maximize expected discounted
+  payoff; in the monotone case the myopic rule is optimal. Addresses one process in
+  isolation, with a stopping time but no rule for interleaving several.
 
 ## Evaluation settings
 
@@ -151,9 +132,7 @@ The natural yardsticks are canonical problem families with this allocation struc
   on first success; metric: expected discounted time to first success.
 
 The protocol throughout is **discrete time, stationary** (no explicit time-dependence in
-transitions or rewards) and **infinite-horizon discounted**; the stationary,
-infinite-horizon setting is the regime in which the structure of these problems is
-cleanest, whereas finite-horizon variants behave differently.
+transitions or rewards) and **infinite-horizon discounted**.
 
 ## Code framework
 

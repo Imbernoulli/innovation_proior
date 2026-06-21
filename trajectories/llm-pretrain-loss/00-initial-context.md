@@ -6,10 +6,10 @@ A GPT-style language model is trained by next-token prediction: at each position
 
 The default objective and several loss-layer alternatives define the landscape.
 
-- **Plain next-token cross-entropy.** Map each position to `-log softmax(z)_y`; standard maximum-likelihood. Limitation: it has no finite minimizer, so on near-separable token data it continuously grows the correct logit and the overall logit scale, producing over-confident probabilities and numerical strain.
-- **Label smoothing.** Mix the one-hot target with a uniform distribution over the vocabulary. Limitation: it changes the objective from fitting the observed labels to fitting a softened distribution, and it caps relative class gaps without bounding the absolute logit level.
-- **Softmax z-loss.** Add a squared penalty on `log Σ_j exp(z_j)`. Limitation: it pulls the global logit level down only through a scalar coefficient, leaves individual logits unbounded, and introduces an auxiliary term not present in the validation cross-entropy.
-- **Logit soft-capping.** Squash logits through a bounded monotonic function before softmax. Limitation: the bounded saturation changes the distribution shape and flattens gradients for large logits, and the cap threshold is a fixed design constant whose cost/benefit trade-off is regime-dependent.
+- **Plain next-token cross-entropy.** Map each position to `-log softmax(z)_y`; standard maximum-likelihood.
+- **Label smoothing.** Mix the one-hot target with a uniform distribution over the vocabulary, replacing the hard one-hot `δ_{k,y}` with `(1-ε)·δ_{k,y} + ε/V`.
+- **Softmax z-loss.** Add a squared penalty on `log Σ_j exp(z_j)` to the standard cross-entropy, weighted by a small scalar coefficient.
+- **Logit soft-capping.** Squash logits through a bounded monotonic function before softmax, bounding each logit's magnitude at a fixed cap threshold.
 
 ## Fixed substrate / Code framework
 

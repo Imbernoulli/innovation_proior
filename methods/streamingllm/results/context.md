@@ -3,27 +3,19 @@
 A decoder-only Transformer LLM is deployed in a setting where the input never stops: a
 multi-round chat assistant that stays up over day-long conversations, a log monitor, a
 running transcript. Tokens arrive one after another and the model must keep decoding, in
-principle forever. Two hard walls make this impossible with a vanilla model.
+principle forever.
 
-First, **memory and latency grow without bound.** Autoregressive decoding caches the Key and
-Value tensors of every past token in every attention layer (the KV cache) so that each new
-query can attend to all of history without recomputing it. The cache therefore grows linearly
-with the number of tokens seen, and the per-token attention cost grows with it. On a stream of
-millions of tokens this exhausts GPU memory and the per-token latency climbs until the system
-is unusable.
+Autoregressive decoding caches the Key and Value tensors of every past token in every
+attention layer (the KV cache) so that each new query can attend to all of history without
+recomputing it. The cache therefore grows linearly with the number of tokens seen, and the
+per-token attention cost grows with it. Separately, an LLM is trained with a fixed attention
+window (e.g. 4K tokens for Llama-2), and when the input exceeds that length its quality
+degrades, because the position encodings and learned attention patterns were trained only at
+those distances.
 
-Second, **the model cannot generalize past its pretraining length.** An LLM is trained with a
-fixed attention window (e.g. 4K tokens for Llama-2). When the input exceeds that length its
-quality degrades sharply, regardless of how the KV cache is managed — the position encodings
-and the learned attention patterns were never exercised at those distances.
-
-The precise goal is an inference-time scheme that lets an *already trained* model — no
-finetuning — decode from a **fixed-budget** subset of the KV cache (constant memory, constant
-per-token latency) while keeping language-modeling quality essentially intact, for sequence
-lengths far beyond the pretraining window, ideally without bound. The scheme must work with
-the relative position encodings real LLMs use (RoPE, ALiBi) and must run on standard dense
-attention kernels, not a bespoke sparse-attention retraining. Each existing approach below
-achieves a subset of these; none achieves all at once.
+The question is how to support inference over long or effectively unbounded token streams
+using an already-trained model — no finetuning — with standard dense attention kernels and
+the relative position encodings (RoPE, ALiBi) that real LLMs use.
 
 ## Background
 
@@ -32,8 +24,7 @@ Pythia) are the substrate for chat assistants, summarization, code completion, a
 dominant serving recipe is dense causal attention with a growing KV cache, and the field has
 poured effort into pushing the *usable context length* up — better training-time efficiency
 (FlashAttention), approximate/sparse attention, and position-encoding tricks to extrapolate
-beyond the trained window — but the acceptable length stays intrinsically finite, which rules
-out persistent deployment.
+beyond the trained window.
 
 The load-bearing concepts:
 
@@ -87,40 +78,25 @@ The load-bearing concepts:
 The prior methods a fixed-budget streaming scheme is measured against and reacts to.
 
 **Dense (full) attention.** Cache every past token's KV; each query attends to all of history.
-Highest quality inside the trained window. *Gap:* cache size and per-token latency grow without
-bound (out-of-memory on long streams), and quality still collapses once the input passes the
-pretraining window length, so it cannot stream.
+Highest quality inside the trained window.
 
 **Window (sliding) attention** (Beltagy et al. 2020, as used for streaming). Keep only the KV
 of the most recent `L` tokens; evict the oldest as new ones arrive. Memory and per-token latency
-are constant once the window is full, and it scales linearly with sequence length. *Gap:* the
-moment the sequence outgrows the cache — i.e. the very first token is evicted — perplexity
-spikes and generation degenerates. The failure is tied specifically to dropping the *initial*
-tokens; keeping a fixed window of recent tokens is not enough to preserve the attention
-computation.
+are constant once the window is full, and it scales linearly with sequence length.
 
 **Sliding window with re-computation.** For each generated token, rebuild the KV states of the
 recent window from scratch so that the recent tokens are always re-encoded with valid positions.
 Quality is strong — it matches dense attention within the window and serves as the practical
-quality oracle. *Gap:* it recomputes O(L^2) attention within the window per generated token, so
-decoding latency rises quadratically with the window size, which is impractically slow for
-real-time streaming.
+quality oracle.
 
 **Heavy-hitter KV eviction (H2O, Zhang et al. 2023).** Observe that *accumulated* attention
 scores across a generation follow a power law, so a small set of "heavy-hitter" tokens carries
 most of the influence; keep the top-K tokens by accumulated attention score together with a
 recent window, and evict the rest. Reduces the cache while preserving the influential tokens.
-*Gap:* the eviction decision is driven by the realized attention matrix, so it needs per-step
-attention scores to score tokens, and it is designed to compress within a window rather than to
-extrapolate to unbounded length; it adds dynamic, attention-dependent machinery on top of the
-decode loop.
 
 **Length-extrapolation position encodings** (RoPE/ALiBi and their extensions: position
 interpolation, Chen et al. 2023; NTK-aware scaling; YaRN, Peng et al. 2023). Modify or rescale
-the position encoding so the model tolerates longer inputs. *Gap:* they extend the usable window
-to a limited, still-finite extent, and extending the window does not by itself give constant
-memory/latency or unbounded streaming; they are orthogonal to the cache-budget problem and
-could be combined with a streaming scheme rather than replacing it.
+the position encoding so the model tolerates longer inputs.
 
 ## Evaluation settings
 

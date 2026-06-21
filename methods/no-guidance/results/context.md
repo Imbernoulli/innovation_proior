@@ -7,19 +7,8 @@ locomotion agent, say — and no ability to interact further. The dynamics `s' =
 unknown, the data is whatever some unknown behavior policy left behind, and I want, at each
 state I find myself in, a good action to execute. The classical decomposition says: learn a
 dynamics model from the data, then hand that model to a trajectory optimizer that searches for
-an action sequence `a_{0:T}` maximizing `sum_t r(s_t, a_t)`. The trouble is that this
-decomposition, which is clean in abstraction, behaves badly in practice with *learned* models: a
-powerful optimizer treats the learned model as ground truth and drives the plan into regions
-where the model is confidently wrong, so the "optimal" plan looks more like an adversarial
-example than a trajectory the real system would ever produce. The precise goal is a way to
-turn logged trajectory data into a planner that (1) reasons over long horizons without the
-error of single-step predictions compounding into nonsense, (2) produces plans that stay on
-the data manifold instead of exploiting model error, (3) can be anchored at the current state
-at planning time without retraining, and (4) treats the controller's quality — the action it
-actually emits — as a first-class training target, not an afterthought of state prediction.
-Each existing tool below gives part of this; none gives all of it. Closing that gap is the
-problem, and the first thing to build is the part that has *nothing to do with reward yet* —
-a model of what plausible trajectories of this system even look like.
+an action sequence `a_{0:T}` maximizing `sum_t r(s_t, a_t)`. How can logged trajectory data
+be turned into a planner for receding-horizon control over continuous-control tasks?
 
 ## Background
 
@@ -50,9 +39,7 @@ coordinates of `x` at every step (the way missing pixels are filled around obser
 
 **Score-based view (Song & Ermon 2019).** The denoising network can be read as an estimate of
 the gradient of the log data density (the *score*) at each noise scale, and sampling resembles
-Langevin dynamics that walks up the density. This is why the iterative sampler tends to land on
-high-density, in-distribution points — a property I will care about, because the failure I am
-trying to avoid is precisely plans that leave the data distribution.
+Langevin dynamics that walks up the density.
 
 **Noise schedules (Nichol & Dhariwal 2021).** The original linear `beta` schedule was tuned
 for high-resolution images and destroys signal quickly. A cosine schedule,
@@ -71,15 +58,15 @@ goal, e.g. `p(s_1 | s_0, s_T)` makes `s_1` depend on a later state — so a stri
 left-to-right factorization of a plan is at odds with how conditioning actually flows.
 
 **The compounding-error and model-exploitation phenomena (Talvitie 2014; Chua et al. 2018;
-Wang et al. 2019).** These are the diagnostic findings that set up the whole problem. A learned
-single-step model `s_{t+1} = f_hat(s_t, a_t)`, rolled out autoregressively to form a plan,
-accumulates error: each prediction feeds the next, so small per-step errors compound and the
-`T`-step rollout drifts off the data manifold. And because the model is differentiable and
-imperfect, a strong optimizer finds action sequences that score well *under the model* by
-exploiting exactly those off-manifold regions — adversarial plans. This is why much of
-contemporary offline/model-based control either leans on model-free value functions instead of
-the trajectory-optimization toolbox, or restricts itself to weak, gradient-free planners
-(random shooting, cross-entropy method) to avoid handing a powerful optimizer a flawed model.
+Wang et al. 2019).** A learned single-step model `s_{t+1} = f_hat(s_t, a_t)`, rolled out
+autoregressively to form a plan, accumulates error: each prediction feeds the next, so small
+per-step errors compound and the `T`-step rollout drifts off the data manifold. And because the
+model is differentiable and imperfect, a strong optimizer finds action sequences that score well
+*under the model* by exploiting exactly those off-manifold regions — adversarial plans. This
+is why much of contemporary offline/model-based control either leans on model-free value
+functions instead of the trajectory-optimization toolbox, or restricts itself to weak,
+gradient-free planners (random shooting, cross-entropy method) to avoid handing a powerful
+optimizer a flawed model.
 
 ## Baselines
 
@@ -90,38 +77,23 @@ models; ensemble MB-RL, Wang et al. 2019).** Learn `f_hat(s_t, a_t)` to predict 
 (often with an ensemble for uncertainty), then plan by rolling it forward under candidate
 action sequences and scoring them, typically with the cross-entropy method or random shooting.
 Core idea: the model is a drop-in proxy for true dynamics, and planning is a separate search on
-top. **Gap:** the model is trained for *single-step* accuracy, but used for *multi-step*
-rollouts, so prediction error compounds over the horizon and the planner's long-horizon
-estimates are unreliable; and the separation of model from planner is exactly what lets the
-search exploit model error. The model is also tied to a specific reward only through the
-external scorer, and the controller it yields is a byproduct of state prediction rather than
-something the training objective optimizes for.
+top.
 
 **Model-free offline value methods (BC; CQL, Kumar et al. 2020; IQL, Kostrikov et al. 2021).**
 Sidestep dynamics entirely: learn a policy and/or value function from the batch with a
 conservatism penalty that keeps the policy near the data. Core idea: avoid planning, avoid
-model exploitation, regress a controller directly. **Gap:** they discard the trajectory-level
-structure of the data and the ability to plan by reasoning over whole futures; conditioning on
-arbitrary future goals or composing new objectives at test time is not natural, and long-
-horizon credit assignment falls back on bootstrapped value estimates rather than an explicit
-multi-step lookahead.
+model exploitation, regress a controller directly.
 
 **Sequence-modeling approaches (Decision Transformer, Chen et al. 2021; Trajectory Transformer,
 Janner et al. 2021).** Treat an offline trajectory as a token sequence and fit an
 autoregressive Transformer over interleaved states, actions, (and returns), then generate
 actions by sampling/beam-search conditioned on a target return. Core idea: cast control as
 sequence prediction; let a high-capacity sequence model capture the data distribution over
-trajectories. **Gap:** generation is still left-to-right in time, which is in tension with the
-anti-causal nature of conditioning on future outcomes, and autoregressive sampling re-incurs a
-form of step-by-step error accumulation over a long horizon; producing a globally coherent plan
-that must respect both a fixed start and a desired end is awkward in a strictly causal decoder.
+trajectories.
 
 **Generative dynamics models more broadly (VAEs, normalizing flows, GANs, EBMs as world
-models).** Various lines parameterize richer transition or trajectory distributions. **Gap:**
-with few exceptions these keep the abstraction barrier — the generative model approximates
-dynamics and is then handed to a separate planner — so they inherit the same model-exploitation
-and planner-mismatch problems; the form of the planner does not depend on the form of the
-model, which is precisely what lets the optimizer abuse it.
+models).** Various lines parameterize richer transition or trajectory distributions, keeping
+the generative model as a proxy for dynamics that is then handed to a separate planner.
 
 ## Evaluation settings
 

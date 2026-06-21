@@ -2,9 +2,9 @@
 
 ## Research question
 
-Gradient-based meta-learning for few-shot learning trains an initialization that can be adapted to a new task from only a few labelled examples. The standard setup has two nested loops. The outer loop learns the meta-initialization across tasks; the inner loop starts from that initialization and takes gradient steps on the support set of the current task. This recipe works well on few-shot image classification and small reinforcement-learning domains, but it is expensive because every sampled task runs a differentiable inner optimization inside every meta-iteration.
+Gradient-based meta-learning for few-shot learning trains an initialization that can be adapted to a new task from only a few labelled examples. The standard setup has two nested loops. The outer loop learns the meta-initialization across tasks; the inner loop starts from that initialization and takes gradient steps on the support set of the current task. This recipe is applied to few-shot image classification and small reinforcement-learning domains. Each sampled task runs a differentiable inner optimization inside every meta-iteration.
 
-The unresolved question is why the inner loop is useful. One possible story is rapid learning: the initialization is conditioned so a few gradient steps make large, task-specific representational changes. Another possible story is feature reuse: the initialization already contains broadly useful features, and the inner loop mainly handles the task-specific output alignment. These two stories imply very different algorithms. If the whole network genuinely changes its representation for each task, the full inner loop is load-bearing. If most of the representation is reused, much of the inner loop may be unnecessary computation.
+The question of interest is what role the inner loop plays. One account is rapid learning: the initialization is conditioned so a few gradient steps make large, task-specific representational changes. Another account is feature reuse: the initialization already contains broadly useful features, and the inner loop mainly handles the task-specific output alignment. Characterizing which account holds, and shaping the differentiable inner-loop adaptation rule accordingly, is the setting addressed here.
 
 ## Meta-Learning Mechanics
 
@@ -27,27 +27,27 @@ $$
 \left(I-\alpha \nabla_\theta^2 \mathcal L_{\mathcal S}^{\mathrm{sup}}\right)^\top
 \nabla_{\theta'} \mathcal L_{\mathcal Z}^{\mathrm{qry}},
 $$
-so ordinary autodiff must retain the inner step graph and compute a Hessian-vector product. This is precisely the computational burden to inspect: the inner update is not just a forward pass or a normal backward pass, and it is repeated per task.
+so ordinary autodiff must retain the inner step graph and compute a Hessian-vector product. The inner update is not a plain forward pass or a normal backward pass, and it is repeated per task.
 
 ## Head, Body, And Diagnostics
 
 Few-shot classification episodes have a structural asymmetry between the final layer and the earlier layers. In an $N$-way episode, the $N$ output coordinates are assigned to a fresh set of classes. One task might map the five output neurons to dog, cat, frog, cupcake, and phone; another might map them to airplane, frog, boat, car, and pumpkin. The final classifier therefore has a task-specific alignment problem that the earlier feature extractor does not have.
 
-The earlier layers compute features that can plausibly be shared across many tasks, while the final layer maps those features to the current episode's labels. The rapid-learning-vs-feature-reuse question should therefore be asked mainly about the body: do the earlier layers actually change their represented function during adaptation, or do they mostly reuse the meta-initialization?
+The earlier layers compute features that can be shared across many tasks, while the final layer maps those features to the current episode's labels. The rapid-learning-vs-feature-reuse question can be posed about the earlier layers: do they change their represented function during adaptation, or do they reuse the meta-initialization?
 
-Two diagnostics can answer that without changing the training objective. First, after training a standard meta-learner, freeze contiguous blocks of body layers during test-time adaptation and compare accuracy with the unfrozen model. Second, compare each layer's activations before and after adaptation using representational similarity tools. SVCCA and related CCA-based scores compare linear subspaces of neuron activations and return a similarity score in $[0,1]$; CKA gives an independent kernel-alignment score in the same spirit. These instruments measure whether a layer's function changes during the inner loop.
+Two diagnostics probe this without changing the training objective. First, after training a standard meta-learner, freeze contiguous blocks of body layers during test-time adaptation and compare accuracy with the unfrozen model. Second, compare each layer's activations before and after adaptation using representational similarity tools. SVCCA and related CCA-based scores compare linear subspaces of neuron activations and return a similarity score in $[0,1]$; CKA gives an independent kernel-alignment score in the same spirit. These instruments measure whether a layer's function changes during the inner loop.
 
-## Baselines And Gaps
+## Baselines
 
-**MAML (Finn, Abbeel, Levine, 2017).** The inner loop applies differentiable SGD to every parameter, and the outer loop optimizes the initialization through the adapted query loss. This is the clean reference point: general, model-agnostic, and second-order when implemented exactly. Its gap is cost and opacity. It pays for full-network task adaptation without revealing which parameters truly have to move.
+**MAML (Finn, Abbeel, Levine, 2017).** The inner loop applies differentiable SGD to every parameter, and the outer loop optimizes the initialization through the adapted query loss. General, model-agnostic, and second-order when implemented exactly.
 
-**First-order MAML and Reptile.** First-order variants reduce cost by dropping second-order terms or by moving the initialization toward task-adapted weights. They still adapt the whole network in the inner loop. The gap is that they cut curvature rather than identifying which parts of the model require task-specific adaptation.
+**First-order MAML and Reptile.** First-order variants reduce cost by dropping second-order terms or by moving the initialization toward task-adapted weights. They adapt the whole network in the inner loop.
 
-**Meta-SGD.** Meta-SGD learns a per-parameter inner learning-rate vector, replacing $\alpha$ with a learned $\boldsymbol\alpha$ in $\theta'=\theta-\boldsymbol\alpha\odot\nabla_\theta\mathcal L^{\mathrm{sup}}$. It can learn that different parameters should move at different scales, but it still computes gradients for all parameters and adds optimizer state of roughly the same size as the model.
+**Meta-SGD.** Meta-SGD learns a per-parameter inner learning-rate vector, replacing $\alpha$ with a learned $\boldsymbol\alpha$ in $\theta'=\theta-\boldsymbol\alpha\odot\nabla_\theta\mathcal L^{\mathrm{sup}}$. Different parameters can move at different scales; it computes gradients for all parameters and adds optimizer state of roughly the size of the model.
 
-**Metric-based few-shot methods.** Matching Networks, Prototypical Networks, and Relation Networks learn an embedding and classify queries by comparing them with the support set. They avoid per-task parameter optimization, but their machinery is specialized to classification and does not directly answer which part of a gradient-based meta-learner is doing useful work.
+**Metric-based few-shot methods.** Matching Networks, Prototypical Networks, and Relation Networks learn an embedding and classify queries by comparing them with the support set. They avoid per-task parameter optimization, with machinery specialized to classification.
 
-**Representation-similarity tools.** SVCCA, CCA-insights, and CKA are not competing meta-learning algorithms. They are measurement tools for deciding whether two layers compute similar representations before and after a perturbation such as adaptation.
+**Representation-similarity tools.** SVCCA, CCA-insights, and CKA are measurement tools rather than meta-learning algorithms, used to decide whether two layers compute similar representations before and after a perturbation such as adaptation.
 
 ## Evaluation And Code Scaffold
 

@@ -22,14 +22,9 @@ layers," takes a value that makes a second layer exist. An optimizer here must n
 values for variables but simultaneously decide *which* variables are even in play for a given
 configuration.
 
-The precise goal: find a configuration with low validation loss (equivalently, high
-validation score) in as few expensive trials as possible, over a space that is mixed-type and
-conditionally structured, while actually *using* the information from every trial already run
-— concentrating future trials where the evidence so far says good configurations live, yet
-not collapsing onto a single basin so early that better regions go unseen. A solution has to
-be cheap to run between trials (the per-iteration bookkeeping must be small next to the cost
-of one model fit), it has to scale to dozens of dimensions, and it has to cope natively with
-categorical and conditional variables rather than assuming a smooth Euclidean domain.
+The question is how to build a sequential optimizer that uses the evidence from past trials
+to concentrate future trials on promising regions, over a space that is mixed-type and
+conditionally structured.
 
 ## Background
 
@@ -46,13 +41,10 @@ An empirical observation reshapes how grid search should be judged. When the fun
 hyper-parameters to validation performance is analyzed, for most data sets only a *few* of the
 hyper-parameters actually matter — the response function has **low effective dimensionality**,
 behaving roughly like a function of a small subset of its inputs — and *which* few matter
-differs from data set to data set. That is why grid search is wasteful. A grid spends its
-trials re-testing the irrelevant axes at the cost of resolution on the relevant ones; with K
-axes on a grid of m points each, every important axis is still only probed at m distinct
-values no matter how huge the grid, because the trials are spent on the cartesian product.
-Drawing the same number of trials at random instead gives every axis that many *distinct*
-values, so the axes that matter get covered far better. This makes plain random sampling a
-surprisingly strong, and conceptually important, reference point for this problem.
+differs from data set to data set. Drawing a fixed number of trials at random instead of on a
+grid gives every axis that many *distinct* values, so the axes that matter get covered far
+better. This makes plain random sampling a surprisingly strong, and conceptually important,
+reference point for this problem.
 
 Several broader frames are on the table:
 
@@ -88,8 +80,7 @@ Several broader frames are on the table:
 - **Probabilistic surrogates and their cost.** The classical SMBO surrogate is a **Gaussian
   process** (Mockus 1978; Rasmussen & Williams): a prior over functions, closed under
   conditioning, that returns an analytic posterior mean and variance and thus the predictive
-  distribution EI needs. It is elegant where it fits, but it carries known costs that bite in
-  this regime, detailed under Baselines.
+  distribution EI needs.
 
 - **Non-parametric density estimation.** Independently of optimization, there is a standard
   way to estimate a probability density from a finite set of samples without assuming a
@@ -106,56 +97,24 @@ These are the prior methods a new optimizer would be measured against and would 
 
 **Manual search.** A human expert sets the hyper-parameters by intuition and iterative
 refinement. *Core "algorithm":* none formal — domain knowledge plus a few exploratory fits.
-**Gap:** not reproducible, does not transfer across data sets, scales poorly past a few
-variables, and makes published work hard to extend; it is precisely the lack of a *formal*
-outer-loop procedure that this whole line of work is reacting to.
 
 **Grid search.** Choose a finite value set `L^(k)` for each variable `k` and evaluate every
 combination; the trial count is `prod_k |L^(k)|`. *Core idea:* exhaustive coverage of a
-discretized box. **Gap:** the trial count is exponential in the number of variables, so it is
-confined to a handful of axes; and because every trial is spent on the cartesian product, each
-individual axis is only ever probed at its own small number of distinct levels no matter how
-large the grid — so on a response function dominated by a few axes (whose identity is unknown
-in advance), the budget is squandered re-testing the axes that do not matter. Grid search also
-ignores the outcomes of earlier trials: it never concentrates effort on promising regions.
+discretized box.
 
 **Random search** (Bergstra & Bengio 2011/2012). Draw configurations i.i.d. from the
 generative prior over the space and keep the best one seen. *Core idea / algorithm:* repeat
-`x ~ prior; y = f(x)` for the whole budget; return `argmin y`. *Why it is strong:* on a
-response function with low effective dimensionality it dominates grid search at equal budget,
-because each of the `S` random trials gives `S` distinct values on every axis, so the axes
-that matter are explored far more finely; and it is trivially parallel and handles mixed-type,
-conditional spaces because it simply samples the generative process. **Gap:** it is
-*stateless* — every draw is independent of every observed outcome, so it never uses the
-evidence it has accumulated to bias the next trial toward where good configurations have
-already turned up. With a tight budget, spending later trials as blindly as the first is the
-limitation; what random search leaves on the table is the history.
+`x ~ prior; y = f(x)` for the whole budget; return `argmin y`. On a response function with
+low effective dimensionality it dominates grid search at equal budget, because each of the `S`
+random trials gives `S` distinct values on every axis; it is trivially parallel and handles
+mixed-type, conditional spaces because it simply samples the generative process.
 
 **Gaussian-process SMBO with Expected Improvement** (Jones, Schonlau & Welch 1998; the GP
 surrogate of Mockus 1978 / Rasmussen & Williams). Fit a GP to `H`, read off the predictive
 mean `yhat(x)` and standard deviation `s(x)`, and choose the next point by maximizing the
 closed-form EI `s(x)[u·Phi(u) + phi(u)]`, `u = (y* - yhat(x))/s(x)`, with `y*` the best
 observed value. *Core idea:* a calibrated probabilistic surrogate of the objective whose
-uncertainty drives exploration. **Gaps in this regime:**
-- *Cost.* Conditioning a GP on `n` observations costs `O(n^3)` (a kernel-matrix solve),
-  growing with the history.
-- *It needs a metric.* The kernel is a similarity over the input vector `x`, which is awkward
-  for categorical and especially conditional variables — a single GP over the whole space is
-  not even well-defined when different points have different active variables, so one is forced
-  to hand-build a tree of independent GPs, one per conditional group, and stitch them together.
-- *EI is hard to maximize here.* As the number of observations grows the EI surface over `x`
-  becomes highly multi-modal, and with more than ten dimensions and categorical axes there is
-  no gradient to follow; maximizing the acquisition itself becomes a nontrivial global search.
-- *The two-stage deception.* This is the load-bearing limitation. GP-EI is a *two-stage*
-  procedure: stage one fits the surrogate and estimates its parameters, including the predictive
-  standard error `s(x)`; stage two treats those estimates as correct and computes where to
-  search. A sparse or unlucky initial sample can make the fitted surface badly mislead the
-  error estimate — the textbook case is a true sine sampled exactly at its crests, where the
-  fit reports `s(x) = 0` everywhere and therefore `EI = 0` everywhere, so the search stalls.
-  Because the possibly-collapsed standard error is the *only* thing forcing the GP to revisit
-  sparsely sampled regions, when it is under-estimated the method becomes excessively local or
-  stops prematurely. The reliance on a single point estimate of the surrogate's own
-  uncertainty is where this approach is fragile.
+uncertainty drives exploration.
 
 ## Evaluation settings
 

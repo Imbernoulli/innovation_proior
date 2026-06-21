@@ -6,20 +6,17 @@ A modern convolutional network, run on an image, emits a 3D activation tensor: f
 convolutional block we get `K` feature maps, each a `W × H` grid of activations,
 `X = {X_1, ..., X_K}` with `X_k` the set of `W·H` numbers in map `k`. To turn this into a
 fixed-length image descriptor that downstream layers (a classifier head, or a metric for
-retrieval) can consume, the spatial grid has to be collapsed: every feature map must be summarized
-up into a single number, so the `W × H × K` tensor becomes a `K`-vector. This aggregation is
+retrieval) can consume, the spatial grid has to be collapsed: every feature map is summarized
+into a single number, so the `W × H × K` tensor becomes a `K`-vector. This aggregation is
 the *global pooling* step. The vector it produces is the entire image representation as far as
-everything after it is concerned, so the quality of the descriptor is bounded by how well this
-one collapse preserves what matters in the activation field.
+everything after it is concerned.
 
 The precise problem: design that collapse — a map from one feature map's `W·H` activations to a
-single scalar — so that the resulting `K`-vector is as discriminative as possible. It has to
-work across architectures and feature-map sizes, has to be cheap (this runs on every image,
-every forward and backward pass), and ideally should not throw away information that a fixed,
-hand-chosen rule would discard. The activations entering it are non-negative (the last layer is
-a ReLU), and the descriptor is trained, so any free parameter inside the pooling rule could in
-principle be learned end to end rather than guessed. A good solution would beat the standard
-hand-chosen collapses without enlarging the descriptor or complicating the pipeline around it.
+single scalar — so that the resulting `K`-vector is discriminative. It has to
+work across architectures and feature-map sizes, and it runs on every image, on
+every forward and backward pass. The activations entering it are non-negative (the last layer is
+a ReLU), and the descriptor is trained end to end, so any free parameter inside the pooling rule could in
+principle be learned by backpropagation rather than fixed by hand.
 
 ## Background
 
@@ -33,19 +30,19 @@ equals the number of feature maps `K` — for common networks 256, 512, or 2048 
 search-friendly representation. The descriptor is then `ℓ2`-normalized so that image similarity
 is an inner product.
 
-The whole burden of the spatial collapse therefore falls on the choice of pooling function, and
-the field has converged on two opposite default rules, plus weighted and regional variants. The
-load-bearing observation about activation fields is that a feature map is *not* uniform: a few
+The spatial collapse is therefore governed by the choice of pooling function, and
+the field has converged on two default rules, plus weighted and regional variants. A standing
+observation about activation fields is that a feature map is *not* uniform: a few
 spatial locations fire strongly (the discriminative object parts the channel detects) against a
-large field of weak or zero responses. A pooling rule has to decide how to weigh the rare strong
+large field of weak or zero responses. A pooling rule weighs the rare strong
 locations against the many weak ones, and the two standard rules sit at the two extremes of that
 decision — one keeps only the single strongest location, the other weighs every location
-equally. Neither matches the actual sparsity structure of the field.
+equally.
 
 ## Baselines
 
-These are the pooling rules a new global-pooling layer would be measured against and react to.
-Each takes one feature map `X_k` (its `N = W·H` activations) and returns one scalar `f_k`; the
+These are the pooling rules a new global-pooling layer would be measured against. Each takes one
+feature map `X_k` (its `N = W·H` activations) and returns one scalar `f_k`; the
 descriptor is `f = [f_1, ..., f_K]`.
 
 **Global max pooling — MAC (Razavian et al. 2014; integral max-pooling, Tolias, Sicre & Jégou,
@@ -57,12 +54,9 @@ f_k = max_{x ∈ X_k} x.
 
 Because each component is one activation, it corresponds to one receptive-field patch, and the
 descriptor inner product implicitly matches the most-distinctive patches between two images.
-Regional max-pooling variants max over a rigid grid of rectangular regions and then sum the
-region descriptors, injecting some locality.
-**Limitation:** a single location decides each component; the rest of the map — every other
-location that also responded — is discarded, and the descriptor is at the mercy of one possibly
-noisy peak. R-MAC recovers some of that signal but introduces a region grid (number of scales,
-sizes, strides, overlap) that must be set by hand.
+Regional max-pooling variants (R-MAC) max over a rigid grid of rectangular regions and then sum the
+region descriptors, injecting some locality through a region grid set by hand (number of scales,
+sizes, strides, overlap).
 
 **Sum / average pooling — SPoC (Babenko & Lempitsky, ICCV 2015).** Average every location:
 
@@ -71,28 +65,22 @@ f_k = (1/N) · Σ_{x ∈ X_k} x.
 ```
 
 It uses the whole map, is smooth and stable, and was found to work especially well once followed
-by descriptor whitening. **Limitation:** every spatial location is weighted identically, so a
-sparse strong response — exactly the discriminative signal — is diluted by averaging it against
-the large mostly-background field; the rare informative location contributes the same per-pixel
-weight as the dead ones.
+by descriptor whitening. Every spatial location is weighted identically.
 
 **Weighted-sum pooling — CroW (Kalantidis, Mellina & Osindero, ECCVW 2016).** A sum in which each
 spatial location and each channel is multiplied by a weight before accumulation, the weights
-derived from spatial saliency and channel sparsity statistics. It can up-weight informative regions relative to plain SPoC. **Limitation:**
-the weighting rules are hand-designed heuristics computed from the activations, not a single
-quantity the network can learn; the operation is still, at bottom, a re-weighted arithmetic mean
-and inherits the mean's character.
+derived from spatial saliency and channel sparsity statistics computed from the activations. It
+up-weights informative regions relative to plain SPoC. The weighting rules are hand-designed
+heuristics, and the operation is at bottom a re-weighted arithmetic mean.
 
 **Mixed / hybrid pooling (Mousavian & Kosecka 2015 for retrieval; Lee, Gallagher & Tu, AISTATS
 2016, for recognition).** Take a convex combination of the two extremes,
-`a·max + (1−a)·avg`, with `a` a mixing scalar. **Limitation:** the output is constrained to a
-straight-line blend of the arithmetic mean and the max of the pool; it can land between the two
-endpoints but cannot reshape *how* the locations are weighted within the pool — it is an additive
-mixture of two fixed rules, not a continuum of pooling behaviors.
+`a·max + (1−a)·avg`, with `a` a mixing scalar. The output is a straight-line blend of the
+arithmetic mean and the max of the pool, an additive mixture of two fixed rules with the mixing
+weight as the free knob.
 
-Common thread across all of them: each is a *fixed* rule (or a fixed rule with hand-set knobs),
-sitting at or between the two endpoints of "one location" and "all locations equally," without a
-data-learned way for the collapse itself to adapt to the activation statistics.
+Each of these is a *fixed* rule (or a fixed rule with hand-set knobs), sitting at or between the
+two endpoints of "one location" and "all locations equally."
 
 ## Evaluation settings
 

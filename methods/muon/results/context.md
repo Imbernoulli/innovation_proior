@@ -4,25 +4,9 @@
 
 Training large language models is dominated by the cost of the optimizer's work over trillions of
 tokens, and one optimizer — AdamW — is the near-universal default. The question is whether a
-fundamentally better update rule exists for the bulk of a transformer's parameters: the 2D weight
-matrices of the attention and feed-forward layers, which hold the overwhelming majority of the
-trainable weights and the compute.
-
-The pain point is structural. AdamW maintains, per scalar weight, a running first and second moment
-and steps with `m̂/√v̂`; with the moving averages switched off this is just `sign(g)`. It therefore
-treats a weight **matrix** as a flat bag of independent scalars and normalizes the gradient one
-entry at a time. But a hidden weight matrix is not a bag of scalars — it is a **linear operator** on
-the layer's input/hidden space, and what we actually care about is how the update changes that
-operator's action. An entrywise rule is blind to the matrix's singular structure.
-
-This matters because of an observed property of the updates themselves: for the 2D parameters of a
-transformer, the SGD-momentum and Adam update matrices have very high condition number — they are
-close to low-rank. A few singular directions carry almost all the magnitude of the update; the many
-small-singular-value directions, which can still be important for learning, receive almost no step.
-A satisfactory answer would (a) account for the matrix's operator structure rather than treating its
-entries in isolation, (b) be cheap enough to run every step at LLM scale on GPUs in low precision,
-and (c) keep AdamW's practical conveniences — a stable update magnitude and transferable
-learning-rate / weight-decay settings.
+different update rule can be designed for the 2D weight matrices of the attention and feed-forward
+layers, which hold the overwhelming majority of the trainable weights and the compute, by treating
+those matrices as linear operators rather than flat bags of scalars.
 
 ## Background
 
@@ -53,7 +37,7 @@ right preconditioners `L_t = Σ G G^T`, `R_t = Σ G^T G` and steps with
 `W ← W − η L_t^{-1/4} G R_t^{-1/4}`, a Kronecker-factored approximation to a full-matrix
 preconditioner. It captures correlations across rows and columns that an entrywise method cannot,
 but it must form and invert (fourth-root) the `A×A` and `B×B` preconditioners every so often, which
-is `O(A³ + B³)` compute and `O(A² + B²)` memory per matrix — prohibitive at LLM scale.
+is `O(A³ + B³)` compute and `O(A² + B²)` memory per matrix.
 
 **Matrix factorizations and matrix functions.** Any real matrix `M` factors as `M = U Σ Vᵀ` (SVD),
 with `U, V` orthonormal and `Σ` the nonnegative singular values. Numerical-analysis texts (Higham)
@@ -61,30 +45,25 @@ study matrix functions and note that some can be evaluated iteratively with only
 multiplications, avoiding an explicit SVD or any matrix inverse — a property that matters in low
 precision, where forming inverses or inverse roots is fragile, especially on near-singular matrices.
 
-**Diagnostic observation on update spectra.** A direct measurement motivating the whole line: the
-update matrices produced by entrywise optimizers on transformer 2D weights are nearly low-rank
-(high condition number), so the effective rank of each step is much smaller than the matrix's
-dimension — a few singular directions carry almost all of the step's magnitude, while a long tail
-of small-singular-value directions receive almost none.
+**Diagnostic observation on update spectra.** A direct measurement on transformer 2D weights: the
+update matrices produced by entrywise optimizers are nearly low-rank (high condition number), so
+the effective rank of each step is much smaller than the matrix's dimension — a few singular
+directions carry almost all of the step's magnitude, while a long tail of small-singular-value
+directions receive almost none.
 
 ## Baselines
 
 **SGD with momentum.** `M_t = μ M_{t-1} + G_t`; `W_t = W_{t-1} − η M_t`. Cheap, one state buffer.
-*Gap:* the update keeps the gradient's anisotropy, so a few dominant directions absorb the step and
-it is sensitive to per-layer scale; needs careful learning-rate tuning per tensor shape.
 
 **Adam / AdamW.** Per-coordinate `m̂/(√v̂+ε)` with decoupled weight decay (AdamW). *Core math:*
 `m_t = β₁ m_{t-1} + (1−β₁) g`, `v_t = β₂ v_{t-1} + (1−β₂) g²`, update `m̂_t/(√v̂_t+ε)`, then
-`W ← (1−ηλ)W − η·update`. *Strengths:* stable update RMS (~0.2–0.4), transferable hyperparameters,
-two cheap state buffers. *Gap:* purely entrywise — it normalizes each scalar in isolation and
-ignores that the weight is a matrix operator, so its update inherits whatever singular structure the
-gradient has.
+`W ← (1−ηλ)W − η·update`. Stable update RMS (~0.2–0.4), transferable hyperparameters,
+two cheap state buffers.
 
 **Shampoo.** Kronecker-factored preconditioning `W ← W − η L^{-1/4} G R^{-1/4}` with
-`L = Σ GGᵀ`, `R = Σ GᵀG`. *Strength:* genuinely matrix-aware; captures row/column correlations.
-*Gap:* forming and inverse-fourth-rooting the two preconditioners is `O(A³+B³)` time and
-`O(A²+B²)` memory per matrix and needs higher precision — too expensive to run at every step for
-billion-parameter models.
+`L = Σ GGᵀ`, `R = Σ GᵀG`. Captures row/column correlations that entrywise methods do not. Forming
+and inverse-fourth-rooting the two preconditioners is `O(A³+B³)` time and `O(A²+B²)` memory per
+matrix.
 
 ## Evaluation settings
 

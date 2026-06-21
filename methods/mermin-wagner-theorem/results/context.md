@@ -16,15 +16,6 @@ question about the foundations of phase transitions. Practically, thin films and
 materials are effectively two-dimensional, and one wants to know whether they can be intrinsic
 magnets at all.
 
-What a satisfying answer must achieve: it cannot merely *suggest* that order is fragile. The
-honest order parameter is defined by a double limit — apply a small symmetry-breaking field,
-take the system to infinite size, *then* remove the field — and a real answer must control the
-magnetization throughout that limit, **without ever assuming the ordered state to begin with**.
-A proof that presupposes alignment and then finds the corrections blowing up is only heuristic;
-it begs the question it is supposed to settle. The target is a rigorous statement, valid for
-quantum spins of any magnitude S, that either bounds the spontaneous magnetization to zero in
-d ≤ 2 or fails to.
-
 ## Background
 
 **The Heisenberg model.** The standard microscopic description of an insulating magnet is the
@@ -58,8 +49,7 @@ magnon reduces the magnetization, and summing over modes with Bose occupation gi
 where N(E) is the magnon density of states. From E ∼ k² in d dimensions, the volume element
 k^{d-1}dk converts to N(E) ∼ E^{(d−2)/2}. In d = 3, N(E) ∼ E^{1/2}, the integral converges, and
 one recovers Bloch's celebrated low-temperature result that the magnetization falls as
-M(0) − const·T^{3/2}. The motivating observation lives in lower dimensions: in **d = 2** the
-density of states is constant, N(E) ∼ E⁰, so
+M(0) − const·T^{3/2}. In **d = 2** the density of states is constant, N(E) ∼ E⁰, so
 
   ΔM(T) ∼ T ∫₀ dx/(e^x − 1) ∼ T ∫₀ dx/x ,
 
@@ -67,20 +57,15 @@ which **diverges logarithmically at the lower limit** (using e^x − 1 ≈ x for
 it diverges even faster. Read literally, the reduction of the magnetization is infinite for any
 T > 0 — the thermal population of long-wavelength magnons is unbounded because gapless quadratic
 modes are "infinitely easy to excite" in low dimensions. Bloch already noted that short-range
-exchange below three dimensions seemed to forbid long-range order. But this is a calculation
-*built on the assumption that the ordered state exists*: it expands around full alignment and then
-finds the expansion inconsistent. It strongly suggests the absence of order without proving it.
+exchange below three dimensions seemed to forbid long-range order.
 
 **Crystalline analogues (Peierls; Landau).** A parallel and older argument concerns positional
 order: in a two-dimensional crystal the mean-square displacement of an atom from its lattice site,
 summed over the long-wavelength phonons (also gapless, with ω ∼ k), diverges, suggesting that
 genuine long-range crystalline order cannot survive in two dimensions at finite temperature.
-These fluctuation arguments are the cultural backdrop: low dimension plus a gapless Goldstone mode
-plus thermal occupation seems to wash out order, but the arguments are perturbative and
-non-rigorous, and there is persistent unease about whether they prove anything.
 
-**Bogoliubov's rigorous machinery (early 1960s).** Two tools from many-body theory change the
-situation. First, the concept of **quasi-averages**: in a system with a continuous symmetry, the
+**Bogoliubov's rigorous machinery (early 1960s).** Two tools from many-body theory are available.
+First, the concept of **quasi-averages**: in a system with a continuous symmetry, the
 naive thermal average of a non-invariant operator vanishes (by symmetry, no direction is
 preferred), so spontaneous order must be defined as a quasi-average — add an infinitesimal
 symmetry-breaking field νH′, take the thermodynamic limit, *then* let ν → 0; the two limits need
@@ -91,48 +76,35 @@ in thermal equilibrium at temperature T = 1/(k_B β):
   ½ β ⟨{A, A⁺}⟩ · ⟨[[C, H], C⁺]⟩  ≥  |⟨[A, C]⟩|² .
 
 It is proved from a positive-semidefinite scalar product on operators and the Schwarz inequality;
-nothing about it assumes order. Its power is entirely in the choice of A and C. Bogoliubov used
-substitutions that produce a 1/k² infrared factor to argue against symmetry breaking in low
-dimensions; around the same time these ideas were in the air for Bose and Fermi systems.
+nothing about it assumes order. Its power is entirely in the choice of A and C.
 
 **The superfluid precedent (Hohenberg).** Applied to a Bose system, the Bogoliubov inequality
 shows there is no Bose–Einstein condensation and no conventional superfluid or superconducting
 long-range order in one or two dimensions at finite temperature: with the operators built from the
 Bose field operator and the density, the inequality forces the condensate fraction to vanish in
-d ≤ 2. This is the standing demonstration that a rigorous low-dimensional no-go statement can come
-out of the Bogoliubov inequality at all — for a particle system with U(1) symmetry. Whether the
-same can be made to work for the spin-rotation symmetry of a magnet is a separate question.
+d ≤ 2. This is a demonstration that a rigorous low-dimensional no-go statement can come
+out of the Bogoliubov inequality — for a particle system with U(1) symmetry.
 
 ## Baselines
 
 **Bloch spin-wave theory (1930).** Quantizes deviations from the fully aligned state into
 non-interacting magnons with E(**k**) ∼ D k², computes the magnetization via the Bose-occupied
-density of states, and yields M(T) = M(0) − const·T^{3/2} in three dimensions. *Limitation:* it
-is an expansion about the ordered state, so in low dimensions where the correction diverges it
-reports its own breakdown rather than a controlled result. It cannot bound the magnetization in a
-way that is valid independent of whether order exists; it is suggestive, not conclusive, and it
-treats the magnons as if independent.
+density of states, and yields M(T) = M(0) − const·T^{3/2} in three dimensions.
 
 **Mean-field / Weiss molecular-field theory.** Replaces the neighbor interaction by an
 average internal field, giving a finite ordering temperature T_c ∝ z J (z = coordination number)
-in every dimension. *Limitation:* it discards fluctuations entirely, so it predicts order even in
-one dimension, where it is known to be wrong; it is blind to the dimensionality dependence that is
-the whole question. Its failure is the strongest hint that fluctuations, not the mean field, decide
-the low-dimensional answer.
+in every dimension.
 
 **Peierls/Landau fluctuation arguments for 2D crystals.** Sum the displacement fluctuations over
 gapless phonon modes and find a logarithmic divergence in two dimensions, suggesting no positional
-long-range order. *Limitation:* perturbative and specific to the harmonic-crystal picture; not a
-theorem, and not obviously transferable to quantum spin order with its own algebra and operators.
+long-range order.
 
 **Bogoliubov-inequality applications to Bose/Fermi systems (Hohenberg line).** Uses the rigorous
 inequality with operators built from the field operator and the density to bound the condensate
-order parameter, excluding superfluid/superconducting order in d ≤ 2. *Limitation as a baseline
-for magnetism:* it is formulated for particle systems with U(1) gauge symmetry and number
-operators, not for the SO(3) spin-rotation symmetry of a magnet; the operators, the order
-parameter, and the relevant commutators are different, and the spin algebra introduces a sum rule
-that has no direct particle-number analogue. The *technique* is the precedent; carrying it over to
-the Heisenberg model is not automatic.
+order parameter, excluding superfluid/superconducting order in d ≤ 2. The operators, order
+parameter, and relevant commutators for a magnet with SO(3) spin-rotation symmetry and the spin
+algebra are distinct from the particle-system U(1) case, and the spin algebra introduces a sum
+rule that has no direct particle-number analogue.
 
 ## Evaluation settings
 

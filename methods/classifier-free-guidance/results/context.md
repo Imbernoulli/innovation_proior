@@ -1,10 +1,10 @@
 ## Research question
 
-We have a conditional generative model of images — concretely a diffusion model that, given a class label `c`, can sample `x ~ p(x | c)`. The samples are diverse and cover the conditional distribution well, but individually they are often mediocre: a fraction look blurry, malformed, or off-class. Other families of generative models offer a knob at *sampling time* that trades diversity for per-sample fidelity, and we would like the same for diffusion.
+We have a conditional generative model of images — concretely a diffusion model that, given a class label `c`, can sample `x ~ p(x | c)`. The samples are diverse and cover the conditional distribution well. Other families of generative models offer a knob at *sampling time* that trades diversity for per-sample fidelity, and we would like the same for diffusion.
 
-The pain point is concrete. In GANs, the **truncation trick** resamples the latent from a truncated normal — shrinking the range of the input noise — which sharply raises Inception Score (perceptual quality) at the cost of recall/diversity, tracing out a smooth fidelity↔diversity curve as the truncation threshold is varied. Flow-based models get the same effect from **low-temperature sampling**: scaling the std of the base distribution by `T < 1`. Diffusion models have no equivalent. The obvious analogues do not work: multiplying the model's predicted score (or noise) by a constant, or shrinking the variance of the Gaussian noise injected during the reverse process, both produce blurry, washed-out, low-quality samples rather than sharp, high-fidelity ones.
+In GANs, the **truncation trick** resamples the latent from a truncated normal — shrinking the range of the input noise — which raises Inception Score (perceptual quality) at the cost of recall/diversity, tracing out a smooth fidelity↔diversity curve as the truncation threshold is varied. Flow-based models get the same effect from **low-temperature sampling**: scaling the std of the base distribution by `T < 1`.
 
-So the question is: **is there a sampling-time knob for a conditional diffusion model that, by sweeping a single scalar, trades sample diversity for sample fidelity** — reproducing the IS/FID tradeoff curve that truncation gives GANs — and can it be obtained cheaply, without adding machinery that complicates the training pipeline?
+So the question is: **is there a sampling-time knob for a conditional diffusion model that, by sweeping a single scalar, trades sample diversity for sample fidelity** — reproducing the IS/FID tradeoff curve that truncation gives GANs?
 
 ## Background
 
@@ -14,24 +14,21 @@ So the question is: **is there a sampling-time knob for a conditional diffusion 
 **ε-prediction and the training objective.** The reverse-process generative model needs, at each step, an estimate of the clean `x`. We parameterize it through **noise prediction**: a network `ε_θ(z_λ)` (also fed `λ`) predicts the noise that was added, and `x_θ(z_λ) = (z_λ − σ_λ ε_θ(z_λ)) / α_λ` is plugged into the posterior to form the reverse mean. Training is plain regression on the noise:
 `E_{ε, λ} ‖ ε_θ(z_λ) − ε ‖²`, with `ε ~ N(0,I)`, `z_λ = α_λ x + σ_λ ε`, and `λ ~ p(λ)`.
 
-**The score interpretation (the load-bearing fact).** This objective is denoising score matching (Vincent 2011; Hyvärinen & Dayan 2005) applied at every noise level (Song & Ermon 2019). Its consequence is that the trained noise predictor is, up to a known scale, the gradient of the log-density of the noisy data:
+**The score interpretation.** This objective is denoising score matching (Vincent 2011; Hyvärinen & Dayan 2005) applied at every noise level (Song & Ermon 2019). Its consequence is that the trained noise predictor is, up to a known scale, the gradient of the log-density of the noisy data:
 `ε_θ(z_λ) ≈ −σ_λ ∇_{z_λ} log p(z_λ)`,
 i.e. the **score** `∇_{z_λ} log p(z_λ) ≈ −ε_θ(z_λ) / σ_λ`. Sampling then resembles Langevin dynamics walking up `∇ log p` across a sequence of noise scales (Song et al. 2020).
 
 **The conditional case.** For class-conditional generation, the data `x` is drawn jointly with conditioning `c`. The only change is that the network also receives `c`: `ε_θ(z_λ, c) ≈ −σ_λ ∇_{z_λ} log p(z_λ | c)`. Everything above carries over with `p(·)` replaced by `p(· | c)`.
 
-**The diagnostic that motivates the problem.** Naive truncation analogues in diffusion (scaling scores, shrinking reverse-process noise) have been measured to degrade quality rather than sharpen it. This is the empirical wall: diffusion lacks a working fidelity knob, even though GANs and flows have one.
+**Naive truncation analogues in diffusion.** Multiplying the model's predicted score (or noise) by a constant, or shrinking the variance of the Gaussian noise injected during the reverse process, have been measured and produce blurry, washed-out samples rather than sharp ones.
 
 ## Baselines
 
-**GAN truncation / flow low-temperature sampling.** Not diffusion methods, but the behavior to be matched. Truncating the GAN latent or lowering the flow temperature concentrates sampling on high-density regions; sweeping the parameter yields a monotone IS-up / diversity-down tradeoff and a characteristic IS/FID frontier. *Gap for us:* these rely on the model's explicit, well-behaved latent geometry; diffusion's iterative denoising has no single latent whose variance can simply be shrunk.
+**GAN truncation / flow low-temperature sampling.** Not diffusion methods, but the behavior to be matched. Truncating the GAN latent or lowering the flow temperature concentrates sampling on high-density regions; sweeping the parameter yields a monotone IS-up / diversity-down tradeoff and a characteristic IS/FID frontier. These rely on the model's explicit latent geometry, whose variance can be shrunk directly.
 
-**Classifier guidance (Dhariwal & Nichol 2021).** The first method to give diffusion a truncation-like knob. Train, in addition to the diffusion model, a separate **classifier** `p_φ(c | z_λ)` on noisy images, and at sampling time push the score toward higher class-probability:
+**Classifier guidance (Dhariwal & Nichol 2021).** Gives diffusion a truncation-like knob. Train, in addition to the diffusion model, a separate **classifier** `p_φ(c | z_λ)` on noisy images, and at sampling time push the score toward higher class-probability:
 `ε̃_θ(z_λ, c) = ε_θ(z_λ, c) − w σ_λ ∇_{z_λ} log p_φ(c | z_λ) ≈ −σ_λ ∇_{z_λ}[ log p(z_λ | c) + w log p_φ(c | z_λ) ]`.
-This samples from the tilted distribution `p̃(z_λ | c) ∝ p(z_λ | c) · p_φ(c | z_λ)^w`. Increasing `w > 0` up-weights inputs the classifier is confident about, raising IS and lowering diversity — exactly the desired tradeoff, and verified to reproduce a truncation-like IS/FID curve. *Core algorithm:* during each reverse step, evaluate the diffusion score and the classifier gradient, add them with weight `w`, and proceed with the usual sampler. *Gaps it leaves open:*
-1. It needs an **extra classifier**, and that classifier must be trained on **noisy** inputs `z_λ` at every noise level — a standard pretrained classifier cannot be dropped in. This complicates the training pipeline.
-2. Sampling steps along `∇_{z_λ} log p_φ(c | z_λ)` look like a **gradient-based adversarial perturbation** of the classifier, raising the worry that the gains on classifier-based metrics (IS, FID, which are themselves built on Inception-network features) are partly an artifact of fooling those networks rather than genuinely better images.
-3. (Noted by the same authors:) applying classifier guidance with weight `w+1` to an *unconditional* model is algebraically equivalent to weight `w` on a conditional model, since `p(z|c) p(c|z)^w ∝ p(z) p(c|z)^{w+1}`; in practice guiding the already-conditional model works best.
+This samples from the tilted distribution `p̃(z_λ | c) ∝ p(z_λ | c) · p_φ(c | z_λ)^w`. Increasing `w > 0` up-weights inputs the classifier is confident about, raising IS and lowering diversity, and reproduces a truncation-like IS/FID curve. *Core algorithm:* during each reverse step, evaluate the diffusion score and the classifier gradient, add them with weight `w`, and proceed with the usual sampler. The classifier is trained on **noisy** inputs `z_λ` at every noise level.
 
 ## Evaluation settings
 

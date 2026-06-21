@@ -13,14 +13,8 @@ data volume.
 
 Concretely the protocol is *episodic*: each task ("episode") samples N classes, gives K labeled
 support examples per class, and presents query images to be sorted into one of the N classes.
-A solution has to (1) produce, from a few support examples, some representation of each new
-class; (2) compare a query to those representations to predict a label; (3) be trainable
-end-to-end so the comparison itself is *learned*, not hand-designed; and (4) carry a strong
-enough prior that it does not overfit the few support points. The contribution should be a
-reusable algorithmic component — a way to summarize a support set and to compare a query against
-it — not a dataset-specific trick. The pain point that dominates everything is overfitting under
-extreme data scarcity, which argues for the *simplest* hypothesis that can still separate the
-classes.
+The contribution should be a reusable algorithmic component — a way to summarize a support set
+and to compare a query against it — that can be trained end-to-end.
 
 ## Background
 
@@ -83,12 +77,7 @@ classifier in embedding space. Matching Networks introduced episodic training �
 max_θ E_{L∼T}[ E_{S,B∼L}[ Σ_{(x,y)∈B} log P_θ(y | x, S) ] ] over sampled N-way K-shot episodes —
 which is its most durable contribution. It also proposed Full Context Embeddings (FCE): a
 bidirectional LSTM over the support set to contextualize g, and an attention-LSTM (unrolled a
-fixed number of steps) to contextualize f conditioned on the support set. **Gaps:** the
-classifier is nonparametric over *individual* support points — it keeps one attention weight per
-support example, so prediction cost and the amount of state retained grow with the support-set
-size, and there is no single concise summary per class. It defaults to cosine similarity. FCE
-adds learnable parameters and, through the bidirectional LSTM, imposes an arbitrary ordering on
-what is really an unordered set.
+fixed number of steps) to contextualize f conditioned on the support set.
 
 **Neighbourhood Components Analysis (Goldberger, Hinton, Roweis, Salakhutdinov 2004) and its
 nonlinear extension (Salakhutdinov & Hinton 2007).** Learn an embedding so that a stochastic
@@ -96,30 +85,23 @@ nearest-neighbor rule classifies well. Each point i picks neighbor j with probab
 p_ij = exp(−‖Ax_i − Ax_j‖²) / Σ_{k≠i} exp(−‖Ax_i − Ax_k‖²), p_ii = 0, a softmax over negative
 squared Euclidean distances in the transformed space, and the objective maximizes the expected
 number of correctly classified points, f(A) = Σ_i Σ_{j: c_j = c_i} p_ij. The nonlinear version
-replaces the linear map A by a neural network. **Gap:** the softmax is formed over *individual
-points*, so a prediction depends on (and the model must retain) the entire labeled set; there is
-no per-class representation whose size is independent of how many examples a class has.
+replaces the linear map A by a neural network.
 
 **Nearest Class Mean classifier (Mensink, Verbeek, Perronnin, Csurka 2013).** Represent each
 class by the mean μ_c of its examples and assign a query to the nearest mean,
 c* = argmin_c d(x, μ_c), under a learned Mahalanobis metric, with a probabilistic multi-class
 form p(c | x) ∝ exp(−½ d_W(x, μ_c)). Because a class is just an average, brand-new classes can
 be added at near-zero cost — average their examples into a new mean — without retraining the
-metric. **Gap:** it relies on a *linear* embedding (a Mahalanobis metric over fixed features),
-and it was designed for the regime where each class brings *many* examples, not a handful. Its
-attempt at non-linear classification requires a *separate* k-means partitioning step in input
-space (multiple centroids per class), decoupled from the metric optimization rather than learned
-end-to-end.
+metric. Non-linear classification extends this with a k-means partitioning step in input space
+to assign multiple centroids per class, with the metric optimized separately.
 
 **Meta-Learner LSTM (Ravi & Larochelle 2017).** Train an LSTM to output the iterative updates of
 an episode-specific classifier so that it generalizes to the episode's query set; provided the
-miniImageNet 64/16/20 class split. **Gap:** a heavy learned-optimizer apparatus and per-episode
-adaptation — substantial machinery for the few-shot problem, with many moving parts to train.
+miniImageNet 64/16/20 class split.
 
 **Simple transfer baseline (reported by Ravi & Larochelle 2017).** Train an ordinary classifier
 on the base classes, then do cosine nearest-neighbor on the penultimate features for novel
-classes. **Gap:** the embedding is never trained to be compared episodically, so it transfers
-poorly to the few-shot comparison task.
+classes.
 
 ## Evaluation settings
 

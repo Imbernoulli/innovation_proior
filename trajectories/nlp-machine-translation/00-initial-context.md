@@ -6,15 +6,15 @@ How can a single neural network map a variable-length source sequence to a varia
 
 ## Prior art / Background / Baselines
 
-**Phrase-based statistical machine translation.** Systems translate by segmenting the source into phrases, looking them up in a learned phrase table, and scoring candidates with a log-linear combination of phrase statistics, a target n-gram language model, and reordering and penalty features. They remain a pipeline of separately trained components, hard alignment and segmentation decisions, and sparse symbolic statistics, with no shared continuous representation learned end to end.
+**Phrase-based statistical machine translation.** Systems translate by segmenting the source into phrases, looking them up in a learned phrase table, and scoring candidates with a log-linear combination of phrase statistics, a target n-gram language model, and reordering and penalty features.
 
-**Neural nets as features inside SMT.** A neural language model rescores the n-best list produced by an SMT decoder, sometimes conditioned on source-side topics or decoder alignments. It does not translate on its own and inherits the SMT search space.
+**Neural nets as features inside SMT.** A neural language model rescores the n-best list produced by an SMT decoder, sometimes conditioned on source-side topics or decoder alignments.
 
-**Encode-to-a-vector neural translation.** Neural models compress a whole source sentence into a single fixed vector and generate the target from it, using convolutional or recurrent encoders. They degrade as the source grows longer, and the strongest uses so far score phrase pairs inside SMT rather than replacing it.
+**Encode-to-a-vector neural translation.** Neural models compress a whole source sentence into a single fixed vector and generate the target from it, using convolutional or recurrent encoders. The strongest uses so far score phrase pairs inside SMT.
 
-**Monotonic-alignment sequence transducers.** Connectionist Temporal Classification trains an RNN to map an input sequence to an output sequence by marginalizing over monotonic alignments. The monotonicity assumption is too strong for translation, where word order can reorder across languages.
+**Monotonic-alignment sequence transducers.** Connectionist Temporal Classification trains an RNN to map an input sequence to an output sequence by marginalizing over monotonic alignments.
 
-**Differentiable attention.** Mechanisms that let a model read from selected input positions rather than a single vector have been explored in handwriting synthesis and image captioning. They have not yet been shown to scale to the largest end-to-end translation tasks.
+**Differentiable attention.** Mechanisms that let a model read from selected input positions rather than a single vector have been explored in handwriting synthesis and image captioning.
 
 ## Fixed substrate / Code framework
 

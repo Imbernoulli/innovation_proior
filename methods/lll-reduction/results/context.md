@@ -18,10 +18,7 @@ theoretic and algorithmic questions. The shortest vector itself (the Shortest
 Vector Problem, SVP) is hard to compute exactly in high dimension, so the
 achievable goal is weaker: return a vector that is *provably* short relative to
 the true shortest one, with a guarantee that degrades gracefully — ideally only
-exponentially in `n` but with a small base — and in *polynomial* time. A
-solution would have to (i) define precisely what "reduced enough" means, (ii)
-give a finite sequence of unimodular moves that reaches that state from any
-start, and (iii) prove the move-count is polynomially bounded.
+exponentially in `n` but with a small base — and in *polynomial* time.
 
 ## Background
 
@@ -51,8 +48,7 @@ are — but their lengths are the invariant the geometry cares about.
 
 How the GS lengths `|b*_1|, ..., |b*_n|` are arranged along the basis is thus
 tied, through the lower bound above, to how short the lattice's vectors — and
-`b_1` in particular — can be forced to be; what a basis must satisfy to pin this
-down is exactly what a reduction notion has to make precise.
+`b_1` in particular — can be forced to be.
 
 **Classical reduction theory.** The idea of choosing a canonical, near-orthogonal
 basis goes back to the theory of quadratic forms: Lagrange (1773) and Gauss
@@ -81,29 +77,18 @@ classical theory are load-bearing here:
   rank-2 procedure is the only fully-understood reduction step, and it works
   precisely because in two dimensions the rounding plus swap cannot loop.
 
-**The gap.** Classical high-rank reduction gives the best bases but no
-polynomial-time algorithm; the rank-2 Gauss step is polynomial and exact but
-only handles two vectors. Between them sits the open territory: no known
-reduction notion combines a polynomial-time guarantee at arbitrary rank with a
-provable bound on the shortness of `b_1`.
-
 ## Baselines
 
 **Hermite/Minkowski-reduced bases.** These are the strong classical reduction
 notions: each `b_i` is chosen as short as possible subject to extending
 `b_1, ..., b_{i-1}` to a basis, so the basis tracks the successive minima closely
-(exactly, in low rank). The guarantees are essentially optimal, but producing
-such a basis requires solving shortest-vector-style subproblems; no
-polynomial-time algorithm in the rank is known.
-This is the quality target one would like to approximate cheaply.
+(exactly, in low rank). Producing such a basis requires solving shortest-vector-style
+subproblems; no polynomial-time algorithm in the rank is known.
 
 **Gauss/Lagrange rank-2 reduction.** Core idea and math as above: size-reduce
 `v_2` against `v_1` by rounding the Gram-Schmidt coefficient, swap on
 `|v_2| < |v_1|`, repeat until no swap occurs. Output is provably optimal in rank
-2 and the algorithm is fast. The limitation is dimensional: it gives no direct
-handle on rank `n > 2`, where there is no single "the" shortest basis reachable
-by a local two-vector move and where a naive generalization (reduce every pair)
-need not terminate or guarantee anything.
+2 and the algorithm is fast.
 
 **Brute-force / enumeration of short vectors.** One can in principle enumerate
 lattice points within a ball to find short vectors, but the number of points

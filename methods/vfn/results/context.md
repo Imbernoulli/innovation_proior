@@ -11,14 +11,7 @@ rigid motion of the whole molecule, the prediction must be invariant to rotation
 The component that decides accuracy is the **structure encoder** — the module that turns backbone
 geometry into per-residue embeddings. The leading encoders attach a local coordinate frame to every
 residue (built from `N, Cα, C`) and reason about the *relative* pose of neighboring residues' frames.
-The open question this work targets is how *expressively* an encoder uses those frames. The dominant
-frame-modeling primitive — Invariant Point Attention (IPA), introduced in AlphaFold2 — pools geometric
-information from frames into a *scalar*: it projects points into frames and sums squared distances. That
-scalar pooling is an **atom-representation bottleneck**: a single scalar distance-sum throws away the
-*directional* structure of the geometric relationship between two residues' atom clouds. The question
-is whether a richer, learnable *vector* computation between frame-anchored points can break that
-bottleneck while staying invariant — modeling frames (and atoms) with higher capacity than scalar
-pooling allows.
+The question is how an encoder can use those frames more expressively to improve inverse folding.
 
 ## Background
 
@@ -38,9 +31,7 @@ a *consistent* local frame is invariant to a global rigid motion, because the gl
 attention. Each residue emits query/key/value *points* in its local frame; the geometric attention term
 between residues `i` and `j` is built from the **squared distance** between `i`'s query points and `j`'s
 key points after both are expressed in a common frame — i.e. the geometry is reduced to a scalar
-(a sum of squared point distances) before it enters the network. This is invariant and effective, but
-the reduction to a scalar distance-sum is exactly the bottleneck: the *direction* of the
-point-to-point displacement is discarded.
+(a sum of squared point distances) before it enters the network.
 
 **Frame-anchored virtual atoms.** Rather than only using real backbone atoms, an encoder can carry a
 set of *learnable* points (virtual atoms) whose coordinates are parameters expressed in each residue's
@@ -48,36 +39,22 @@ local frame; because they live in the frame, they rotate and translate with the 
 and frame-relative directions involving them stay invariant. Virtual atoms let the network learn a
 transferable geometric "probe" of the local environment that real backbone atoms alone do not provide
 (the side chain, which distinguishes amino acids, is not in the fixed-backbone input). PiFold (Gao et
-al. 2023) already uses fixed/learnable virtual atoms but reads only their pairwise *distances*; the
-question here is whether to read richer *vector* relationships among them.
+al. 2023) uses fixed/learnable virtual atoms and reads their pairwise *distances*.
 
 ## Baselines
 
 **IPA-based encoders (AlphaFold2; structure-prediction and design models built on IPA).** Frame-aware
-attention whose geometric term is a scalar squared-distance pooling of query/key points. **Gap:** the
-atom-representation bottleneck — pooling the point geometry into one scalar discards the directional
-structure of the relationship between two residues' atom clouds, limiting how expressively frames can be
-modeled.
+attention whose geometric term is a scalar squared-distance pooling of query/key points.
 
 **Distance-only graph encoders with virtual atoms (PiFold, Gao et al. 2023).** A `k`-NN graph with rich
 *invariant scalar* features — multi-atom-pair RBF distances (real and virtual atoms), dihedrals,
 frame-projected direction dot products — fed to attention-based message passing with edge updates and a
-global context gate, decoded one-shot by a linear head. The virtual atoms are read only through their
-pairwise *distances*. **Gap:** distances are a lossy summary of the frame relationship; a learnable
-*vector* operation between frame-anchored points could extract strictly more geometric structure than a
-bank of scalar distances.
+global context gate, decoded one-shot by a linear head. The virtual atoms contribute through their
+pairwise *distances*.
 
 **Geometric vector / equivariant encoders (GVP, Jing et al. 2021; tensor-field networks).** Carry vector
 features through the graph and combine them only through rotation-commuting operations (channel-linear
-maps, norms, norm-scalings) — GVP — or through spherical-harmonic tensor products — TFN. **Gap:** GVP's
-vector path is restricted to those few commuting operations (no general learnable linear map *between*
-arbitrary frame-anchored points), and the TFN irreps machinery is heavy; neither offers a cheap,
-learnable, high-capacity vector computation anchored in per-residue frames.
-
-So the table is set: frame-aware encoders either pool geometry into scalars at the door (IPA, PiFold) or
-restrict the vector path to a narrow commuting toolkit (GVP) or pay the irreps tax (TFN). The gap is a
-*learnable, invariant, high-capacity vector computation between frame-anchored virtual atoms* — modeling
-frames the way a linear layer models scalars, but with 3D vectors as the channel values.
+maps, norms, norm-scalings) — GVP — or through spherical-harmonic tensor products — TFN.
 
 ## Evaluation settings
 

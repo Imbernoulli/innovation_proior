@@ -6,20 +6,13 @@ A vision-language-action model (VLA) is a robot policy built by fine-tuning a la
 pretrained vision-language model on robot demonstration data so that it maps an image plus a
 language instruction to low-level robot actions. The base model used here, OpenVLA, is a
 7B-parameter policy that already follows language and generalizes semantically across many
-tasks. The problem is deployment on a *new* robot setup: such models almost always need
-fine-tuning on a few hundred task demonstrations before they work, and it is unclear what the
-most effective fine-tuning approach is. Two failures dominate. First, **speed**: the base
-model generates actions one discrete token at a time, autoregressively, which runs at only
-3-5 Hz — far below the 25-50+ Hz a high-frequency controller (especially a bimanual one)
-needs for real-time, smooth control. Second, **quality**: autoregressively decoded,
-coarsely-quantized actions are imprecise, and the slow generation makes it impractical to
-predict a chunk of several future actions at once, even though predicting action chunks is
-known to help. The goal is a fine-tuning recipe that simultaneously delivers (1) high action
-throughput suitable for high-frequency control, (2) reliable task success, and (3) enough
-flexibility to accept extra inputs (wrist camera, robot proprioceptive state) and emit
-multi-timestep outputs without wrecking the latency budget. Each known ingredient achieves
-some of this; combining them coherently into one adaptation recipe for a large pretrained VLA
-is the open problem.
+tasks. The setting is deployment on a *new* robot setup: such models are fine-tuned on a few
+hundred task demonstrations before use. The base model generates actions one discrete token
+at a time, autoregressively, which runs at 3-5 Hz; a high-frequency controller (especially a
+bimanual one) runs at 25-50+ Hz for real-time, smooth control. The question is how to
+fine-tune a large pretrained VLA into an effective policy for such a new robot — including how
+to drive action generation, how to represent the actions, and how to accept extra inputs
+(wrist camera, robot proprioceptive state) and emit multi-timestep outputs.
 
 ## Background
 
@@ -34,13 +27,12 @@ concepts:
   position, 3 orientation, 1 gripper); each dimension is normalized to `[-1, +1]` and
   uniformly binned into 256 bins, and each bin is mapped to a token in the language model's
   vocabulary. The policy is trained exactly like a language model — next-token prediction with
-  cross-entropy loss over the action tokens. This is convenient (no architectural change to
-  the VLM) but has two structural costs that are knowable up front.
+  cross-entropy loss over the action tokens — and needs no architectural change to the VLM.
 
 - **The latency arithmetic of autoregressive decoding.** Generating one `D`-dimensional
   action requires `D` sequential decoder forward passes, because each token is conditioned on
-  the previously generated ones. On an A100, generating even a single-timestep OpenVLA action
-  takes about 0.33 s. This is the root cause of the 3-5 Hz ceiling.
+  the previously generated ones. On an A100, generating a single-timestep OpenVLA action
+  takes about 0.33 s, corresponding to the 3-5 Hz rate.
 
 - **Action chunking.** Predicting and executing a sequence of `K` future actions per query —
   rather than one action at a time — is documented to improve manipulation success rates
@@ -48,21 +40,20 @@ concepts:
   reduces the *effective horizon* of the task `K`-fold, which curbs the compounding-error /
   covariate-shift problem of behavioral cloning (Ross et al. 2011), and it lets the policy
   represent temporally-correlated structure (e.g. pauses) that a single-step Markovian policy
-  cannot. But under autoregressive decoding chunking is impractical: a chunk of `K` timesteps
-  costs `K·D` sequential passes, a `K`-fold latency increase on top of an already slow loop.
+  cannot. Under autoregressive decoding, a chunk of `K` timesteps costs `K·D` sequential
+  passes.
 
 - **The discretization-precision tradeoff.** With discrete tokens, more bins buy finer action
-  resolution but make each individual token rarer in the training data, which can hurt
-  generalization; fewer bins generalize better but sacrifice fine-grained action detail.
-  Either way, binning is a lossy bottleneck between the model and the true continuous action.
+  resolution but make each individual token rarer in the training data; fewer bins make each
+  token more common but represent the action more coarsely. Binning maps the continuous action
+  onto one of a fixed set of bin centers.
 
 - **Continuous-action imitation learning, from outside the VLA world.** Two prominent
-  from-scratch imitation-learning methods already model continuous actions directly. Both are
-  the conceptual reservoir the VLA recipe draws on (detailed as baselines below): one regresses
-  an action chunk through a transformer with a simple regression loss, having found that an
-  L1 (absolute-error) reconstruction loss models the action sequence more precisely than the
-  more common L2; the other models the action chunk with a conditional denoising diffusion
-  process, which captures multimodal action distributions but pays for it with iterative
+  from-scratch imitation-learning methods model continuous actions directly (detailed as
+  baselines below): one regresses an action chunk through a transformer with a regression loss,
+  having found that an L1 (absolute-error) reconstruction loss models the action sequence more
+  precisely than the more common L2; the other models the action chunk with a conditional
+  denoising diffusion process, which captures multimodal action distributions through iterative
   sampling.
 
 - **Parameter-efficient fine-tuning.** Because downstream datasets are small (hundreds of
@@ -70,19 +61,17 @@ concepts:
   et al. 2021) — injecting trainable low-rank matrices into the frozen model's linear layers —
   is the standard way to adapt the 7B model without full fine-tuning.
 
-- **Empirical state of play that motivates the work.** Fine-tuning a large autoregressive VLA
-  with its native recipe is measured at 3-5 Hz for single-arm robots and lower for bimanual
-  ones — below the real-time threshold — and prior work reports it underperforms on bimanual,
-  high-frequency tasks (Wen et al. 2024; Liu et al. 2024; Black et al. 2024). Recent
-  better-tokenization efforts (vector-quantized or DCT-compressed action tokens; Belkhale et
-  al. 2024; Pertsch et al. 2025) cut token counts and reach 2-13x speedups, but remain
-  inherently iterative — e.g. ~750 ms latency between chunks for the fastest — so the
-  autoregressive bottleneck persists. Diffusion/flow-matching VLAs reach high-frequency
-  bimanual control but introduce slower training and multiple denoising steps at inference.
+- **Empirical state of play.** Fine-tuning a large autoregressive VLA with its native recipe
+  is measured at 3-5 Hz for single-arm robots and lower for bimanual ones (Wen et al. 2024;
+  Liu et al. 2024; Black et al. 2024). Recent better-tokenization efforts (vector-quantized or
+  DCT-compressed action tokens; Belkhale et al. 2024; Pertsch et al. 2025) cut token counts and
+  reach 2-13x speedups while remaining iterative — e.g. ~750 ms latency between chunks for the
+  fastest. Diffusion/flow-matching VLAs reach high-frequency bimanual control via multiple
+  denoising steps at inference.
 
 ## Baselines
 
-These are the prior methods a new fine-tuning recipe would be measured against and reacts to.
+These are the prior methods a new fine-tuning recipe is measured against and draws on.
 
 **OpenVLA, fine-tuned with its native recipe (Kim et al. 2024).** The base model: a Prismatic
 VLM (Karamcheti et al. 2024) with a fused SigLIP (Zhai et al. 2023) + DINOv2 (Oquab et al.
@@ -90,9 +79,8 @@ VLM (Karamcheti et al. 2024) with a fused SigLIP (Zhai et al. 2023) + DINOv2 (Oq
 projecting 256 patch embeddings per view into the language embedding space. Actions are the
 256-bin discrete tokens described above, generated **autoregressively** under a **causal**
 attention mask, trained by **next-token prediction with cross-entropy**. Adapted to new tasks
-via LoRA. **Gap:** the autoregressive causal decode forces `D` sequential passes per timestep
-(`K·D` for a chunk), capping throughput at 3-5 Hz and making action chunking impractical; the
-256-bin discretization is a lossy bottleneck that limits action precision.
+via LoRA. The autoregressive causal decode takes `D` sequential passes per timestep (`K·D` for
+a chunk), at a throughput of 3-5 Hz.
 
 **Action Chunking with Transformers — ACT (Zhao et al. 2023).** A from-scratch imitation
 policy for fine bimanual manipulation. It predicts a chunk of `k` future actions per query and
@@ -105,19 +93,16 @@ so all `k` actions emerge non-sequentially. It is trained as a conditional VAE; 
 reconstruction term is the mean absolute error between predicted and ground-truth action
 chunks, `L_reconst = L1(â_{t:t+k}, a_{t:t+k})`, plus `β·D_KL(q_φ(z|·) ‖ N(0,I))` regularizing
 the latent to a standard normal (`z` set to its zero mean at test time). The ACT study
-explicitly reports switching reconstruction from the more common L2 to **L1** because L1 gives
-more precise action modeling. **Gap:** trained from scratch on a single task's demonstrations,
-with a small bespoke architecture — it carries no large-scale vision-language pretraining and
-hence none of a VLA's semantic generalization or language following.
+reports switching reconstruction from the more common L2 to **L1** because L1 gives more
+precise action modeling. It is trained from scratch on a single task's demonstrations with a
+small bespoke architecture, carrying no large-scale vision-language pretraining.
 
 **Diffusion Policy (Chi et al. 2023).** Models the action chunk with a conditional denoising
 diffusion process: a network learns to predict the noise added to ground-truth action chunks
 under a forward diffusion schedule, and at inference the policy starts from Gaussian noise and
-iteratively denoises (DDPM/DDIM) to produce an action chunk, conditioned on the observation.
-It represents multimodal action distributions well. **Gap:** training is slower to converge and
-inference requires many sequential denoising steps (tens), so even with single-pass
-conditioning the per-chunk latency is high relative to a one-shot regressor; the algorithm is
-also more complex (noise schedule, sampler, timestep conditioning).
+iteratively denoises (DDPM/DDIM) over many sequential steps (tens) to produce an action chunk,
+conditioned on the observation. It represents multimodal action distributions well and carries
+a noise schedule, sampler, and timestep conditioning.
 
 ## Evaluation settings
 

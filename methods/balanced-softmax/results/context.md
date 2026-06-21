@@ -9,12 +9,9 @@ split `{(x_i, y_i)}`, with per-class counts `n_1, ..., n_k` (`Σ_j n_j = n`). Bu
 **balanced** test set — uniform over classes, scored by top-1 accuracy or mean per-class accuracy
 (equivalently, *balanced error*, the average of the per-class error rates). The training label
 distribution `p̂(y)` and the test label distribution `p(y)` therefore disagree: for a tail class `j`,
-`p̂(y=j) ≪ p(y=j)`. A model that minimizes ordinary cross-entropy on the training split fits the
-*training* class proportions and systematically under-predicts the tail; on the balanced metric it
-loses most of its score on exactly the classes that are rare in training. The precise goal is a
-training procedure that produces a classifier whose decision rule is correct for the *balanced*
-test distribution, that holds up across architectures and across imbalance ratios from mild to
-extreme, and that does so without paying the instability that the existing rebalancing fixes incur.
+`p̂(y=j) ≪ p(y=j)`. The question is what training procedure produces a classifier whose decision rule
+is correct for the *balanced* test distribution, across architectures and across imbalance ratios
+from mild to extreme.
 
 ## Background
 
@@ -33,28 +30,23 @@ of how class `j` looks and is shared between training and testing (same images, 
 process); the prior and the evidence `p(x)` are what differ between a skewed training split and a
 uniform test split. This is the standard exponential-family parameterization of the multinomial,
 which also supplies the *canonical link* `η_j = log(φ_j / φ_k)` — the inverse of the Softmax,
-writing each logit as a log-ratio of probabilities. These two facts — the Bayes factorization of the
-Softmax posterior, and the link function that inverts the Softmax — are the load-bearing pieces of
-machinery available before any long-tail-specific method exists.
+writing each logit as a log-ratio of probabilities.
 
-Several empirical facts about *existing* systems frame the problem. First, plain ERM under
+Several empirical facts about *existing* systems frame the problem. Plain ERM under
 long tails produces a marginal predicted-label distribution that collapses toward the head: as the
 imbalance factor grows, the mass the model puts on tail classes at test time shrinks, and the
-balanced accuracy degrades steeply on the rare classes. Second, the two classical cures — resampling
-the data to be balanced, and reweighting the loss per class — are each observed to break: oversampling
-the tail overfits its few images, undersampling the head throws away the head's variation, and loss
-reweighting with large per-class weights is observed to produce abnormally large, unstable gradients
-precisely when the imbalance (and hence the weights) is most severe. Third, there is a theoretical
-reason reweighting may not even help asymptotically: on separable data, unregularized logistic
+balanced accuracy on the rare classes drops. Two classical cures are in wide use — resampling
+the data to be balanced (oversampling the tail, undersampling the head), and reweighting the loss
+per class with large per-class weights. On separable data, unregularized logistic
 regression converges to the max-margin solution, and that solution is *unchanged* by importance
-weights (Soudry et al. 2018; Byrd & Lipton 2019) — so simply scaling each class's loss by a constant
-need not move the learned classifier at all once it can fit the training set. Fourth, a diagnostic
-decomposition of where the imbalance damage lives: when training is split into representation
-learning and classifier learning, the *features* learned under ordinary instance-balanced training
-are already good, and it is mainly the *classifier head* whose decision boundary is skewed toward the
-head classes (Kang et al. 2020). Margin theory supplies the last piece: generalization error bounds
-for a classifier scale inversely with the training margin, and with far fewer samples a tail class has
-a worse bound — so the classes most in need of a large margin are exactly the rare ones.
+weights (Soudry et al. 2018; Byrd & Lipton 2019) — scaling each class's loss by a constant
+need not move the learned classifier once it can fit the training set. A diagnostic
+decomposition splits training into representation learning and classifier learning: under ordinary
+instance-balanced training the *features* are already good, and it is mainly the *classifier head*
+whose decision boundary is skewed toward the head classes (Kang et al. 2020). Margin theory supplies
+a last piece: generalization error bounds for a classifier scale inversely with the training margin,
+and with far fewer samples a tail class has a worse bound — so the classes most in need of a large
+margin are exactly the rare ones.
 
 ## Baselines
 
@@ -63,11 +55,8 @@ These are the prior approaches a new method would be measured against and reacts
 **Inverse-frequency reweighting (cost-sensitive learning; Huang et al. 2016; Wang et al. 2017).**
 Multiply each class's cross-entropy term by a weight inversely proportional to its frequency,
 `w_c ∝ 1/n_c` (or the milder `w_c ∝ 1/√n_c`), so the rare classes contribute more loss. The weight
-is a per-class scalar that multiplies the whole gradient of that example. *Limitation:* the weight
-depends only on the class count, never on the model's current output, so it rescales gradients
-uniformly rather than correcting *where* the decision boundary sits; and when the imbalance is severe
-the tail weights become very large, producing abnormal, unstable gradients. On
-separable data the rescaling can leave the converged classifier unchanged.
+is a per-class scalar that multiplies the whole gradient of that example, depending only on the class
+count and not on the model's current output.
 
 **Class-Balanced / Effective Number of samples (Cui et al. 2019, CVPR; arXiv:1901.05555).** Argues
 that raw `1/n_c` over-credits frequent classes because additional samples of a class become
@@ -75,10 +64,8 @@ near-duplicates under data augmentation, so the *effective* number of samples sa
 sampling as random covering of a per-class volume `N` gives the effective number
 `E_n = (1 - β^n)/(1 - β)` with `β = (N-1)/N`, and the class-balanced weight `w_c ∝ (1 - β)/(1 -
 β^{n_c})`, interpolating between no reweighting (`β=0`) and inverse frequency (`β→1`); `β` is tuned in
-`{0.9, 0.99, 0.999, 0.9999}`. *Limitation:* it is still a static, model-oblivious per-class scalar
-weight on the loss — a smoother member of the same reweighting family — and it does not address the
-mismatch between the training and testing posterior; `β` is an extra hyperparameter to set per
-dataset.
+`{0.9, 0.99, 0.999, 0.9999}`. It is a static per-class scalar weight on the loss, a smoother member
+of the reweighting family.
 
 **Label-Distribution-Aware Margin loss (LDAM; Cao et al. 2019, NeurIPS; arXiv:1906.07413).** From
 margin theory: minimizing the balanced bound `(1/k) Σ_j [(1/γ_j)√(C/n_j) + (log n)/√n_j]` under a
@@ -90,28 +77,22 @@ cross-entropy that *subtracts a class-dependent margin from the true class's log
 L_LDAM = -log( e^{η_y - Δ_y} / ( e^{η_y - Δ_y} + Σ_{j≠y} e^{η_j} ) ),   Δ_j = C / n_j^{1/4}.
 ```
 
-*Limitation:* the margin/trade-off is derived for *binary* classification using the hinge loss and
-extended to multi-class heuristically; the offset is applied only to the ground-truth logit (an
-enforced margin), not as a correction to the full posterior over all classes; `C` must be tuned, and
-the method is usually paired with a deferred-reweighting training schedule to optimize stably.
+`C` is tuned, and the method is usually paired with a deferred-reweighting training schedule.
 
 **Equalization Loss (EQL / SEQL; Tan et al. 2020, CVPR; arXiv:2003.05176).** Observes that for a rare
 class the *discouraging* (negative) gradients — flowing through it whenever it is the wrong answer for
 some other class's sample — vastly outnumber its encouraging gradients and suppress it. EQL randomly
 zeroes those negative-gradient terms for rare classes by gating the Softmax denominator,
 `p̃_j = e^{η_j} / Σ_k w̃_k e^{η_k}`, `w̃_k = 1 - β T_λ(f_k)(1 - y_k)`, where `T_λ` thresholds on
-class frequency `f_k` and `β` is a Bernoulli switch. *Limitation:* it is a gradient-gating heuristic
-with a frequency threshold `λ` and a drop probability `β`, drawing a hard rare/non-rare line, rather
-than a principled correction to the training/test distribution shift.
+class frequency `f_k` and `β` is a Bernoulli switch with drop probability set by frequency threshold
+`λ`.
 
 **Decoupled training (Kang et al. 2020, ICLR; arXiv:1910.09217).** Since the diagnostic above says
 features are fine and only the head is skewed, learn the representation with ordinary
 instance-balanced sampling (`p_j ∝ n_j`), then in a second stage adjust *only the classifier*: retrain
 it with class-balanced sampling (cRT), rescale the per-class weight norms (LWS / τ-normalization), or
-use a nearest-class-mean head. *Limitation:* it is a two-stage classifier repair rather than a single
-training objective, and it does not directly model the mismatch between the training and testing
-label distributions; in extreme-vocabulary settings, fixed classifier-only recipes still leave the
-rare classes with very low sampling frequency. It is largely orthogonal to changes in the loss itself.
+use a nearest-class-mean head. It is a two-stage classifier repair, largely orthogonal to changes in
+the loss itself.
 
 ## Evaluation settings
 
@@ -137,8 +118,8 @@ The natural yardsticks, all pre-existing:
 The loss plugs into the standard classification training loop already used for the baselines: a
 model emits logits, a loss module turns (logits, labels) into a scalar, and the loop backpropagates
 and steps the optimizer. The long-tail setting also makes available the vector of per-class training
-counts `n_1, ..., n_k`, computed once from the training split. Whether any of that split-level
-information should enter the scalar loss is the single open slot; everything else — the
+counts `n_1, ..., n_k`, computed once from the training split. How that split-level
+information enters the scalar loss is the open slot; everything else — the
 cross-entropy primitive, the optimizer, the loop — already exists.
 
 ```python

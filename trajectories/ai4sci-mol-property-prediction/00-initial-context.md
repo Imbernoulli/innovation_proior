@@ -6,11 +6,11 @@ Predict chemical properties — blood-brain-barrier penetration, beta-secretase 
 
 The default encoder is a message-passing graph net built on a converged substrate (RDKit atom/bond featurization, learned graph-to-vector encoder). The relevant baselines are:
 
-- **Fixed-descriptor models (Morgan/ECFP fingerprints, RDKit 2D descriptors + RF/FFN).** Hash a molecule into a fixed bit-vector or computed physicochemical descriptors and run a generic classifier. Gap: the representation is frozen and cannot specialize to the target property.
-- **Neural molecular fingerprints (Duvenaud et al. 2015).** Learn a differentiable fingerprint by aggregating neighbor atom features through degree-specific matrices and training end-to-end. Gap: messages are shallow concatenations of atom and bond features and remain atom-centered.
-- **Gated graph nets / Weave (Li et al. 2016; Kearnes et al. 2016).** Apply edge-typed linear messages with GRU updates, or keep explicit edge representations. Gap: hidden states still live on atoms, so a message sent along one bond is summed back along the same bond at the next step.
-- **MPNN framework (Gilmer et al. 2017).** Cast the above as special cases of a message phase, update phase, and permutation-invariant readout. Gap: it is a framework, not an architecture; the default atom-centered instantiation still echoes messages and is bounded to T-hop neighborhoods.
-- **3D Transformer / Uni-Mol.** Treat atoms as a fully-connected set so distant-in-bonds-but-close-in-space contacts are visible. Gap: vanilla position encodings do not respect that molecular 3D coordinates are continuous and arbitrary up to rotation and translation.
+- **Fixed-descriptor models (Morgan/ECFP fingerprints, RDKit 2D descriptors + RF/FFN).** Hash a molecule into a fixed bit-vector or computed physicochemical descriptors and run a generic classifier.
+- **Neural molecular fingerprints (Duvenaud et al. 2015).** Learn a differentiable fingerprint by aggregating neighbor atom features through degree-specific matrices and training end-to-end.
+- **Gated graph nets / Weave (Li et al. 2016; Kearnes et al. 2016).** Apply edge-typed linear messages with GRU updates, or keep explicit edge representations.
+- **MPNN framework (Gilmer et al. 2017).** Cast the above as special cases of a message phase, update phase, and permutation-invariant readout.
+- **3D Transformer / Uni-Mol.** Treat atoms as a fully-connected set so distant-in-bonds-but-close-in-space contacts are visible.
 
 ## Fixed substrate / Code framework
 

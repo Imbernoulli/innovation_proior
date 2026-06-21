@@ -2,24 +2,17 @@
 
 ## Research question
 
-Can one prove that *density alone* forces arithmetic progressions? Concretely: if
+Does *density alone* force arithmetic progressions? Concretely: if
 $A \subseteq \mathbb{Z}$ has positive upper density
 
 $$\bar{d}(A) \;=\; \limsup_{N\to\infty} \frac{|A \cap \{-N,\dots,N\}|}{2N+1} \;>\; 0,$$
 
 must $A$ contain, for every $k$, a non-degenerate $k$-term arithmetic progression
 $a, a+n, a+2n, \dots, a+(k-1)n$ (with $n \neq 0$)? This is the Erdős–Turán conjecture
-(1936). Endre Szemerédi proved it in 1975 by a long, intricate combinatorial argument
+(1936). Endre Szemerédi proved it in 1975 by a long combinatorial argument
 built on van der Waerden's theorem and what is now called the regularity lemma. The
-question that matters here is not merely *whether* it is true — that is settled — but
-whether there is a *structurally transparent* proof: one that exhibits the reason the
-progressions are forced, instead of only certifying that they are present.
-
-The pain point is that the existing combinatorial proof, while complete, is opaque:
-it is a tour de force of nested case analysis whose mechanism is hard to see and hard
-to transplant. A solution worth having should isolate the small number of "regimes"
-that actually control the count of progressions, and prove the result by reducing every
-situation to those regimes.
+question taken up here is whether the same statement can be reached by a different
+route — one that exhibits a mechanism forcing the progressions.
 
 ## Background
 
@@ -41,12 +34,10 @@ of positive density either correlates with a single frequency (and then a counti
 argument finds a 3-AP) or is sufficiently "uniform" that the 3-AP count is close to the
 random value. Szemerédi proved $k=4$ (1969) and the general case (1975), combinatorially.
 
-**The defects of asymptotic density.** The limsup density itself is
-not a finitely additive measure; it is monotone, subadditive, and invariant under the
-shift $S\colon x \mapsto x+1$, but it cannot be treated as an honest set function. What
-raw limsup density lacks — countable additivity, a single honest limit, an $L^2$
-structure — is exactly what a probability space supplies; the $\mathbb{Z}$ on which it
-lives is moreover not compact.
+**Properties of asymptotic density.** The limsup density is monotone, subadditive, and
+invariant under the shift $S\colon x \mapsto x+1$. It is not finitely additive and is
+defined by a limsup rather than a genuine limit. It lives on $\mathbb{Z}$, which is not
+compact.
 
 **Ergodic theory of measure-preserving systems.** A measure-preserving system (m.p.s.)
 $(X,\mathcal{B},\mu,T)$ is a probability space with an invertible measure-preserving map
@@ -80,31 +71,25 @@ recurrence in open covers).
 
 ## Baselines
 
-- **Szemerédi's combinatorial proof (1975).** Core idea: an iterated regularity /
+- **Szemerédi's combinatorial proof (1975).** An iterated regularity /
   density-increment scheme over van der Waerden, partitioning the structure of the set
-  until progressions are forced. The actual mechanism (the regularity lemma plus a long
-  case analysis) is correct but extremely intricate, gives towers-of-twos bounds, and
-  does not make the forcing mechanism easy to isolate. **Gap:** no transparent "reason,"
-  no reusable structural dichotomy.
+  until progressions are forced. The mechanism is the regularity lemma plus a long case
+  analysis, and gives towers-of-twos bounds.
 
 - **Roth's analytic proof of $k=3$ (1953).** A set of positive density has a Fourier
-  transform that is either concentrated (a large non-trivial Fourier coefficient ⇒ a
-  density increment on a sub-progression, iterate) or spread out (then the 3-AP count is
-  $\approx \delta^3 N^2$, positive). This is already a structure-vs-randomness split,
-  but realized in ordinary frequency space and only known to close for $k=3$. **Gap:** no
-  comparable linear-Fourier dichotomy is available for all longer progressions.
+  transform that is either concentrated (a large non-trivial Fourier coefficient $\Rightarrow$
+  a density increment on a sub-progression, iterate) or spread out (then the 3-AP count is
+  $\approx \delta^3 N^2$, positive). It is realized in ordinary frequency space and
+  established for $k=3$.
 
 - **van der Waerden's theorem (1927) as a baseline target.** It is the colouring shadow
-  of the density statement and the thing Szemerédi's proof leans on. **Gap:** it gives
-  monochromatic progressions in *some* colour class, not progressions forced by density;
-  it is genuinely weaker (a positive-density class can be a single colour, so the density
-  statement implies vdW but not conversely).
+  of the density statement and the thing Szemerédi's proof leans on. It gives
+  monochromatic progressions in *some* colour class; a positive-density class can be a
+  single colour, so the density statement implies vdW.
 
-- **Poincaré recurrence (1899) as the $k=2$ prototype.** It is exactly the desired
-  ergodic statement for two-term "progressions" $\{x, T^n x\}$ and is essentially free
-  from measure-preservation. **Gap:** it is a *single* return; the difficulty is the
-  *simultaneous* return of $x, T^n x, T^{2n}x, \dots, T^{(k-1)n}x$ to the same set along
-  a common gap $n$, which Poincaré's pigeonhole does not reach.
+- **Poincaré recurrence (1899) as the $k=2$ prototype.** It is the ergodic statement for
+  two-term "progressions" $\{x, T^n x\}$: a *single* return of a positive-measure set
+  to itself.
 
 ## Evaluation settings
 
@@ -112,17 +97,14 @@ This is a pure-mathematics result; the "evaluation" is logical, not empirical. T
 yardsticks that exist:
 
 - **The statement to be matched.** Erdős–Turán / Szemerédi: positive upper density
-  $\Rightarrow$ arbitrarily long arithmetic progressions. A more general density
-  hypothesis (positive upper Banach density) can also be considered, but the centered
-  upper-density statement here is the target. A proof must
-  recover this for all $k$, with no density-degree restriction.
-- **Special cases that must drop out.** $k=2$ must reduce to Poincaré recurrence; $k=3$
-  must recover Roth's theorem; the colouring shadow must recover van der Waerden.
+  $\Rightarrow$ arbitrarily long arithmetic progressions, for all $k$. A more general
+  density hypothesis (positive upper Banach density) can also be considered; the centered
+  upper-density statement here is the target.
+- **Special cases for reference.** $k=2$ relates to Poincaré recurrence; $k=3$ to
+  Roth's theorem; the colouring shadow to van der Waerden.
 - **Worked test systems.** Irrational circle/torus rotations
   (compact/Kronecker), Bernoulli shifts (weak mixing), and skew products / group
-  extensions of rotations — these are the
-  standard dynamical systems on which any candidate argument can be checked.
-- **Logical economy as the metric.** Beyond correctness, the proof is judged by how few
-  regimes it needs and how cleanly the general case reduces to them.
+  extensions of rotations — the standard dynamical systems on which any candidate
+  argument can be checked.
 
 

@@ -28,17 +28,13 @@ For a finite class of `N` rules, a union bound gives a useful guarantee. If a ba
 
 ## Baselines
 
-The single-event law handles an event specified before the sample. It does not cover a rule selected because the sample made it look good.
+The single-event law handles an event specified before the sample. The finite-class union bound handles data-dependent selection when there is a finite number of candidate rules to count; the required sample size scales as `(log N - log eta)/kappa` with the class size `N`.
 
-The finite-class union bound handles data-dependent selection, but only when there is a finite number of candidate rules to count. It becomes empty for linear separators, thresholded real-valued families, and other classes with continuum many parameters.
-
-The one-dimensional empirical distribution theorem proves that simultaneous convergence over an infinite family can happen, but its proof uses the order structure of rays on the real line and does not give a general measure of how rich a rule class is.
+The one-dimensional empirical distribution theorem proves that simultaneous convergence over an infinite family can occur; its proof uses the order structure of rays on the real line.
 
 ## Required Guarantee
 
-A satisfactory answer must not assume knowledge of the unknown distribution. It should give a class-level condition that can be checked before sampling, plus a probability bound that is uniform over every event the fitting procedure might select.
-
-The condition also has to handle infinite classes without treating their continuum cardinality as fatal. It should reduce to the finite-class logarithmic price when the candidate list is finite, recover the ordered real-line case, and distinguish ordinary geometric rule families from pathologically rich set systems.
+The desired bound should be distribution-free, holding uniformly over all events the fitting procedure might select, and should apply to classes with infinitely many candidate rules — including linear separators, thresholded real-valued families, and other parametric families where straightforward counting is not available.
 
 ## Evaluation Settings
 

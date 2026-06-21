@@ -11,16 +11,7 @@ both worse.
 
 The precise goal is a controller that, after prefill, ranks the cached prefill KV entries by
 importance and keeps only a small fixed-budget subset (e.g. 20% of tokens) so that decoding can
-proceed from the reduced cache without losing long-context task quality. A usable solution has
-to satisfy several constraints that the prevailing methods each violate. It must be compatible
-with the fused attention kernel that production inference actually runs, which never
-materializes the full attention matrix — so a score that *requires* attention weights is
-disqualified. It must be query-independent: the kept set should not depend on where the
-question sits in the prompt or what the question is, because the same compressed context is
-reused across turns and instructions. It must actually reduce compute, not only memory, which
-rules out keeping every token at lower precision. And it must beat the cheap baseline of simply
-keeping the first few and the most recent tokens, which is query-free and kernel-friendly but
-throws away everything in between. Meeting all of these at once is the open problem.
+proceed from the reduced cache without losing long-context task quality.
 
 ## Background
 
@@ -40,9 +31,7 @@ shape `(batch, num_kv_heads, seq_len)`.
 **FlashAttention as a hard constraint.** The de-facto attention kernel (Dao 2023) computes the
 softmax-weighted output without ever forming the `n×n` matrix `A_i`. Any compression method
 that needs the per-token attention weights cannot run on top of it, which in a production stack
-makes it impractical. This single fact divides the design space into attention-weight-based
-methods (incompatible) and methods that score tokens from quantities the kernel already
-produces — the cached `K` and `V` themselves.
+makes it impractical.
 
 **Two diagnostic findings about the KV space.** Work on KV *quantization* mapped out the
 structure of the cached tensors:
@@ -59,9 +48,6 @@ structure of the cached tensors:
   value cache has no such obvious channel outlier pattern and is best quantized per token.
   Keys carry structure along the channel axis; values along the token axis.
 
-Both findings were used to compress *precision* while keeping all tokens, leaving the token count
-and attention work unchanged.
-
 **The attention-sink phenomenon.** StreamingLLM (Xiao et al. 2023) observed that softmax forces
 the attention weights of a query to sum to one, so when the query has no strong match it dumps
 the leftover mass onto the first few tokens, which — being visible to every later position — get
@@ -73,41 +59,24 @@ to normal and recovers fluent generation over arbitrarily long streams.
 
 **StreamingLLM / window attention with sinks (Xiao et al. 2023; LM-Infinite, Han et al. 2024).**
 Keep the first `S` sink tokens and the most recent `L` tokens in a sliding window; evict
-everything else. O(TL), constant memory, query-free, FlashAttention-compatible. *Gap:* the
-eviction is indiscriminate — any token between the sink and the recent window is dropped
-regardless of how much information it carries, so on tasks that need a fact buried in the middle
-of a long context (retrieval, needle-in-a-haystack, common/frequent-word extraction) quality
-collapses, because the needed token was simply outside the window.
+everything else. O(TL), constant memory, query-free, FlashAttention-compatible.
 
 **H2O — Heavy-Hitter Oracle (Zhang et al. 2023).** Accumulated attention scores across the
 sequence follow a power law, so a small set of "heavy hitter" tokens receives most of the
 attention; H2O keeps recent tokens plus the running heavy hitters, scoring each token by the
-sum of attention it has received, and is near-optimal under a submodularity assumption. *Gap:*
-the score is built from attention weights, so it cannot run under FlashAttention; the
-accumulation is computed during decoding and therefore depends on the queries seen so far. On
-long-answer retrieval (e.g. 64-digit passkeys, where many generated tokens are affected by the
-compression) it degrades sharply.
+sum of attention it has received, and is near-optimal under a submodularity assumption.
 
 **SnapKV (Li et al. 2024).** An "observation window" at the end of the prompt reveals which
 prefix positions each head attends to; SnapKV clusters and pools those positions and keeps
-them together with the observation window. Strong on prompt compression. *Gap:* it is
-explicitly instruction-dependent — the prefix is scored against the query window, so the kept
-set changes with the question and is not reusable across turns — and it is attention-based, so
-it is tied to having the attention matrix.
+them together with the observation window.
 
-**L2-norm key selection (Devoto et al. 2024).** The first attention-free, query-free token
-score that relies only on KV information: empirically a *low* L2 norm of a key embedding
+**L2-norm key selection (Devoto et al. 2024).** Empirically a *low* L2 norm of a key embedding
 correlates with a *high* attention score during decoding, so keep the keys with the lowest L2
 norm (and their values), skipping the first couple of layers. FlashAttention-compatible.
-*Gap:* the score is a single static scalar per token computed from the key alone, with no use
-of the value and no contextual/relative reference — it is a global per-key heuristic derived by
-correlating against attention loss, with no notion of a token's relationship to its neighbors.
 
 **Quantization (KIVI, Liu et al. 2024; CacheGen, Liu et al. 2024; PyramidInfer).** Represent
 the KV cache at reduced precision (e.g. 2-bit), with per-channel keys and per-token values to
-control error. Large memory savings with little quality loss. *Gap:* every historical token is
-retained, so the number of attention operations — the quadratic prefill and the linear-in-cache
-decode — is unchanged; this addresses memory but not compute.
+control error. Large memory savings with little quality loss.
 
 ## Evaluation settings
 

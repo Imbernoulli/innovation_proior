@@ -13,14 +13,9 @@ datapoint. The hard constraint is data: with only `K` examples (often `K=1` or `
 network with far more parameters than `K`, plain training from scratch overfits the support set
 and generalizes to nothing.
 
-The precise object we get to optimize ahead of time is *the adaptation procedure itself*. A
-solution has to: (1) carry strong prior structure into the new task so a few steps suffice without
-overfitting; (2) adapt in very few inner steps, preferably one or a handful; (3) ride on top
-of any differentiable learner and any task form (classification / regression / control) without
-bolting on a second large network or constraining the architecture; and (4) be *trainable* — the
-whole adaptation procedure must be optimizable end-to-end across the task distribution at a cost
-that scales to real convolutional networks. The existing approaches below each achieve some of
-these; none achieves all at once at a cost that scales. Closing that gap is the problem.
+The precise object we get to optimize ahead of time is *the adaptation procedure itself*: how a
+learner that has already meta-trained on many related tasks should move its parameters when given
+the support set of a brand-new task.
 
 ## Background
 
@@ -45,19 +40,7 @@ a task is iterated gradient descent on the support loss,
 with `α` the learning rate (set by hand) and `θ^0` the initialization (usually random). Three
 ingredients fully specify such an optimizer: the **initialization**, the **update direction**,
 and the **learning rate**. With abundant data the rules of thumb — random init, follow the
-gradient, small/decayed `α` — are fine. The pain points that make them unreliable for few-shot:
-
-- **Overfitting under `K` examples.** Minimizing the support loss to convergence from a random
-  start fits the few points and generalizes poorly; with so little data it is non-trivial to
-  decide *how to initialize* and *when to stop*. The gradient is an effective direction for
-  *data fitting*, which is exactly the wrong objective when fitting the support set is what
-  overfits.
-- **Hand-set, scalar learning rate.** A single global `α` must be hand-tuned per problem and can
-  matter a lot; it is one shared scale for every parameter and every step, with no principled
-  way to set it from a few examples.
-- **The update direction is locked to the raw gradient.** Plain SGD has only one global scale on
-  `∇L_T`, so any richer task-family structure in the step is compressed into a single hand-set
-  number.
+gradient, small/decayed `α` — are common practice.
 
 The obvious cheap baseline — pretrain one network on pooled data, then fine-tune on the new task —
 adapts poorly here, because when tasks demand contradictory outputs for the same input (different
@@ -90,12 +73,7 @@ min_θ  Σ_{T_i ~ p(T)}  L_{T_i}(f_{θ'_i}),   θ'_i = θ − α ∇L_{T_i}(f_θ
 and the meta-update `θ ← θ − β ∇_θ Σ_i L_{T_i}(f_{θ'_i})` differentiates *through* the inner
 gradient step — a gradient-through-a-gradient, requiring a Hessian-vector product (a
 first-order variant, FOMAML, drops it). It is architecture-agnostic, adds no parameters beyond
-`θ`, and works across supervised and RL task forms. **Gap:** the inner update is plain SGD. The
-learning rate `α` is a single scalar that must be tuned by hand and can need very different
-values per step and per problem; it is one shared scale applied to every parameter; and the
-update direction is exactly the gradient direction. The only thing meta-learned is *where to
-start* — *how* to move, on a new task, is fixed to one rigid rule: follow the raw gradient at a
-hand-set global rate.
+`θ`, and works across supervised and RL task forms.
 
 **Meta-Learner LSTM — "Optimization as a model for few-shot learning" (Ravi & Larochelle, ICLR
 2017),** extending **"Learning to learn by gradient descent by gradient descent"
@@ -109,26 +87,13 @@ learned. To avoid an explosion of meta-parameters the same small LSTM is *shared
 coordinates* (coordinate-wise), with the Andrychowicz log-magnitude-and-sign gradient
 preprocessing; training is by BPTT through the unrolled inner loop under a gradient-independence
 simplification (treat `∇L_t` as not depending on the meta-parameters, avoiding second
-derivatives). **Gap:** scalability. BPTT must store every intermediate LSTM state, a space
-cost `O(T · #states · dim(θ))` (typically `T≈8`, `#states≈20`) with a large constant from the
-LSTM internals, so it does not scale to convolutional learners with tens of thousands of
-parameters; and because one shared LSTM updates every coordinate independently, it ignores the
-correlations among parameters and "may significantly limit its potential." It is also reported
-to be difficult to optimize.
+derivatives). BPTT stores every intermediate LSTM state, a space cost `O(T · #states · dim(θ))`
+(typically `T≈8`, `#states≈20`).
 
 **Matching Networks (Vinyals et al., NeurIPS 2016)** and earlier **Siamese Networks (Koch
 2015).** Metric/attention meta-learners: learn an embedding and classify a query by a
-(soft-)nearest-neighbor comparison to the support embeddings, trained episodically. **Gap:** a
-metric does not *train* a parametric learner — it influences behavior by reshaping distances —
-so it is suited to non-parametric (kNN-like) learners and does not produce an adapted parametric
-network, and it does not transfer to regression or control in the same form.
-
-The state of the field: MAML shows that meta-learning *just the initialization*, with a trivial
-inner rule, already works well and scales (architecture-agnostic, no extra parameters). The
-LSTM line shows that meta-learning the *whole* update rule — initialization, direction, and rate
-together — is the higher-capacity ambition, but the recurrent machinery used to realize it is
-expensive and hard to train. The two ends are in tension: simple-and-scalable but rigid versus
-expressive but unscalable.
+(soft-)nearest-neighbor comparison to the support embeddings, trained episodically. They learn a
+distance-based comparison rather than adapting the parameters of a parametric learner.
 
 ## Evaluation settings
 

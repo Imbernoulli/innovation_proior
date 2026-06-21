@@ -7,11 +7,6 @@ Given a static array of `n` integers and `q` queries `(l, r, k)`, report the
 not update it. Indices are 1-based, `1 <= l <= r <= n`, and `k` is 1-based with
 `1 <= k <= r - l + 1`. Equal values count with multiplicity.
 
-Sorting `a[l..r]` for every query is correct but too expensive when both `n`
-and `q` are large. The goal is to preprocess the fixed array, keep memory near
-linear up to logarithmic factors, and answer each query by descending through a
-value-indexed counting structure instead of sorting the requested slice.
-
 ## Code framework
 
 The scaffold below already handles input, coordinate compression, node storage,
@@ -27,8 +22,7 @@ bumping each `sum`, and `count(node, l, r, lo, hi)` reports how many inserted
 items fall in a value sub-range. On top of it, an order-statistic descent finds
 the `k`-th smallest of the items currently in the tree: at each node compare `k`
 against the left child's `sum`, walk left, or walk right after subtracting it.
-What is missing is the part that connects this counting tool to the *range*
-query: a `build()` that preprocesses the array, and the top-level `kth(l, r, k)`.
+The scaffold exposes `build()` for preprocessing the array and `kth(l, r, k)` as the top-level query entry point.
 
 ```python
 import sys

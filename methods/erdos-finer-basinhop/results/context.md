@@ -24,12 +24,10 @@ C(v) = ( max_k Σ_i v_i (1 − v_{i−k}) ) · 2 / n
 
 ## This method's role
 
-This is the *middle-resolution* rung. The coarse SLSQP rung reached `~0.3812` at `24` cells but is capped
-by resolution. This method lifts the optimized coarse profile to `~120` cells by upscaling (a free
-no-op that preserves `C` while adding degrees of freedom), then refines with **basin-hopping** around the
-annealed-SLSQP ladder — perturb-and-re-solve, accepting only improvements — with a sharper `β` schedule
-to track the spikier overlap envelope. It confirms that lifting helps and tunes the hop schedule before
-the endpoint rung lifts to the `~600`-cell scale of the published records.
+This is the *middle-resolution* rung. A preceding coarse rung optimizes a profile at `24` cells, reaching
+`~0.3812`. The task here is to carry that optimized coarse profile to a higher resolution near `~120`
+cells and continue refining it, before a later endpoint rung works at the `~600`-cell scale of the
+published records.
 
 ## The fixed substrate
 

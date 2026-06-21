@@ -18,12 +18,10 @@ The right question becomes posterior ambiguity: after the receiver observes the 
 
 ## Coding Pressure
 
-Simple redundancy can reduce errors, but it lowers rate. Repeating symbols, choosing codewords far apart, or using parity constraints shows that noise can be fought, yet none of these devices by itself identifies the ultimate boundary for an arbitrary stochastic channel.
+Simple redundancy can reduce errors, but it lowers rate. Repeating symbols, choosing codewords far apart, or using parity constraints shows that noise can be fought.
 
-The open problem is sharper than finding one good trick. It asks whether long blocks, statistical regularity, and carefully arranged redundancy can make errors vanish at a positive rate, and whether there is a rate beyond which no arrangement can succeed.
+The open problem asks whether long blocks, statistical regularity, and carefully arranged redundancy can make errors vanish at a positive rate, and what the fundamental limits on reliable transmission are for an arbitrary stochastic channel.
 
-## Success Criteria
+## Research Question
 
-The clean setting is a known channel law, long block codes, and a sequence of encoders and decoders whose error probability is allowed to shrink as block length grows. A credible solution must give both a positive result and a limit: rates that can be made reliable, and rates that remain impossible even with arbitrarily long codes.
-
-It must also separate existence from practicality. A proof may show that good long codebooks exist without giving a low-complexity way to find or decode them.
+Given a known channel law, what rates of reliable communication are possible over long block codes, and what determines the boundary between achievable and unachievable rates?

@@ -4,11 +4,11 @@ Pretrain GPT-2 Medium so that the weights used in every linear projection come f
 
 ## Prior art / Background / Baselines
 
-- **Post-training quantization (PTQ; absmax / LLM.int8()).** Quantize an already-trained FP model onto a coarse grid by scaling with the per-tensor absolute maximum. At 8 bits it is nearly lossless; at 1–2 bits the rounding error dominates and accuracy collapses. Gap: the model never trained on the grid, so its FP optimum need not have a good low-bit neighbor.
-- **Quantization-aware training (QAT).** Simulate rounding in the training forward pass ("fake quant") so the network learns weights that tolerate the grid. Recovers more accuracy than PTQ, but the optimized parameter is still floating-point; discreteness is a simulated overlay, not the native forward path. Gap: the forward weights remain float.
-- **Straight-through estimator (STE).** The sign/round step has zero derivative almost everywhere, which would block gradient flow. STE treats the threshold as the identity on the backward pass, making a discrete forward op trainable. Gap: it is a gradient device, not a weight representation; it still needs a quantizer and a scale.
-- **BinaryConnect.** Keep a float latent weight for the optimizer to update, binarize it on the fly for each forward pass, and discard the latent weight at inference. Gap: demonstrated on small image classifiers; a bare sign discards all magnitude information.
-- **XNOR-Net.** Approximate a weight tensor by `α·sign(W)`, with the L2-optimal direction `sign(W)` and per-tensor scale `α = mean(|W|)`. Gap: one bit per weight and a single shared scale give every nonzero weight the same magnitude; local differences in weight size are lost.
+- **Post-training quantization (PTQ; absmax / LLM.int8()).** Quantize an already-trained FP model onto a coarse grid by scaling with the per-tensor absolute maximum. At 8 bits it is nearly lossless; at 1–2 bits the rounding error dominates and accuracy collapses.
+- **Quantization-aware training (QAT).** Simulate rounding in the training forward pass ("fake quant") so the network learns weights that tolerate the grid. Recovers more accuracy than PTQ, but the optimized parameter is still floating-point; discreteness is a simulated overlay, not the native forward path.
+- **Straight-through estimator (STE).** The sign/round step has zero derivative almost everywhere, which would block gradient flow. STE treats the threshold as the identity on the backward pass, making a discrete forward op trainable.
+- **BinaryConnect.** Keep a float latent weight for the optimizer to update, binarize it on the fly for each forward pass, and discard the latent weight at inference.
+- **XNOR-Net.** Approximate a weight tensor by `α·sign(W)`, with the L2-optimal direction `sign(W)` and per-tensor scale `α = mean(|W|)`.
 
 ## Fixed substrate / Code framework
 

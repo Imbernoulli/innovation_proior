@@ -14,8 +14,7 @@ the optimum of an online stream is itself NP-hard to pin down and order-dependen
 yardstick is the **L1 lower bound** `LB = ceil(Σ items / C)` — the count we would need if every bin
 could be filled to the brim with no wasted space. No online (or even offline) policy can beat `LB`,
 so we report each heuristic as **mean number of bins used** and as **percent excess over the lower
-bound**, `100 · (mean_bins − LB) / LB`. A policy at `0%` packs with zero wasted capacity; the open
-question is how far below the classic greedy excess a better priority function can push.
+bound**, `100 · (mean_bins − LB) / LB`. A policy at `0%` packs with zero wasted capacity.
 
 ## Prior art / Background / Baselines
 
@@ -23,15 +22,9 @@ The standard online heuristics are **First Fit** and **Best Fit**: both are fast
 require no lookahead.
 
 - **First Fit** scans the bins in order and places the item in the first bin that can accommodate
-  it. It spreads items across many bins and leaves fragmented capacity that a more selective rule
-  might consolidate.
+  it.
 
-- **Best Fit** places the item in the valid bin that minimizes the leftover slack. It quickly fills
-  bins to near capacity, but the resulting odd residual capacities are often unusable by later
-  items, forcing additional bins to open.
-
-Neither baseline adapts to the size distribution of the stream; both leave several percent of excess
-over `LB` on the instances used here.
+- **Best Fit** places the item in the valid bin that minimizes the leftover slack.
 
 ## Fixed substrate / Code framework
 

@@ -2,27 +2,24 @@
 
 ## Research question
 
-Large Transformer language models are now routinely deployed for generation:
+Large Transformer language models are routinely deployed for generation:
 summarization, translation, question answering. At generation time the model is
 run *autoregressively* — one token is produced, appended to the sequence, and
-fed back in to produce the next. This is inherently sequential and turns out to
-be the dominant cost of serving these models.
+fed back in to produce the next. This is inherently sequential and is a dominant
+cost of serving these models.
 
-The precise difficulty is not arithmetic. Generating one token requires only a
-modest number of floating-point operations per parameter. The difficulty is
-*memory bandwidth*: at every single decoding step the accelerator must read the
-model weights and, critically, the entire history of attention keys and values
-from high-bandwidth memory, while doing comparatively little compute with them.
-The compute units sit idle waiting for data to arrive. As the generated
-sequence grows, this stored history — the per-position keys and values that each
-new query must attend over — grows with it, and reloading it comes to dominate
-the per-step time.
+The relevant cost is memory bandwidth rather than arithmetic. Generating one
+token requires only a modest number of floating-point operations per parameter.
+At every decoding step the accelerator reads the model weights and the entire
+history of attention keys and values from high-bandwidth memory while doing
+comparatively little compute with them. As the generated sequence grows, this
+stored history — the per-position keys and values that each new query must
+attend over — grows with it, and reloading it contributes to the per-step time.
 
-The goal is to reduce the amount of data that must be streamed from memory at
-each decoding step — in particular the size of the cached keys and values —
-without giving up the modelling quality that makes the large model worth serving
-in the first place, and ideally without having to train an entirely new model
-from scratch to get the faster variant.
+The question is how to reduce the amount of data streamed from memory at each
+decoding step — in particular the size of the cached keys and values — while
+preserving the modelling quality of the large model, and where possible without
+training an entirely new model from scratch to obtain the faster variant.
 
 ## Background
 
@@ -72,20 +69,17 @@ $$\frac{b\,n^2 d + n\,d^2}{b\,n\,d^2} = \frac{n}{d} + \frac{1}{b}.$$
 
 When the sequence length $n$ approaches the model dimension $d$, or the batch
 $b$ is small, this ratio approaches (or exceeds) one: every operation is paired
-with roughly a full memory load, and the layer is squarely memory-bound. The
-$n/d$ term — the cost of streaming the growing key-value cache — is the offender,
-and it comes specifically from the cache carrying a separate key and value per
-head. The conclusion follows directly from the tensor shapes.
+with roughly a full memory load, and the layer is memory-bound. The $n/d$ term
+is the cost of streaming the growing key-value cache, which carries a separate
+key and value per head. The conclusion follows directly from the tensor shapes.
 
-**Why this matters more, not less, at scale.** The key-value cache scales with
-the model dimension $d$, while the model's parameters and FLOPs scale with $d^2$.
-So compute grows faster than cache as models get larger — large models are
-relatively *less* dominated by the cache term — but they also use many more
-heads, so the cache per layer is large in absolute terms and reloading it is a
-real wall-clock cost during serving. Standard tensor-parallel sharding makes this
-worse for the most aggressive remedies: a key/value tensor that has been shrunk
-below the number of model partitions must be *replicated* across partitions,
-wasting the saving.
+**Scaling behaviour.** The key-value cache scales with the model dimension $d$,
+while the model's parameters and FLOPs scale with $d^2$. So compute grows faster
+than cache as models get larger; large models are relatively less dominated by
+the cache term, but they also use many more heads, so the cache per layer is
+large in absolute terms and reloading it is a wall-clock cost during serving.
+Under standard tensor-parallel sharding, a key/value tensor that has been shrunk
+below the number of model partitions is *replicated* across partitions.
 
 ## Baselines
 
@@ -93,33 +87,22 @@ wasting the saving.
 $h$ key heads and $h$ value heads, each with its own learned projection. During
 decoding the cache stores all $h$ key heads and $h$ value heads per position —
 tensors of shape $[b, h, n, k]$. This is the source of the $n/d$ term above:
-full modelling capacity (every query head has its own key/value subspace to
-attend over), but the cache, and hence the per-step memory traffic, is as large
-as it can be. It is the quality reference — the configuration whose output one
-would like to match — and simultaneously the thing whose decoding cost one wants
-to cut.
+every query head has its own key/value subspace to attend over, and the cache,
+and hence the per-step memory traffic, is correspondingly large. It is the
+quality reference — the configuration whose output one would like to match.
 
-**Multi-query attention** (Shazeer, 2019). The observation: the cache is large
-*because* there are $h$ key heads and $h$ value heads. So keep the $h$ *query*
-heads but collapse the key and value projections to a *single* head shared across
-all query heads. The cache becomes $[b, n, k]$ — a factor of $h$ smaller. Redoing
-the diagnostic: the cached key/value memory term drops from $\Theta(b\,n^2 d)$ to
+**Multi-query attention** (Shazeer, 2019). Keep the $h$ *query* heads but
+collapse the key and value projections to a *single* head shared across all query
+heads. The cache becomes $[b, n, k]$ — a factor of $h$ smaller. Redoing the
+diagnostic: the cached key/value memory term drops from $\Theta(b\,n^2 d)$ to
 $\Theta(b\,n^2 k) = \Theta(b\,n^2 d / h)$. Including the small per-token
 activation/cache-write term $\Theta(b\,n\,d)$, the ratio becomes
 
 $$\frac{1}{d} + \frac{n}{d\,h} + \frac{1}{b},$$
 
-i.e. the offending $n/d$ term is reduced by a factor of $h$. Decoding becomes
-dramatically faster.
-
-The gap it leaves: a single shared key/value head is a large cut in capacity —
-every query head must now attend through the *same* key/value subspace. This
-tends to degrade quality relative to multi-head attention. It can also make
-training less stable — models trained this way are prone to loss spikes during
-pre-training and to divergence when fine-tuned on long-input tasks. And the cut
-is all-or-nothing: it goes straight from $h$ key/value heads to one. Finally, a model is
-either built this way or not — existing high-quality multi-head checkpoints, of
-which there are many publicly available, cannot benefit without retraining.
+i.e. the $n/d$ term is reduced by a factor of $h$. A model is built this way from
+the start, with one shared key/value subspace through which every query head
+attends.
 
 **Continued pre-training of an existing checkpoint** (e.g. sparse upcycling,
 Komatsuzaki et al., 2022). Rather than train a structurally modified model from
@@ -128,25 +111,18 @@ checkpoint — re-using its weights where the structure is unchanged and derivin
 the new parts from the old — and then continue pre-training on the original
 recipe for a small fraction of the original steps so the model adapts to its new
 structure. This was demonstrated for converting dense Transformers into
-mixture-of-experts models. It establishes that a structural change need not cost
-a full pre-training run: a few percent of the original compute can suffice to
-recover quality after a surgical edit to the architecture. What it does not yet
-say is how to perform such an edit on the *attention* structure, nor how to
-initialize the edited key/value projections.
+mixture-of-experts models, where a few percent of the original compute suffices
+to recover quality after a structural edit to the architecture.
 
 **Other memory-reduction routes.** Several adjacent tools attack different
 parts of the serving cost. FlashAttention (Dao et al., 2022) reorganizes the
-attention computation to avoid materializing the full attention matrix, which is
-crucial for training and prefill but does not by itself reduce the size of the
-stored key/value cache that incremental decoding reloads. Quantization lowers
-the precision of weights and activations, including cached keys and values, but
-it is orthogonal to the number of cached vectors. Distillation trains a smaller
-student from a larger model, reducing the whole model rather than surgically
-changing the decoding cache. Layer-sparse cross-attention removes some expensive
-cross-attention layers for long-input encoder-decoder systems, and speculative
-decoding proposes multiple tokens with a helper model before verifying them with
-the large model; both can improve serving, but neither answers whether the
-standard attention layer is storing more key/value heads than it needs.
+attention computation to avoid materializing the full attention matrix, used for
+training and prefill. Quantization lowers the precision of weights and
+activations, including cached keys and values. Distillation trains a smaller
+student from a larger model, reducing the whole model. Layer-sparse
+cross-attention removes some cross-attention layers for long-input
+encoder-decoder systems, and speculative decoding proposes multiple tokens with
+a helper model before verifying them with the large model.
 
 ## Evaluation settings
 
@@ -171,9 +147,7 @@ original T5 pre-training recipe and dataset.
 ## Code framework
 
 The existing machinery is a standard decoder attention module and the decoding
-loop that caches keys and values. The unresolved slot is how to reduce the
-cached key/value state while still presenting tensors that the ordinary
-query-key score matmul can consume.
+loop that caches keys and values.
 
 ```python
 import torch
@@ -223,8 +197,6 @@ class DecoderAttention(nn.Module):
         )
 
     def forward(self, hidden_states, attention_mask=None, past_key_value=None):
-        # TODO: reduce the cached key/value state streamed at each decode step
-        # while still presenting tensors the score matmul below can consume.
         bsz, q_len, _ = hidden_states.size()
         query_states = self.q_proj(hidden_states)
         key_states = self.k_proj(hidden_states)
@@ -259,9 +231,7 @@ class DecoderAttention(nn.Module):
 
 
 def convert_attention_checkpoint(pretrained_attention, config):
-    """Initialize a structurally modified attention layer from a trained
-    multi-head checkpoint, re-using its weights, then adapt it."""
-    # TODO: build the modified attention layer from the trained checkpoint and
-    # let it adapt to the new structure.
+    """Initialize an attention layer from a trained multi-head checkpoint,
+    re-using its weights."""
     pass
 ```

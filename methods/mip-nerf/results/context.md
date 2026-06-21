@@ -4,30 +4,10 @@
 
 A continuous neural volumetric scene representation can be recovered from posed RGB
 photographs by casting one ray per pixel, querying a coordinate network for density and
-color at point samples along the ray, and compositing them into a pixel color. This works
-beautifully when every training and test image observes the scene from roughly the same
-distance. But the moment the cameras observe scene content at *different resolutions* — some
-close-ups, some far away, or simply images captured at different focal lengths and pixel
-counts — the recovered model degrades badly: close-up renderings come out blurred, and
-distant renderings come out aliased, full of jagged "stair-stepped" edges and shimmering.
-
-The precise question: how do we make a coordinate-network volumetric representation reason
-about the *scale* at which each pixel observes the scene, so that a single recovered model
-renders correctly at any resolution — sharp when close, anti-aliased when far — without
-paying the cost of brute-force supersampling (casting many rays per pixel, each requiring
-hundreds of network evaluations)?
-
-A useful solution must:
-
-- **Anti-alias without supersampling.** Each network evaluation is expensive; we cannot
-  afford to march dozens of rays per pixel.
-- **Be scale-continuous.** It must handle a continuum of scales, not a fixed discrete set,
-  because cameras can be at arbitrary distances.
-- **Learn the multiscale representation from images alone.** Unlike a graphics asset, the
-  scene geometry is unknown a priori — it is being recovered by inverse rendering. So we
-  cannot precompute a prefiltered pyramid; the representation must learn what each scale
-  looks like during optimization.
-- **Stay cheap and compact.** Ideally no slower and no larger than the single-scale model.
+color at point samples along the ray, and compositing them into a pixel color. The
+question is how to make a coordinate-network volumetric representation reason about the
+*scale* at which each pixel observes the scene, so that a single recovered model renders
+correctly across a range of camera distances and resolutions.
 
 ## Background
 
@@ -45,9 +25,8 @@ pixel error under gradient descent.
 low-frequency functions — it is spectrally biased. Mapping the input through a sinusoidal
 positional encoding γ(x) = [sin(x), cos(x), …, sin(2^{L−1}x), cos(2^{L−1}x)] (Rahimi &
 Recht 2007; Tancik et al. 2020 analyze it as a Fourier-feature kernel) lets the network
-represent high-frequency detail. L sets the bandwidth: too small and renderings are blurry,
-too large and the network overfits and produces noise. L is a hyperparameter that must be
-tuned per scene.
+represent high-frequency detail. L sets the bandwidth, and it is a hyperparameter tuned per
+scene.
 
 **Hierarchical sampling with two networks.** To avoid wasting samples on empty space, the
 single-scale pipeline runs two MLPs. A "coarse" network is evaluated at stratified samples;
@@ -55,65 +34,47 @@ its compositing weights w_k = T_k(1 − exp(−σ_k δ_k)) define a piecewise-co
 the ray; a "fine" network is then evaluated at additional samples drawn from that PDF by
 inverse-transform sampling, plus the coarse samples. Two sets of weights, two networks.
 
-**Sampling, aliasing, and prefiltering in graphics (the diagnostic lens).** A pixel is not a
-point — it is a little square footprint, and its true color is the *integral* of incoming
-radiance over the cone of directions subtended by that footprint. Sampling a continuous
-signal below its Nyquist rate produces aliasing: frequencies above the sampling rate fold
-down into spurious low-frequency patterns (jaggies, moiré, shimmer). Graphics has two
-classical cures. *Supersampling* casts many rays per pixel to raise the sampling rate toward
-Nyquist — effective but its cost scales linearly with the supersampling rate, so it is an
-offline tool. *Prefiltering* instead lowpasses the scene content so the Nyquist rate needed
-to render it without aliasing drops; the canonical instance is the mipmap (Williams 1983),
-a precomputed pyramid of a texture at successive downsampling scales, from which the level
-matching the pixel's projected footprint is selected at render time. Equivalently, one can
-think of tracing a *cone* per pixel instead of an infinitesimal ray (Amanatides 1984), and
-looking up scene content at the scale set by the cone's footprint where it hits geometry.
-Prefiltering shifts the anti-aliasing cost to a precomputation, so it suits real-time
-rendering — but it presupposes the geometry is known so the pyramid can be precomputed.
+**Sampling, aliasing, and prefiltering in graphics.** A pixel is not a point — it is a
+little square footprint, and its true color is the *integral* of incoming radiance over the
+cone of directions subtended by that footprint. Sampling a continuous signal below its
+Nyquist rate produces aliasing: frequencies above the sampling rate fold down into spurious
+low-frequency patterns (jaggies, moiré, shimmer). Graphics has two classical approaches.
+*Supersampling* casts many rays per pixel to raise the sampling rate toward Nyquist; its cost
+scales linearly with the supersampling rate. *Prefiltering* instead lowpasses the scene
+content so the Nyquist rate needed to render it without aliasing drops; the canonical instance
+is the mipmap (Williams 1983), a precomputed pyramid of a texture at successive downsampling
+scales, from which the level matching the pixel's projected footprint is selected at render
+time. Equivalently, one can think of tracing a *cone* per pixel instead of an infinitesimal
+ray (Amanatides 1984), and looking up scene content at the scale set by the cone's footprint
+where it hits geometry. Prefiltering presupposes the geometry is known so the pyramid can be
+precomputed.
 
-**Why the point-sampled neural pipeline aliases.** It casts one infinitesimally thin ray per
-pixel and encodes single points along it. A point sample carries no information about the
-pixel's footprint — the size of the region of space the pixel actually integrates over. Two
-cameras imaging the same surface point, one near and one far, produce point samples at the
-same location and therefore the *same* positional encoding, even though one pixel sees a tiny
-patch and the other a large one. The representation is blind to scale. And because the
-positional encoding contains high frequencies (up to 2^{L−1}) regardless of footprint, those
-high frequencies are sampled below Nyquist for distant/low-resolution views, producing
-aliasing; pushing L down to suppress them just blurs the close-up views. There is no single
-L that is right at all scales.
-
-**Diagnostic observation about the single-scale benchmark.** The standard synthetic
-benchmark places every camera at the same distance with the same focal length and resolution.
-This systematically avoids the multiscale failure mode — which is precisely why the
-point-sampled pipeline scores so well on it and why the aliasing problem went unnoticed
-there. Construct a multiresolution variant (the same images box-downsampled by 2×, 4×, 8×,
-with intrinsics adjusted), and the point-sampled model's renderings visibly blur at full
-resolution and alias at the downsampled scales.
+**Multiscale benchmark construction.** The standard synthetic benchmark places every camera at
+the same distance with the same focal length and resolution. A multiresolution variant can be
+constructed from it by box-downsampling each image by 2×, 4×, 8× and adjusting camera
+intrinsics accordingly, combining all four scales into one dataset (by projective geometry,
+equivalent to moving the camera back by those factors).
 
 ## Baselines
 
 - **Point-sampled neural radiance field (the immediate predecessor).** MLP from encoded
   3D position + direction to (σ, c); render by alpha-compositing point samples along one ray
   per pixel; positional encoding γ with tuned degree L; two networks (coarse + fine) for
-  hierarchical sampling; optimize squared pixel error with Adam. Core idea is sound and gives
-  photorealistic single-scale results. **Gap:** point sampling is scale-blind, so the model
-  is fit to exactly one scale; it aliases on distant views, blurs on close views, and L must
-  be tuned. Supersampling it to anti-alias multiplies its already-large per-ray cost.
+  hierarchical sampling; optimize squared pixel error with Adam. Core idea gives
+  photorealistic results on single-scale benchmarks.
 
 - **Discrete voxel / multiscale graphics structures (mipmaps, sparse-voxel octrees).** Store
   scene content on a grid or tree and prefilter into a pyramid; select the level matching the
-  cone footprint. Anti-aliases efficiently at render time. **Gap:** requires the geometry to
-  be known so the pyramid can be precomputed; in inverse rendering the geometry is the
-  unknown. Also discrete: O(n³) memory, a fixed set of scales, and a resolution ceiling.
+  cone footprint at render time. Requires the geometry to be known so the pyramid can be
+  precomputed; memory grows as O(n³).
 
 - **Sparse-voxel-octree multiscale neural implicit surfaces (Takikawa et al. 2021).** A
-  multiscale octree of features for continuous neural *implicit surfaces*. **Gap:** assumes
-  the scene geometry is known a priori (it fits an SDF to a mesh), not the
-  recover-from-images-only setting; and it models surfaces, not a volumetric radiance field.
+  multiscale octree of features for continuous neural *implicit surfaces*, fitting a signed
+  distance function to a given mesh. Models surfaces, not a volumetric radiance field
+  recovered from images.
 
 - **Brute-force supersampled point-sampled NeRF.** Cast multiple jittered rays per pixel and
-  average. Anti-aliases. **Gap:** cost scales with the supersampling rate, and each ray
-  already needs hundreds of MLP evaluations; impractically slow for training and rendering.
+  average their rendered colors.
 
 ## Evaluation settings
 
@@ -121,7 +82,7 @@ resolution and alias at the downsampled scales.
   hotdog, lego, materials, mic, ship), each with images rendered from cameras at a fixed
   distance. A multiscale variant constructed from it by box-downsampling each image by 2×,
   4×, 8× and adjusting camera intrinsics accordingly, combining all four scales into one
-  dataset (by projective geometry, equivalent to moving the camera back by those factors).
+  dataset.
 - **Metrics.** PSNR (↑), SSIM (↑), LPIPS (↓). A summary "average" error: the geometric mean
   of MSE = 10^(−PSNR/10), √(1−SSIM), and LPIPS. Also wall-clock training/eval time and
   parameter count.

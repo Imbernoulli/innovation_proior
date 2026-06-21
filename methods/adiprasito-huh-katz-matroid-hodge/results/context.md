@@ -85,7 +85,7 @@ class Matroid:
         full = frozenset(self.E)
         return [F for F in self.flats() if 0 < len(F) and F != full]
     def char_poly(self, lam):
-        # characteristic polynomial via Mobius / inclusion-exclusion (known)
+        # characteristic polynomial via Mobius / inclusion-exclusion
         pass
 
 # ---- a graded algebra on the lattice of flats ----

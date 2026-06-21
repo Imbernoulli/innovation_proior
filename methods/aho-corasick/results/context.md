@@ -2,27 +2,21 @@
 
 Given a finite set of keywords (and phrases) and an arbitrary text string, locate
 *all* occurrences of *any* of the keywords as substrings of the text — including
-overlapping occurrences — in a single left-to-right pass, with a running time
-that does not grow with the number of keywords.
+overlapping occurrences — in a single left-to-right pass over the text.
 
-The setting that makes this urgent is bibliographic search. At a large industrial
-research library, machine-readable citation tapes accumulate into a corpus of
-hundreds of thousands of citations and on the order of 10^7 characters. A
-bibliographer issues a query that is a Boolean function of many keywords and
-phrases — "find all titles containing both `ion` and `bombardment`" — possibly
-with embedding constraints (so `ions` may count as a match for `ion` while
-`motion` must not). The query may carry dozens of keywords. The natural first
-implementation — take each keyword in turn and scan it against the whole corpus —
-costs on the order of (number of keywords) × (length of text). With many keywords
-this is ruinously slow: a single search can consume an entire machine-time
-budget before it finishes. What is needed is a method whose per-search cost is
-essentially the cost of reading the text once, no matter how many keywords are in
-the query.
+The setting is bibliographic search. At a large industrial research library,
+machine-readable citation tapes accumulate into a corpus of hundreds of thousands
+of citations and on the order of 10^7 characters. A bibliographer issues a query
+that is a Boolean function of many keywords and phrases — "find all titles
+containing both `ion` and `bombardment`" — possibly with embedding constraints
+(so `ions` may count as a match for `ion` while `motion` must not). The query may
+carry dozens of keywords. The straightforward first implementation — take each
+keyword in turn and scan it against the whole corpus — costs on the order of
+(number of keywords) × (length of text).
 
 ## Background
 
-The problem sits between two well-developed bodies of technique that, at the
-time, were rarely brought together.
+The problem sits between two well-developed bodies of technique.
 
 Single-keyword string matching had just been put on a linear footing. The
 Knuth–Morris–Pratt algorithm (Knuth, Morris, and Pratt; circulated as a 1974
@@ -37,9 +31,7 @@ sliding by that much keeps the already-matched prefix aligned, so the text
 pointer never backs up. KMP also defines an optimized variant `next[j]`, which
 short-circuits a failure transition that would only re-test a character already
 known to mismatch. The table itself is computed in O(m) by running the matching
-idea of the pattern against itself. The reusable insight is precisely this:
-after matching a prefix and then failing, the longest prefix you can keep is a
-function only of *how far you had matched*, computable ahead of time.
+idea of the pattern against itself.
 
 The trie (Knuth, *The Art of Computer Programming*) is the natural structure for
 a *set* of strings. Inserting each keyword as a root-to-leaf path, with shared
@@ -53,21 +45,15 @@ Regular-expression-to-automaton constructions (Kleene; McNaughton–Yamada;
 Rabin–Scott; Thompson's regular-search construction; Brzozowski's derivatives)
 show that any regular set — including `Σ*(y1 | y2 | … | yk)` for a set of
 keywords — can be recognized by a deterministic finite automaton making exactly
-one transition per input symbol. The catch is construction cost: building an NFA
-and determinizing it by the subset construction can produce on the order of 2^r
-states for an expression of length r, and state minimization is fiddly to
-program. This complexity is the reason automata were "frequently shunned by
-programmers" for everyday matching tasks, despite their one-transition-per-symbol
-elegance. Diagnostically, then, the field had a fast theoretical object (the DFA)
-that was painful to build, and a fast practical object (KMP) that handled only
-one pattern.
+one transition per input symbol. Building an NFA and determinizing it by the
+subset construction can produce on the order of 2^r states for an expression of
+length r, and the construction is accompanied by state minimization.
 
 A few partial steps toward the multi-keyword case existed: special-purpose
 hardware/microprogrammed finite-state search machines for full-text retrieval
 (Bullen–Millen), finite-state lexical analyzers (Johnson et al.), and an
 unpublished suggestion (attributed to Hopcroft and Karp) for finding the first
-occurrence of any of a set of keywords. None packaged a simple, cheaply
-constructed machine that reports *all* occurrences of *all* keywords in one pass.
+occurrence of any of a set of keywords.
 
 ## Baselines
 
@@ -75,26 +61,21 @@ constructed machine that reports *all* occurrences of *all* keywords in one pass
 in turn; slide it down the entire text (with naive matching, or even with KMP per
 keyword). Reports all occurrences correctly. Cost is at best proportional to
 (number of keywords) × (length of text); with KMP per keyword it is
-O(Σ|y_i| + k·n) for k keywords. The keyword count multiplies the text length —
-exactly the term that makes large bibliographic queries infeasible. This is the
-method whose cost prompted the search for something better.
+O(Σ|y_i| + k·n) for k keywords.
 
 **Single-pattern KMP (Knuth–Morris–Pratt).** O(m+n) for one keyword via the
-failure table; the text pointer never backs up. The gap: it matches one pattern.
-Run k times it regains the k·n factor.
+failure table; the text pointer never backs up. Run k times it costs
+O(Σ|y_i| + k·n).
 
 **Trie / prefix-tree search.** Walking the text through a trie of the keywords
 matches all keywords that *start* at a given text position simultaneously, in
-time proportional to the depth reached. The gap: it only finds keywords anchored
-at the current start; when the walk falls off the trie (no edge for the next
-symbol), it has no rule for how far to back off to continue matching keywords
-that started later, so naively one restarts the walk at every text position —
-again a per-position re-scan.
+time proportional to the depth reached. It finds the keywords anchored at the
+current start; when the walk falls off the trie (no edge for the next symbol),
+one restarts the walk at the next text position.
 
 **NFA-for-regex then determinize.** Build an automaton for `Σ*(y1|…|yk)` and run
-it: one transition per symbol, O(n) search. The gap: the determinized automaton
-can blow up to ~2^r states and the construction plus minimization is complex to
-implement — the very reason such automata were avoided for routine matching.
+it: one transition per symbol, O(n) search. The determinized automaton can grow
+to ~2^r states.
 
 ## Evaluation settings
 

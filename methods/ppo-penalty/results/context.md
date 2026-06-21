@@ -10,25 +10,10 @@ reward stream. We measure progress by the discounted expected return
 `η(π_θ) = E[Σ_t γ^t r_t]`, and we improve `θ` by gradient ascent on a Monte-Carlo estimate
 of `∇_θ η`.
 
-The painful fact about that gradient is data efficiency. The unbiased policy-gradient
-estimate is valid only for data drawn from the *current* policy, so the textbook recipe is:
-roll out the current policy, form one gradient estimate, take one small step, throw the data
-away, and roll out again. Each batch of expensive environment interaction buys exactly one
-gradient step. If we instead try to squeeze several optimization steps out of one batch — the
-obvious way to be more sample-efficient — the policy moves away from the one that generated
-the data, the estimate stops being valid, and in practice the updates become destructively
-large: a single batch can push the policy off a cliff it never recovers from.
-
-So the precise goal is a single first-order algorithm that simultaneously: (1) reuses each
-batch of on-policy data for *several* epochs of minibatch SGD rather than one update, to be
-sample-efficient; (2) never lets a single update move the policy so far that the surrogate it
-optimized stops predicting the true return — i.e. keeps each step inside a region where the
-local approximation is trustworthy; (3) needs no second-order machinery (no Fisher matrix, no
-conjugate gradient, no line search) so it stays simple and cheap and is compatible with
-architectures that share parameters between policy and value function or that inject noise;
-and (4) remains reliable across environments with very different dynamics rather than needing
-a freshly engineered optimizer for each task. The methods below each get a subset of these;
-none gets all four at once.
+The standard recipe is to roll out the current policy, form a gradient estimate, take a
+gradient step, discard the data, and roll out again. The question is how to design the
+per-minibatch update objective inside a K-epoch minibatch SGD loop operating on a fixed
+batch of on-policy data.
 
 ## Background
 
@@ -75,18 +60,7 @@ with the probability ratio `r_t(θ) = π_θ(a_t|s_t) / π_old(a_t|s_t)`, this be
 sample-estimable `L^CPI(θ) = Ê_t[ r_t(θ) Â_t ]` (the superscript marks conservative policy
 iteration, where the ratio surrogate originates). `L_π` matches `η` to first order at
 `θ = θ_old` (where `r_t = 1`), but only there — it ignores the shift in state visitation, so
-the further `θ` moves from `θ_old`, the less `L^CPI` predicts the true return. Maximizing
-`L^CPI` with no leash gives an excessively large, often catastrophic policy update. This is
-the empirically observed failure mode that motivates the whole design: it is well documented
-that doing several gradient steps on the raw `L^PG`/`L^CPI` with one batch produces
-destructively large updates.
-
-The state of the field: deep Q-learning works on discrete-action Atari but not reliably on
-continuous control; vanilla policy gradient has poor data efficiency and robustness; and the
-trust-region line (below) is data-efficient and stable but relatively complicated, second
-order, and awkward with parameter-sharing or noisy architectures. The open space is a method
-that keeps trust-region-grade stability and data efficiency using only first-order
-optimization.
+the further `θ` moves from `θ_old`, the less `L^CPI` predicts the true return.
 
 ## Baselines
 
@@ -95,10 +69,7 @@ optimization.
 `L^PG(θ) = Ê_t[log π_θ(a_t|s_t) Â_t]`, take one ascent step per batch, discard, repeat.
 A2C/A3C run `N` actors in parallel, use a finite-horizon advantage
 `Â_t = −V(s_t) + Σ_{l=0}^{T-t-1} γ^l reward_{t+l} + γ^{T-t} V(s_T)`, and add an entropy bonus for
-exploration. **Gap:** one gradient step per batch is sample-inefficient; and the moment you
-try to do several steps on `L^PG` with the same batch, there is nothing in the objective that
-notices the policy has drifted, so the updates blow up. There is no mechanism keeping the
-update inside the region where the surrogate is valid.
+exploration.
 
 **Trust region policy optimization (Schulman et al. 2015a).** Make the "stay near `θ_old`"
 requirement explicit and exact. Starting from the CPI lower bound for mixture policies,
@@ -122,21 +93,11 @@ maximize_θ  Ê_t[ r_t(θ) Â_t ]   subject to   Ê_t[ KL[π_old(·|s_t), π_θ(
 
 via a linear approximation to the objective and a quadratic approximation to the constraint,
 which reduces to a natural-gradient step computed with conjugate gradient on
-Fisher-vector products plus a line search. **Gap:** it is second order and relatively
-complicated (conjugate gradient, Fisher-vector products, backtracking line search), and the
-constrained/Hessian machinery does not mix cleanly with architectures that share parameters
-between the policy and value function or that include noise such as dropout. It also performs
-one constrained solve per batch rather than cheap repeated minibatch SGD.
+Fisher-vector products plus a line search.
 
 **Fixed-penalty surrogate (the form TRPO's own theory points at).** The minorization bound is
-literally a *penalty*: `maximize_θ L_π(θ) − C · max_s KL`. One could simply pick a scalar
-coefficient and run SGD on the ratio surrogate with a fixed old-new KL penalty. **Gap:** with the
-theoretically-derived `C = 4εγ/(1−γ)²` the steps are far too small to be practical; and a
-single hand-chosen `β` that works does not transfer — the right penalty differs across
-problems and even *within* one problem as the advantage scale and the policy's sensitivity
-change over the course of learning. A penalty coefficient that is right early is wrong late.
-This is precisely why TRPO abandoned the fixed penalty for a hard constraint; the fixed
-penalty leaves the practical step size at the mercy of an arbitrary scalar.
+literally a *penalty*: `maximize_θ L_π(θ) − C · max_s KL`. One can pick a scalar
+coefficient and run SGD on the ratio surrogate with a fixed old-new KL penalty.
 
 ## Evaluation settings
 
@@ -162,8 +123,7 @@ A standard on-policy actor-critic harness already has the data pipeline (collect
 segment of `N` parallel actors × `T` steps), the Gaussian-MLP policy/value networks, the GAE
 advantage computation, the Adam optimizer, and the K-epoch minibatch loop. The single empty
 slot is the per-minibatch loss that turns one batch of freshly collected on-policy data into a
-policy update: the rule that decides how to extract many SGD steps from one batch without the
-policy drifting destructively.
+policy update.
 
 ```python
 import torch
@@ -205,10 +165,8 @@ def compute_gae(rewards, values, dones, next_value, gamma, lam):
 
 def compute_losses(agent, mb_obs, mb_actions, mb_logprobs, mb_advantages,
                    mb_returns, mb_values, args):
-    """The per-minibatch loss is exactly what we will design: take one batch of
-    on-policy data (old log-probs, advantages, returns) and produce a scalar loss
-    whose gradient updates the policy and value function — while keeping each of the
-    several SGD epochs on this batch from moving the policy too far to trust."""
+    """The per-minibatch loss: take one batch of on-policy data (old log-probs, advantages,
+    returns) and produce a scalar loss whose gradient updates the policy and value function."""
     # TODO: the policy-update objective we will design.
     pass
 

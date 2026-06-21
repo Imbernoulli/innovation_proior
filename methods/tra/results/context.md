@@ -5,21 +5,10 @@
 A stock-return predictor is trained the way every supervised model is trained: collect observations
 `{(x_i, y_i)}_{i=1}^N` — `x_i` the features available at time `t` for stock `s`, `y_i` the future return (or its
 cross-sectional rank) — and fit one estimator parameterized by `θ` by empirical risk minimization, implicitly
-assuming every `(x_i, y_i)` is an i.i.d. draw from a single fixed joint distribution `P`. The trouble is that
-the market is the aggregate of many participants running different strategies, so the causal relation between
-features and future return — the *trading pattern*, the conditional `p(y | x)` — is not one relation but
-several, and which one is in force changes over time. Two of these patterns are not just different but
-*opposite*: the **momentum** effect (stocks that rose keep rising) and the **reversal / mean-reversion** effect
-(stocks that fell rebound). A single estimator confronted with samples from contradictory patterns can only fit
-their average, which fits neither.
-
-The precise goal is a predictor that (1) can represent several distinct feature-to-return relations at once rather
-than one averaged relation; (2) decides, for each sample, which relation applies — *and can do so at test time,
-where no labels are available to reveal the pattern*; (3) discovers these patterns and their assignment with no
-ground-truth pattern identifiers anywhere in the data; (4) is cheap enough to bolt onto an existing backbone
-(LSTM / Transformer) without multiplying its parameter count; and (5) degrades gracefully — if there really is
-only one pattern, it must not do worse than the plain backbone. The open problem is to get all five properties
-in one supervised stock predictor.
+assuming every `(x_i, y_i)` is an i.i.d. draw from a single fixed joint distribution `P`. The market, however,
+is the aggregate of many participants running different strategies, so the causal relation between features and
+future return — the *trading pattern*, the conditional `p(y | x)` — varies across regimes, and which one is in
+force changes over time. The question is how to design a stock-return predictor that operates in this setting.
 
 ## Background
 
@@ -42,21 +31,16 @@ is not fixed. Second, classic style factors lead in different epochs: the annual
 turns dominating — for instance size leads before 2017 while momentum leads from 2019 on — which is direct
 evidence that the active pattern rotates over time.
 
-A sharper, model-level diagnostic makes the contradiction concrete. Fit a simple linear model of next-month
-return rank on three features (size rank, value rank, 12-month momentum rank) separately on data from different
-years and read off the coefficients. The momentum coefficient comes out **negative** when fit on 2009 (that
-year's pattern: high past return predicts *low* future return — reversal) and **positive** when fit on 2013
-(momentum). A single set of linear coefficients cannot be simultaneously negative and positive; no single model
-— linear or not, with a fixed parameter vector — can hold both regimes. This observation forces the question:
-the data genuinely carries multiple patterns, so one model is structurally insufficient.
+A sharper, model-level diagnostic makes this concrete. Fit a simple linear model of next-month return rank on
+three features (size rank, value rank, 12-month momentum rank) separately on data from different years and read
+off the coefficients. The momentum coefficient comes out **negative** when fit on 2009 (that year's pattern:
+high past return predicts *low* future return — reversal) and **positive** when fit on 2013 (momentum).
 
 Two conceptual frames are on the table for "one model, several behaviors." The first is **conditional
 computation**: instead of one monolithic function, keep several sub-functions and a gate that, per input,
 activates a subset, so different inputs are processed by different parameters at near-constant cost. The second
 is **balanced assignment**: when labels or clusters are free to move, unconstrained self-assignment can collapse
-into a single group, while a fixed marginal constraint keeps all groups populated. Those are mature tools, but
-the stock-prediction setting adds a sharper constraint: the grouping signal cannot rely on the current label at
-test time.
+into a single group, while a fixed marginal constraint keeps all groups populated.
 
 ## Baselines
 
@@ -67,32 +51,24 @@ These are the prior methods a new approach would be measured against and react t
 the hidden states — attention scores `softmax_t(u^T tanh(W h_t))` weight the sequence into one vector, which is
 concatenated with the final hidden state and passed to a linear head. The Transformer variant (Ding et al.
 2020, after Vaswani et al. 2017) replaces the recurrence with positional encoding plus self-attention and reads
-out the last position. Both are strong, but each is a *single* estimator with a *single* output head fit by
-ERM: under the i.i.d. assumption it can only learn the average relation, so when momentum and reversal samples
-are mixed it splits the difference. **Gap:** one parameter vector, one relation — it cannot represent
-opposite-signed patterns simultaneously, and it has no mechanism to recognize which regime a sample belongs to.
+out the last position. Both are single estimators with a single output head fit by ERM under the i.i.d.
+assumption.
 
 **Frequency-decomposed recurrence (SFM; Zhang et al. 2017).** The State Frequency Memory network decomposes the
 LSTM cell state into multiple frequency components, aiming to capture trading patterns operating on different
-time scales. **Gap:** the decomposition is along *frequency*, fixed by architecture; it does not discover
-arbitrary latent patterns nor route a sample to a chosen sub-model, and it remains a single fused predictor.
+time scales. The decomposition is along *frequency*, fixed by architecture, and the model remains a single fused
+predictor.
 
 **Non-adaptive references (Linear, MLP, LightGBM; Ke et al. 2017).** Linear regression, a plain MLP, and
-gradient-boosted trees over the same features. **Gap:** all are single-model ERM with no notion of multiple
-patterns at all; included as the floor.
+gradient-boosted trees over the same features. All are single-model ERM; included as the floor.
 
 **Conditional computation / mixture-of-experts gating (Shazeer et al. 2017).** Keep `K` expert sub-networks
 and a trainable gating network `G(x)` that produces a sparse combination per example; train everything jointly
-by backprop. This is exactly the "several sub-functions, one gate" frame. But the gate has a well-documented
-failure mode: it "converges to a state where it always produces large weights for the same few experts," and
-the imbalance is *self-reinforcing* — the favored experts get more gradient, so they are favored even more,
-until the rest go unused. Shazeer et al. counter this with a **soft auxiliary penalty**: an importance loss
-equal to the squared coefficient of variation of the per-expert gate mass, `L_importance = w·CV(Importance)^2`,
-plus a separate load loss, added to the objective to push the experts toward equal importance. **Gap:** the
-penalty is *soft* — it nudges the gate toward balance but does not enforce it, and Shazeer et al. observe that
-even equalized importance can leave the *number of examples* per expert highly unequal; and the gate is trained
-only to balance, not to send a sample to the expert that actually predicts it best. For a problem where the
-sub-models must end up specialized to genuinely distinct patterns, "nudge toward balance" is not enough.
+by backprop. The gate has a documented failure mode: it "converges to a state where it always produces large
+weights for the same few experts," and the imbalance is self-reinforcing — favored experts get more gradient.
+Shazeer et al. counter this with a **soft auxiliary penalty**: an importance loss equal to the squared
+coefficient of variation of the per-expert gate mass, `L_importance = w·CV(Importance)^2`, plus a separate load
+loss, added to the objective to push the experts toward equal importance.
 
 **Degeneracy-avoidance by balanced assignment as optimal transport (Asano et al. 2020; Caron et al. 2020).**
 In simultaneous clustering / self-labelling, taking the model's own predictions as classification targets and
@@ -104,18 +80,14 @@ Solved exactly this is an `O(d^3 log d)` linear program, too slow to run per min
 relaxation of Cuturi (2013) makes the optimum a normalized exponential `P = diag(u)·exp(-L/ε)·diag(v)` whose
 scaling vectors `u, v` enforce the row and column marginals through Sinkhorn–Knopp matrix scaling; in a
 minibatch implementation this is just repeated normalization, which is GPU-vectorizable and fast — three
-iterations suffice in related online clustering practice (Caron et al. 2020). **Gap:** this machinery balances
-and assigns *clusters/labels* in representation-learning settings where the assignment can be used directly.
-It does not by itself supply a supervised stock predictor whose sample assignment must also be reproduced at
-test time without the current label.
+iterations suffice in related online clustering practice (Caron et al. 2020).
 
-**Supporting primitive — differentiable discrete selection (Jang et al. 2016; Maddison et al. 2016).** A gate
-that truly separates patterns must make a *discrete* choice of one sub-model, but `argmax` is not
-differentiable. The Gumbel-Max trick draws a categorical sample as `one_hot(argmax_i (g_i + log π_i))` with
-`g_i ~ Gumbel(0,1)`; replacing the `argmax` with a temperature-`τ` softmax,
+**Supporting primitive — differentiable discrete selection (Jang et al. 2016; Maddison et al. 2016).** The
+Gumbel-Max trick draws a categorical sample as `one_hot(argmax_i (g_i + log π_i))` with `g_i ~ Gumbel(0,1)`;
+replacing the `argmax` with a temperature-`τ` softmax,
 `y_i = exp((log π_i + g_i)/τ) / Σ_j exp((log π_j + g_j)/τ)`, gives the Gumbel-softmax — a continuous relaxation
 on the simplex that anneals to one-hot as `τ→0` and is differentiable, optionally with a straight-through
-estimator for hard samples. This is the available tool for a differentiable-but-discrete gate.
+estimator for hard samples.
 
 ## Evaluation settings
 

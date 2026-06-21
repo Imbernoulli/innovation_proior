@@ -10,18 +10,11 @@ only `y(x) = f(x) + noise`. The goal is to find `x* in argmin_x f(x)` (a minimiz
 validation loss, equivalently a maximizer of validation score) under a tight evaluation
 budget.
 
-What makes this hard in practice is not just expense but *generality*. A method that is meant
-to be a default — something a practitioner reaches for without thinking — has to satisfy
-several demands at once: (1) **strong anytime performance**, so it returns a decent
-configuration early and keeps improving; (2) **strong final performance** when given a large
-budget; (3) **effective use of parallel resources**, since modern compute is distributed; (4)
-**scalability with the dimensionality** of the configuration space; and (5) **robustness and
-flexibility**, including search spaces with mixed continuous, integer, ordinal, and
-categorical dimensions. The configuration spaces that matter most — joint architecture-plus-
-training search, tabular neural-architecture-search problems posed as high-dimensional
-discrete HPO — are exactly the ones where existing defaults are observed to falter. The
-problem is to build a single method that hits all of these demands robustly, not a method that
-wins on one axis and quietly fails on another.
+The configuration spaces that matter in practice include joint architecture-plus-training
+search and tabular neural-architecture-search problems posed as high-dimensional discrete HPO,
+which mix continuous, integer, ordinal, and categorical dimensions. The question is how to
+build a general-purpose HPO method for this setting — one a practitioner can reach for as a
+default across these varied search spaces under a limited evaluation budget.
 
 ## Background
 
@@ -49,14 +42,12 @@ biology, and keep the fitter offspring. Because they only ever compare function 
 are indifferent to the type or smoothness of the search space, which makes them natural
 candidates for rugged, discrete, high-dimensional spaces.
 
-The prevailing wisdom by 2018 is that **model-based BO gives the best final performance** but
-carries real costs in this setting. Gaussian-process models give well-calibrated uncertainty
-but scale poorly with dimensionality, do not natively handle complex or discrete spaces, and
-have model-fitting cost that grows roughly cubically in the number of observations.
-Tree-based and density-based surrogates relax some of this but inherit the high-dimensional
-and discrete-space difficulties. A model also needs a minimum number of observations — on the
-order of `d+1` in a `d`-dimensional space — before it can say anything useful, so in high
-dimensions a model-based method spends a long opening phase behaving like random search.
+The prevailing wisdom by 2018 is that **model-based BO gives the best final performance**.
+Gaussian-process models give well-calibrated uncertainty, with model-fitting cost that grows
+roughly cubically in the number of observations. Tree-based and density-based surrogates are
+alternative model classes. A model needs a minimum number of observations — on the order of
+`d+1` in a `d`-dimensional space — before it can fit, so a model-based method begins from an
+opening phase of essentially random sampling.
 
 ## Baselines
 
@@ -66,10 +57,7 @@ to.
 **Random Search (RS) (Bergstra & Bengio 2012).** Sample configurations independently and
 uniformly from the space, evaluate each at full budget, keep the best. Embarrassingly simple,
 trivially parallel, and a famously strong baseline when only a few hyperparameters matter.
-**Gap:** it never uses what it has already seen — every sample is independent of the history —
-so on problems where good regions could be inferred from past evaluations it wastes the entire
-budget exploring blindly, and it spends full budget on every config including obviously bad
-ones.
+Every sample is independent of the history.
 
 **Differential Evolution (DE) (Storn & Price 1997).** A population-based evolutionary
 algorithm that is unusually effective for its simplicity. Maintain `N` individuals, each a
@@ -85,24 +73,20 @@ algorithm that is unusually effective for its simplicity. Maintain `N` individua
 The difference vector is the elegant part: when the population is spread out the perturbations
 are large (exploration), and as it converges they shrink (exploitation), so the step scale
 *self-adapts* to the population's spread. rand/1 requires `N >= 3` distinct parents. To handle
-mixed data types robustly, DE can keep the population entirely continuous in the unit hypercube
+mixed data types, DE can keep the population entirely continuous in the unit hypercube
 `[0,1]^D` and decode to the original (possibly discrete) space only at evaluation time, which
 preserves diversity that a directly-discrete population would lose (Awad et al. 2020).
-**Gap:** classical DE is **single-fidelity** — every individual is evaluated at full budget,
-so there is no cheap early triage and no strong anytime behavior; and its classical update is
-*deferred*, injecting a winning offspring into the population only after the whole generation
-has been evolved, which delays the moment a good solution can influence the search.
+Classical DE is **single-fidelity** — every individual is evaluated at full budget — and its
+classical update is *deferred*, injecting a winning offspring into the population only after
+the whole generation has been evolved.
 
 **Successive Halving (SH) (Jamieson & Talwalkar 2016).** A multi-fidelity scheme: sample `N`
 configurations, evaluate them all at the lowest budget, keep the top `1/eta`, multiply the
 budget by `eta`, and repeat up to the highest budget. It allocates exponentially more resource
 to the configurations that survive, so the expensive full evaluation is paid for only a
-handful of candidates. **Gap:** it needs the number of configurations `N` as an input and
-exposes the **`n`-versus-`B/n` dilemma** — for a fixed total budget `B`, should one try many
-configurations cheaply (large `N`, little resource each) or few configurations expensively?
-The right answer depends on the unknown budget-correlation structure. Worse, SH can discard at
-a low budget a configuration that would have been best at the high budget, precisely when low-
-and high-fidelity performance are weakly correlated.
+handful of candidates. It takes the number of configurations `N` as an input, which sets the
+**`n`-versus-`B/n` tradeoff** — for a fixed total budget `B`, whether to try many
+configurations cheaply (large `N`, little resource each) or few configurations expensively.
 
 **Hyperband (HB) (Li et al. 2017).** Hedge the `n`-versus-`B/n` dilemma by running SH at
 several starting budgets. With maximum resource `R` and discard factor `eta` (default 3), set
@@ -114,27 +98,21 @@ halving inward as `n_i = floor(n * eta^{-i})`, `r_i = r * eta^i`, keeping the to
 configurations at a tiny budget; the least aggressive `s = 0` is plain random search at full
 budget. This makes HB provably at most a constant factor (`~ s_max + 1`) slower than random
 search, while exploiting cheap fidelities when they help — giving it strong anytime
-performance. **Gap:** every configuration HB ever evaluates comes from **uniform random
-sampling**; it never uses the outcomes of past evaluations to bias where it looks next. On long
-runs it is therefore overtaken by methods that learn from history, and its quality is capped by
-how good random sampling is in that space.
+performance. Every configuration HB evaluates comes from **uniform random sampling**.
 
 **BOHB (Falkner et al. 2018).** Keep Hyperband's bracket schedule, but replace its random
 sampling with a Bayesian-optimization model — a Tree-Parzen-Estimator that, once it has enough
 observations at a budget, fits kernel-density estimates `l(x)` of well-performing
 configurations and `g(x)` of poorly-performing ones and samples to maximize the ratio
-`l(x)/g(x)`. This grafts BO's strong final performance onto HB's anytime behavior and is the
-strongest off-the-shelf multi-fidelity optimizer in wide use. **Gap:** the model component
-inherits BO's weaknesses — it does not scale gracefully to high dimensions, struggles with
-discrete dimensions, needs roughly `d+1` observations before its model is informative (so in
-high dimensions it behaves like random search for a long opening), and its model-fitting
-overhead grows with the number of observations rather than staying flat. On high-dimensional
-discrete problems and tabular NAS its advantage over plain Hyperband shrinks or vanishes.
+`l(x)/g(x)`. This combines BO's strong final performance with HB's anytime behavior and is the
+strongest off-the-shelf multi-fidelity optimizer in wide use. The model component needs roughly
+`d+1` observations at a budget before it can fit, and its model-fitting overhead grows with the
+number of observations.
 
 **CMA-ES (Hansen & Ostermeier 2001).** An evolution strategy that adapts a full covariance
-matrix of a Gaussian sampling distribution; very strong on smooth continuous problems. **Gap:**
-the covariance adaptation is built for continuous spaces and scales quadratically in the
-dimension; it is single-fidelity and not designed for mixed discrete spaces.
+matrix of a Gaussian sampling distribution; very strong on smooth continuous problems. The
+covariance adaptation is built for continuous spaces and scales quadratically in the dimension;
+it is single-fidelity.
 
 ## Evaluation settings
 

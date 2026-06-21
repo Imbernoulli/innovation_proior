@@ -12,14 +12,6 @@ payoff that depends on *everyone's* choices, and these payoffs need not sum to a
 one player's gain need not be another's loss. The question is: what is a principled notion
 of a "solution" for such a game, and can one prove that a solution always exists?
 
-A solution concept here must (i) make sense without any assumption of antagonism — it cannot
-rely on a single "value" of the game, because with non-opposed interests there is no single
-number that summarizes the outcome; (ii) reduce to the known, correct answer (the saddle
-point / value) in the special case of two-person zero-sum games, so it is a genuine
-generalization and not a different theory; and (iii) be provably non-empty — for *every*
-such finite game, not just nice ones. A definition that exists only for some games, or that
-requires solving the game to check, would not do.
-
 ## Background
 
 The field rests on the framework of von Neumann and Morgenstern. A game in *normal form* is
@@ -45,25 +37,23 @@ The common value `v` is the *value* of the game; the optimal pair `(x*, y*)` is 
 point*. The trivial direction is `max-min <= min-max`; the content of the theorem is the
 reverse inequality, and it holds precisely because passing to *mixed* strategies convexifies
 the problem (Borel had introduced mixed strategies for duels around 1920 but did not prove
-the general equality). Two features make this work and also fence it in: there are exactly
-two players, and the payoffs are strictly opposed. The opposition is what makes a single
-number `v` meaningful — "what is good for me is exactly bad for you," so one value can
-summarize the game and "play well" means "guarantee yourself `v`." Remove either feature and
-the notion of a value evaporates: with three players, or with two players whose payoffs do
-not cancel, there is no number every player is simultaneously pushing for or against.
+the general equality). Two features characterize this setting: there are exactly two players,
+and the payoffs are strictly opposed. The opposition is what makes a single number `v`
+meaningful — "what is good for me is exactly bad for you," so one value can summarize the
+game and "play well" means "guarantee yourself `v`." With three players, or with two players
+whose payoffs do not cancel, there is no number every player is simultaneously pushing for or
+against.
 
 For more than two players, the same framework offers only a *cooperative* theory, also from
 von Neumann and Morgenstern: it analyzes which *coalitions* form, via characteristic
-functions and imputations, assuming players can communicate, collude, and enforce
-agreements. This is a different modeling assumption — binding coalitions — and it does not
-address the independent-play, no-communication situation at all.
+functions and imputations, assuming players can communicate, collude, and enforce agreements.
 
 There is one older, narrower precedent for the kind of rest-point one wants. Cournot (1838),
 analyzing two firms (a duopoly) each choosing output to maximize its own profit given the
 other's output, identified the configuration where neither firm wishes to change its output
 unilaterally — a mutual-best-response rest point, non-cooperative and not zero-sum. It is the
-prototype of "stable against unilateral deviation," but it lives inside one specific economic
-model and carries no general definition and no existence theory.
+prototype of "stable against unilateral deviation," situated inside one specific economic
+model.
 
 The other load-bearing pieces of background are topological. *Brouwer's fixed point theorem*:
 every continuous map of a compact convex set (a ball, a simplex, a polytope) into itself has
@@ -81,26 +71,17 @@ set, rather than only single-valued maps.
 Core idea: over mixed strategies, the maximin and minimax of a two-person zero-sum game
 coincide; the game has a value `v` and a saddle point, and "good strategies" are those that
 guarantee `v`. The math is the minimax equality above, proved by a separating-hyperplane /
-convexity argument on the simplices. Limitation: it is structurally confined to *two* players
-and to *zero-sum* payoffs. The proof and even the *statement* lean on a single scalar value,
-which only exists under strict opposition. It says nothing about three players, nothing about
-non-constant-sum payoffs, and offers no solution concept once a single value is unavailable.
+convexity argument on the simplices.
 
 **Cooperative n-person theory (von Neumann & Morgenstern 1944).** Core idea: model an
 n-person game by what each *coalition* of players can guarantee itself (the characteristic
 function), and study stable sets of imputations — divisions of the collective payoff. This
-does cover many players, but by assuming the opposite of what is wanted: that players
-communicate and form *binding* coalitions. Limitation: it presumes enforceable collaboration
-and side-payments; it has nothing to say about players acting independently with no
-agreements, which is the case in question.
+covers many players by assuming that players communicate and form *binding* coalitions.
 
 **Cournot duopoly rest point (Cournot 1838).** Core idea: the outcome of an oligopoly is the
 output profile at which no firm gains by unilaterally changing output — a fixed point of the
-firms' reaction functions. This is exactly the right *shape* of solution (mutual best
-response, no antagonism assumed). Limitation: it is tied to a particular continuous economic
-model with smooth reaction curves; there is no general definition for arbitrary finite games,
-and crucially no proof that such a rest point must exist in general — for general games the
-reaction "functions" are set-valued and there is no guarantee of a crossing.
+firms' reaction functions. This is the shape of solution based on mutual best response, with
+no antagonism assumed.
 
 ## Evaluation settings
 

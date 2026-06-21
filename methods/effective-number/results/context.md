@@ -5,20 +5,11 @@
 Large-scale, real-world image datasets are long-tailed: a small number of "head" classes claim
 most of the examples, while the majority of "tail" classes are represented by only a handful of
 images each. A convolutional classifier trained on such data with the ordinary cross-entropy loss
-is pulled toward the frequent classes — it minimizes average loss by getting the head right and
-the tail collapses. The standard remedy is cost-sensitive reweighting: multiply each example's
-loss by a per-class factor that compensates for how rare its class is, so that the tail is not
-drowned out. The precise problem is which factor to use. The textbook choice — weight inversely
-to class frequency, so every class contributes equally — is known to degrade badly on highly
-imbalanced real data, and practitioners have fallen back on an unmotivated smoothed variant. What
-is needed is a per-class weight that (1) is grounded in some principle rather than a bare
-heuristic, (2) is controlled by a single interpretable knob, (3) can be dialed smoothly from "no
-reweighting at all" to "full inverse-frequency reweighting" so that one form covers the whole
-spectrum of imbalance regimes, (4) adapts to the character of the dataset (coarse vs. fine-grained
-classes), and (5) plugs into any loss — softmax cross-entropy, sigmoid cross-entropy, or a
-difficulty-aware loss — without changing the model, the optimizer, the sampler, or the evaluation
-metric. Closing the gap between "reweight by something" and "reweight by *this*, for *this* reason"
-is the problem.
+minimizes average loss by fitting the frequent classes well. A standard remedy is cost-sensitive
+reweighting: multiply each example's loss by a per-class factor that depends on how rare its class
+is. The problem is which factor to use — how to set a per-class loss weight from the training
+counts so that a CNN trained on long-tailed data classifies head and tail classes alike, without
+changing the model, the optimizer, the sampler, or the evaluation metric.
 
 ## Background
 
@@ -30,11 +21,8 @@ images while thousands of rare species have a dozen. CNNs trained on such distri
 poorly on the weakly represented classes (Japkowicz & Stephen 2002; He & Garcia 2008; Van Horn &
 Perona 2017; Buda et al. 2018). Two broad families of remedies exist. **Re-sampling** changes the
 data the network sees — over-sample the minor classes (repeat or synthesize examples, e.g. SMOTE,
-ADASYN) or under-sample the major classes. In deep feature learning both have known costs:
-over-sampling duplicates examples, slowing training and inviting over-fitting on the few real tail
-images; under-sampling discards examples that the representation needs. **Cost-sensitive
-reweighting** instead leaves the data alone and reshapes the loss, assigning higher cost to
-examples from minor classes.
+ADASYN) or under-sample the major classes. **Cost-sensitive reweighting** instead leaves the data
+alone and reshapes the loss, assigning higher cost to examples from minor classes.
 
 The principle under reweighting is cost-sensitive decision theory. Elkan (2001) "The Foundations
 of Cost-Sensitive Learning" formalizes it for two classes with a cost matrix `C`: predict the
@@ -52,14 +40,11 @@ achieve the same shift by *weighting* each negative example by that factor inste
 This is the theoretical license for per-class loss weighting: a class's weight plays the role of
 the cost of misclassifying it. For the imbalance problem the cost is taken to grow with rarity.
 
-Two empirical facts about existing reweighting recipes set up the problem. First, weighting every
-class so it contributes equally — inverse class frequency — is widely adopted (Huang et al. 2016;
-Wang et al. 2017) but, as work training on large-scale real long-tailed data reports (Mikolov et
-al. 2013 for word frequencies; Mahajan et al. 2018 for weakly-supervised image pretraining),
-performs poorly when imbalance is extreme. Second, those same practitioners therefore switched to
-weighting by the *square root* of inverse frequency, `w_c ∝ 1/sqrt(n_c)`, which empirically does
-better. Together they motivate a softer count-based rule without explaining why square-root
-smoothing is the right one.
+Two reweighting recipes are in common use. Weighting every class so it contributes equally —
+inverse class frequency — is widely adopted (Huang et al. 2016; Wang et al. 2017). Work training
+on large-scale real long-tailed data instead weights by the *square root* of inverse frequency,
+`w_c ∝ 1/sqrt(n_c)` (Mikolov et al. 2013 for word frequencies; Mahajan et al. 2018 for
+weakly-supervised image pretraining).
 
 A separate strand reweights by sample *difficulty* rather than class count. Focal loss (Lin et al.
 2018), built for the extreme foreground/background imbalance in dense object detection, multiplies
@@ -73,16 +58,15 @@ with `p_t` the predicted probability of the true class and `gamma ≥ 0` the foc
 also has an α-balanced variant `FL(p_t) = -α_t (1 - p_t)^gamma log(p_t)` where `α_t` is a per-class
 weight typically set by inverse frequency or tuned by hand.
 
-Finally, the geometric idea that sampling a region with overlapping pieces yields *saturating*
-coverage comes from the random covering problem (Janson 1986, "Random coverings in several
-dimensions"): cover a large set with a sequence of i.i.d. random small sets and ask for the
-expected covered volume. The exact expectation depends on the shape of the small sets and the
-dimension of the space and is hard to compute in general.
+A classical result from geometric probability, the random covering problem (Janson 1986, "Random
+coverings in several dimensions"), studies covering a large set with a sequence of i.i.d. random
+small sets and computing the expected covered volume; the expectation depends on the shape of the
+small sets and the dimension of the space.
 
 ## Baselines
 
-These are the prior reweighting rules a new per-class weight would be measured against and reacts
-to. Throughout, `n_c` is the number of training samples in class `c` and `C` the number of classes.
+These are the prior reweighting rules a new per-class weight would be measured against. Throughout,
+`n_c` is the number of training samples in class `c` and `C` the number of classes.
 
 **Inverse class frequency (Huang et al. 2016; Wang et al. 2017).** Set the per-class weight
 inversely to the class count, `w_c ∝ 1/n_c`, normalized (e.g. so the weights sum to `C` or to `1`).
@@ -90,30 +74,17 @@ This is the direct reading of Elkan-style cost-sensitive reweighting when every 
 equally important: it cancels the empirical class prior, so the reweighted objective behaves as if
 the data were balanced. Core math: a sample from class `c` contributes `(1/n_c)·L` to the loss, so
 the total contribution of class `c` is `(n_c)·(1/n_c)·L = L`, i.e. every class contributes the same
-total regardless of size. **Gap:** under high imbalance the smallest classes receive enormous
-weights — a class with five images is up-weighted hundreds of times relative to a class with
-thousands — and those few images are dominated by near-duplicates and label noise, so a handful of
-unreliable gradients gets amplified to dominate training; the tail weight is far larger than the
-information those samples actually carry, and accuracy suffers.
+total regardless of size.
 
-**Smoothed inverse square-root frequency (Mikolov et al. 2013; Mahajan et al. 2018).** Damp the
-amplification with `w_c ∝ 1/sqrt(n_c)`, again normalized. By taking a square root the ratio between
-the largest and smallest weight is compressed (a 1000:1 count imbalance becomes ~32:1 in weight),
-so the tail is boosted without the violent over-amplification of pure inverse frequency, and it
-empirically outperforms inverse frequency on real long-tailed data. **Gap:** the exponent `1/2` is
-a bare heuristic — there is no derivation for it, nothing ties it to any property of the dataset,
-and it is one fixed point with no interpretable parameter; it sits between "no reweighting" and
-"inverse frequency" but offers no principled way to move along that axis, and no reason it should
-be optimal for one dataset rather than another.
+**Smoothed inverse square-root frequency (Mikolov et al. 2013; Mahajan et al. 2018).** Use
+`w_c ∝ 1/sqrt(n_c)`, again normalized. Taking a square root compresses the ratio between the
+largest and smallest weight (a 1000:1 count imbalance becomes ~32:1 in weight).
 
 **Focal loss (Lin et al. 2018).** Reweight by *difficulty*: `FL(p_t) = -(1-p_t)^gamma log(p_t)`
 down-weights examples the model already classifies confidently (`p_t` near 1) so training focuses
 on hard examples, with an α-balanced form carrying an extra per-class factor `α_t`. Core idea: the
-modulating factor `(1-p_t)^gamma` is ≈1 for hard examples and ≈0 for easy ones. **Gap:** difficulty
-is not class count — a frequent class can have hard examples and a rare class easy ones — and
-focusing on hard examples risks fixating on noisy or mislabeled data; moreover its per-class `α_t`
-is left as a free hyperparameter or set by inverse frequency, so when the data is class-imbalanced
-focal loss still needs a principled per-class weight and does not supply one.
+modulating factor `(1-p_t)^gamma` is ≈1 for hard examples and ≈0 for easy ones; `α_t` is set by
+inverse frequency or tuned by hand.
 
 ## Evaluation settings
 

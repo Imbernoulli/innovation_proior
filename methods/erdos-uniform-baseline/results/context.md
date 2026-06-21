@@ -8,7 +8,8 @@ count the pairs `(a, b)` with `a ∈ A`, `b ∈ B`, `a − b = k`; let `M(n)` be
 that constant is the open question. Haugland (2016) proved `C5` equals the infimum, over all step
 functions `h` on `[0,2]` with values in `[0,1]` and `∫_0^2 h = 1`, of `max_k ∫ h(x)(1 − h(x+k)) dx` —
 the worst overlap of the `A`-density `h` against the `B`-density `1 − h`. Every explicit step function
-gives an *upper bound* on `C5`; LOWER is better.
+gives an *upper bound* on `C5`; LOWER is better. The task is to construct a step function — a vector of
+cell heights under the balance constraint — that makes this worst overlap as small as possible.
 
 ## How the score is defined
 
@@ -27,10 +28,9 @@ record `0.38086945`.
 
 ## This method's role
 
-This is the *floor* rung: the flat half-density `v_i ≡ 1/2`, the most symmetric feasible profile, whose
-worst overlap is exactly `1/2` — Erdős's own 1955 upper bound. It establishes the starting altitude that
-every optimized rung must beat, and exposes that the piece count alone is no lever: only the *shape* of
-the heights moves the bound.
+This is the starting rung: a parameter-free baseline profile that establishes the initial altitude every
+optimized rung is measured against. It needs only to be the simplest feasible point under the balance
+constraint `Σ v = n/2`.
 
 ## The fixed substrate
 

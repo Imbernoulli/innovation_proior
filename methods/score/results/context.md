@@ -5,13 +5,10 @@
 We observe samples of a random vector `X = (X_1, ..., X_d)` and we want the *directed acyclic
 graph* `G` of who causes whom — oriented edges, not an undirected skeleton, from purely
 observational data. Under a nonlinear additive-noise model `X_j := f_j(X_{pa(j)}) + N_j` with
-independent noise and nonlinear `f_j`, `G` is identifiable from `P_X`. The standing obstacles are
-the same two that haunt all observational structure learning: the space of DAGs is
-super-exponential in `d`, so direct search is combinatorial; and the irreducibly causal part is the
-*topological order*, since a correct order reduces the problem to per-node regression plus variable
-selection. The question this method poses is sharper: can the order be read *directly off the
-distribution's geometry* — specifically off the **score** `s(x) = ∇ log p(x)` and its Jacobian —
-rather than recovered by greedy regression-based search?
+independent noise and nonlinear `f_j`, `G` is identifiable from `P_X`. The space of DAGs is
+super-exponential in `d`, and the irreducibly causal part is the *topological order*, since a
+correct order reduces the problem to per-node regression plus variable selection. How can the
+topological order be recovered from the observational distribution?
 
 ## Background
 
@@ -44,19 +41,16 @@ linear solves, `O(n^3)` per evaluation.
 
 **CAM (Buhlmann, Peters & Ernest 2014).** Decouples a topological-order search (restricted maximum
 likelihood, scored by residual variances) from per-node edge selection (sparse regression), with
-preliminary neighbor selection and significance pruning. **Gap:** the order is found by a *greedy*
-search that repeatedly fits regressions of every remaining variable on the current prefix — `O(d^2)`
-fits on growing predictor sets — which is noisy at small `n` and makes non-backtracked wrong turns;
-and it assumes additive mechanisms.
+preliminary neighbor selection and significance pruning. The order is found by a greedy search that
+repeatedly fits regressions of every remaining variable on the current prefix — `O(d^2)` fits on
+growing predictor sets — and it assumes additive mechanisms.
 
-**RESIT (Peters et al. 2014).** Regress each variable on candidates and test residual independence
-to find an order. **Gap:** the kernel independence tests are expensive and do not scale much past
-~20 nodes.
+**RESIT (Peters et al. 2014).** Regresses each variable on candidates and tests residual
+independence to find an order, using kernel independence tests.
 
 **GraN-DAG / NOTEARS-MLP (Lachapelle et al. 2020; Zheng et al. 2020).** Continuous-constraint
 neural methods that learn the graph by gradient descent under the smooth acyclicity constraint
-`tr e^{·} - d = 0`. **Gap:** non-convex, sensitive to initialization and the sparsity controls,
-and (for the neural variants) prone to over-connection without explicit pruning.
+`tr e^{·} - d = 0`.
 
 ## Evaluation settings
 
@@ -64,8 +58,7 @@ Synthetic nonlinear-ANM data: a ground-truth DAG from a random-graph scheme (Erd
 scale-free / Barabasi-Albert) at a chosen edge density, data generated as `X_j = f_j(pa(j)) + N_j`
 with `f_j` drawn from a Gaussian process and various noise families; graph sizes of order 10-50
 nodes, sample sizes hundreds to a few thousand. Metrics on the directed edge set: SHD (missing +
-extra + reversed edges), SID, and F1/precision/recall. Speed matters — the method is meant to be
-competitive with state-of-the-art while substantially faster.
+extra + reversed edges), SID, and F1/precision/recall.
 
 ## Code framework
 
@@ -83,7 +76,7 @@ def stein_hessian_diagonal(X, eta_G, eta_H, s=None):
     via first- and second-order Stein identities with a Gaussian kernel.
 
     Returns an (n, d) matrix whose (k, j) entry estimates d^2 log p / d x_j^2
-    at sample k. The order-recovery rule reads leaves off this matrix.
+    at sample k.
     """
     # TODO: Gaussian Gram matrix K with bandwidth s; kernel gradient nablaK and
     #       second derivative nabla2K; score G = (K + eta_G I)^{-1} nablaK;
@@ -92,8 +85,8 @@ def stein_hessian_diagonal(X, eta_G, eta_H, s=None):
 
 
 def compute_topological_order(X, eta_G=1e-3, eta_H=1e-3):
-    """Recover a topological order by iterative leaf detection."""
-    # TODO: at each step, estimate the diagonal Hessian, pick the leaf, remove it.
+    """Recover a topological order from the diagonal Hessian estimates."""
+    # TODO: use the diagonal Hessian to determine an ordering of variables.
     pass
 
 

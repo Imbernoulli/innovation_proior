@@ -10,21 +10,18 @@ this is impossible. That is an existence statement about a limit. It does not sa
 *how fast* the error probability falls as $N$ grows, nor *how* that speed depends
 on the rate $R$ or on the particular channel.
 
-For an engineer deciding whether to put coding on a physical link, the limit alone
-is not enough. The first questions are operational: at a chosen rate $R < C$, how
-large must the block length $N$ be to reach a target error probability $P_e$? Two
-modulation schemes might have the same capacity yet behave very differently at the
-rates one actually wants to run — which is better for coding? These questions are
-about a *rate of decay*. What is wanted is a function $E(R) > 0$, defined for all
-$R$ in $0 < R < C$ and computable from the channel's transition probabilities,
-such that the smallest achievable error probability behaves like
-$P_e \approx e^{-N E(R)}$ — an exponent that turns the asymptotic limit into a
-quantitative law and lets channels be compared on the strength of their whole
-$E(R)$ curve, not just a single number $C$. The further demand is that the
-derivation be *simple and general*: it should hold for any discrete memoryless
-channel, and extend cleanly to amplitude-continuous channels (the additive
-Gaussian-noise channel above all) with input power constraints, without a separate
-ad-hoc argument for each case.
+For an engineer deciding whether to put coding on a physical link, the operational
+questions come first: at a chosen rate $R < C$, how large must the block length $N$
+be to reach a target error probability $P_e$? Two modulation schemes might have the
+same capacity yet behave differently at the rates one actually wants to run — which
+is better for coding? These questions are about a *rate of decay*. The object of
+interest is a function $E(R) > 0$, defined for $R$ in $0 < R < C$ and computable
+from the channel's transition probabilities, such that the smallest achievable
+error probability behaves like $P_e \approx e^{-N E(R)}$ — an exponent that turns
+the asymptotic limit into a quantitative law and lets channels be compared on the
+strength of their whole $E(R)$ curve, not just the single number $C$. The setting
+spans any discrete memoryless channel and the amplitude-continuous channels (the
+additive Gaussian-noise channel above all) with input power constraints.
 
 ## Background
 
@@ -41,15 +38,13 @@ show the *ensemble-average* error probability tends to $0$. Since at least one
 code in the ensemble is as good as the average, a good code exists. The decoder is
 typical-set (joint-typicality) decoding, and the error analysis is a union bound
 over the $M-1$ competing messages combined with the asymptotic equipartition of
-typical sequences. The conclusion is $P_e \to 0$ for $R < C$ — a vanishing limit,
-with no exponent attached.
+typical sequences. The conclusion is $P_e \to 0$ for $R < C$.
 
 **Maximum-likelihood decoding.** The error-minimizing decoder for equiprobable
 messages declares the codeword $x_m$ maximizing $P(y\mid x_m)$. A decoding error
 occurs precisely when some other codeword $x_{m'}$ satisfies
-$P(y\mid x_{m'}) \ge P(y\mid x_m)$. This is the decoder whose error one wants to
-bound; the difficulty is that the error event for a given codeword depends on all
-the other codewords jointly.
+$P(y\mid x_{m'}) \ge P(y\mid x_m)$. This is the decoder whose error one bounds; the
+error event for a given codeword depends on all the other codewords jointly.
 
 **Union bound and pairwise (Bhattacharyya) bounding.** The standard handle on the
 ML error event is the union bound: the probability that *some* competitor beats
@@ -58,10 +53,8 @@ Each pairwise term — the probability that $x_{m'}$ looks at least as likely as
 $x_m$ — is overbounded by a tilted sum
 $\sum_y \sqrt{P(y\mid x_m)\,P(y\mid x_{m'})}$, the Bhattacharyya bound, which comes
 from $1[P(y\mid x_{m'}) \ge P(y\mid x_m)] \le \sqrt{P(y\mid x_{m'})/P(y\mid x_m)}$.
-Averaging this over the random ensemble yields an exponent in terms of the channel,
-but only a single fixed exponent: it is tight at low rates yet loses badly as $R$
-approaches $C$, because the union bound massively overcounts when many competitors
-are simultaneously plausible.
+Averaging this over the random ensemble yields a single fixed exponent in terms of
+the channel.
 
 **Chernoff/Hölder/Jensen bounding.** The standard inequalities of large-deviation
 analysis are available for converting sums into exponents: bounding an indicator by
@@ -73,52 +66,41 @@ means $\big(\sum_\ell q_\ell a_\ell^{r}\big)^{1/r}$ in $r$, which is the same H�
 fact in another guise.
 
 **The state of the art on the exponent.** Elias (1955), for the binary symmetric
-channel, had already derived upper *and* lower bounds on the smallest achievable
-error probability for codes of block length $N$ that both decay exponentially in
-$N$ for every $R < C$, and that coincide over a substantial range of rates up to
-capacity. Two facts emerged from that work and were by then part of the prevailing
-wisdom: almost all randomly chosen codes are essentially as good as the best code
-("most codes are good"), and the special class of *linear* codes already achieves
-the same average performance as the fully random ensemble. Fano (1961) stated, for
-general discrete memoryless channels, the strongest then-known form: the minimum
-error probability is squeezed between
+channel, derived upper *and* lower bounds on the smallest achievable error
+probability for codes of block length $N$ that both decay exponentially in $N$ for
+every $R < C$, and that coincide over a substantial range of rates up to capacity.
+Two facts from that work were by then part of the prevailing wisdom: almost all
+randomly chosen codes are essentially as good as the best code ("most codes are
+good"), and the special class of *linear* codes already achieves the same average
+performance as the fully random ensemble. Fano (1961) stated, for general discrete
+memoryless channels, the strongest then-known form: the minimum error probability
+is squeezed between
 $e^{-N[E_L(R) + o(1)]} \le P_e \le 2\, e^{-N E(R)}$ with $E_L(R), E(R) > 0$ below
-capacity and $E_L(R) = E(R)$ in a band just beneath $C$. But Fano's derivation of
-these bounds was long and intricate, and the cleanest exponential statements were
-channel-specific (the BSC, orthogonal signals in Gaussian noise). The "cutoff
-rate" $R_0$ — the exponent's value extrapolated to zero rate, and the rate above
-which sequential decoding's computation blows up — was the other landmark on the
-$E(R)$ curve. What was missing was a *single, simple* derivation giving the whole
-$E(R)$ curve for an arbitrary channel.
+capacity and $E_L(R) = E(R)$ in a band just beneath $C$. The cleanest exponential
+statements available were channel-specific (the BSC, orthogonal signals in Gaussian
+noise). The "cutoff rate" $R_0$ — the exponent's value extrapolated to zero rate,
+and the rate above which sequential decoding's computation blows up — was the other
+landmark on the $E(R)$ curve.
 
 ## Baselines
 
-**Shannon's random-coding achievability (1948).** *Idea:* random codebook +
-typical-set decoding + union bound show ensemble-average $P_e \to 0$ for $R < C$.
-*Limitation:* yields only the existence of capacity and a vanishing-in-the-limit
-error; the typicality argument is not engineered to expose the *rate* of decay, so
-it produces no usable $E(R)$ and no quantitative block-length law.
+**Shannon's random-coding achievability (1948).** Random codebook + typical-set
+decoding + union bound show ensemble-average $P_e \to 0$ for $R < C$; this yields
+the existence of capacity and a vanishing-in-the-limit error.
 
-**Elias' BSC exponent (1955).** *Idea:* for the binary symmetric channel, explicit
+**Elias' BSC exponent (1955).** For the binary symmetric channel, explicit
 exponentially-decaying upper and lower bounds on $P_e(N)$, with random and linear
-ensembles shown equivalent. *Limitation:* tied to the BSC; the construction and the
-exponent do not transfer mechanically to a general DMC or to amplitude-continuous
-channels, and the matching of upper and lower bounds is established only for that
-channel.
+ensembles shown equivalent, matched over a range of rates.
 
-**Fano's general bounds (1961).** *Idea:* for a general DMC, sandwich $P_e$ between
-two exponentially-decaying bounds with a positive exponent below capacity, agreeing
-in a high-rate band. *Limitation:* the derivation is long and technically heavy; the
-resulting exponent is hard to compute and to interpret, and the simplicity that
-would make $E(R)$ a routine engineering quantity (computed almost as easily as
-capacity) is absent.
+**Fano's general bounds (1961).** For a general DMC, $P_e$ is sandwiched between two
+exponentially-decaying bounds with a positive exponent below capacity, agreeing in a
+high-rate band.
 
-**Bhattacharyya / cutoff-rate union bound.** *Idea:* union bound plus pairwise
-Bhattacharyya bounding gives a clean closed-form exponent, essentially
+**Bhattacharyya / cutoff-rate union bound.** Union bound plus pairwise
+Bhattacharyya bounding gives a closed-form exponent, essentially
 $E_0(1,p) - R$ with $E_0(1,p) = -\ln \sum_j \big(\sum_k p_k \sqrt{P_{jk}}\big)^2$.
-*Limitation:* this is a *single* line of slope $-1$; its exponent reaches zero at the
-cutoff rate $R_0 < C$, so it certifies a positive exponent only up to $R_0$, not up
-to capacity, and is loose precisely in the high-rate regime that matters most.
+This is a single line of slope $-1$; its exponent reaches zero at the cutoff rate
+$R_0$.
 
 ## Evaluation settings
 

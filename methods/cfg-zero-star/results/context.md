@@ -1,4 +1,4 @@
-# Context: classifier-free guidance when the learned velocity/score is inaccurate
+# Context: classifier-free guidance for flow-matching and diffusion samplers
 
 ## Research question
 
@@ -6,12 +6,9 @@ Flow-matching and diffusion image/video generators sample by integrating a learn
 score) field from a source distribution to the data distribution. A frozen model is queried twice
 per step — once with the condition and once with it dropped — yielding `v_cond` and `v_uncond`, and
 the sampler integrates a linear mix of the two. Classifier-free guidance (CFG) is the standard mix.
-The practical problem: this inference-time mix is trusted *even when the learned field is not yet a
-good approximation* to the true transport velocity. When the model is underfitted, the same global
-scale that strengthens the conditional signal also strengthens the conditional *error*, and the worst
-place for that is the high-noise source end of the trajectory, where the prediction carries the least
-semantic information. A good guidance rule should keep the drop-in nature of CFG — no retraining, no
-extra network calls — and behave sensibly when the two available predictions are imperfect.
+The question is how to set the per-step guidance update from the two available predictions `v_cond`
+and `v_uncond`, as a drop-in rule that keeps the same two model calls per step — no retraining, no
+extra network evaluations.
 
 ## Background
 
@@ -25,31 +22,26 @@ v_t^*(x) = ((2t - 1) / ((1 - t)^2 + t^2)) (x - t mu) + mu,
 ```
 
 from the Gaussian conditional-mean identity with `Cov(x_t, x_1 - x_0) = (2t - 1)I` and
-`Var(x_t) = ((1 - t)^2 + t^2)I`. This gives a diagnostic where a learned velocity can be compared to
-the optimal one across timesteps, exposing that underfitted models are least reliable near the
-source end. Diffusion DDIM/CFG++ samplers in the noise-prediction (epsilon) frame are the same object
-under a change of variables: a step is "Tweedie-denoise to the clean manifold, then renoise."
+`Var(x_t) = ((1 - t)^2 + t^2)I`. This gives a setting where a learned velocity can be compared to the
+optimal one across timesteps. Diffusion DDIM/CFG++ samplers in the noise-prediction (epsilon) frame
+are the same object under a change of variables: a step is "Tweedie-denoise to the clean manifold,
+then renoise."
 
 ## Baselines
 
 **Classifier-free guidance, CFG (Ho & Salimans, 2022).** Combine the two predictions as
-`v_guided = (1 - w) v_uncond + w v_cond`. Gap: `w` is a single global hand-tuned scalar; the fixed
-coefficients ignore the current sample, timestep, and the agreement between the two predictions, so a
-large `w` amplifies prediction error as readily as conditional signal.
+`v_guided = (1 - w) v_uncond + w v_cond`, with `w` a single global hand-tuned scalar.
 
 **Classifier guidance (Dhariwal & Nichol, 2021).** Adds a separately scaled classifier gradient to
-an unconditional score; needs an extra classifier on noisy inputs. Its lesson is architectural: the
-baseline direction and the condition-improving direction need not be locked to one scalar.
+an unconditional score, using an extra classifier on noisy inputs, so the baseline direction and the
+condition-improving direction are set by separate scalars rather than locked to one.
 
 **Manifold/reverse-step fixes (CFG++ — Chung et al. 2024/2025; adaptive, characteristic, rectified
 CFG).** Change *how guidance is injected into the reverse step* to reduce oversaturation and
-off-manifold drift at high scale (CFG++ renoises with the unconditional prediction). Gap: they fix
-the reverse-step geometry, but the fixed velocity *mix* can still be brittle when the learned field
-itself is inaccurate.
+off-manifold drift at high scale (CFG++ renoises with the unconditional prediction).
 
 **Guidance-interval heuristics (Kynkäänniemi et al. 2024).** Restrict guidance to a middle interval
-of the schedule because extreme-noise guidance is unreliable. Gap: a coarse binary schedule; the
-interval is heuristic and can both discard useful guidance and allow harmful guidance.
+of the schedule, applying guidance over part of the noise schedule rather than the whole trajectory.
 
 ## Evaluation settings
 

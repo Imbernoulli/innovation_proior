@@ -5,10 +5,8 @@
 A single-cell RNA-seq UMI count matrix `X` (cells × genes) is undersampled, with most expressed
 genes reading as zero (dropout). A denoiser maps `X` to a smoother non-negative `X̂` approximating
 the expression rate, by pooling information across biologically similar cells to beat down Poisson
-noise. Naive kNN-smoothing pools, but it picks neighbors on noisy profiles and uses a hard uniform
-average with a single global `k`. The question here: can a geometry-aware, adaptive-bandwidth,
-transitively-pooled diffusion on a cell-cell affinity graph — MAGIC (van Dijk et al., Cell 2018) —
-cure those two flaws and recover the local manifold structure they smear?
+noise. The question: how to best pool information across cells so that the recovered expression
+profiles reflect the underlying biological manifold structure?
 
 ## Evaluation
 
@@ -21,11 +19,7 @@ seed; tune on one dataset, report on held-out ones.
 
 ## Method interface
 
-Edit `denoise(X) → X̂`, same shape, non-negative. MAGIC: square-root-transform, library-normalize,
-PCA-embed (so neighbor distances are measured on denoised structure), build an adaptive-bandwidth
-alpha-decay affinity kernel (per-cell bandwidth = distance to the `k`-th neighbor), symmetrize and
-row-normalize into a Markov transition matrix `P`, and impute by diffusion `X̂ = Pᵗ X` — powered
-diffusion lets cells borrow transitively from neighbors' neighbors along the manifold. The step count
-`t` is the bias-variance lever. Remaining gaps — a single transform for all genes, and no refinement
-in the log-normalized scoring space or the global low-rank structure — motivate the TTT-Discover
-endpoint. Baselines: raw 0; kNN-smoothing; real-benchmark MAGIC ~0.64; TTT-Discover 0.71/0.73.
+Edit `denoise(X) → X̂`, same shape, non-negative. The existing baseline is kNN-smoothing:
+library-normalize the counts, find the `k` nearest neighbors for each cell in gene space, and replace
+each cell's profile with the uniform average of those neighbors. The step count `k` is the
+bias-variance lever. Baselines: raw 0; kNN-smoothing.

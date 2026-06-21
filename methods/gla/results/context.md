@@ -3,28 +3,21 @@
 ## Research question
 
 Standard autoregressive Transformers mix tokens with softmax attention, which costs
-`O(L^2)` compute and memory in the sequence length `L`. For a fixed token budget that
-quadratic term dominates wall-clock and memory as context grows, and it is exactly what
-makes long-context training and inference expensive. The goal is a sequence-mixing layer
-whose training and inference scale better than `O(L^2)` — ideally linear in `L` for inference
-and subquadratic for training — that remains **competitive in language-model quality** with a
-strong softmax-attention Transformer trained on the same data and token budget. Two things
-make this hard at once. First, the candidates that are cheap in theory have historically lost
-a noticeable margin in language-model quality, so cheapness alone is not the bar — quality
-parity is. Second, "cheap in theory" has repeatedly failed to mean "fast in practice": an
-algorithm with the lowest FLOP count can still be slower in wall-clock than a well-optimized
-quadratic kernel, because it ignores how modern GPUs actually move and multiply data. A real
-solution has to win on quality *and* on measured throughput on the hardware people train on.
+`O(L^2)` compute and memory in the sequence length `L`, and at inference attend each new
+token to a KV cache that grows with `L`. The question is how to design a sequence-mixing
+layer whose training and inference scale better than `O(L^2)` — linear in `L` for inference
+and subquadratic for training — while remaining competitive in language-model quality with a
+strong softmax-attention Transformer trained on the same data and token budget, and fast in
+measured wall-clock throughput on the GPUs people train on.
 
 ## Background
 
 By this time the dominant sequence layer is **softmax attention** (Vaswani et al. 2017). For
 input `X ∈ R^{L×d}`, it forms `Q,K,V = X W_Q, X W_K, X W_V` and
 `O = softmax(Q K^T / sqrt(d_k) + A) V`, where `A` is an additive causal mask
-(`A_{ij}=0` if `i≥j`, else `-∞`). This *parallel form* trains efficiently on the whole sequence at once but is quadratic
-in `L`. At inference it must use the equivalent *recurrent form*, attending each new token to
-a growing cache of all past keys and values (the "KV cache"), whose size grows without bound
-in `L`.
+(`A_{ij}=0` if `i≥j`, else `-∞`). This *parallel form* trains on the whole sequence at once and
+is quadratic in `L`. At inference it uses the equivalent *recurrent form*, attending each new
+token to a cache of all past keys and values (the "KV cache"), whose size grows with `L`.
 
 **Linear attention** (Katharopoulos et al. 2020, "Transformers are RNNs") is the line of work
 that makes this cheap. Replace the exponential similarity `exp(q_t · k_i)` with a kernel
@@ -37,18 +30,17 @@ recurrence `S_t = S_{t-1} + φ(k_t)^T v_t`, `z_t = z_{t-1} + φ(k_t)^T`, `o_t = 
 outer product `φ(k_t)^T v_t` — a form of "fast weights" (Schmidhuber 1992; Ba et al. 2016).
 Inference is `O(1)` per step in time, with a fixed-size state instead of a growing cache.
 The original feature map was `φ(x) = elu(x) + 1` (a positive map); pre-existing variants also
-found that an identity map `φ = I` with no normalizer works well, leaving the bare unnormalized update
+use an identity map `φ = I` with no normalizer, leaving the bare unnormalized update
 `S_t = S_{t-1} + k_t^T v_t`, `o_t = q_t S_t`.
 
-The catch for *training* is causality. The non-causal product can be reassociated —
-`(Q K^T) V = Q (K^T V)` — turning `O(L^2 d)` into `O(L d^2)`. But the causal parallel form
-`O = ((Q K^T) ⊙ M) V`, with binary lower-triangular `M`, applies the mask *elementwise* to
-`Q K^T`, and that pointwise mask
-blocks the reassociation: you cannot push `K^T V` inside before masking, so the naive causal
-parallel form is back to `O(L^2 d)`.
+For *training*, causality interacts with associativity. The non-causal product can be
+reassociated — `(Q K^T) V = Q (K^T V)` — turning `O(L^2 d)` into `O(L d^2)`. The causal
+parallel form `O = ((Q K^T) ⊙ M) V`, with binary lower-triangular `M`, applies the mask
+*elementwise* to `Q K^T`, so the reassociation does not apply directly and this form is
+`O(L^2 d)`.
 
-The reconciliation already in the literature is the **chunkwise parallel form** (Hua et al.
-2022; Sun et al. 2023). Split the sequence into `N = L/C` non-overlapping chunks of length
+The **chunkwise parallel form** (Hua et al.
+2022; Sun et al. 2023) interpolates between the two. Split the sequence into `N = L/C` non-overlapping chunks of length
 `C`. Carry the matrix state across chunks by a recurrence,
 `S_{[i+1]} = S_{[i]} + K_{[i]}^T V_{[i]}` (computed by a `C×d` matmul), and within a chunk
 compute the output as an inter-chunk term plus an intra-chunk term,
@@ -58,16 +50,16 @@ the single state `S_{[i]}`. Total training cost is `O(L C d + L d^2)`, below `O(
 `L > d`. Setting `C = L` recovers the quadratic parallel form; `C = 1` recovers the recurrent
 form; `C` interpolates.
 
-Two empirical facts about this design space are established and load-bearing. First,
-**plain linear attention underperforms softmax attention in language modeling**, often by a
-wide margin (Kasai et al. 2021). Second, in 1D recurrent networks a **forget gate is
-crucial**, and a *data-dependent* one — its value computed from the current input — is what
-makes recurrent models work; this is the long-standing lesson of the LSTM forget gate
-(Hochreiter & Schmidhuber 1997; Gers et al. 2000) and of analyses showing the forget gate
-carries most of the model's capacity (van der Westhuizen & Lasenby 2018). A complementary
-observation (Martin & Cundy 2018) is that if the forget value depends only on the *current
-input* (not the previous hidden state), the recurrence stays linear and parallelizable, and
-HGRN (Qin et al. 2023) found this effective at moderate scale.
+Two empirical facts about this design space are established. First, in language modeling
+**plain linear attention scores below softmax attention**, often by a wide margin (Kasai et
+al. 2021). Second, in 1D recurrent networks a **forget gate is central**, and a
+*data-dependent* one — its value computed from the current input — is a long-standing element
+of recurrent models; this is the lesson of the LSTM forget gate (Hochreiter & Schmidhuber
+1997; Gers et al. 2000) and of analyses placing much of the model's capacity in the forget
+gate (van der Westhuizen & Lasenby 2018). A related observation (Martin & Cundy 2018) is that
+if the forget value depends only on the *current input* (not the previous hidden state), the
+recurrence stays linear and parallelizable; HGRN (Qin et al. 2023) used this at moderate
+scale.
 
 A third fact is about hardware. An algorithm is only fast if it respects the GPU: keep
 **occupancy** high (use enough streaming multiprocessors — when batch is small, parallelizing
@@ -76,59 +68,44 @@ through **tensor cores** (half-precision matmuls run roughly an order of magnitu
 the same FLOPs on general CUDA cores, but only matmul-shaped work qualifies, and tile sizes
 want to be multiples of 16), and minimize traffic to **HBM** (the large, slow global memory)
 by keeping reused tensors in the small fast on-chip SRAM. FlashAttention (Dao et al. 2022;
-Dao 2023) made exact softmax attention fast precisely by tiling the computation so the `L×L`
+Dao 2023) makes exact softmax attention fast by tiling the computation so the `L×L`
 score matrix is never written to HBM, recomputing it in the backward pass instead, and
-(in its second version) adding sequence-level parallelism. Most existing chunkwise
-linear-attention implementations are *not* I/O-aware in this sense, which is why, despite
-fewer FLOPs, they run slower than FlashAttention at moderate lengths (2K–4K), and why the
-elementwise recurrent form — lowest FLOPs of all — has low arithmetic intensity, can't use
-tensor cores, and is slow in wall-clock.
+(in its second version) adding sequence-level parallelism. The elementwise recurrent form has
+the lowest FLOPs of all but has low arithmetic intensity and does not use tensor cores;
+existing chunkwise linear-attention implementations vary in how I/O-aware they are.
 
 ## Baselines
 
-These are the prior sequence-mixing methods a new layer would be measured against and react to.
+These are the prior sequence-mixing methods a new layer would be measured against.
 
 **Softmax-attention Transformer (Vaswani et al. 2017), modern recipe ("Transformer++").**
 The reference for quality. The strong contemporary form is the LLaMA architecture (Touvron et
 al. 2023): rotary position embeddings, a SwiGLU feed-forward network, RMSNorm, pre-norm
-residual blocks. Core math as above; `O = softmax(QK^T/sqrt(d_k)+A)V`. **Limitation:** the `O(L^2)`
-cost in both compute and memory, and an inference KV cache that grows linearly with context,
-so the cost per generated token keeps rising with sequence length.
+residual blocks. Core math as above; `O = softmax(QK^T/sqrt(d_k)+A)V`. Cost is `O(L^2)` in
+compute and memory, with an inference KV cache that grows linearly with context.
 
 **Plain linear attention (Katharopoulos et al. 2020).** The recurrence `S_t = S_{t-1} +
 φ(k_t)^T v_t`, `o_t = φ(q_t) S_t`, with the chunkwise training form above. Constant-memory
-linear-time inference, subquadratic training. **Limitation:** in language modeling it loses a
-visible margin to softmax attention, and the state has no mechanism to *discard* information —
-the update only ever adds outer products, so the fixed-size matrix state keeps absorbing new
-keys with nothing removed, and old, no-longer-relevant content lingers; this inability to
-forget has been tied to instability and weak performance on long contexts (Buckman & Gelada
-2024).
+linear-time inference, subquadratic training. The update adds outer products into a fixed-size
+matrix state.
 
 **Linear attention with a global decay — RetNet (Sun et al. 2023), TransNormerLLM (Qin et al.
 2023).** Multiply the state by a single fixed scalar before each update:
 `S_t = γ S_{t-1} + k_t^T v_t`, with `γ ∈ (0,1)` a global, **data-independent** constant (this
-is essentially linear attention with an ALiBi-style recency bias). A single `γ` is chosen
-precisely so the model keeps the attention-style parallel and chunkwise forms for efficient
-training, and it gives a clear improvement over no decay. RetNet also adds per-head output
-normalization and an output gate. **Limitation:** the decay is the *same constant for every
-token and every channel*, with no dependence on the input — it cannot decide, from content,
-to hold one piece of context and drop another. Even so, these decayed linear models still
-trail the strongest Transformers when pretrained from scratch.
+is essentially linear attention with an ALiBi-style recency bias). The single `γ` keeps the
+attention-style parallel and chunkwise forms for efficient training, and gives an improvement
+over no decay. RetNet also adds per-head output normalization and an output gate.
 
 **Mamba (Gu & Dao 2023).** A selective state-space model whose transition and input
-projections are made *input-dependent*, giving a full-rank, data-dependent update. **Limitation:**
-the full-rank selective update cannot be rewritten as a matrix multiply, so it can't use tensor
-cores and must materialize each time step's state; to keep those states in SRAM, the per-channel
-state expansion is capped (around 16), which bounds the effective recurrent state size and shows
-up as weaker performance on recall-heavy tasks.
+projections are made *input-dependent*, giving a full-rank, data-dependent update. The
+full-rank selective update is computed with a parallel scan rather than a matmul, materializing
+each time step's state; the per-channel state expansion is set around 16 so those states stay
+in SRAM.
 
 **Fine-grained matrix-valued gates (Mao 2022; Katsch 2023 GateLoop).** Give linear attention a
 2D, data-dependent gate via a low-rank outer product, `G_t = α_t^T β_t`, so the state update
-is `S_t = G_t ⊙ S_{t-1} + k_t^T v_t` with `d·d_k + d·d_v` gate parameters — more expressive
-recency control than a scalar. **Limitation:** their training procedures materialize the
-matrix-valued hidden state for *every* time step in HBM (high I/O cost), and the gated update
-as implemented does not reduce to tensor-core matmuls, so training is slow at scale; that line
-of work also leaves the gate-gradient path tied to keeping per-step states around.
+is `S_t = G_t ⊙ S_{t-1} + k_t^T v_t` with `d·d_k + d·d_v` gate parameters. These training
+procedures materialize the matrix-valued hidden state for every time step in HBM.
 
 ## Evaluation settings
 

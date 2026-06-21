@@ -7,19 +7,14 @@ audio, protein structure, and weather, but they generate by *solving a different
 starting from noise `x_0 ~ rho_0`, one integrates an ordinary differential equation
 `xdot_t = b_t(x_t)` until `t = 1` to land on a data sample `x_1 ~ rho_1`. Numerically solving
 that ODE accurately takes tens to hundreds of evaluations of the learned network — one per
-integration substep — which is the dominant inference cost and rules these models out of
-latency-critical settings (real-time control, interactive editing). The goal is to generate in
+integration substep — which is the dominant inference cost. The goal is to generate in
 **one or a few** network evaluations instead of hundreds, i.e. to learn a finite-time transport
 operator rather than only an instantaneous velocity that must be integrated.
 
-The pain point a solution must overcome is sharp. The two existing routes to few-step models
-each carry a structural cost. **Distillation** trains the few-step model to imitate a separately
-pre-trained many-step model; it is stable and works well, but it is a two-phase pipeline whose
-student is fundamentally capped by the quality of its teacher, and it requires training two
-models. **Direct training** of a few-step model from scratch avoids the teacher, but the
-objectives in use for it are observed to be unstable and to need extensive, dataset-specific
-engineering to converge at all. The open problem is whether a *principled, single-phase* training
-scheme can keep the stability of distillation while removing the frozen teacher.
+Two broad routes to few-step models exist: **distillation**, which trains the few-step model to
+imitate a separately pre-trained many-step model, and **direct training** of a few-step model
+from scratch without a teacher. How to learn such a finite-time transport operator effectively is
+the central question.
 
 ## Background
 
@@ -54,7 +49,6 @@ L_b(bhat) = integral_0^1 E_{x_0,x_1} | bhat_t(I_t) - Idot_t |^2 dt.
 ```
 
 Once `bhat` is learned, sampling integrates `xdot_t = bhat_t(x_t)` from `x_0 ~ rho_0` to `t = 1`.
-High quality, but the integration is the expense.
 
 **The integrated object.** Rather than the instantaneous velocity, one can consider the map that
 advances a point *along the same ODE trajectory* from one time to another:
@@ -71,19 +65,16 @@ the identity on the diagonal, `X_{s,s}(x) = x`; it composes, `X_{u,t}(X_{s,u}(x)
 (any two jumps equal one jump); and it is tied to the velocity that generated it. These structural
 facts constrain any objective for the two-time map.
 
-**Diagnostic observations about training the integrated map directly.** Prior attempts to learn
-this jump map directly (rather than by distillation) report a consistent empirical pattern that
-any new scheme must reckon with. (i) Objectives that require differentiating the network's output
-*with respect to its spatial input* — i.e. that contain a spatial Jacobian of the map, evaluated
-through a Jacobian-vector product — are observed to be unstable for large image networks, often
-diverging, and need careful schemes and heavy hyperparameter tuning (Lu et al. 2025; the
-DreamFusion line notes similar spatial-Jacobian pathologies). (ii) Objectives that build a large
-jump by *composing two smaller learned jumps* and regressing the big one onto the composition are
-stable to optimize but accumulate error: the inner jump's mistakes feed the outer jump, and the
-input distribution to the second jump drifts away from anything the model saw, degrading sample
-quality. (iii) Loss values at different time pairs `(s, t)` are observed to have gradient norms
-that differ by orders of magnitude, injecting large variance into the update. These observations
-constrain any direct-training objective for large image models.
+**Empirical observations on training the integrated map.** Prior attempts to learn the jump map
+directly report several empirical patterns. (i) Objectives that require differentiating the
+network's output with respect to its spatial input — i.e. that contain a spatial Jacobian of the
+map evaluated through a Jacobian-vector product — are observed to be unstable for large image
+networks, often diverging, and need careful schemes and heavy hyperparameter tuning (Lu et al. 2025;
+the DreamFusion line notes similar spatial-Jacobian pathologies). (ii) Objectives that build a
+large jump by composing two smaller learned jumps and regressing the big one onto the composition
+are stable to optimize but accumulate error as the inner jump's mistakes feed the outer jump. (iii)
+Loss values at different time pairs `(s, t)` are observed to have gradient norms that differ by
+orders of magnitude.
 
 **Adaptive loss weighting.** A relevant tool already on the table is the uncertainty-style
 adaptive loss weight from EDM2 (Karras et al. 2024), rooted in multi-task uncertainty weighting
@@ -102,48 +93,31 @@ self-attention at coarse resolutions, with input/output preconditioning `c_in = 
 **Flow matching / stochastic interpolants / rectified flow (Albergo & Vanden-Eijnden 2023;
 Lipman et al. 2022; Liu et al. 2022).** Learn the velocity `b_t` by the regression `L_b` above,
 then integrate the ODE to sample. Core idea and math are exactly the interpolant construction in
-Background. **Limitation:** sampling integrates the ODE, costing tens to hundreds of network
-evaluations; the velocity carries only instantaneous information, so there is no way to take a
-large accurate step.
+Background.
 
 **Diffusion / score-based models (Ho et al. 2020; Song et al. 2020).** Learn a score / noise
-predictor and sample via the reverse SDE or the probability-flow ODE. **Limitation:** identical
-cost structure — accurate generation needs many solver steps.
+predictor and sample via the reverse SDE or the probability-flow ODE.
 
 **Consistency models (Song et al. 2023; Song & Dhariwal 2023).** Learn the single-time jump to
 data, `X_{s,1}` in the two-time notation, trained so that points on a common ODE trajectory map
 to the same endpoint ("consistency"). Consistency *distillation* uses a pre-trained teacher;
-consistency *training* avoids it. Few-step, sometimes one-step, generation. **Limitation:** the
-training signal is built from the relation that involves how the map changes as the *start* time
-moves, which brings in the spatial Jacobian of the map; training is observed to be unstable and
-to require substantial engineering to stabilize (Lu et al. 2025). Consistency *distillation* also
-inherits the teacher cap and the two-phase pipeline.
+consistency *training* avoids it. Few-step, sometimes one-step, generation. The training signal is
+built from the relation describing how the map changes as the start time moves, which brings in the
+spatial Jacobian of the map. Consistency *distillation* requires a separately pre-trained teacher.
 
 **Consistency trajectory models (Kim et al. 2024).** Extend consistency models to the full
-two-time map `X_{s,t}`, enabling multistep sampling. Same underlying relation, same spatial
-Jacobian, same observed instability.
+two-time map `X_{s,t}`, enabling multistep sampling. Uses the same underlying structural relation.
 
 **Shortcut models (Frans et al. 2024).** Train a two-time map and enforce that one big jump
 equals two consecutive learned half-jumps (a discretized composition relation), bootstrapping
-larger steps from smaller ones within a single model. **Limitation:** the composition is applied
-across discrete step sizes and bootstrapped self-consistently, so errors in the smaller jumps
-compound into the larger ones and the bootstrapping target's input distribution shifts; sample
-quality degrades relative to what the model could represent.
+larger steps from smaller ones within a single model.
 
 **Progressive distillation (Salimans & Ho 2022).** Repeatedly train a student to replicate two
 steps of a teacher in one, halving the step count each round, starting from a many-step diffusion
-teacher. **Limitation:** multi-phase, teacher-dependent, and the same compounding-error /
-distribution-shift difficulty of composing learned jumps.
+teacher.
 
 **Mean flow / Align your flow (2025).** Recent direct-training and distillation schemes for the
-two-time map. **Limitation:** they rest on the same spatial-derivative characterization that is
-observed to be the unstable one.
-
-A cross-cutting gap runs through all of these: either a pre-trained teacher is required (a
-two-phase pipeline whose student cannot exceed the teacher), or the direct-training objective in
-use leans on the spatial-Jacobian relation that is empirically unstable, or it composes learned
-jumps and pays compounding error — and there is no unifying account that says *which* residual to
-minimize, why its minimizer is exactly the jump map, and what guarantee the loss value buys.
+two-time map, using spatial-derivative characterizations of the map.
 
 ## Evaluation settings
 

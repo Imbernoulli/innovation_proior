@@ -5,16 +5,13 @@
 Public-key encryption exists as a concept and as concrete schemes, but no one has said precisely what
 it means for an encryption scheme to be *secure*. The working notion inherited from the founders is:
 an encryption is secure if a computationally bounded adversary, seeing the ciphertext, cannot recover
-the whole plaintext (or the secret key). The goal here is to expose how weak that is and to replace it
-with a definition that captures the real-world demand — that the ciphertext leak *nothing useful* — and
-then to exhibit a scheme provably meeting it under a clean number-theoretic assumption.
+the whole plaintext (or the secret key). The question is how to formalize, and then achieve, a
+rigorous security guarantee under a clean number-theoretic assumption.
 
-The demand is sharpened by a concrete application: playing card games (mental poker) over a telephone
+A concrete application that sharpens the question is playing card games (mental poker) over a telephone
 line, where the cards are exchanged as ciphertexts. If even a single bit of partial information about a
 hidden card — its color, its suit, whether it equals a card already seen — can be computed from the
-ciphertext, the game is compromised even though no one ever recovers the full card. So the requirement a
-solution must meet is strong: hide *every* efficiently computable function of the plaintext, for *every*
-message distribution, not merely the identity of the message, and not only on random-looking messages.
+ciphertext, the game is compromised even though no one ever recovers the full card.
 
 ## Background
 
@@ -27,7 +24,7 @@ computation. They classify attacks (ciphertext-only, known-plaintext, chosen-pla
 the one-time pad is the only unconditionally (information-theoretically) secure system in common use,
 but its key must be as long as the message — Shannon's perfect secrecy, where the a-posteriori message
 probabilities equal the a-priori ones, is unachievable with short keys. The entire framing is about the
-infeasibility of *inverting*; it says nothing about partial information.
+infeasibility of *inverting*.
 
 **Trapdoor functions and one-way functions.** The implementation primitive is a *trapdoor one-way
 function*: f easy to compute, hard to invert, but invertible given secret trapdoor information. A
@@ -56,32 +53,19 @@ poly-time testable. So embedding a secret bit inside the input of a one-way func
 
 **RSA (Rivest–Shamir–Adleman, 1978).** A user publishes n = p·q (two large secret primes) and an
 exponent s coprime to φ(n); encryption is E(m) = m^s mod n, decryption m = c^d mod n with s·d ≡ 1 mod
-φ(n). E is a trapdoor one-way *permutation* of Z_n^*. The scheme is deterministic and bijective. Gaps it
-leaves open: (1) being hard to invert on random inputs does not preclude easy inversion on *structured*
-inputs — a function hard on generic x can be easy on ASCII English. (2) It does not preclude leaking
-*partial* information: for integer-valued deterministic encryption, any visible output bit that varies
-with m becomes a plaintext predicate read directly from the ciphertext, and Lipton showed that in
-RSA-based mental poker a bit that must stay hidden is easily computed. (3) Being deterministic,
-identical plaintexts yield identical
-ciphertexts, so *equality* of messages always leaks, and with the public key an adversary can encrypt
-any candidate and compare. No proof exists that decoding is hard without assumptions on the message
-space.
+φ(n). E is a trapdoor one-way *permutation* of Z_n^*. The scheme is deterministic and bijective.
 
 **Rabin (1979).** Choose s = 2: E(x) = x^2 mod n. Decryption takes square roots mod n (possible with the
 factorization, via CRT). Rabin proved a tight link to factoring: if one could extract a square root for
 even a 1/log n fraction of quadratic residues, one could factor n in random polynomial time (because two
-square roots x, y of the same residue with x ≠ ±y give gcd(n, x±y) as a factor). The gap: this
-"break ⇒ factor" guarantee holds only when the message set is *dense* in Z_n^*. If messages are sparse,
-a decoder for messages never yields a second square root inside the message set, so it does not factor —
-the equivalence to factoring evaporates, and again partial information is unaddressed. Rabin's E is also
-deterministic (4-to-1), so the parity-leak and equality-leak objections apply.
+square roots x, y of the same residue with x ≠ ±y give gcd(n, x±y) as a factor). Rabin's E is also
+deterministic (4-to-1).
 
-**Attempts to send one bit securely with a trapdoor function.** Two natural constructions fail. (i)
-Embed the secret bit as the i-th bit of an otherwise-random r and send E(r): a one-way E can leak a
-specific bit (the discrete-log last-bit example above). (ii) Place the bit at a random position i in a
-100-bit x, with the first 7 bits encoding i and the rest random: if E leaks those 7 bits and any one of
-the remaining bits, the adversary recovers the message bit with probability 1/2 + 1/2·(1/93). The lesson:
-infeasibility of recovering all of x grants no protection to one designated bit of x.
+**Attempts to send one bit securely with a trapdoor function.** Two natural constructions are: (i)
+Embed the secret bit as the i-th bit of an otherwise-random r and send E(r). (ii) Place the bit at a
+random position i in a 100-bit x, with the first 7 bits encoding i and the rest random: if E leaks those
+7 bits and any one of the remaining bits, the adversary recovers the message bit with probability
+1/2 + 1/2·(1/93).
 
 ## Evaluation settings
 

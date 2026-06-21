@@ -4,13 +4,11 @@ Recover the full directed DAG — skeleton and every edge direction — from a s
 
 ## Prior art / Background / Baselines
 
-These methods establish what is recoverable from second-order statistics alone and what it costs to enforce acyclicity.
+- **Constraint-based PC.** Builds the skeleton from conditional-independence tests, then orients colliders. Under linear-Gaussian assumptions it recovers the Markov equivalence class.
+- **Score-based GES.** Greedily adds and removes edges to maximize a covariance-based score such as BIC. It recovers the Markov equivalence class.
+- **Exact / order-based DAG search.** Searches over parent sets or topological orders to guarantee acyclicity. Exact parent-set formulations enumerate over discrete structures; order-based search considers permutations of the topological order.
 
-- **Constraint-based PC.** Builds the skeleton from conditional-independence tests, then orients colliders. Under linear-Gaussian assumptions it recovers only the Markov equivalence class, leaving many edges undirected.
-- **Score-based GES.** Greedily adds and removes edges to maximize a covariance-based score such as BIC. It also stops at the Markov equivalence class and scales poorly on dense, hub-heavy graphs.
-- **Exact / order-based DAG search.** Searches over parent sets or topological orders to guarantee acyclicity. Exact parent-set formulations are limited to small graphs, order-based search is factorial, and bounded-degree assumptions fail on scale-free networks.
-
-The benchmark uses dense Erdős-Rényi and hub-heavy scale-free DAGs with non-Gaussian noise; these baselines do not exploit the noise distribution.
+The benchmark uses dense Erdős-Rényi and hub-heavy scale-free DAGs with non-Gaussian noise.
 
 ## Fixed substrate / Code framework
 

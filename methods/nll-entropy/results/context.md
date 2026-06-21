@@ -7,18 +7,8 @@ A learning agent is a network of stochastic units: it does not emit one action, 
 the parameters so the agent does well on a scalar performance signal — expected reward in a
 function-optimization or immediate-reinforcement task, or, in a supervised setting, the
 likelihood the model assigns to the right answer. The natural recipe is to follow the
-gradient of that performance signal. But there is a structural hazard baked into doing only
-that: the very randomness that lets the agent *search* is itself a parameter the optimizer
-controls, and pushing the performance signal up almost always means making the output
-distribution sharper. So a plain gradient-follower tends to squeeze the distribution down
-toward a single deterministic choice — and it does this *early*, before it has actually
-established that the choice it is collapsing onto is the best one. Once the distribution is
-peaked, there is no spread left to discover anything better; the agent is stuck at whatever
-local optimum it committed to. The precise goal is a way to train these stochastic policies
-that still climbs the performance signal but does **not** let the search distribution
-collapse prematurely onto a suboptimal, near-deterministic solution — keeping enough spread
-alive that better regions can still be reached, without permanently sacrificing the ability
-to converge once a good region is found.
+gradient of that performance signal. The question is how to construct the training objective
+for such stochastic policies and output distributions.
 
 ## Background
 
@@ -51,14 +41,10 @@ entropy principle** (Jaynes, 1957) says: among all distributions consistent with
 actually know, prefer the one of greatest entropy — the least-committal one, which assumes no
 structure beyond what the evidence forces.
 
-The diagnostic phenomenon that frames the problem is empirical and well documented in this
-line of work: networks of stochastic units trained by following the expected-reward gradient
-**reliably converge to local optima**, exactly as one expects of any gradient-follower, and
-in practice the failure mode is that the policy's output distributions sharpen toward
-determinism before the search has explored enough — particularly painful on tasks with any
-hierarchical structure, where the agent must keep several options open at once for a while.
-That observed tendency — gradient ascent on reward alone collapsing the search too soon — is
-the concrete failure any solution has to confront.
+Networks of stochastic units trained by following the expected-reward gradient reliably
+converge to local optima, as one expects of any gradient-follower. Tasks with hierarchical
+structure, where good solutions require coordinating several units simultaneously, are a
+particularly demanding test of exploration-based learning.
 
 ## Baselines
 
@@ -73,30 +59,18 @@ such algorithm the expected update lies along `∇_θ E{r|θ}` — `(r−b)·∂
 The baseline `b` (e.g. a running average of recent reward, "reinforcement comparison")
 reduces variance without biasing the direction. Specialized to a Gaussian unit, the updates
 move `μ` toward sampled actions that beat the baseline and adjust `σ` by whether the squared
-error `(y−μ)²` ran above or below `σ²`. **Gap:** it optimizes expected reward and *only*
-expected reward. Nothing in the update resists the optimizer's incentive to shrink the output
-distribution; as `σ` (or the Bernoulli `p`) is driven toward a deterministic setting, the
-characteristic-eligibility variance and the search both die, and the algorithm settles into
-whatever local optimum it first drifted to. It is, observedly, also slow, and sensitive to
-how the reward function is shaped, with "false maxima" easy to fall into.
+error `(y−μ)²` ran above or below `σ²`.
 
 **Associative reward–penalty, A_{R-P} (Barto and colleagues, 1980s).** For Bernoulli-logistic
 units, `Δwᵢⱼ = α [ r (yᵢ − pᵢ) + λ(1−r)(1−yᵢ − pᵢ) ] xⱼ`, with a reward term and a separate
 penalty term (weight `λ`) that, on failure, pushes the unit toward the *opposite* of what it
 did. With `λ=0` it reduces to a REINFORCE algorithm; with `λ>0` the penalty term provides a
 form of persistent pressure that empirically helps it find solutions where plain
-reward-following gets stuck on the harder reinforcement shapings. **Gap:** the penalty
-mechanism is specific to the reward-penalty form and to `0/1` reinforcement; it is a
-hand-built correction rather than a principled, distribution-level statement about *how much
-spread to keep*, and it does not transfer cleanly to arbitrary stochastic units or to a
-likelihood objective.
+reward-following gets stuck on the harder reinforcement shapings.
 
 **Undirected stochastic exploration heuristics (ε-greedy and fixed noise injection).** Keep
 the policy mostly greedy but, with small probability or via a fixed-magnitude noise floor,
-act randomly so the agent does not get trapped. **Gap:** the exploration is bolted on
-*outside* the optimized policy, so it is not shaped by the objective and does not adapt — the
-noise level is a static knob, applied uniformly whether or not the agent is over-confident in
-a given state, and the policy being optimized is still free to collapse underneath it.
+act randomly so the agent does not get trapped.
 
 ## Evaluation settings
 

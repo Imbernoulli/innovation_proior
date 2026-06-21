@@ -9,25 +9,19 @@ a single-point crossover on binary strings recombines short, high-fitness substr
 accumulate. The crossover operator is the main search engine, and its power is tied to
 how single-point crossover propagates these building blocks.
 
-The pain point is what happens when the variables are *continuous reals* over a box
+The setting here is one in which the variables are *continuous reals* over a box
 `[x_lo, x_hi]^n` and the objective `f: R^n -> R` is a black box we only query. The
 established move is to binary-encode each real variable in a fixed number of bits and
-run an ordinary binary GA. That encoding drags in four well-known defects: (1) fixed,
-finite precision — the achievable resolution is capped by the bit length; (2) a fixed
-mapping from strings to reals that the algorithm cannot adapt; (3) the **Hamming-cliff**
-problem — adjacent real values can be maximally far apart in Hamming distance (e.g.
-`0111` and `1000` are neighbours in value but differ in every bit), so a small move in
-real space requires the crossover/mutation to flip many bits at once, which it rarely
-does; and (4) building-block / schema processing that was designed for discrete alleles
-no longer maps cleanly onto continuous structure.
+run an ordinary binary GA. That encoding has four well-known characteristics: (1) fixed,
+finite precision — the achievable resolution is set by the bit length; (2) a fixed
+mapping from strings to reals; (3) the **Hamming-cliff** structure — adjacent real values
+can be far apart in Hamming distance (e.g. `0111` and `1000` are neighbours in value but
+differ in every bit), so a small move in real space corresponds to flipping many bits at
+once; and (4) building-block / schema processing defined over discrete alleles.
 
-So the precise goal is to make the crossover-driven GA work **directly on the
-real-valued variables**: no binary encoding, hence no precision cap, no fixed mapping,
-and no Hamming cliff. A solution has to produce more than a few deterministic children
-from a parent pair, preserve useful parental structure rather than scatter uniformly
-without preference, be cheap enough to run on every mating in every generation, and
-compose with real-valued mutation and scale-free selection so the whole evolutionary
-loop stays in real space end to end.
+The question is how to run a crossover-driven GA **directly on the real-valued
+variables**, composing a real-coded recombination operator with real-valued mutation and
+a selection rule so the whole evolutionary loop stays in real space end to end.
 
 ## Background
 
@@ -37,23 +31,19 @@ repeats: *selection* (pick parents biased toward higher fitness), *crossover*
 replace the population with the offspring and iterate. For real-coded GAs the individual
 is just a vector of floats and each operator must act on floats.
 
-**Single-point binary crossover and its mean-preserving property.** Two parent
-bitstrings are cut at a random site and the tails swapped. Decode a string as
-`x = B·2^k + A` where `A` is the right `k` bits and `B` the left bits; the two children
-keep each parent's `B` and swap the `A` parts. A short computation on the decoded values
-shows the **arithmetic mean of the two decoded children equals the mean of the two
-parents**: `(y1 + y2)/2 = (x1 + x2)/2`. Under a linear bit-to-real mapping this carries
-over to the real values, so the children sit symmetrically about the parents' midpoint.
-This mean-preservation is a load-bearing fact about how single-point crossover behaves
-on the decoded reals.
+**Single-point binary crossover on the decoded reals.** Two parent bitstrings are cut at
+a random site and the tails swapped. Decode a string as `x = B·2^k + A` where `A` is the
+right `k` bits and `B` the left bits; the two children keep each parent's `B` and swap the
+`A` parts. A short computation on the decoded values shows the arithmetic mean of the two
+decoded children equals the mean of the two parents: `(y1 + y2)/2 = (x1 + x2)/2`. Under a
+linear bit-to-real mapping this carries over to the real values, so the children sit
+symmetrically about the parents' midpoint.
 
-**Search power as an offspring-distribution question.** A crossover can be judged by
-the probability that it can create different children from two fixed parents, not only by
-whether it can create one plausible child. Single-point crossover has an analyzable
+**Offspring distribution.** A crossover can be characterized by the distribution of
+children it produces from two fixed parents. Single-point crossover has an analyzable
 distribution on decoded child locations: it tends to keep offspring near the parental
-values while still sometimes moving outside the parental interval, and that qualitative
-shape is different from a flat draw over a widened interval. This gives a distributional
-standard for a real-coded operator.
+values while still sometimes moving outside the parental interval, a qualitatively
+different shape from a flat draw over a widened interval.
 
 **Selection pressure without fitness scaling.** Tournament selection (Goldberg & Deb,
 *Foundations of Genetic Algorithms*, 1991) repeatedly samples a small group of `t`
@@ -72,39 +62,32 @@ average.
 
 ## Baselines
 
-**Single-point binary crossover (Holland; Goldberg, 1989).** The reference operator the
-real-coded design wants to match. Cut two bitstrings at a random site, swap tails. Its
-strength is provable building-block propagation (Holland's schema theorem) and the
-nonuniform decoded-child profile above. **Limitation when applied to continuous
-problems:** it can only act on a binary *encoding* of the reals, so it
-inherits all four encoding defects — capped precision, fixed mapping, Hamming cliffs,
-and schema machinery that no longer matches continuous structure. The operator itself is
-fine; forcing reals through a bit encoding to use it is the cost.
+**Single-point binary crossover (Holland; Goldberg, 1989).** Cut two bitstrings at a
+random site, swap tails. It provides provable building-block propagation (Holland's schema
+theorem) and the nonuniform decoded-child profile above. Applied to continuous problems,
+it acts on a binary *encoding* of the reals, carrying the four encoding characteristics
+above: fixed precision, fixed mapping, Hamming cliffs, and schema processing over discrete
+alleles.
 
 **Linear / heuristic crossover (Wright, 1991).** Operates on reals directly: from two
 parents `p1, p2` it forms the three points `(p1+p2)/2`, `1.5·p1 − 0.5·p2`, and
-`−0.5·p1 + 1.5·p2`, and keeps the best two. **Limitation:** it is essentially
-deterministic — only three candidate children can ever be produced from a parent pair,
-so the operator cannot reach most of the space around the parents. Its search power, in
-the sense of being able to land an offspring at a wide range of points, is small.
+`−0.5·p1 + 1.5·p2`, and keeps the best two. The operator is deterministic given the parent
+pair: three candidate children.
 
 **Blend crossover BLX-α (Eshelman & Schaffer, 1993).** Also real-coded. For parents
 `p1 < p2`, sample the child uniformly from the widened interval
 `[p1 − α(p2 − p1), p2 + α(p2 − p1)]`. With `α = 0` this draws uniformly *between* the
-parents (a contracting-only operator); `α = 0.5` (BLX-0.5) was reported best across a
-range of problems. BLX-0.0 preserves the "interval schemata" (contiguous regions common
-to both parents), and its interval width scales with the parent separation. **Limitation:**
-the offspring density is *flat* over the blend interval — every point in the sampled box
-is equally likely — so it does not reproduce the nonuniform decoded-child profile of
-single-point crossover. The `α` knob widens or narrows the box, but it does not control a
-near-parent concentration versus a thinning far-child tail.
+parents; `α = 0.5` (BLX-0.5) was reported best across a range of problems. BLX-0.0
+preserves the "interval schemata" (contiguous regions common to both parents), and its
+interval width scales with the parent separation. The offspring density is flat over the
+blend interval — every point in the sampled box is equally likely — and the `α` knob
+sets the box width.
 
 **Evolution-strategy recombination (Schwefel; Rechenberg).** Real-valued from the
-outset, but the primary search operator is Gaussian mutation; recombination is usually
-discrete (pick one parent's value) or intermediate (average the two parents).
-**Limitation as a recombination operator:** discrete and intermediate recombination are
-deterministic per coordinate and create at most one distinct point, so taken alone they
-have little search power; ES relies on mutation, not crossover, to explore.
+outset, with Gaussian mutation as the primary search operator; recombination is usually
+discrete (pick one parent's value) or intermediate (average the two parents). Discrete
+and intermediate recombination are deterministic per coordinate, producing one point;
+ES relies on mutation to explore.
 
 ## Evaluation settings
 

@@ -7,18 +7,13 @@ configuration `x` drawn from a configuration space `X` (continuous, integer, cat
 possibly conditional axes) — find a configuration that minimizes validation error, using as
 little total computation as possible. Each evaluation is one full or partial training run plus
 a validation pass, and that is the expensive unit: a single configuration can take hours of
-GPU time. The total compute is capped at some budget `B`; the practical question is how to
-spend `B` so that the returned configuration is as close as possible to the best one in `X`.
+GPU time. The total compute is capped at some budget `B`; the question is how to spend `B` so
+that the returned configuration is as close as possible to the best one in `X`.
 
-The thing that makes this hard is that the map from `x` to validation error is a *black box*:
-non-convex, of unknown smoothness, high-dimensional, and observed only through noisy, expensive
-evaluations. We do not know in advance how validation error varies across `x` for a fixed
-amount of training, nor how quickly a single configuration's loss improves as we give it more
-training. A good method would have to evaluate *many* configurations — ideally orders of
-magnitude more than "train each candidate to completion" can afford — while spending almost no
-resource on the configurations that are obviously hopeless, and it would have to do this
-without assuming any particular convergence-rate model, since those models are hard to verify
-and break badly when wrong.
+The map from `x` to validation error is a *black box*: non-convex, of unknown smoothness,
+high-dimensional, and observed only through noisy, expensive evaluations. It is not known in
+advance how validation error varies across `x` for a fixed amount of training, nor how quickly
+a single configuration's loss improves as it is given more training.
 
 ## Background
 
@@ -31,7 +26,7 @@ The first family is **configuration selection**: be clever about *which* configu
 next. Grid search and manual tuning are the brute-force end of this. The Bayesian-optimization
 methods refine it by building a probabilistic model `p(y | x)` of validation performance `y`
 given a configuration `x` and using it to pick promising configurations adaptively. Each chosen
-configuration is, however, trained to completion before its loss is observed.
+configuration is trained to completion before its loss is observed.
 
 The second family is **configuration evaluation**: be clever about *how much* resource to spend
 evaluating a configuration before judging it. The resource can be number of training iterations,
@@ -43,15 +38,14 @@ A useful way to reason about configuration evaluation, due to the bandit literat
 of each configuration as an *arm* and a unit of training as a *pull*. Pulling arm `i` a total of
 `k` times produces a validation loss `ell_{i,k}`. A standing empirical fact about iteratively
 trained models grounds everything that follows: as `k` grows, `ell_{i,k}` converges to a
-terminal value `nu_i = lim_{k->inf} ell_{i,k}` — but the *rate* of that convergence is unknown,
-varies wildly across configurations, and the intermediate loss curves can be non-monotone and
-jagged (Jamieson & Talwalkar 2016 show exactly such curves for kernel-SVM models trained by
-SGD). One can summarize the convergence with an *envelope*: let `gamma(j)` be the smallest
-non-increasing function with `sup_i |ell_{i,j} - nu_i| <= gamma(j)`, so `gamma(j)` bounds how
-far a partially trained loss can be from its terminal value after `j` units of resource.
-`gamma` is guaranteed to exist whenever the limits exist, but its actual shape is unknown to any
-algorithm. Two configurations with terminal losses `nu_1 < nu_i` can be told apart once their
-envelopes stop overlapping, i.e. once the resource `j` is large enough that
+terminal value `nu_i = lim_{k->inf} ell_{i,k}`; the *rate* of that convergence varies across
+configurations, and the intermediate loss curves can be non-monotone and jagged (Jamieson &
+Talwalkar 2016 show exactly such curves for kernel-SVM models trained by SGD). One can summarize
+the convergence with an *envelope*: let `gamma(j)` be the smallest non-increasing function with
+`sup_i |ell_{i,j} - nu_i| <= gamma(j)`, so `gamma(j)` bounds how far a partially trained loss can
+be from its terminal value after `j` units of resource. `gamma` is guaranteed to exist whenever
+the limits exist. Two configurations with terminal losses `nu_1 < nu_i` can be told apart once
+their envelopes stop overlapping, i.e. once the resource `j` is large enough that
 `gamma(j) <= (nu_i - nu_1)/2`. So `gamma^{-1}((nu_i-nu_1)/2)` is the resource needed to separate
 configuration `i` from the best one — small when the curves converge fast or the gap is large,
 large when convergence is slow or the gap is tiny.
@@ -59,18 +53,16 @@ large when convergence is slow or the gap is tiny.
 A second standing fact concerns *which* configurations even exist to be found. If configurations
 are drawn i.i.d. and `nu_i` has cumulative distribution `F` with infimum `nu_*`, then the chance
 that `n` random draws all miss the near-optimal region is `(1 - F(nu_* + Delta))^n ≈
-exp(-n F(nu_* + Delta))`. So `E[min_i nu_i - nu_*] ≈ F^{-1}(1/n) - nu_*`: you need `n` large
+exp(-n F(nu_* + Delta))`. So `E[min_i nu_i - nu_*] ≈ F^{-1}(1/n) - nu_*`: `n` must be large
 enough that a good terminal value is *sampled at all*, and how large depends on how rare good
-configurations are under `F`. These two unknowns — how fast curves converge (`gamma`) and how
-rare good configurations are (`F`) — are exactly what a search cannot see in advance.
+configurations are under `F`.
 
-There is also a structural reason random sampling is a respectable starting point and not just a
-strawman. Bergstra & Bengio (2012) showed that across many datasets only a few hyperparameters
-actually matter, and *which* few differ by dataset; random sampling spreads its trials across
-the important axes far more effectively than a grid, which wastes trials on combinations of
-irrelevant axes. Random search also converges to the optimum asymptotically by a simple covering
-argument, regardless of the smoothness of the objective, which makes it a clean, assumption-free
-foundation to build on.
+There is also a structural reason random sampling is a respectable starting point. Bergstra &
+Bengio (2012) showed that across many datasets only a few hyperparameters actually matter, and
+*which* few differ by dataset; random sampling spreads its trials across the important axes far
+more effectively than a grid, which spends trials on combinations of irrelevant axes. Random
+search also converges to the optimum asymptotically by a simple covering argument, regardless of
+the smoothness of the objective, which makes it a clean, assumption-free foundation to build on.
 
 ## Baselines
 
@@ -78,23 +70,17 @@ foundation to build on.
 distribution over `X` (uniform over a hypercube of per-hyperparameter ranges, in the default
 case), train each to the full resource `R`, and return the one with the lowest validation loss.
 Simple, embarrassingly parallel, and a strong baseline in high dimensions because it covers the
-few axes that matter. *Limitation:* it spends the maximum resource `R` on every configuration,
-including the ones whose loss curves reveal them to be hopeless after a tiny fraction of `R`.
-Under a fixed total budget `B`, that caps the number of configurations it can examine at `B/R`.
-Bad candidates and good candidates are charged the same full price.
+few axes that matter. It spends the maximum resource `R` on every configuration; under a fixed
+total budget `B`, the number of configurations it examines is `B/R`.
 
 **Bayesian optimization for configuration selection (TPE — Bergstra et al. 2011; SMAC — Hutter
 et al. 2011; Spearmint — Snoek et al. 2012).** Fit a model of `p(y | x)` — Parzen-window density
 estimators (TPE), random forests (SMAC), or Gaussian processes (Spearmint) — and use an
 acquisition function to choose the next configuration to evaluate, then train it to completion
-and update the model. Empirically these beat random search on low-dimensional benchmarks.
-*Limitation:* they tackle the genuinely hard problem of fitting and optimizing a high-dimensional,
-non-convex, unknown-smoothness, noisy surface, and in high dimensions their performance collapses
-toward random search; the GP variant costs `O(n^3)` to fit its posterior. More fundamentally,
-they are still *black-box*: each selected configuration is trained all the way to completion
-before any information is extracted, so they inherit random search's "every configuration pays
-full price" cost on the evaluation side. They optimize *which* configuration, not *how much* to
-spend on it.
+and update the model. Empirically these beat random search on low-dimensional benchmarks. The GP
+variant costs `O(n^3)` to fit its posterior. These methods optimize *which* configuration to
+evaluate, with each selected configuration trained all the way to completion before its loss is
+extracted.
 
 **Successive elimination / halving for best-arm identification (Karnin, Koren & Somekh, ICML
 2013; brought to non-stochastic hyperparameter optimization by Jamieson & Talwalkar, AISTATS
@@ -107,23 +93,18 @@ stays roughly constant. The non-stochastic analysis shows that if `B` exceeds a 
 quantity
 `z = 2 ceil(log2 n) max_{i>=2} i (1 + gamma^{-1}((nu_i - nu_1)/2))`,
 the best arm is returned, and that this is essentially the resource an oracle would need merely
-to *verify* each arm's ordering against the best — so it can be far smaller than the uniform
-strategy, whose worst-case necessary budget is `n · gamma^{-1}((nu_2 - nu_1)/2)`, i.e. paying the
-*hardest* arm's separation cost on *every* arm. *Limitation:* the procedure requires the number
-of arms `n` as an input. For a fixed total budget `B`, the average resource per arm is `B/n`, and
-it is not knowable in advance whether to prefer large `n` (many arms, little resource each,
-aggressive early cutoff — good when bad configurations reveal themselves quickly or good ones are
-rare) or small `n` (few arms, much resource each, conservative — good when curves converge slowly
-or candidates are similar). The right setting depends on `gamma` and `F`, which are unobservable;
-a poor choice of `n` can be much worse than the optimal one, and the procedure offers no
-protection against guessing wrong.
+to *verify* each arm's ordering against the best, which can be far smaller than the uniform
+strategy's worst-case necessary budget `n · gamma^{-1}((nu_2 - nu_1)/2)`. The procedure requires
+the number of arms `n` as an input. For a fixed total budget `B`, the average resource per arm is
+`B/n`: large `n` means many arms with little resource each and aggressive early cutoff, while
+small `n` means few arms with much resource each. The setting that performs best for a given
+problem depends on `gamma` and `F`.
 
 **Hybrid early-stopping methods (Swersky et al. 2014; Domhan et al. 2015; György & Kégl 2011;
 Agarwal et al. 2012; Sparks et al. 2015).** Various combinations of adaptive selection with
 adaptive evaluation, and learning-curve extrapolation that stops training when a configuration is
-predicted to be unpromising. *Limitation:* they either impose parametric assumptions on the
-convergence behavior of training (which are hard to verify and degrade sharply when violated) or
-rely on heuristics with user-defined safety margins and no theoretical guarantee.
+predicted to be unpromising, typically by fitting a parametric model of the convergence behavior
+of training or by applying heuristics with user-defined safety margins.
 
 ## Evaluation settings
 

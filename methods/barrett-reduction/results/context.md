@@ -7,28 +7,24 @@ processor. RSA encryption and decryption both reduce to one operation: modular e
 c = A^E mod M, where M and E are several hundred bits long (512 bits is the target). The standard
 square-and-multiply method turns this into a sequence of full-length multiplications, each followed
 by a reduction modulo M. For a 512-bit exponent that is on the order of a thousand multiply-and-reduce
-steps. The multiply we can make fast. The bottleneck is the reduction: computing W mod M for a
-double-length product W. Done naively, each reduction is a multiple-precision division by M, and
-division is the single most expensive primitive on the kind of cheap hardware we can afford. The
-question is whether the reduction can be reorganized so that it, too, is built only out of the cheap
-operations the hardware does well — multiplies, shifts, subtractions — and never a true division. A
-solution has to be exact (RSA is unforgiving of off-by-one errors), it has to handle operands far
-wider than a machine word, and it has to be fast enough that the reductions stop dominating the
-exponentiation.
+steps. The multiply can be made fast. The remaining operation is the reduction: computing W mod M for
+a double-length product W, which done as a multiple-precision division by M, the most expensive
+primitive on cheap hardware. The question is how to compute W mod M using only the cheap operations
+the hardware does well — multiplies, shifts, subtractions — for operands far wider than a machine
+word, exactly (RSA is unforgiving of off-by-one errors).
 
 ## Background
 
 The field state at the time: RSA (Rivest, Shamir, Adleman, CACM 1978) is known and its security is
-taken seriously, but it is widely regarded as too slow for practical deployment on cheap processors.
-The cost model is what matters. On the candidate platforms — an 8-bit micro, a 16-bit micro, discrete
-logic, a bit-slice engine — a 512-bit exponentiation was estimated at minutes (≈4 min on an 8-bit
-part, ≈50 s on a 16-bit part), which is unusable. A dedicated multiplier/accumulator (MAC) chip,
-e.g. a 100 ns 16×16 unit, is fast at the multiply but needs custom hardware around it to feed
-operands. The one attractive option is a new class of part: a digital signal processor that packs a
-single-cycle 16×16 multiplier-accumulator together with a microprocessor core and on-chip memory on
-one chip (the Texas Instruments TMS32010, ≈200 ns cycle), so a multiply costs essentially the same as
-any other instruction and operand pointers can auto-increment during a multiply-accumulate, making
-the data fetching for a long multiply effectively free.
+taken seriously. The cost model is what matters. On the candidate platforms — an 8-bit micro, a
+16-bit micro, discrete logic, a bit-slice engine — a 512-bit exponentiation was estimated at minutes
+(≈4 min on an 8-bit part, ≈50 s on a 16-bit part). A dedicated multiplier/accumulator (MAC) chip,
+e.g. a 100 ns 16×16 unit, is fast at the multiply and needs custom hardware around it to feed
+operands. A newer class of part is a digital signal processor that packs a single-cycle 16×16
+multiplier-accumulator together with a microprocessor core and on-chip memory on one chip (the Texas
+Instruments TMS32010, ≈200 ns cycle), so a multiply costs essentially the same as any other
+instruction and operand pointers can auto-increment during a multiply-accumulate, making the data
+fetching for a long multiply effectively free.
 
 The load-bearing facts about arithmetic on such a machine:
 
@@ -40,24 +36,20 @@ The load-bearing facts about arithmetic on such a machine:
   multiply-accumulate auto-increments its pointers, the operand fetches cost nothing, roughly halving
   it again. So a multiply is a tight inner loop of single-cycle multiply-accumulates.
 
-- **Division is hard.** Multiple-precision division has no such cheap inner loop. The classical
-  schoolbook division (Knuth, *The Art of Computer Programming* Vol. 2, §4.3.1, Algorithm D) is also
-  O(n²), but each quotient digit must be *estimated* from the leading words of the running remainder
-  and the divisor, the divisor must be multiplied through and subtracted, and the estimate is
-  sometimes wrong and must be corrected with an add-back of the divisor. The trial-quotient estimate
-  can be too large by at most 2, with the correction firing rarely (probability ≈ 3/b for radix b).
-  Crucially, because the divisor changes from problem to problem, this estimation work is redone at
-  every quotient position. There is no single cheap primitive a signal processor can lean on; it is
-  branchy, serial, and slow.
+- **Multiple-precision division.** The classical schoolbook division (Knuth, *The Art of Computer
+  Programming* Vol. 2, §4.3.1, Algorithm D) is O(n²): each quotient digit is *estimated* from the
+  leading words of the running remainder and the divisor, the divisor is multiplied through and
+  subtracted, and the estimate is sometimes corrected with an add-back of the divisor. The
+  trial-quotient estimate can be too large by at most 2, with the correction firing rarely
+  (probability ≈ 3/b for radix b). The estimation work is performed at every quotient position. It is
+  branchy and serial rather than a tight multiply-accumulate inner loop.
 
 - **The modulus is fixed across an entire exponentiation.** Inside one RSA exponentiation the
-  modulus M never changes — every one of the ~thousand reductions divides by the *same* M. Classical
-  long division, by contrast, is built for a divisor that may differ at every call, so any one-time
-  setup work that depends only on M would be redone uselessly at each position; the cost model on this
-  machine cares about which work is per-reduction and which can be hoisted out and amortized (anything
-  precomputed from M alone could even be stored alongside M as part of the key). The hardware has only
-  integer arithmetic — multiplies, shifts, adds, subtracts — so any constant derived from M has to be
-  representable as an integer.
+  modulus M never changes — every one of the ~thousand reductions divides by the *same* M. The cost
+  model on this machine distinguishes work that is per-reduction from work that can be hoisted out and
+  amortized once per modulus (anything precomputed from M alone could be stored alongside M as part of
+  the key). The hardware has only integer arithmetic — multiplies, shifts, adds, subtracts — so any
+  constant derived from M has to be representable as an integer.
 
 - **The whole development is done under a correctness discipline.** Because an arithmetic bug in RSA
   is silent and catastrophic, the program is derived by stepwise refinement in Dijkstra's
@@ -70,29 +62,24 @@ The load-bearing facts about arithmetic on such a machine:
   A^E mod M, scan the bits of E, squaring a running accumulator at every bit and additionally
   multiplying in A at every 1-bit, reducing mod M after each multiply to keep operands bounded. This
   is the harness everything plugs into; its inner cost is one long multiply plus one reduction per
-  bit. It leaves the reduction unspecified — and that is exactly the open slot.
+  bit. The reduction itself is the slot to be filled.
 
 - **Schoolbook (classical) long division for the reduction.** Compute W mod M directly as
-  W − M·⌊W/M⌋ using Algorithm D. Correct and general, but it is the expensive path this whole effort
-  is trying to avoid: per-position quotient-digit estimation, multiply-back, subtract, and occasional
-  add-back correction, all O(n²) of branchy serial work with no cheap multiply-accumulate inner loop.
-  Its gap: it pays the full per-position estimation cost on *every* reduction, treating each one as a
-  fresh general division even though the divisor M is the same every time.
+  W − M·⌊W/M⌋ using Algorithm D: per-position quotient-digit estimation, multiply-back, subtract, and
+  occasional add-back correction, all O(n²), with no multiply-accumulate inner loop. It treats each
+  reduction as a fresh general division by M.
 
 - **Montgomery's division-free modular multiplication (Montgomery, *Math. Comp.* 44(170):519–521,
-  1985).** A contemporaneous route to the same goal of "modular reduction with no division by M."
-  Represent each residue x not directly but as the N-residue xR mod N, for a radix R coprime to N
-  with R > N and R a power of the base (so reduction mod R and division by R are just truncations and
-  shifts). Precompute N′ with R·R⁻¹ − N·N′ = 1. Then the reduction step is REDC(T) for 0 ≤ T < RN:
-  set m ← (T mod R)·N′ mod R, t ← (T + mN)/R, and return t−N if t ≥ N else t. One verifies mN ≡ −T
-  (mod R) so t is an integer, tR ≡ T (mod N) so t ≡ T·R⁻¹ (mod N), and 0 ≤ t < 2N so a single
-  conditional subtraction suffices. It replaces the division by N with one multiply mod R, one
-  multiply by N, an add, and a shift. Its gaps relative to our setting: it computes T·R⁻¹ mod N, not
-  T mod N, so it only pays off if you convert your operands into the N-residue domain once and stay
-  there for the whole exponentiation (converting in and out via multiply-by-R mod N); it requires N
-  odd (the coprimality with R = power of two), so a general modulus needs care; and it touches the
-  *low* words of T through the N′ multiply. It is an excellent fit when you live in its residue
-  domain, and a poor fit when you want a single ordinary reduction in the ordinary integer domain.
+  1985).** A contemporaneous route to modular reduction with no division by M. Represent each residue
+  x not directly but as the N-residue xR mod N, for a radix R coprime to N with R > N and R a power of
+  the base (so reduction mod R and division by R are just truncations and shifts). Precompute N′ with
+  R·R⁻¹ − N·N′ = 1. Then the reduction step is REDC(T) for 0 ≤ T < RN: set m ← (T mod R)·N′ mod R,
+  t ← (T + mN)/R, and return t−N if t ≥ N else t. One verifies mN ≡ −T (mod R) so t is an integer,
+  tR ≡ T (mod N) so t ≡ T·R⁻¹ (mod N), and 0 ≤ t < 2N so a single conditional subtraction suffices. It
+  replaces the division by N with one multiply mod R, one multiply by N, an add, and a shift. It
+  computes T·R⁻¹ mod N (operands are converted into the N-residue domain via multiply-by-R mod N and
+  kept there across the exponentiation), requires N odd (the coprimality with R = power of two), and
+  touches the *low* words of T through the N′ multiply.
 
 ## Evaluation settings
 

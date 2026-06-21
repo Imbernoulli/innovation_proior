@@ -8,23 +8,23 @@ The practical optimization problem is therefore not just to find a low empirical
 
 Older flat-minimum work frames a good solution as one lying in a large connected region of weight space where the error remains approximately constant. The minimum-description-length argument is that such a solution can be specified with lower precision, while a sharp solution requires many bits because small weight changes can raise the error.
 
-Large-batch training studies make the same issue concrete in deep networks. Large and small batches can reach similar training losses, but large-batch methods tend to land in sharper regions, with larger curvature and worse generalization. A large-scale comparison of generalization measures later finds sharpness-based and PAC-Bayes-style measures among the best empirical predictors of the generalization gap.
+Large-batch training studies make the same issue concrete in deep networks. Large and small batches can reach similar training losses, but large-batch methods tend to land in sharper regions, with larger curvature and worse generalization. A large-scale comparison of generalization measures finds sharpness-based and PAC-Bayes-style measures among the best empirical predictors of the generalization gap.
 
-## Raw Flatness Is Not Enough
+## Reparameterization and PAC-Bayes
 
 Flatness by itself is a delicate quantity. Reparameterizations and scale symmetries in neural networks can change common sharpness measures without changing the represented function. A usable training principle therefore needs to pair any local-geometry term with some control on parameter scale or description cost.
 
 PAC-Bayes supplies one such language. Instead of certifying a single deterministic weight vector directly, it bounds a stochastic predictor drawn from a posterior distribution over weights. With Gaussian perturbations around trained weights, the empirical term becomes a loss under weight perturbations, and the complexity term is a KL or norm-like cost. This connects local stability of the loss surface to generalization without treating raw flatness as the whole story.
 
-## Existing Training Ideas Leave A Gap
+## Related Training Ideas
 
-Several prior routes point toward wide basins but do not fill the optimizer slot cleanly. Explicit flat-minimum search uses box-volume and derivative machinery tied to second-order behavior. Local-entropy methods smooth the landscape and favor wide valleys, but they estimate the local objective with an inner stochastic dynamics loop. Weight averaging can land in wider regions, yet it does not provide a per-step signal that directly asks which nearby direction is dangerous.
+Several prior routes point toward wide basins. Explicit flat-minimum search uses box-volume and derivative machinery tied to second-order behavior. Local-entropy methods smooth the landscape and favor wide valleys by estimating the local objective with an inner stochastic dynamics loop. Weight averaging can land in wider regions.
 
-Separately, adversarial input training shows that a hard local maximization can sometimes be made cheap: linearize the loss around the current point, solve the norm-constrained linear problem, and train against that directed perturbation. The open question is whether an analogous first-order trick can turn parameter-space geometry into a scalable update.
+Separately, adversarial input training shows that a hard local maximization can sometimes be made cheap: linearize the loss around the current point, solve the norm-constrained linear problem, and train against that directed perturbation.
 
 ## Implementation Slot
 
-The available machinery is ordinary minibatch training: a model, a batch loss, automatic differentiation, and a base optimizer such as SGD or Adam. The missing component must fit between "compute a batch gradient" and "apply an optimizer step," and it should avoid materializing the Hessian.
+The available machinery is ordinary minibatch training: a model, a batch loss, automatic differentiation, and a base optimizer such as SGD or Adam. A geometry-aware step fits between "compute a batch gradient" and "apply an optimizer step," and should avoid materializing the Hessian.
 
 ```python
 class GeometryAwareOptimizer:

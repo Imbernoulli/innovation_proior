@@ -2,19 +2,17 @@
 
 We have a math-specialized SFT model (`Qwen2.5-Math-1.5B-Instruct`) and step-level preference pairs over math solutions (`xinlai/Math-Step-DPO-10K`, used here as response-level chosen/rejected pairs). The design target is the **offline preference loss**: the map from a `(prompt, chosen, rejected)` triple to a policy gradient that makes the model prefer correct solutions over incorrect ones without a reward model and without on-policy sampling. The base model, data, schedule, and judge-free sympy evaluation are fixed. The loss must beat at least one standard variant on the average of GSM8K, MATH-500, and AIME 2024.
 
-The math setting is the hard part. A chosen and a rejected solution often share almost every token and diverge at one wrong step, so a contrastive loss that widens the chosen-minus-rejected margin by pushing the rejected down also drags the near-identical chosen down. Greedy accuracy depends on the **absolute** likelihood of a correct chain, not just the relative margin. A loss can show growing margins while the probability of the correct answer falls. The unresolved tension is between margin and absolute likelihood: a pairwise preference loss can improve the former while hurting the latter.
-
 ## Prior art / Background / Baselines
 
 These methods descend from the KL-constrained reward-maximization objective, whose closed-form optimum is an exponential tilt of the reference policy.
 
-- **Three-stage RLHF with PPO (Ziegler et al., 2019; Ouyang et al., 2022).** Fit a reward model by Bradley-Terry MLE and optimize the policy with PPO under a KL penalty. Gap: three coupled models, online sampling, a critic, and a sensitive KL coefficient — heavy and unstable.
-- **Bradley-Terry preference model (Bradley & Terry, 1952).** Model preference probability as the logistic of a reward difference. Gap: only reward differences are identified, so the model gives no direct offline policy update.
-- **Reward-weighted / advantage-weighted regression (Peters & Schaal, 2007; Peng et al., 2019).** Approximate the exponential-tilt optimum by weighting sampled actions with `exp(r/β)`. Gap: still needs reward values and on-policy samples, and the partition normalizer is only approximated.
-- **DPO / `sigmoid` (Rafailov et al., 2023).** Reparameterize the Bradley-Terry reward as `β log(π_θ/π_ref)` and optimize the sigmoid preference loss directly. Gap: the loss only widens the chosen-minus-rejected margin on summed log-probs; when the sequences share most tokens, pushing the rejected down can push the chosen's absolute likelihood down.
-- **IPO (Azar et al., 2023).** Replace the sigmoid with a squared loss on length-normalized log-prob margins. Gap: the fixed target margin does not adapt to pair difficulty and can over-regularize, sharing DPO's vulnerability to collapsing the likelihood of sequences that share tokens with rejected completions.
-- **ORPO (Hong et al., 2024).** Combine supervised and preference objectives into a single odds-ratio loss without a reference model. Gap: the odds ratio still suppresses rejected sequences, and without a reference the objective lacks a KL anchor against over-optimization.
-- **SimPO (Meng et al., 2024).** Drop the reference model and enforce a fixed reward margin on length-normalized log-probs. Gap: the margin ignores problem difficulty and can shrink absolute likelihoods while satisfying the pairwise constraint.
+- **Three-stage RLHF with PPO (Ziegler et al., 2019; Ouyang et al., 2022).** Fit a reward model by Bradley-Terry MLE and optimize the policy with PPO under a KL penalty.
+- **Bradley-Terry preference model (Bradley & Terry, 1952).** Model preference probability as the logistic of a reward difference.
+- **Reward-weighted / advantage-weighted regression (Peters & Schaal, 2007; Peng et al., 2019).** Approximate the exponential-tilt optimum by weighting sampled actions with `exp(r/β)`.
+- **DPO / `sigmoid` (Rafailov et al., 2023).** Reparameterize the Bradley-Terry reward as `β log(π_θ/π_ref)` and optimize the sigmoid preference loss directly on summed log-probs.
+- **IPO (Azar et al., 2023).** Replace the sigmoid with a squared loss on length-normalized log-prob margins.
+- **ORPO (Hong et al., 2024).** Combine supervised and preference objectives into a single odds-ratio loss without a reference model.
+- **SimPO (Meng et al., 2024).** Drop the reference model and enforce a fixed reward margin on length-normalized log-probs.
 
 ## Fixed substrate / Code framework
 

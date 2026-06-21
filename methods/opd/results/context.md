@@ -3,25 +3,13 @@
 We have a large, expensive teacher model that is very good at multi-step reasoning — say
 competition math — and a much smaller student we can actually afford to serve. The goal is to
 transfer the teacher's *behavior* into the student so the student solves the same problems, at
-a fraction of the inference cost. The catch that makes this hard is specific to
-**auto-regressive generation**: a language model predicts one token at a time, each token
-conditioned on the tokens it already produced, so the distribution of *partial sequences* the
-model sees is determined by the model itself. A training procedure that only ever shows the
-student states that *the teacher* visits leaves it untrained on the states *the student* will
-actually find itself in at inference. Because each next-token prediction depends on the
-previous ones, a single early divergence pushes the student into a region of sequence space it
-was never trained on, and the error compounds the rest of the way out — the classic
-train-inference mismatch of imitation learning (Pomerleau 1991; Ross & Bagnell 2011). On top
-of that the student has *less capacity than the teacher*: it cannot represent every nuance of
-the teacher's next-token distribution, so the transfer objective has to decide what the
-student should do when it cannot match the teacher exactly. The precise problem is to specify
-a per-token transfer signal that (1) is computed on the *student's own* generated
-trajectories, so the states match those at inference; (2) is *dense* — informative at every
-token, not just at the end of a solution; (3) degrades gracefully under capacity mismatch,
-keeping the student coherent rather than smeared across behaviors it cannot execute; (4) needs
-no separately trained reward model that could be gamed; and (5) is cheap enough per step to
-run inside an ordinary fine-tuning loop. Each existing recipe achieves some of these and gives
-up on others.
+a fraction of the inference cost. The setting is **auto-regressive generation**: a language
+model predicts one token at a time, each token conditioned on the tokens it already produced,
+so the distribution of partial sequences the model sees is determined by the model itself. The
+student also has *less capacity than the teacher*, so the transfer objective has to decide what
+the student should do when it cannot match the teacher exactly. The question is: what per-token
+transfer signal should be optimized when distilling a strong reasoning teacher into a small
+student?
 
 ## Background
 
@@ -39,36 +27,27 @@ load-bearing facts about it, both knowable before any new method:
 
 - **Forward KL is mass-covering / zero-avoiding.** Wherever `p_T(v) > 0`, the term
   `p_T(v) log(p_T(v)/p_S(v))` blows up as `p_S(v) → 0`, so the student is pushed to cover the
-  full support of the teacher. When the student has far less capacity than the teacher and
-  cannot represent all the teacher's modes, covering them all means smearing probability mass
-  across regions the student cannot actually execute, including the teacher's long-tail
-  low-probability tokens — which at free-run generation produces incoherent or hallucinated
-  text (Huszár 2015; Malinin & Gales 2019). KL's asymmetry is therefore not a technicality:
-  reversing the arguments changes the optimization pressure from covering support to avoiding
-  mass where the teacher assigns little probability, a tradeoff often illustrated by fitting a
-  single Gaussian to a Gaussian mixture. Which pressure belongs in a practical distillation loop
-  is still tied to the data-collection and optimization choices.
+  full support of the teacher. KL's asymmetry is therefore not a technicality: reversing the
+  arguments changes the optimization pressure from covering support to avoiding mass where the
+  teacher assigns little probability, a tradeoff often illustrated by fitting a single Gaussian
+  to a Gaussian mixture. Which pressure belongs in a practical distillation loop is still tied
+  to the data-collection and optimization choices.
 
-- **Off-policy training causes compounding error.** Whether the fixed sequences come from
-  ground truth or from the teacher, they are not drawn from the student's own evolving
-  distribution. The student learns in contexts the *teacher* frequents, not the ones *it* will
-  visit; an early mistake the teacher would never make drops the student into states absent
-  from training, and the auto-regressive dependence carries that divergence forward — known in
-  the imitation-learning literature as exposure bias (Ranzato et al. 2015; Bengio et al. 2015)
-  and as the distribution-shift failure of behavior cloning that on-policy data collection
-  (DAgger; Ross et al. 2011) was designed to fix.
+- **Off-policy training and compounding error.** Whether the fixed sequences come from ground
+  truth or from the teacher, they are not drawn from the student's own evolving distribution.
+  The student learns in contexts the *teacher* frequents, not the ones *it* will visit; an
+  early mistake the teacher would never make drops the student into states absent from
+  training, and the auto-regressive dependence carries that divergence forward — known in the
+  imitation-learning literature as exposure bias (Ranzato et al. 2015; Bengio et al. 2015) and
+  as the distribution-shift failure of behavior cloning that on-policy data collection (DAgger;
+  Ross et al. 2011) was designed to fix.
 
 A second background line is **reinforcement learning fine-tuning**. Here the student samples
 its own trajectories (on-policy, so the state distribution is correct) and is updated by a
 **policy gradient** toward a scalar reward — in reasoning, typically a verifier's pass/fail on
-the final answer (REINFORCE; PPO, Schulman et al. 2017). RL fixes the state-mismatch problem
-of off-policy KD, but its signal is **sparse**: one scalar per episode regardless of how many
-tokens the episode contains. Informally this is `O(1)` bits of feedback per episode, whereas a
-per-token target distribution carries `O(N)` bits for an `N`-token sequence — so RL spends a
-lot of rollouts on credit assignment, and it needs either a verifiable answer or a *learned*
-reward model, which can be exploited (reward hacking). RLHF/RLAIF additionally regularize the
-learned policy back toward the initial model with a KL penalty, establishing that a per-token
-KL term and a policy-gradient update sit naturally in the same loop.
+the final answer (REINFORCE; PPO, Schulman et al. 2017). RLHF/RLAIF additionally regularize
+the learned policy back toward the initial model with a KL penalty, establishing that a
+per-token KL term and a policy-gradient update sit naturally in the same loop.
 
 The conceptual bridge between these lines is **distillation-as-imitation-learning with an
 interactive expert**: the teacher is an expert that can label *any* state, including the
@@ -86,32 +65,20 @@ fixed set of sequences (ground-truth, or sampled once from the teacher):
 `L_SD = E_{(x,y)} [ (1/L_y) Σ_n D_KL(p_T(·|y_<n,x) || p_S(·|y_<n,x)) ]`. SeqKD is the special
 case where the divergence is replaced by plain negative log-likelihood on teacher samples. The
 training signal is rich (full token-level teacher distribution) and the loop is a stable
-supervised one. **Gap:** it is off-policy — the conditioning prefixes `y_<n` come from the
-fixed dataset, never from the student — so it leaves the student untrained on the states its
-own generations reach, and the auto-regressive dependence turns an early divergence into a
-cascading one; and the forward-KL objective is mass-covering, so a low-capacity student is
-pushed to spread mass over the teacher's full support and generates incoherently at free run.
+supervised one.
 
 **Imitation-style mixed-data KD** — ImitKD (Lin et al. 2020), f-distill (Wen et al. 2023).
 These recognize the imitation-learning connection and *mix* student-generated sequences with
 the fixed dataset (a partial on-policy fraction), keeping a forward-KL (ImitKD) or
-total-variation (f-distill) token-level objective. **Gap:** they only ever go *partway*
-on-policy and stay with mass-covering token objectives, so the train-inference mismatch is
-reduced but not removed, and the capacity-mismatch smearing of forward KL remains.
+total-variation (f-distill) token-level objective.
 
 **Sequence-level reverse KL via policy gradient** — MiniLLM (Gu et al. 2023). Frame KD as RL:
 minimize the *sequence-level* reverse KL `L(θ) = D_KL(p_S || p_T)` with `y ~ p_S`, whose
 gradient by the policy-gradient theorem is
 `∇L = -E_{y~p_S} Σ_t (R_t - 1) ∇ log p_S(y_t|y_<t,x)`, where the per-step "reward" is
 `r_t = log( p_T(y_t|·) / p_S(y_t|·) )` and `R_t = Σ_{t'≥t} r_{t'}` is its accumulation to the
-end of the sequence. This is on-policy, dense at the token level, and mode-seeking — exactly
-the three properties one wants. **Gap:** the estimator inherits the pathologies of long-horizon
-policy gradients. `R_t` sums a future random reward, so the variance is high; small students
-discover degenerate sequences (repeated phrases) that the teacher scores highly — reward
-hacking; and `R_t` mechanically favors short sequences, biasing the student toward empty
-responses. To use it at all MiniLLM bolts on a battery of stabilizers — a single-step
-decomposition, teacher-mixed sampling, length normalization, importance weights, and PPO-style
-clipping — which add hyperparameters and move the procedure away from a simple supervised loop.
+end of the sequence. MiniLLM uses a single-step decomposition, teacher-mixed sampling, length
+normalization, importance weights, and PPO-style clipping as stabilizers.
 
 **Generalized KD (GKD)** — Agarwal et al. 2023 (ICLR 2024). Unify the above along two axes: a
 choice of divergence and a *student-data fraction* `λ`. The objective is
@@ -125,10 +92,6 @@ the teacher's *log-probabilities* are available, GKD computes the per-token dive
 which is lower-variance and "closer to supervised training" — and so it needs none of MiniLLM's
 stabilizers. GKD reports that the best divergence is **task-dependent**, and that pushing the
 student-data fraction up (more on-policy) consistently helps once it is a substantial fraction.
-**Gap:** GKD is presented and tuned around classic encoder-decoder tasks (summarization,
-translation, grade-school arithmetic with small T5 students) and treats the divergence and `λ`
-as open knobs to be swept per task. It leaves unsettled which point in that design space should
-be chosen when the teacher is a strong reasoner and the student is a small base model.
 
 ## Evaluation settings
 

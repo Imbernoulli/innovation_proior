@@ -6,27 +6,20 @@ A great many learning problems reduce to minimizing a finite average of per-exam
 min_w  P(w) = (1/n) Σ_{i=1}^n ψ_i(w),
 ```
 
-where each ψ_i is the loss (often plus regularization) on the i-th of n training examples. The
-two textbook ways to descend this objective sit at opposite ends of a brutal trade-off, and the
-problem is that *neither* is acceptable when n is large and a reasonably accurate solution is
-wanted. Full-batch gradient descent (GD) takes a clean step along ∇P(w) = (1/n) Σ_i ∇ψ_i(w) and,
+where each ψ_i is the loss (often plus regularization) on the i-th of n training examples. Full-batch gradient descent (GD) takes a clean step along ∇P(w) = (1/n) Σ_i ∇ψ_i(w) and,
 for a smooth strongly convex P, contracts the error by a fixed factor every iteration — a linear
-(geometric) rate — but each of those iterations touches all n examples, so its cost scales with n
-and it is unappealing for large datasets. Stochastic gradient descent (SGD) replaces the full
-gradient with the gradient of a single randomly drawn example, so each step costs O(1) independent
-of n; the price is that this rate is only sublinear, O(1/t), and the step size has to be driven to
-zero for the method to converge at all. The precise goal is to break that dichotomy: an optimizer
-whose per-iteration cost is that of SGD (a constant number of single-example gradients, independent
-of n), but whose convergence rate is that of GD (linear, with a step size that does *not* have to
-decay), for smooth strongly convex finite sums — and to do so with memory that stays close to
-linear in the dimension d, so that it remains usable on problems where storing one auxiliary
-gradient vector per example would be out of the question.
+(geometric) rate — but each of those iterations touches all n examples, so its cost scales with n.
+Stochastic gradient descent (SGD) replaces the full gradient with the gradient of a single randomly
+drawn example, so each step costs O(1) independent of n; this rate is sublinear, O(1/t), and the
+step size has to be driven to zero for the method to converge at all. The question is how to design
+an optimizer for smooth strongly convex finite sums whose per-iteration cost is that of SGD while
+attaining a linear convergence rate with a constant step size.
 
 ## Background
 
 The setting is large-scale empirical risk minimization, and the prevailing practical engine is
 SGD (Robbins & Monro 1951; Bottou & LeCun 2003), used precisely because its cost per step does not
-grow with n. The relevant theory and the relevant pain points:
+grow with n. The relevant theory:
 
 - **The two regimes, made precise.** Assume each ψ_i is convex and L-smooth and that P is
   γ-strongly convex with L ≥ γ > 0; write the condition number κ = L/γ. With a constant step
@@ -36,26 +29,22 @@ grow with n. The relevant theory and the relevant pain points:
   uses one gradient per step and is unbiased (E_i[∇ψ_i(w)] = ∇P(w)), but converges only at the
   sublinear O(1/t) rate.
 
-- **Why SGD is stuck at sublinear: the variance floor.** A single example's gradient equals the
-  full gradient only in expectation; the spread around that mean is variance, and it does not go
-  away on its own. The sharp way to see the consequence is at the optimum w*: there ∇P(w*) = 0,
-  but the individual ∇ψ_i(w*) are generally *not* zero — only their average is. The quantity
-  σ² = (1/n) Σ_i ‖∇ψ_i(w*)‖² is positive in general. So even if SGD were handed w = w* it would
-  take a nonzero step and walk away. With a constant step size η the iterate therefore cannot
-  settle: its expected squared distance to w* contracts toward a positive floor of order η σ²/γ
+- **Variance of stochastic gradients.** A single example's gradient equals the full gradient only
+  in expectation; the spread around that mean is variance. The sharp way to see its role is at the
+  optimum w*: there ∇P(w*) = 0, but the individual ∇ψ_i(w*) are generally *not* zero — only their
+  average is. The quantity σ² = (1/n) Σ_i ‖∇ψ_i(w*)‖² is positive in general. With a constant step
+  size η the expected squared distance to w* contracts toward a positive floor of order η σ²/γ
   rather than toward zero (Nedić & Bertsekas 2000 split the constant-step SG rate into a part that
-  decays linearly in t and a part, independent of t, that does not vanish). To push that floor to
-  zero one is forced to send η_t → 0, and a vanishing step is exactly what drags the rate down to
-  O(1/t). The noise σ², not any bias, is what caps the rate.
+  decays linearly in t and a part, independent of t, that does not vanish). Sending η_t → 0 pushes
+  the floor to zero but yields only the O(1/t) rate.
 
-- **An optimality barrier — and the structural loophole.** For strongly convex optimization in
-  the oracle model where an algorithm may only query *unbiased* noisy gradient measurements, the
-  O(1/t) rate is optimal: no method restricted to that information can do better (Nemirovski &
-  Yudin 1983; Nemirovski et al. 2009; Agarwal et al. 2012). The loophole is that the finite-sum
-  problem gives *more* than an unbiased-measurement oracle: the same n functions recur, sampling
-  is from a fixed finite set rather than a fresh draw each step, and the population is small enough
-  to occasionally do something with all of it. Whatever beats O(1/t) must exploit that the dataset
-  is finite and fixed, not anonymous fresh noise.
+- **An optimality result and the finite-sum structure.** For strongly convex optimization in the
+  oracle model where an algorithm may only query *unbiased* noisy gradient measurements, the O(1/t)
+  rate is optimal: no method restricted to that information can do better (Nemirovski & Yudin 1983;
+  Nemirovski et al. 2009; Agarwal et al. 2012). The finite-sum problem gives *more* than an
+  unbiased-measurement oracle: the same n functions recur, sampling is from a fixed finite set rather
+  than a fresh draw each step, and the population is small enough to occasionally do something with
+  all of it.
 
 - **Control variates (classical Monte Carlo).** A standard variance-reduction device for
   estimating E[X] by sampling: if a second random variable, correlated with X, has a mean that is
@@ -73,59 +62,43 @@ grow with n. The relevant theory and the relevant pain points:
 
 ## Baselines
 
-The methods a new finite-sum optimizer would be measured against, and where each stalls.
+The methods a new finite-sum optimizer would be measured against.
 
 **Gradient descent / accelerated GD (Cauchy 1847; Nesterov 1983, 2004).** The exact full gradient
-gives a constant-step linear rate; accelerated GD improves the κ-dependence. **Limitation:** every
-iteration costs n example-gradients, so on large datasets even one pass is expensive and many
-passes are needed; the per-iteration cost scaling with n is the thing one is trying to escape.
+gives a constant-step linear rate; accelerated GD improves the κ-dependence. Every iteration costs
+n example-gradients.
 
 **Plain SGD with a decreasing step (Robbins & Monro 1951; Bottou).** One example-gradient per
-step, cost independent of n. **Limitation:** the per-example gradients do not vanish at w*, so a
-constant step leaves the method jittering in a ball around the optimum; convergence requires
-η_t → 0, which yields only the sublinear O(1/t) rate. With a *fixed* large step it descends fast
-at first but then oscillates above the minimum and never reaches it; with a fixed small step it
-crawls. The usual practical patch is hand-tuned step-size scheduling (e.g. exponential or 1/t
-decay), which trades one difficulty for a tuning burden and still does not cross into a linear
-rate.
+step, cost independent of n. The per-example gradients do not vanish at w*, so convergence requires
+η_t → 0, which yields the sublinear O(1/t) rate. The usual practical approach is hand-tuned
+step-size scheduling (e.g. exponential η_0 a^⌊t/n⌋ and 1/t-type η_0 (1 + b⌊t/n⌋)^{-1} schedules
+tuned over a grid).
 
 **Momentum / gradient averaging / iterate averaging (Tseng 1998; Nesterov 2009 dual averaging;
 Polyak & Juditsky 1992).** Momentum reweights past stochastic gradients geometrically; gradient
 averaging uses their running mean; iterate averaging averages the w^(t). These improve constants,
-robustness, or asymptotic efficiency. **Limitation:** all still need decreasing step sizes and
-none is known to push the rate below O(1/t) on the finite-sum problem.
+robustness, or asymptotic efficiency, with decreasing step sizes.
 
-**Incremental aggregated gradient, IAG (Blatt, Hero & Gauchman 2007).** Keep one stored gradient
+**Incremental aggregated gradient, IAG (Blatt, Hero & Gauchman 2007).** Keeps one stored gradient
 y_i per example; each step refreshes the single y_{i_t} just visited and moves along the *average*
 of the whole stored table, x^(k+1) = x^(k) − (α/n) Σ_i y_i. The step thus carries information about
-every example at SGD-like per-step cost. **Limitation:** indices are visited *cyclically*, which
-limits the analysis to strongly convex quadratics (with no explicit rate) and treats a full pass
-as one iteration; it also requires storing the full n-gradient table.
+every example at SGD-like per-step cost. Indices are visited *cyclically*; analysis covers strongly
+convex quadratics and treats a full pass as one iteration; requires storing the full n-gradient table.
 
 **Stochastic average gradient, SAG (Le Roux, Schmidt & Bach 2012).** The randomized cousin of IAG:
 same table of stored per-example gradients and the same averaged step, but i_t is *sampled*
 uniformly instead of cycled. This randomization is enough to prove an explicit linear convergence
 rate for general strongly convex finite sums while keeping the per-step cost of a single
 example-gradient — the first method to combine SGD's cheap step with GD's linear rate.
-**Limitation:** it must store one gradient (or, exploiting fi(aᵢᵀx) structure for linear models,
-one scalar) per example — an O(n d) table in general, reducible to O(n) only in the linear-model
-special case. For models without that structure (structured-prediction losses, neural networks)
-the per-example table is impractical. The convergence analysis is also notably intricate (a joint
-Lyapunov bound on gradients and iterates), and the proof's intuition for *why* the linear rate
-appears is not transparent.
+It must store one gradient (or, exploiting fi(aᵢᵀx) structure for linear models, one scalar) per
+example — an O(n d) table in general, reducible to O(n) only in the linear-model special case.
 
 **Stochastic dual coordinate ascent, SDCA (Shalev-Shwartz & Zhang 2012; Hsieh et al. 2008 for the
-linear-SVM instance).** For L2-regularized linear losses, optimize the dual by picking one dual
+linear-SVM instance).** For L2-regularized linear losses, optimizes the dual by picking one dual
 coordinate α_i at a time and maximizing along it; the primal iterate is reconstructed from the
 duals. It attains a linear rate and is the workhorse behind popular linear-SVM/logistic solvers.
-**Limitation:** it is formulated through convex conjugates and dual coordinates, tying it to the
-regularized-linear-predictor form; it stores the n dual variables, and the dual machinery does not
-extend cleanly to general (e.g. nonconvex, structured) objectives.
-
-The common shape of the gap: SAG and SDCA *prove* that linear convergence at SGD's per-step cost
-is achievable on finite sums — but both buy it by carrying per-example state (a gradient table or
-dual variables) whose size grows with n, which rules them out exactly where one most wants a cheap
-fast optimizer. Their convergence is also analyzed in ways that obscure the mechanism.
+It stores the n dual variables and is formulated through convex conjugates and dual coordinates,
+fitting the regularized-linear-predictor form.
 
 ## Evaluation settings
 

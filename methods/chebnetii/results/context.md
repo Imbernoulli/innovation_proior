@@ -6,26 +6,15 @@ A graph neural network for node classification has to push each node's features 
 graph structure before reading them out, and the operator that does the pushing — a *graph
 filter* — decides what the network can learn. On a graph where connected nodes share labels
 (a homophilic graph: citation networks, where two linked papers usually share a topic) a
-smoothing, low-pass operator is exactly right: averaging a node with its neighbors sharpens
-the class signal. On a graph where connected nodes tend to *differ* (a heterophilic graph:
-webpage link graphs where a hub links to pages of many categories) smoothing is actively
-harmful — the discriminative signal lives in how a node *contrasts* with its neighborhood, a
-high-frequency component that averaging destroys. The same fixed operator cannot serve both
-regimes.
+smoothing, low-pass operator averages a node with its neighbors and sharpens the class
+signal. On a graph where connected nodes tend to *differ* (a heterophilic graph: webpage
+link graphs where a hub links to pages of many categories) the discriminative signal lives
+in how a node *contrasts* with its neighborhood, a high-frequency component.
 
 So the goal is a single graph filter that can *learn* whatever frequency response a given
-graph needs — low-pass, high-pass, band-pass, or any mixture — from labels alone, and do it
-without three failure modes that the prior art keeps hitting. First, it must be cheap:
-linear, not quadratic, in the polynomial order `K`, because `K` controls how many hops of
-structure the filter can see and we want to push it to 10 or more. Second, it must not
-overfit: a freely-parameterized high-order filter has enough capacity to memorize the
-training labels through a wild, oscillatory frequency response that generalizes terribly.
-Third, it should accept *side constraints* on the learned response — most importantly,
-non-negativity of the controlled response values — cleanly, because some designs need a
-positivity constraint and the prior art either guarantees it through a special basis or cannot
-express it as a simple parameter constraint. A method that learns arbitrary filters, stays
-linear in `K`, resists overfitting, and admits sample-value constraints by construction is what
-is missing.
+graph needs — low-pass, high-pass, band-pass, or any mixture — from labels alone, with a
+polynomial of order `K` that controls how many hops of graph structure the filter sees
+(pushed to 10 or more). The question is how to parameterize the trainable polynomial filter.
 
 ## Background
 
@@ -70,15 +59,14 @@ is within a small factor of the best possible degree-`K` polynomial. That small 
 **Lebesgue constant** `ρ`: a near-best approximation satisfies
 `||f - P_K|| ≤ (1+ρ)||f - P_best||` in the uniform norm `||g|| = max_{x∈[-1,1]}|g(x)|`.
 
-**Two facts about *how* one builds a polynomial that matches a function** — both pre-method
-numerical-analysis results. (a) *Coefficients of an analytic filter must decay.* If `f` is
-analytic in `(-1,1)` (locally a convergent power series) and at worst weakly singular at the
-boundaries, then its Chebyshev coefficients `w_k` decrease asymptotically like `1/k^q` for
-some positive `q` (Zhang et al. 2021). Since large-`k` Chebyshev polynomials are exactly the
-high-frequency modes, this says a *well-behaved* (analytic) filter must put vanishing weight
-on high frequencies; a response with non-decaying high-`k` coefficients is a non-analytic,
-hard-to-approximate, wildly oscillating function. Empirically the Chebyshev coefficients of a
-smooth analytic filter such as `exp(λ_hat)` (the response used by diffusion-based GDC) are
+**Two standard numerical-analysis facts about building a polynomial that matches a function.**
+(a) *Coefficients of an analytic filter decay.* If `f` is analytic in `(-1,1)` (locally a
+convergent power series) and at worst weakly singular at the boundaries, then its Chebyshev
+coefficients `w_k` decrease asymptotically like `1/k^q` for some positive `q` (Zhang et al.
+2021). Since large-`k` Chebyshev polynomials are exactly the high-frequency modes, an analytic
+filter puts vanishing weight on high frequencies; a response with non-decaying high-`k`
+coefficients is a non-analytic, oscillating function. Empirically the Chebyshev coefficients of
+a smooth analytic filter such as `exp(λ_hat)` (the response used by diffusion-based GDC) are
 visibly convergent. (b) *Interpolation and the Runge phenomenon.* Instead of an expansion one
 can build the degree-`K` polynomial that *matches* the filter's values at `K+1` chosen points
 (polynomial interpolation; the coefficients solve a Vandermonde system, or equivalently the
@@ -86,8 +74,8 @@ Lagrange form `P_K = sum_k h(λ_k) L_k`). The interpolation error is
 `R_K(λ_hat) = h^{(K+1)}(ζ)/(K+1)! · π_{K+1}(λ_hat)`, where the nodal polynomial
 `π_{K+1}(λ_hat) = prod_{k}(λ_hat - λ_hat_k)` collects the chosen points. With *equispaced*
 points the nodal polynomial swings violently near the interval ends, so for Runge-type targets
-the high-degree interpolation error can grow without bound — the Runge phenomenon. The known
-cure is to place the points where the nodal polynomial stays small.
+the high-degree interpolation error can grow without bound — the Runge phenomenon. The size of
+the error thus depends on how the `K+1` points are placed.
 
 **Decoupling transformation from propagation.** A separate line of GNN design (APPNP,
 Klicpera et al. 2019) observed that the feature transformation (an MLP) and the graph
@@ -105,20 +93,16 @@ It approximates the filtering operation with a Chebyshev polynomial of the *scal
 `y ≈ sum_{k=0}^K w_k T_k(L_hat) x` with `L_hat = 2L/λ_max - I` mapping the spectrum into
 `[-1,1]`, computed by the stable three-term recurrence. Its layer is
 `Y = sum_{k=0}^K T_k(L_hat) X W_k`: the Chebyshev coefficients are *implicitly* absorbed into a
-full trainable weight matrix `W_k` per order. In theory, as `K` grows it can represent
-arbitrary spectral filters. **Limitation:** on the standard citation benchmarks it is beaten
-by GCN — its own first-order simplification — and the gap *widens* as `K` goes from 2 to 10
-(Cora: 80.5 at `K=2`, 74.9 at `K=10`, versus GCN 81.3). Carrying a separate `W_k` per order
-also makes the parameter count grow with `K` (230k at `K=10` on Cora versus ~92k for the
-decoupled designs). The coefficients are fit freely by gradient descent with nothing tying
-them to any well-behaved frequency response.
+full trainable weight matrix `W_k` per order, fit freely by gradient descent. As `K` grows it
+can represent arbitrary spectral filters. On the standard citation benchmarks its reported
+accuracy is 80.5 at `K=2` and 74.9 at `K=10` on Cora, versus GCN 81.3. Carrying a separate
+`W_k` per order ties the parameter count to `K` (230k at `K=10` on Cora versus ~92k for the
+decoupled designs).
 
 **GCN (Kipf & Welling 2017).** ChebNet collapsed to first order: set `K=1`, `w_0 = -w_1 = w`,
 `λ_max = 2`, giving `y = w(I + D^{-1/2} A D^{-1/2}) x`, then a renormalization trick replaces
 `I + D^{-1/2} A D^{-1/2}` with `D̃^{-1/2} Ã D̃^{-1/2}` (self-loops added). The result is a
-fixed low-pass filter, applied as `H^{(l+1)} = σ(P̃ H^{(l)} W^{(l)})`. **Limitation:** the
-response is fixed and low-pass; it cannot represent the high-pass or band-pass responses that
-heterophilic graphs need, and it is not learnable as a filter.
+fixed low-pass filter, applied as `H^{(l+1)} = σ(P̃ H^{(l)} W^{(l)})`.
 
 **GPR-GNN (Chien, Peng, Li & Milenkovic 2021).** Decouples like APPNP — MLP first — then
 propagates with a *Monomial* basis whose coefficients are learned:
@@ -126,11 +110,7 @@ propagates with a *Monomial* basis whose coefficients are learned:
 `h(λ̃) = sum_k γ_k λ̃^k`. Learning the `γ_k` (Generalized PageRank weights) lets the filter
 become low- or high-pass and adapt to the homophily level; the learned weights even alternate
 in sign on heterophilic graphs. The coefficients are commonly initialized to the PPR pattern
-`γ_k = α(1-α)^k`. **Limitation:** the monomial basis `{λ^k}` is numerically ill-conditioned
-— the powers become nearly collinear for large `K` (the Vandermonde conditioning problem), so
-high-order monomial fits are unstable and the basis is a *poor* approximator despite the
-flexibility; on the citation graphs a plain Chebyshev-basis filter in the same harness
-underperforms it, which is the puzzle, since Chebyshev is the near-minimax basis.
+`γ_k = α(1-α)^k`. On the citation graphs it reports 84.0 on Cora.
 
 **BernNet (He, Wei, Huang & Xu 2021).** Same decoupled harness, but the filter is built in the
 *Bernstein* basis: `Y = sum_{k=0}^K θ_k · (1/2^K) C(K,k) (2I - L)^{K-k} L^k f_θ(X)`, i.e.
@@ -138,19 +118,14 @@ underperforms it, which is the puzzle, since Chebyshev is the near-minimax basis
 controls a "bump" located at frequency `≈ 2k/K`, which makes the design interpretable, and
 since every Bernstein basis function is non-negative on the spectrum, constraining all
 `θ_k ≥ 0` yields a guaranteed non-negative filter response — a property BernNet argues some
-valid filters require. **Limitation:** each forward pass costs `O(K^2 m d)` — quadratic in
-`K` — because building the `(2I-L)^{K-k} L^k` terms re-walks the graph; this is acknowledged
-as the price with no linear-time fix offered. Bernstein approximation also converges more
-slowly than the near-minimax option, so it needs a larger `K` for the same fidelity.
+valid filters require. Each forward pass costs `O(K^2 m d)`, since building the
+`(2I-L)^{K-k} L^k` terms re-walks the graph. On the citation graphs it reports 83.2 on Cora.
 
 **ChebBase (the Chebyshev basis dropped into the decoupled harness).** As a diagnostic, the
 Chebyshev basis is plugged into the exact GPR-GNN/BernNet template:
 `Y = sum_{k=0}^K w_k T_k(L_hat) f_θ(X)`, with `w_k` learned freely and initialized to
-`w_0 = 1`, `w_k = 0` otherwise (start from no propagation). **Limitation:** this is the
-counter-intuitive observation that sets up the whole problem — ChebBase is the *worst* of the
-three bases on the citation graphs (Cora 79.3 versus GPR-GNN 84.0, BernNet 83.2), even though
-approximation theory says the Chebyshev basis should be the *best* approximator. The freely
-learned `w_k` carry no constraint tying them to a well-behaved response.
+`w_0 = 1`, `w_k = 0` otherwise (start from no propagation). On the citation graphs it reports
+79.3 on Cora.
 
 ## Evaluation settings
 
@@ -173,7 +148,7 @@ The natural yardsticks, all pre-existing:
   each method's convention (PPR for GPR-GNN, all-ones for BernNet).
 - **Metric.** Mean test classification accuracy over the runs, higher is better.
 - **Scale.** Beyond the small graphs, the natural large-scale yardsticks are ogbn-arxiv and
-  the billion-edge ogbn-papers100M, where any quadratic-in-`K` cost becomes prohibitive.
+  the billion-edge ogbn-papers100M.
 
 ## Code framework
 

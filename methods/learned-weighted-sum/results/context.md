@@ -5,21 +5,12 @@
 A recurring pattern in deep vision and multi-source models: at each spatial location you hold a set of
 `V` feature maps coming from *different sources* — different pyramid levels, different resolutions,
 different input modalities/variables — and you must collapse them into a single representation per
-location to feed onward. The sources are heterogeneous: they were produced by different pathways, carry
-different kinds of information, and there is no reason to believe each one is equally useful to the
-prediction at hand. The standard move is to resize them to a common shape and add (or average) them, but
-that hard-codes a decision — every source counts the same — that nobody actually checked.
+location to feed onward. The sources are heterogeneous: they were produced by different pathways and
+carry different kinds of information. The standard move is to resize them to a common shape and add (or
+average) them.
 
 The precise problem is to design the aggregation transformation `f: (I_1, ..., I_V) -> O` that combines
-`V` aligned feature maps into one, subject to several pressures at once: (1) it should let *different
-sources contribute differently*, because they demonstrably do; (2) it should be cheap — adding it on top
-of an already-large backbone must cost almost nothing in parameters and FLOPs, ideally negligible
-relative to the convolutions/attention around it; (3) it should be *stable to train* end-to-end by
-ordinary backprop, with no projection step or special optimizer; and (4) the fused output should stay on
-the same scale as its inputs, so the rest of the network sees a representation it can interpret rather
-than one with an arbitrary gain baked in. Plain summation gets (2)-(4) for free but fails (1). The
-expressive alternatives that get (1) pay heavily on (2). The gap is a fusion rule that buys real
-expressiveness over equal-weight combination while staying essentially free.
+`V` aligned feature maps into one.
 
 ## Background
 
@@ -33,35 +24,26 @@ across levels so that every output level has both high resolution and strong sem
 The combining step inside all of these pyramids is, at bottom, the same primitive: bring several feature
 maps to a common resolution (a `1x1` conv to match channels, an upsample or downsample to match spatial
 size) and merge them. The merge has almost universally been an *equal-weight* operation — element-wise
-addition, occasionally element-wise max, or an unweighted average. That choice is rarely examined; it is
-inherited as "the obvious thing."
+addition, occasionally element-wise max, or an unweighted average.
 
-There is, however, direct diagnostic evidence that equal weighting is the wrong default. When PANet
+There is direct diagnostic evidence about how pyramid levels contribute. When PANet
 (below) instrumented *which* pyramid level each pooled feature actually came from, it found that the
 importance of a source is only weakly tied to which level it nominally belongs to: for small proposals
 nominally assigned to the finest level, on the order of 70% of the useful pooled features came from
 *other* levels, and for large proposals assigned to the coarsest level, more than half came from lower
-levels. The practical reading is blunt — when you combine features from several sources, those sources
-do not contribute equally to the output, and which one matters can shift case by case. The same logic
-applies whenever the sources are heterogeneous for any reason (different resolutions, different input
-variables): treating them identically throws away a degree of freedom the data is asking you to use.
+levels. The same logic applies whenever the sources are heterogeneous for any reason (different
+resolutions, different input variables).
 
-A second piece of background is the *cost* ledger of the obvious expressive fix. The expressive way to
-let sources interact is attention: project each source into queries/keys/values and let a query decide,
-per location, how much to read from each source. This genuinely captures source-dependent, even
-location-dependent, mixing — but it adds projection matrices (parameters that scale with the channel
-dimension) and an attention computation at every location, which on top of a large backbone is a real
-tax in both parameters and FLOPs. There is also the search route — letting an automated architecture
-search discover a better fusion *topology* — which can find good connection patterns but costs thousands
-of GPU-hours and yields irregular networks that are hard to interpret or edit. So the landscape offers
-"free but rigidly equal" at one end and "expressive but expensive (or expensively found)" at the other,
-with little in between.
+The expressive way to let sources interact is attention: project each source into queries/keys/values and
+let a query decide, per location, how much to read from each source. This genuinely captures
+source-dependent, even location-dependent, mixing, and adds projection matrices (parameters that scale
+with the channel dimension) and an attention computation at every location. There is also the search route
+— letting an automated architecture search discover a better fusion *topology* — which can find good
+connection patterns and yields networks optimized for cross-scale connectivity.
 
-A third constraint is easy to miss because it is not a new layer type: the fusion node sits in the
-middle of a trained network whose following blocks expect features in a sane numerical range. Plain
-addition is predictable, and a mean is scale-stable, but arbitrary learned gains inside the fusion
-node could turn it into an uncontrolled amplifier. Any useful middle ground has to expose relative
-source importance without making the downstream network absorb a drifting feature scale.
+A third consideration is numerical: the fusion node sits in the middle of a trained network whose
+following blocks expect features in a sane numerical range. Plain addition is predictable, and a mean is
+scale-stable.
 
 ## Baselines
 
@@ -77,43 +59,32 @@ semantically stronger map upsampled from the level above. The merge is *element-
 P_out_l = Conv( P_in_l + Resize(P_out_{l+1}) )
 ```
 
-Simple, cheap, end-to-end trainable, and a large accuracy gain over single-scale prediction. **Gap:**
-the merge gives both addends weight one — every source counts the same, by fiat. Nothing in the model
-can express "this resolution matters more here than that one," even though the inputs being summed are at
-different resolutions and different semantic levels. The information flow is also one-way (top-down
-only).
+Simple, cheap, end-to-end trainable, and a large accuracy gain over single-scale prediction. The
+information flow is one-way (top-down only).
 
 **PANet — Path Aggregation Network (Liu, Qi, Qin, Shi & Jia, CVPR 2018).** Add a *bottom-up* path on top
 of FPN so strong low-level localization signals can also propagate upward, and pool each proposal's
 features from *all* levels (adaptive feature pooling), fusing the per-level grids by an element-wise
 operation — max or sum. This is the work that produced the diagnostic above: features from multiple
 levels are jointly helpful, and the level a feature "belongs to" predicts its usefulness only weakly.
-**Gap:** having shown that sources contribute unequally, the actual combine step is still a *fixed*
-equal-treatment operator (max or sum). It surfaces the phenomenon but does not give the network a handle
-to act on it — there is no per-source quantity it can learn.
 
 **NAS-FPN (Ghiasi, Lin, Pang & Le, CVPR 2019).** Use neural architecture search to discover the *wiring*
 of the fusion network — which levels connect to which — then stack the discovered block repeatedly.
-Improves accuracy by finding better cross-scale *connections*. **Gap:** the search decides *which* inputs
-a node receives, but each node still merges its inputs by an equal-weight combine (a sum); it optimizes
-topology, not the relative contribution of the inputs at a node. And it is enormously expensive —
-thousands of GPU-hours — and yields irregular, hard-to-interpret networks.
+Improves accuracy by finding better cross-scale *connections*. The search decides *which* inputs a node
+receives, and each node merges its inputs by an equal-weight combine (a sum). The search process costs
+thousands of GPU-hours and yields irregular networks.
 
 **Pyramid attention upsampling (Li, Xiong, An & Wang, BMVC 2018).** Introduce global self-attention into
-the upsampling path to recover localization. This is the attention route to letting sources interact;
-**gap:** it brings the attention cost (extra projections and a global attention computation) into the
-fusion step, which is exactly the tax a lightweight aggregator is trying to avoid.
+the upsampling path to recover localization. This is the attention route to letting sources interact,
+bringing in extra projections and a global attention computation at the fusion step.
 
 **Equal-weight averaging / cross-attention aggregation (the two ends, in the target setting).** In a
 foundation model that tokenizes each input variable independently and must aggregate `V` variable tokens
-per spatial location, the two natural baselines are the same two ends of the landscape: a *uniform mean*
-over the `V` sources (parameter-free, but it is precisely the equal-weight default that the diagnostic
-above argues against), and a *cross-attention* aggregator (a learnable query attends, via multi-head
-attention with query/key/value projections, over the `V` source tokens at each location — maximally
-expressive, source- and location-dependent, but it carries the projection parameters and the per-location
-attention computation). **Gaps:** the mean cannot express unequal contribution at all; the cross-attention
-pays full attention cost to do a job — deciding how much each source contributes — that may need far less
-machinery.
+per spatial location, the two natural baselines are: a *uniform mean* over the `V` sources
+(parameter-free equal-weight combination), and a *cross-attention* aggregator (a learnable query attends,
+via multi-head attention with query/key/value projections, over the `V` source tokens at each location —
+source- and location-dependent mixing that carries projection parameters and a per-location attention
+computation).
 
 ## Evaluation settings
 

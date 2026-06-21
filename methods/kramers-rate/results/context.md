@@ -13,16 +13,14 @@ Arrhenius/Van't Hoff law
     k = ν · exp(−E_b / k_B T),
 
 where E_b is the height of the barrier and ν is a prefactor. The exponential is
-understood. **The prefactor ν is not.** What sets its size? Is it a property of
+understood. What sets the size of ν? Is it a property of
 the system alone (the shape of the well and the saddle), or does it depend on how
 strongly the system is coupled to its surroundings — the pressure of a gas, the
 viscosity of a solvent, the internal friction of nuclear matter?
 
 The concrete goal: build a model in which the strength of the coupling to the
-medium is a *tunable knob*, compute the escape rate as a function of that knob and
-of temperature, and use the result to decide **when the equilibrium-flux recipe
-for the prefactor (below) is trustworthy and what corrects it when it is not.**
-A one-dimensional model suffices to expose the mechanism.
+medium is a *tunable knob*, and compute the escape rate as a function of that knob
+and of temperature. A one-dimensional model suffices to expose the mechanism.
 
 ## Background
 
@@ -73,7 +71,7 @@ momentum with its surroundings."
 relaxes almost instantly and one is left with diffusion of the position alone, the
 Smoluchowski equation, with diffusion constant D = k_B T / η. Smoluchowski used
 this to compute diffusion-controlled coagulation rates. This is the natural tool
-for the high-friction / dense-solvent extreme — but only that extreme.
+for the high-friction / dense-solvent extreme.
 
 **Christiansen — chemical reaction as a one-dimensional diffusion problem.**
 Christiansen analyzed reactions by treating the progress variable as a coordinate
@@ -94,42 +92,33 @@ a fission coordinate. Whether that recipe is justified depends on the "internal
 friction" of nuclear matter — an instance where the coupling-to-the-medium
 question is physically pressing and entirely open.
 
-**Diagnostic facts that frame the problem.** (a) In a dilute gas at low pressure
-the rate of a unimolecular reaction falls below the equilibrium-flux value: too
-few collisions arrive to keep the activated state populated — assumption (ii) is
-visibly failing. (b) In a dense solvent the reaction coordinate near the barrier
-top no longer flies straight across but is buffeted, so a forward crossing is not a
-reliable predictor of a completed reaction — assumption (i) is under threat. So
-the equilibrium-flux prefactor is empirically known to be an *upper* estimate that
-both extremes of coupling can spoil, for opposite reasons.
+**Diagnostic facts.** (a) In a dilute gas at low pressure the rate of a
+unimolecular reaction falls below the equilibrium-flux value: too few collisions
+arrive to keep the activated state populated. (b) In a dense solvent the reaction
+coordinate near the barrier top is buffeted, so a forward crossing does not always
+correspond to a completed reaction.
 
 ## Baselines
 
 **Equilibrium-flux (transition-state) prefactor.** k = (k_B T/h)(Z‡/Z_A)
 exp(−E_b/k_B T), or in a classical 1-D well of angular frequency ω_0,
 k = (ω_0/2π) exp(−E_b/k_B T). *Core idea:* count the equilibrium one-way flux
-across the saddle. *Gap it leaves:* it is built entirely from equilibrium
-statistical mechanics and so is blind to whether forward crossings actually
-complete and whether the saddle stays populated under a running current; it
-supplies a symbol κ for the discrepancy but no machinery to evaluate it or to say
-when κ = 1. It cannot represent any dependence of the rate on the medium's
-coupling strength, because that strength does not appear in it.
+across the saddle. The result is built entirely from equilibrium statistical
+mechanics; a transmission coefficient κ ≤ 1 is written in front to absorb
+departures from the equilibrium value, but the theory provides no means to
+evaluate it.
 
 **Smoluchowski overdamped diffusion.** ∂σ/∂t = ∂/∂q[(η⁻¹U'(q))σ +
 (k_B T/η)∂σ/∂q]; with a stationary current between two points, the rate follows
 from ∫exp(U/k_B T)dq across the barrier. *Core idea:* in the strong-damping
-limit the position alone diffuses. *Gap it leaves:* it discards the velocity
-entirely, so it applies only when the friction is large; it has nothing to say
-about weak coupling, where the bottleneck is energy supply rather than spatial
-transport, and it cannot interpolate to the equilibrium-flux regime.
+limit the position alone diffuses, with diffusion constant D = k_B T/η.
 
 **Brownian-motion / Fokker–Planck description of the velocity.** Einstein–
 Smoluchowski–Uhlenbeck–Ornstein give the evolution of the velocity distribution
 under friction and noise. *Core idea:* random force tied to friction by
-fluctuation–dissipation; densities obey Fokker–Planck equations. *Gap it leaves:*
-as developed, it lives in velocity space (or position alone), not in the joint
-position–velocity phase space that an escape-over-a-barrier problem demands, and it
-has not been carried over to compute a reaction rate.
+fluctuation–dissipation; densities obey Fokker–Planck equations. As developed,
+the theory treats the velocity distribution (Uhlenbeck–Ornstein) or the position
+alone (Smoluchowski), rather than the joint position–velocity phase space.
 
 ## Evaluation settings
 
@@ -175,9 +164,7 @@ def equilibrium_flux_rate(omega0, Eb, T):
 
 def medium_correction(omega0, omegab, eta, Eb, T):
     """How the coupling to the medium modifies the baseline prefactor.
-    TODO: the object we will derive — what multiplies (or replaces) the
-    equilibrium-flux rate once the running current and the energy supply are
-    accounted for, as a function of the friction eta."""
+    TODO: fill in — the factor by which the rate depends on the friction eta."""
     pass  # TODO
 
 def escape_rate(omega0, omegab, eta, Eb, T):

@@ -1,14 +1,14 @@
 ## Research question
 
-Value-based RL on Atari from raw pixels: learn an effective visual representation and a Q-value estimate at the same time, off-policy, from a replay buffer, on $84\times84$ grayscale 4-frame stacks. The one thing being designed is the **value head and its TD update** — how the per-action value is parameterized, how the bootstrap target is constructed, and what loss trains it. Everything else (the convolutional encoder, the replay buffer, $\epsilon$-greedy acting, the periodic target copy, the evaluation protocol) is fixed. Capacity is not a lever: the encoder is frozen and a parameter-budget check forbids buying improvement with a wider net, so every gain must be algorithmic — target construction, head design, or TD loss.
+Value-based RL on Atari from raw pixels: learn an effective visual representation and a Q-value estimate at the same time, off-policy, from a replay buffer, on $84\times84$ grayscale 4-frame stacks. The one thing being designed is the **value head and its TD update** — how the per-action value is parameterized, how the bootstrap target is constructed, and what loss trains it. Everything else (the convolutional encoder, the replay buffer, $\epsilon$-greedy acting, the periodic target copy, the evaluation protocol) is fixed.
 
 ## Prior art / Background / Baselines
 
-- **Deep Q-Network (DQN, Mnih et al. 2015).** Regresses $Q(S_t,A_t;\theta)$ onto the bootstrap target $R_{t+1}+\gamma\max_a Q(S_{t+1},a;\theta^-)$ using a frozen target network $\theta^-$ and a uniform replay buffer, minimizing squared TD error. Gap: the same network both selects the greedy next action and evaluates it, and because $\max$ is convex, estimation error makes the target biased upward; the predicted value of the greedy policy runs above its realized return, and on some games the estimate diverges while the score collapses.
+- **Deep Q-Network (DQN, Mnih et al. 2015).** Regresses $Q(S_t,A_t;\theta)$ onto the bootstrap target $R_{t+1}+\gamma\max_a Q(S_{t+1},a;\theta^-)$ using a frozen target network $\theta^-$ and a uniform replay buffer, minimizing squared TD error.
 
-- **Dueling DQN (Wang et al. 2016).** Splits the head into a state-value stream $V(s)$ and an advantage stream $A(s,a)$, recombined so the network can learn that a state is valuable without committing to a per-action value. Gap: it changes the mean estimator architecturally but keeps the same max-based target and still represents each action by a single scalar, so it inherits the overestimation bias.
+- **Dueling DQN (Wang et al. 2016).** Splits the head into a state-value stream $V(s)$ and an advantage stream $A(s,a)$, recombined so the network can learn that a state is valuable without committing to a per-action value.
 
-- **C51 (Bellemare, Dabney & Munos 2017).** Models the return $Z(x,a)$ as a probability distribution over a fixed grid of atoms and learns it with a projected distributional Bellman update. Gap: the support $[V_{\min},V_{\max}]$ must be chosen in advance, the update projects onto a fixed grid rather than matching the target distribution directly, and the resolution is limited to the number of atoms placed a priori.
+- **C51 (Bellemare, Dabney & Munos 2017).** Models the return $Z(x,a)$ as a probability distribution over a fixed grid of atoms and learns it with a projected distributional Bellman update.
 
 ## Fixed substrate / Code framework
 

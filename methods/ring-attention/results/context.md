@@ -2,29 +2,29 @@
 
 ## Research question
 
-Transformers are the backbone of modern sequence models, and there is mounting demand to feed them *very* long contexts — books, codebases, long dialogues, long-horizon RL trajectories, interleaved multi-document inputs. Context lengths in deployed systems have already crept from a few thousand tokens to tens and hundreds of thousands. But the context a single device can handle is intrinsically bounded by its memory, and that bound is tight: even modest models cannot hold the activations for sequences in the millions of tokens.
+Transformers are the backbone of modern sequence models, and there is mounting demand to feed them *very* long contexts — books, codebases, long dialogues, long-horizon RL trajectories, interleaved multi-document inputs. Context lengths in deployed systems have crept from a few thousand tokens to tens and hundreds of thousands. The context a single device can handle is bounded by its memory: even modest models cannot hold the activations for sequences in the millions of tokens.
 
-The precise problem: **can we train and run a Transformer on sequences whose length is essentially unbounded — limited only by the total number of devices, not by any single device's memory — without approximating attention and without paying a communication penalty that erases the benefit?** A solution must (a) make the per-device memory for a layer independent of the full sequence length, (b) compute *exact* full attention (no sparsity, no low-rank approximation), and (c) distribute the sequence across devices such that the inter-device communication is fully hidden behind computation, so scaling the context costs nothing in wall-clock overhead.
+The question: **how can a Transformer be trained and run on sequences whose length is limited by the total number of devices rather than by any single device's memory, while computing exact full attention distributed across those devices?**
 
 ## Background
 
 **Self-attention and the feedforward sublayer.** For a layer with queries, keys, values Q, K, V ∈ ℝ^{s×d} (sequence length s, head dimension d), attention is softmax(QKᵀ/√d)·V, softmax applied row-wise. Each attention sublayer is followed by a position-wise feedforward network FFN(x) = max(0, xW₁ + b₁)W₂ + b₂, typically with an inner dimension 4× the hidden size.
 
-**The memory wall.** A vanilla attention layer materializes the full s×s score matrix, costing O(s²) memory — quadratic in sequence length and the first thing to explode. The FFN's intermediate activation is also large (its 4× inner width gives an 8·b·s·h activation for batch b, hidden h). For 100M tokens at a hidden size of 1024, just storing one layer's output is over 1000 GB, while GPUs/TPUs offer well under 100 GB of high-bandwidth memory, and HBM cannot grow much due to physical and cost limits.
+**Memory of a layer.** A vanilla attention layer materializes the full s×s score matrix, costing O(s²) memory. The FFN's intermediate activation is also large (its 4× inner width gives an 8·b·s·h activation for batch b, hidden h). For 100M tokens at a hidden size of 1024, just storing one layer's output is over 1000 GB, while GPUs/TPUs offer well under 100 GB of high-bandwidth memory.
 
-**Memory-efficient / blockwise attention (the immediate ancestors).** A line of work removes the need to materialize the full attention matrix by computing attention *block by block* with online (streaming) softmax rescaling: tile Q, K, V into blocks; for each query block, loop over key/value blocks, accumulating a running output while tracking per-row running statistics (a running max for numerical stability and a running normalizer), rescaling the accumulator as each new block arrives. This (Rabe & Staats 2021; Dao et al. 2022, FlashAttention) brings attention activation memory down to roughly the block size, not s. Blockwise Parallel Transformer (Liu et al. 2023, BPT) extends the same block-by-block discipline to the FFN — computing it per query block instead of materializing the full 8·b·s·h intermediate — cutting the maximum activation from 8·b·s·h down to 2·b·s·h per layer.
+**Memory-efficient / blockwise attention.** A line of work computes attention *block by block* with online (streaming) softmax rescaling: tile Q, K, V into blocks; for each query block, loop over key/value blocks, accumulating a running output while tracking per-row running statistics (a running max for numerical stability and a running normalizer), rescaling the accumulator as each new block arrives. This (Rabe & Staats 2021; Dao et al. 2022, FlashAttention) brings attention activation memory down to roughly the block size, not s. Blockwise Parallel Transformer (Liu et al. 2023, BPT) extends the same block-by-block discipline to the FFN — computing it per query block instead of materializing the full 8·b·s·h intermediate — cutting the maximum activation from 8·b·s·h down to 2·b·s·h per layer.
 
-**The remaining wall.** Even with blockwise attention+FFN, each device must still store the *full output of each layer* — the n-to-n nature of self-attention means the next layer's attention needs all positions' outputs, so they cannot be discarded. That output storage is what caps the sequence length: it still scales with s.
+**Per-layer output.** With blockwise attention+FFN, each device stores the full output of each layer; the n-to-n nature of self-attention means the next layer's attention needs all positions' outputs. That output storage scales with s.
 
-**Prior ring-topology attention.** Earlier work proposed arranging devices in a ring to pass attention computation around and reduce communication cost (Li et al. 2021, sequence parallelism). It targeted communication; it left the memory of storing full per-layer outputs untouched, so the maximum sequence length remained bounded by one device's memory.
+**Sequence parallelism.** Earlier work arranged devices to pass attention computation between them to reduce communication cost (Li et al. 2021, sequence parallelism).
 
 ## Baselines
 
-- **Vanilla Transformer attention.** Materializes the s×s score matrix: self-attention activation 2·b·n·s² (n heads), FFN activation 8·b·s·h. Exact attention but O(s²) memory — the hard quadratic wall.
+- **Vanilla Transformer attention.** Materializes the s×s score matrix: self-attention activation 2·b·n·s² (n heads), FFN activation 8·b·s·h. Exact attention, O(s²) memory.
 
-- **Memory-efficient attention (Rabe & Staats 2021; FlashAttention, Dao et al. 2022).** Block-by-block attention with online-softmax rescaling, never forming the full score matrix. Self-attention activation drops to ~2·b·s·h + 4·b·c·h (block size c); FFN still 8·b·s·h. Exact, but the FFN intermediate and the stored per-layer output still scale with s.
+- **Memory-efficient attention (Rabe & Staats 2021; FlashAttention, Dao et al. 2022).** Block-by-block attention with online-softmax rescaling, never forming the full score matrix. Self-attention activation drops to ~2·b·s·h + 4·b·c·h (block size c); FFN still 8·b·s·h. Exact attention.
 
-- **Blockwise Parallel Transformer / BPT (Liu et al. 2023).** Also computes the FFN block-by-block, fusing it with blockwise attention; maximum activation per layer ≈ 2·b·s·h. The state of the art for single-device memory efficiency. Its remaining limitation: it still stores the full layer output of size proportional to s, so the maximum context is still bounded by one device's memory.
+- **Blockwise Parallel Transformer / BPT (Liu et al. 2023).** Also computes the FFN block-by-block, fusing it with blockwise attention; maximum activation per layer ≈ 2·b·s·h. The state of the art for single-device memory efficiency; it stores the full layer output of size proportional to s.
 
 ## Evaluation settings
 

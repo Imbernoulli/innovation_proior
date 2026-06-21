@@ -1,13 +1,13 @@
 ## Research question
 
-Before the first gradient step, every weight in a deep convolutional network is a number drawn from a distribution I choose. That choice governs whether the forward signal stays usable through many layers, whether backpropagated gradients vanish or explode, and — empirically — where the optimizer ends up after the full training schedule. The object of study is an **initialization strategy**: a data-independent rule that fills `Conv2d`, `BatchNorm2d`, and `Linear` parameters in place, given only the architecture and its depth. The rule must work across three network families — a deep residual net, a plain VGG-style stack, and an inverted-residual mobile net — so any assumption tied to one topology has to prove itself on the other two.
+Before the first gradient step, every weight in a deep convolutional network is a number drawn from a distribution I choose. That choice governs whether the forward signal stays usable through many layers and whether backpropagated gradients vanish or explode. The object of study is an **initialization strategy**: a data-independent rule that fills `Conv2d`, `BatchNorm2d`, and `Linear` parameters in place, given only the architecture and its depth. The rule must work across three network families — a deep residual net, a plain VGG-style stack, and an inverted-residual mobile net.
 
 ## Prior art / Background / Baselines
 
-- **Small fixed-variance Gaussian (the scaffold default).** Draw every weight independently from `N(0, 0.01²)`. Gap: the variance is not scaled by fan-in, so signals and gradients shrink geometrically with depth; deep stacks start almost dead.
-- **LeCun / Xavier scaling (LeCun 1998; Glorot & Bengio 2010).** Set `Var(W) = 1/fan_in` or `2/(fan_in+fan_out)` to keep activation/gradient variance stable across linear or `tanh`-like layers. Gap: the derivation assumes a symmetric nonlinearity with unit derivative at zero; with ReLU, which zeroes half its inputs, forward variance halves at every layer and the signal still decays.
-- **Kaiming / He scaling (He et al. 2015).** Set `Var(W) = 2/fan` to account for ReLU zeroing half its inputs. Gap: it calibrates per-layer variance but does not address how variance accumulates across many layers or through the full network.
-- **Norm-preservation via orthogonality (Saxe et al. 2014).** Initialize each weight matrix to be orthogonal so it preserves vector norms exactly in deep linear networks. Gap: the isometry breaks under ReLU and non-square conv reshapes, and the construction does not account for batch normalization.
+- **Small fixed-variance Gaussian (the scaffold default).** Draw every weight independently from `N(0, 0.01²)`.
+- **LeCun / Xavier scaling (LeCun 1998; Glorot & Bengio 2010).** Set `Var(W) = 1/fan_in` or `2/(fan_in+fan_out)` to keep activation/gradient variance stable across linear or `tanh`-like layers.
+- **Kaiming / He scaling (He et al. 2015).** Set `Var(W) = 2/fan` to account for ReLU zeroing half its inputs.
+- **Norm-preservation via orthogonality (Saxe et al. 2014).** Initialize each weight matrix to be orthogonal so it preserves vector norms exactly in deep linear networks.
 
 ## Fixed substrate / Code framework
 

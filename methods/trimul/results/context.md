@@ -10,17 +10,9 @@ embedding on every ordered pair `(i, j)`, i.e. an *edge feature* on the complete
 nodes are residues. The network reads `z` out into a distogram (a predicted distribution over
 binned inter-residue distances) and feeds it to the module that places atoms in space.
 
-The problem: a single pairwise relation is cheap to predict in isolation, but a *collection*
-of pairwise relations is only meaningful if it is **mutually realizable in 3D**. A list of
-proposed distances `{d_ij}` corresponds to actual points in space only when every triple
-`(i, j, k)` is geometrically consistent — at minimum the triangle inequality
-`d_ij ≤ d_ik + d_kj` holds, with higher-order distance-matrix constraints beyond that. So the
-edge `(i, j)` is *not free*: it is constrained by the two other edges of every triangle it sits
-in, `(i, k)` and `(k, j)`, for every third residue `k`. The goal is a learnable update of the
-pair representation that lets each edge feel those constraints, so the representation is pushed
-toward a globally consistent geometry rather than N² independently-guessed numbers — and that
-remains cheap enough to run inside a deep stack on sequences of hundreds to thousands of
-residues.
+The goal is a learnable update of the pair representation `z_ij` that propagates relational
+information across edges, operating inside a deep trunk on sequences of hundreds to thousands
+of residues.
 
 ## Background
 
@@ -35,12 +27,10 @@ each MSA entry `m_{si}` to two small vectors `a_{si}, b_{si} ∈ ℝ^{c}` (`c = 
 the alignment is the raw evidence for which residue pairs are in contact, and `z` is the running
 estimate of all pairwise relations.
 
-**Geometric realizability is a hard constraint, not a soft preference.** Metric geometry says an
-arbitrary symmetric matrix of "distances" is almost never embeddable in ℝ³. The triangle
-inequality on every triple is the first necessary condition; higher-order
-Euclidean distance-matrix constraints further restrict which finite metric spaces can live in
-three dimensions. A representation that predicts each `z_ij` without reference to its
-neighboring edges will, generically, propose distance sets that no real structure can satisfy.
+**Geometric structure of distance matrices.** Metric geometry characterizes which symmetric
+matrices of non-negative values are embeddable in ℝ³. The triangle inequality
+`d_ij ≤ d_ik + d_kj` must hold for every triple `(i, j, k)`, with further Euclidean
+distance-matrix constraints beyond that.
 
 **Coevolution and contact prediction.** Correlated mutations between two alignment columns have
 long been read as evidence of spatial contact. This is why an MSA is the input and why the pair
@@ -52,27 +42,23 @@ computes `g = sigmoid(Linear(·))` and multiplies it onto the attention output.
 
 ## Baselines
 
-**Independent / axis-local edge updates (the thing to beat).** The cheapest ways to update a
-2D grid of edge features mix information along *one* residue axis at a time. *Axial attention*
+**Axial attention on the pair map.** *Axial attention*
 (Ho et al. 2019, "Axial Attention in Multidimensional Transformers"; cf. the sparse-attention
 factorizations of Child et al. 2019) factorizes attention over an `H × W` grid into attention
 along rows then along columns, costing `O(N)` interactions per axis instead of the full `O(N²)`
 over all grid cells. The core idea: for a fixed `i`,
 let `z_{ik}` attend over all `k`; or for a fixed `j`, let `z_{kj}` attend over all `k`. Each such
-operation couples an edge only to other edges *sharing one endpoint along a single axis*: for a
+operation couples an edge to other edges sharing one endpoint along a single axis: for a
 target `(i, j)` it can look at `(i, k)` (same row) or at `(k, j)` (same column), in separate
 operations along separate axes.
 
 **Per-pair MLP / convolution on the distance map.** Treating the pair map like an image and
 running 2D convolutions or per-pixel MLPs (the dominant pre-attention approach to contact maps)
-has the same flaw at the level of geometry: a local receptive field on the `(i, j)` plane mixes
-*nearby pairs in index space*, which has no relation to geometric adjacency — spatial locality in
-`(i, j)` is unrelated to which residues actually constrain a given distance.
+mixes *nearby pairs in index space* within a local receptive field on the `(i, j)` plane.
 
 **Generic graph message passing.** A graph network updates a node or edge by aggregating over
-its neighbors. Standard message-passing frameworks are generic: they fix neither *what function*
-combines feature vectors nor the aggregation pattern, and an unconstrained aggregation over the
-complete edge set can be much costlier than `O(N³)`.
+its neighbors. Standard message-passing frameworks fix neither *what function* combines feature
+vectors nor the aggregation pattern.
 
 ## Evaluation settings
 
@@ -91,8 +77,7 @@ residues, so per-block memory and the `O(N³)` cost are first-class constraints.
 
 The available primitives are a layer-normalized linear layer, rowwise and columnwise dropout,
 a standard gated multi-head attention module, a pair-transition MLP, and the trunk's block loop.
-The pair representation enters each block already formed; what is missing is the update operator
-that lets the pair map move toward a consistent geometry.
+The pair representation enters each block already formed.
 
 ```python
 import torch

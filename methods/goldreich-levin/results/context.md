@@ -1,29 +1,25 @@
-## One-Wayness Is Not Bit Hiding
+## One-Wayness Is a Global Guarantee
 
-A one-way function is hard to invert on a random image, but that is only a global guarantee. It does not say that every efficiently computable fact about the preimage is hidden. A function can preserve a hard-to-invert component while explicitly exposing another part of the input, and it can still remain hard to invert.
+A one-way function is hard to invert on a random image. This is a guarantee about global search: given \(f(x)\) for a random \(x\), no efficient algorithm finds a preimage. It is stated about the whole input, not about any particular efficiently computable fact about the preimage. A function can preserve a hard-to-invert component while explicitly exposing another part of the input and still remain hard to invert.
 
-This matters because cryptographic applications often need more than global search hardness. They need a bit that is easy to compute from the secret input but infeasible to predict from the public image.
+Cryptographic applications often want more than global search hardness. They want a single bit that is easy to compute from the secret input \(x\) but infeasible to predict from the public image \(f(x)\).
 
-## Pseudorandomness Needs Unpredictable Bits
+## Pseudorandomness and Unpredictable Bits
 
-The early pseudorandom-generator framework uses a deterministic iteration together with a predicate that supplies the output bit at each step. The security condition is next-bit unpredictability: after seeing previous output bits, no efficient strategy should predict the next one with more than negligible advantage over a fair coin.
+The pseudorandom-generator framework uses a deterministic iteration together with a predicate that supplies the output bit at each step. The security condition is next-bit unpredictability: after seeing previous output bits, no efficient strategy predicts the next one with more than negligible advantage over a fair coin.
 
-This makes a hard-core predicate a central primitive. It concentrates the hardness of a one-way computation into one Boolean value that can safely be used as an output bit.
+This places a hard-core predicate at the center. A hard-core predicate concentrates the hardness of a one-way computation into one Boolean value \(b(x)\): efficiently computable from \(x\), yet unpredictable from \(f(x)\). Such a bit can be used directly as a generator output bit.
 
-## Known Hard Bits Were Special
+## Known Hard Bits
 
-Early examples show that hard bits can be proved for particular algebraic functions. Discrete exponentiation has a hard predicate under the discrete logarithm assumption. RSA and Rabin functions have hard least-significant-bit style predicates under their number-theoretic assumptions.
+Hard bits are known for particular algebraic functions. Discrete exponentiation has a hard predicate under the discrete logarithm assumption. The RSA and Rabin functions have hard least-significant-bit style predicates under their number-theoretic assumptions. These proofs rely on algebraic self-reductions, modular sampling, and properties of the concrete function.
 
-These proofs are valuable but specialized. They depend on algebraic self-reductions, modular sampling, and properties of the concrete function. They do not by themselves explain how to obtain a hard bit from an arbitrary one-way function.
+## A General Transformation
 
-## General Transformations Were Costly
+One general route transforms an arbitrary one-way function into a related one that has a hard-core predicate. The constructed function applies the original function to many small pieces of the input and combines them to produce one bit, whose unpredictability is then established.
 
-A prior general route could transform an arbitrary one-way function into a more complicated one that has a hard-core predicate. The cost was that the new function applied the original function to many small pieces of the input merely to produce one hard bit.
+## The Setting
 
-That loss is conceptually and practically unsatisfying. The resulting security can be much weaker than the original security, and for realistic input sizes the small pieces may become vulnerable to exhaustive search.
+The question is how to attach a hidden bit to an arbitrary one-way function — a predicate \(b(x)\), computable from \(x\), that no efficient algorithm predicts from \(f(x)\) with non-negligible advantage over \(1/2\).
 
-## The Missing Reduction
-
-The open need is a generic, security-preserving way to attach a hidden bit to any one-way function without relying on a special number-theoretic structure. The proof must also handle a weak predictor whose advantage is only average-case and non-negligible, not a reliable oracle on the particular queries one would like to ask.
-
-The challenge is therefore to find a reduction principle that can turn slight average predictive power about one Boolean value into recovery of the entire preimage. Without that bridge, a generic hard bit remains only an aspiration rather than a usable cryptographic primitive.
+A predictor in this setting is a weak object. Its advantage is average-case and may be only non-negligible rather than overwhelming, and it need not be correct on the specific inputs one would most like to query. The technical task is to relate such an average predictive advantage about one Boolean value back to the assumed one-wayness of \(f\), so that any efficient predictor would contradict the hardness of inverting \(f\).

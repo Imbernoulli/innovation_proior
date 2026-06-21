@@ -15,15 +15,9 @@ head, a per-token tagging head, a generative decoder). Because each new result c
 several of these axes at once, it is impossible to attribute a reported improvement to any
 single decision, or to understand how the choices interact.
 
-The precise problem: there is no controlled testbed in which one can vary a *single* axis
-(objective, architecture, data, fine-tuning strategy, scale) while holding everything else
-fixed and measure the effect across many tasks. The obstacle is structural — the **output
-interface differs from task to task** (a classification softmax, a span pointer, per-token
-logits, a generative decoder), which entangles the architecture and loss with the task and
-prevents free substitution of the other components. Any controlled study would also need a
-large, clean, public unlabeled corpus and a fixed experimental pipeline against which to
-run the sweep. Solving this would let the field measure which ideas actually matter and
-combine the winners.
+The open question is how to construct a controlled, unified experimental setting for
+pre-training and fine-tuning in NLP, so that different choices of objective, architecture,
+data, fine-tuning strategy, and scale can each be measured across many tasks.
 
 ## Background
 
@@ -79,69 +73,50 @@ performance improves predictably with more parameters and more data, motivating 
 models and large corpora — provided the corpus is large and diverse enough that it need
 not be repeated many times (small corpora repeated many times degrade downstream results).
 
-**Common Crawl as raw material, and its problems (diagnostic).** Common Crawl's web-text
-is mostly *not* useful natural language: it is dominated by boilerplate (menus, policy
-notices), placeholder text, error messages, source code, duplicated passages, and
-offensive content. Prior uses applied limited, non-public, or domain-narrow filtering.
-This is the pre-method state of affairs that any data study must first clean up.
+**Common Crawl as raw material.** Common Crawl's web-text is mostly *not* useful natural
+language: it is dominated by boilerplate (menus, policy notices), placeholder text, error
+messages, source code, duplicated passages, and offensive content. Prior uses applied
+limited, non-public, or domain-narrow filtering.
 
 ## Baselines
 
 These are the prior approaches a unified study would compare against or build its
-variants from. For each: the core idea, the mechanics, and the gap it leaves.
+variants from. For each: the core idea and the mechanics.
 
 **Causal language model pre-training (Dai & Le 2015; Radford et al. 2018, GPT; Howard &
 Ruder 2018, ULMFiT; Peters et al. 2018, ELMo).** Pre-train a (typically decoder-only or
 recurrent) network to predict the next token, then fine-tune. Mechanics: maximize
-Σ log p(x_t | x_{<t}). Gap: only left-to-right context, so token representations cannot use
-the right-hand side; empirically transfers worse than denoising; and as a *task interface*
-it forces everything into next-token prediction over a concatenation, with no
-bidirectional encoding of the context.
+Σ log p(x_t | x_{<t}).
 
 **BERT / masked language modeling (Devlin et al., 2018).** An encoder-only Transformer
 with a fully-visible mask. Corrupt 15% of tokens — of those, 80% replaced by a special
 `[MASK]` token, 10% by a random token, and 10% left unchanged — and train the encoder to
 predict the original tokens at the corrupted positions; a special `[CLS]` token's output
 feeds a classification head. Mechanics: per-position softmax over the vocabulary at
-masked positions, bidirectional context. Gaps: it is **encoder-only**, producing a
-fixed-length per-token or per-sequence prediction, so it cannot natively do
-**generative** tasks (translation, abstractive summarization); the random/unchanged
-corruption heuristics exist only to reduce the encoder's pretrain/finetune `[MASK]`
-mismatch; and each downstream task needs its own bespoke head.
+masked positions, bidirectional context.
 
 **Decoder-only LM as a universal interface (Radford et al., 2019, GPT-2).** A single
 causal stack; tasks are framed as text continuation and evaluated **zero-shot** by priming
 the model with a prompt (e.g. a document followed by "TL;DR:" to elicit a summary).
-Mechanics: autoregressive sampling from p(output | prompt). Gaps: fully causal masking
-cripples the representation of the context/prefix (every prefix token sees only its left
-context), and it targets zero-shot LM behavior rather than fine-tuned transfer with a
-proper encoder.
+Mechanics: autoregressive sampling from p(output | prompt).
 
 **Prefix language model / unified single stack (Liu et al., 2018; Dong et al., 2019,
 UniLM).** A single Transformer stack with a fully-visible mask over the input prefix and a
 causal mask over the generated continuation, so it can both encode context bidirectionally
 and generate. Mechanics: like a decoder-only LM but with bidirectional prefix attention.
-Gap: it has no explicit, separate encoder-decoder cross-attention; the input and output
-share one stack and one set of parameters.
 
 **MASS (Song et al., 2019).** A seq2seq masked objective for encoder-decoder models: mask
 a contiguous fragment of the input and have the decoder generate it. Mechanics: corrupt a
-span, reconstruct. Gap: still reconstructs against the full uncorrupted notion and is one
-specific point in a large design space of denoising variants.
+span, reconstruct.
 
 **Prior task-unification frameworks.** decaNLP (McCann et al., 2018) casts every task as
-**question answering** but *mandates* simultaneous multi-task training and an explicit
+**question answering** and uses simultaneous multi-task training with an explicit
 question/answer format. Keskar et al. (2019) cast tasks as **span extraction** by
-appending candidate outputs and pointing at the correct input span. Gaps: the QA framing
-forces a rigid format and joint training; the span-extraction framing cannot express
-**generative** tasks where outputs cannot be enumerated (translation, summarization). Both
-point toward, but do not reach, a fully general text-in/text-out interface.
+appending candidate outputs and pointing at the correct input span.
 
 **Fine-tuning and multi-task strategies (Houlsby et al., 2019, adapters; Howard & Ruder
 2018, gradual unfreezing).** Adapters insert small trainable modules and freeze the rest,
-to update fewer parameters; gradual unfreezing thaws layers progressively. Gap: they trade
-some quality for parameter efficiency relative to plain full fine-tuning, and how they
-compare under a controlled pipeline is unknown.
+to update fewer parameters; gradual unfreezing thaws layers progressively.
 
 ## Evaluation settings
 

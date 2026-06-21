@@ -10,17 +10,11 @@ inputs, and those inputs are unbounded. A large score difference can therefore d
 row of attention weights and silence every other connection, even when that difference is small
 relative to the absolute score magnitudes. Concretely, `softmax([760, 752, 750])` and
 `softmax([12, 4, 2])` are the same distribution, `[0.99962, 0.00034, 0.00005]` — a near one-hot,
-"winner-take-all" assignment. If the dot products that feed the softmax can grow without bound,
-attention heads can be pushed into this saturated, peaky regime and cannot easily express the
-diffuse, many-to-many patterns that some modeling tasks need.
+"winner-take-all" assignment.
 
-The problem matters most where data is scarce. On low-resource machine translation — roughly ten
-thousand to a few hundred thousand sentence pairs — the model has little signal to learn rich
-attention structure, and a head that can only concentrate is a head whose capacity is being
-wasted. The precise goal: keep the input to the attention softmax inside a controlled range, so
-that a head can learn a diffuse distribution when that is what the task calls for *and* a sharp
-one when that is what it needs, without giving up either extreme and without paying for it in
-training stability.
+The question is how the per-head query and key vectors should be turned into the scores that feed
+the softmax — especially in low-resource settings (roughly ten thousand to a few hundred thousand
+sentence pairs) where the model has limited signal to learn rich attention structure.
 
 ## Background
 
@@ -35,10 +29,7 @@ a key are modeled as independent, mean-zero, unit-variance random variables, the
 product `q · k = sum_{i=1}^{d_k} q_i k_i` has mean 0 and variance `d_k`, so its typical magnitude
 grows like `sqrt(d_k)`. For large head dimension the raw dot products grow large, push the softmax
 into regions of vanishingly small gradient, and stall learning; dividing by `sqrt(d_k)` rescales
-the logits' variance back toward 1 at initialization. The thing to notice is the word
-*initialization*: the factor sets the *expected scale* of a freshly initialized layer; it does not
-*bound* the dot product. Once training moves the query/key projections, their norms and
-correlations drift, and the product can again grow large enough to saturate the softmax.
+the logits' variance back toward 1 at initialization.
 
 **Layer normalization and its variants.** For NLP models, layer normalization (Ba et al. 2016)
 outperforms batch normalization, in part because language models show more variance in batch
@@ -93,51 +84,32 @@ normalization-centric changes, each contributing about +0.3 BLEU for roughly +1.
   can be viewed as the related rescaling-only family member with per-unit gains; tying those gains
   and dividing by `sqrt(d)` recovers ScaleNorm.
 
-The gap this leaves is specific. The `1/sqrt(d_k)` factor controls only the initial scale of the
-attention logits, not their range during training. ScaleNorm and RMSNorm normalize residual-stream
-activations, and a residual-stream normalization before the attention projections still does not make
-each post-split per-head query/key vector unit length. Neither method directly bounds the dot
-products that enter the attention softmax. So the saturation failure mode above is left untouched at
-the one place it originates: the compatibility scores entering the attention softmax.
-
 ## Baselines
 
-These are the prior methods a new attention-normalization scheme would be measured against and
-would react to.
+These are the prior methods a new attention scheme would be measured against.
 
 **Scaled dot-product multi-head attention (Vaswani et al. 2017).** For each head, project the
 input into queries, keys and values of head dimension `d_k`; form scores `QK^T`, divide by
 `sqrt(d_k)`, softmax over the key axis, and mix the values: `softmax(QK^T/sqrt(d_k)) V`. The
 scaling sets the logits' variance to about 1 at initialization under the independent-component
-model. Limitation: the dot product is unbounded and the factor is fixed, so it cannot prevent the
-scores from growing during training; heads can saturate into winner-take-all distributions, and
-the conjecture is that this caps the diffuseness of the patterns a head can learn — a cost that is
-hardest to absorb when data is scarce.
+model.
 
 **LayerNorm-based Transformer (Ba et al. 2016; Vaswani et al. 2017).** Normalize each activation
 vector over its feature dimension with a learned scale-and-shift, placed after the residual
 addition (PostNorm) in the original architecture. Stabilizes deep training by controlling
-gradients. Limitation: PostNorm sits on the residual path and can require careful warmup to train;
-and the normalization operates on the residual-stream activations, not on the attention scores, so
-it does nothing to bound the dot products feeding the softmax.
+gradients.
 
 **ScaleNorm + FixNorm + PreNorm (Nguyen & Salazar 2019).** The state-of-the-art low-resource
 recipe described above: PreNorm for stable warmup-light training, FixNorm for rare words, and
 ScaleNorm — `g · x/||x||` along the embedding dimension on the residual-stream vector before the
 attention projections and multi-head split — as a fast single-scalar replacement for LayerNorm.
 ScaleNorm+FixNorm at the final linear layer coincides with cosine normalization with a learned
-scale. Limitation: ScaleNorm normalizes one whole pre-split vector, not each post-split scoring
-vector; it replaces LayerNorm rather than acting where the softmax saturation originates, and it
-leaves the per-head query-key scores unbounded.
+scale.
 
 **Cosine normalization (Luo et al. 2018) and softmax-free attention (Richter & Wattenhofer 2020).**
 The first bounds inner products in fully-connected layers to `[−1, 1]` via cosine similarity; the
 second removes the softmax from self-attention entirely in favor of a normalization, on the
-grounds that the simplex constraint limits expressivity. Limitation as baselines for *this*
-problem: cosine normalization was developed for fully-connected layers, not for the per-head
-attention scores or their interaction with a softmax over a variable-length sequence; and removing
-the softmax abandons the well-understood, stable attention mechanism rather than repairing its
-scaling.
+grounds that the simplex constraint limits expressivity.
 
 ## Evaluation settings
 

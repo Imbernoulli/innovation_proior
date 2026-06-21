@@ -1,4 +1,4 @@
-# Context: the Erdős minimum-overlap constant and reaching the published record
+# Context: the Erdős minimum-overlap constant and the published record
 
 ## Research question
 
@@ -8,6 +8,9 @@ count the pairs `(a, b)` with `a ∈ A`, `b ∈ B`, `a − b = k`; let `M(n)` be
 the infimum, over all step functions `h` on `[0,2]` with values in `[0,1]` and `∫_0^2 h = 1`, of `max_k
 ∫ h(x)(1 − h(x+k)) dx` — the worst overlap of the `A`-density `h` against the `B`-density `1 − h`. Every
 explicit step function is an *upper bound* on `C5`; LOWER is better.
+
+The setting here: given the discrete evaluator below, find a feasible height profile whose worst overlap
+is as small as possible, pushing the upper bound on `C5` as low as the current record.
 
 ## How the score is defined
 
@@ -24,19 +27,14 @@ AutoEvolver / SimpleTES 2026 upper bound). Upper-bound yardsticks: flat floor `0
 AlphaEvolve `0.380924` (95 steps), TTT-Discover `0.38087532`, AutoEvolver record `0.38086945`
 (`~600`–`750` steps).
 
-## This method's role
+## Where the trajectory stands
 
-This is the *record* rung. The preceding single-constructor endpoint reached `0.3810764` at `n=600` — a
-robust local optimum that sharper `β`, fresh multistarts, and the exact subgradient polish all hold rather
-than lower. That `~0.38108` is the floor of the basin a single hierarchical-gradient constructor selects,
-not a resolution cap: at the near-binary spiky profile the worst overlap is shared by hundreds of closely
-tied binding shifts, so local descent that keeps the lifted structure trades one binding constraint for
-another and cannot escape. Reaching `0.38087` requires *crossing basins*, which is a population-based,
-code-mutating evolutionary / LLM coding-agent search (AutoEvolver, run to `n≈750` over `~12` hours), not a
-smarter local optimizer. This method loads the AutoEvolver record height profile (`n=750`) and verifies it
-under the trajectory's own frozen evaluator, reproducing the published record `0.38086945` to machine
-precision. The constant is thereby squeezed into `0.379005 ≤ C5 ≤ 0.380868` — White's provable lower bound
-below, the AutoEvolver step-function upper bound above.
+The preceding single-constructor endpoint on this ladder reached `0.3810764` at `n=600` with a
+hierarchical-gradient constructor: at that point the profile is near-binary and spiky, with the worst
+overlap shared by hundreds of closely tied binding shifts. The published record stands at `0.38086945`,
+obtained by AutoEvolver run to `n≈750` over `~12` hours. The goal here is to reach that published record
+number `0.38086945` under this trajectory's own frozen evaluator, squeezing `C5` into
+`0.379005 ≤ C5 ≤ 0.380868` — White's provable lower bound below, the step-function upper bound above.
 
 ## The fixed substrate
 

@@ -7,18 +7,16 @@ running a learned denoiser many times, each call nudging the latent a little clo
 sample. The single dominant cost is the **number of function evaluations (NFE)** — each step is
 one forward pass of a large U-Net, and the steps are strictly sequential, so halving the steps
 roughly halves wall-clock latency. For the *unconditional* setting, dedicated solvers had pushed
-this down to 10-20 NFE. But the quality that made text-to-image systems compelling comes from
+this down to 10-20 NFE. The quality that made text-to-image systems compelling comes from
 **guided sampling**: the denoiser is steered toward a condition (a class, or a text prompt) by a
 guidance term whose strength is set by a *guidance scale* `s`, and in practice a *large* `s` is
 what buys the sharp, prompt-aligned images people want. The commonly used solver for guided
-sampling, DDIM, is a first-order method that needs roughly 100-250 NFE to converge — slow.
+sampling, DDIM, is a first-order method that runs at roughly 100-250 NFE.
 
-The precise goal: a **training-free** sampler — one that plugs into an already-trained denoiser
-with no retraining or distillation — that produces high-quality samples in roughly **15-20 NFE
-even at a large guidance scale**, for both pixel-space DPMs (image data bounded in `[-1, 1]`) and
-latent-space DPMs (Stable-Diffusion-style, where the diffusion runs in a VAE latent). A solution
-must (1) take large steps without the solution diverging, and (2) keep the generated sample inside
-the valid data range. Existing fast solvers achieve neither under large guidance, which is the gap.
+The question: how to build a **training-free** sampler — one that plugs into an already-trained
+denoiser with no retraining or distillation — for guided sampling at large guidance scale, across
+both pixel-space DPMs (image data bounded in `[-1, 1]`) and latent-space DPMs
+(Stable-Diffusion-style, where the diffusion runs in a VAE latent).
 
 ## Background
 
@@ -42,8 +40,8 @@ f(t) = d log(alpha_t)/dt,   g^2(t) = d(sigma_t^2)/dt - 2 (d log(alpha_t)/dt) sig
 ```
 
 The right-hand side is **semi-linear**: a linear term `f(t) x_t` plus a nonlinear term through the
-network. A black-box ODE solver (e.g. RK45) is blind to this structure and discretizes both terms,
-spending error budget on the linear part whose solution is actually an exact exponential.
+network. A black-box ODE solver (e.g. RK45) discretizes both terms; the linear part has an exact
+exponential solution.
 
 **Exponential integrators and the half-log-SNR variable.** For semi-linear ODEs `x' = A x + N(x)`,
 the *exponential-integrator* literature (Hochbruck & Ostermann 2010) solves the linear part exactly
@@ -83,25 +81,21 @@ In both, `s > 0` is the guidance scale and a *large* `s` gives the best conditio
 in text-to-image and class-to-image use (Saharia et al. 2022; Rombach et al. 2022). Sampling then
 solves the same ODE with `eps_tilde_theta` in place of `eps_theta`.
 
-**The diagnostic findings that frame the problem.** Two observations about *existing* fast solvers
-under large guidance are the motivating facts (measured on pre-trained classifier-guided ImageNet
-256x256 DPMs at guidance scale `s = 8.0` with only 15 NFE):
+**Observed behavior under large guidance.** Two empirical observations about fast solvers under
+large guidance (measured on pre-trained classifier-guided ImageNet 256x256 DPMs at guidance scale
+`s = 8.0` with 15 NFE):
 
-- *Large guidance destabilizes high-order solvers.* A large `s` amplifies both the magnitude of
-  `eps_tilde_theta` and its derivatives with respect to `lambda`. High-order solvers approximate
-  those `lambda`-derivatives to take big steps; amplified derivatives shrink the radius within which
-  the high-order approximation is valid, so the solver needs *smaller* steps to converge. At a fixed
-  small NFE the high-order solvers (second- and third-order exponential-integrator solvers, and the
-  pseudo-numerical PNDM solver) produce *worse* samples than first-order DDIM — and the quality
-  degrades further as the solver order increases. The fast-solver speedups that hold without
-  guidance do not transfer to the large-guidance regime.
+- A large `s` amplifies both the magnitude of `eps_tilde_theta` and its derivatives with respect
+  to `lambda`. High-order solvers approximate those `lambda`-derivatives to take big steps, and the
+  radius within which the high-order approximation holds depends on the size of those derivatives.
+  At a fixed small NFE under large guidance, the high-order solvers (second- and third-order
+  exponential-integrator solvers, and the pseudo-numerical PNDM solver) produce different sample
+  quality from first-order DDIM, with quality varying as the solver order changes.
 
-- *Train-test mismatch.* Image pixel data lies in a bounded interval (`[-1, 1]`). A large `s` pushes
-  `eps_tilde_theta` away from any true noise direction, so the converged `x_0` lands outside that
-  interval; the decoded images come out saturated and unnatural (Saharia et al. 2022). A known
-  remedy in the few-step literature is *thresholding* — clipping the running clean-image estimate
-  back into the data bound at each step — but clipping is only available if the sampler actually
-  has a clean-image estimate in hand to clip.
+- Image pixel data lies in a bounded interval (`[-1, 1]`). A large `s` pushes `eps_tilde_theta`
+  away from a true noise direction, so the converged `x_0` can land outside that interval and the
+  decoded images come out saturated (Saharia et al. 2022). A practice in the few-step literature is
+  *thresholding* — clipping the running clean-image estimate back into the data bound at each step.
 
 ## Baselines
 
@@ -112,11 +106,9 @@ its general `eta >= 0` form, one step reads
 x_{t_i} = alpha_{t_i} x_theta(x_{t_{i-1}}, t_{i-1}) + sqrt(sigma_{t_i}^2 - eta^2) eps_theta(x_{t_{i-1}}, t_{i-1}) + eta z,
 ```
 
-with `eta = 0` the deterministic case and larger `eta` reinjecting noise. It was later identified
+with `eta = 0` the deterministic case and larger `eta` reinjecting noise. It has been identified
 (Lu et al. 2022; Salimans & Ho 2022) as a **first-order** discretization of the diffusion ODE. It
-is the workhorse for guided sampling and is empirically robust there. **Gap:** it is only
-first-order, so it needs ~100-250 NFE to converge; there is no higher-order DDIM, and at small NFE
-it is far from converged.
+is the workhorse for guided sampling and is empirically robust there, run at ~100-250 NFE.
 
 **DPM-Solver (Lu et al. 2022; arXiv:2206.00927).** The dedicated high-order solver for the
 *noise-prediction* diffusion ODE. From the exact solution above, Taylor-expand
@@ -133,24 +125,18 @@ x_{t_i}  = (alpha_{t_i}/alpha_{t_{i-1}}) x_{t_{i-1}} - sigma_{t_i}(e^{h_i} - 1) 
 ```
 
 with `h_i = lambda_{t_i} - lambda_{t_{i-1}}`, proven `k`-th order under regularity assumptions.
-Reaches 10-20 NFE without guidance. **Gap:** it operates on `eps_theta`; under large guidance the
-amplified `lambda`-derivatives of `eps_tilde_theta` shrink its convergence radius (the instability
-finding above), and because it never forms a clean-image estimate, there is nothing to clip, so the
-train-test mismatch remains.
+Reaches 10-20 NFE without guidance. It operates on `eps_theta`.
 
 **DEIS (Zhang & Chen 2022; arXiv:2204.13902).** A *multistep* exponential-integrator solver on
 `eps_theta`, Taylor-expanding in `t` and reusing past network outputs (Adams-Bashforth style) so
-each step costs only one new evaluation. **Gap:** same `eps`-parameterization, same large-guidance
-instability and train-test mismatch.
+each step costs only one new evaluation.
 
 **Black-box ODE / SDE solvers (Song et al. 2020; arXiv:2011.13456).** Generic RK45 on the
-probability-flow ODE, or ancestral / reverse-SDE samplers. **Gap:** RK45 discretizes the linear
-term it should solve exactly (wasted error) and needs ~60+ NFE; SDE samplers inject randomness that
-caps the usable step size and need even more steps to converge.
+probability-flow ODE (which discretizes the linear term, run at ~60+ NFE), or ancestral /
+reverse-SDE samplers that inject randomness at each step.
 
 **Distillation / learned-schedule samplers (Salimans & Ho 2022; Watson et al. 2021).** Train a
-student to take big steps, or learn the step schedule. **Gap:** they require extra training and are
-hard to scale to large pre-trained text-to-image DPMs — exactly the setting that matters here.
+student to take big steps, or learn the step schedule. These require extra training.
 
 ## Evaluation settings
 
@@ -179,9 +165,8 @@ the high-order solvers above. The substrate that already exists: a frozen denois
 `predict_noise` call, the noise schedule (`alpha(t)`, `sigma(t)`, the half-log-SNR `lambda(t)` and
 its inverse), a latent initializer, and a VAE decoder. The outer loop walks a decreasing schedule
 of times and, at each one, calls the network and then applies a **per-step update rule** to advance
-the latent. That update rule — how to combine the network output(s) into the next latent so that
-large steps stay accurate and stable under guidance — is exactly what is to be designed; everything
-else is fixed.
+the latent. That update rule — how to combine the network output(s) into the next latent — is the
+open slot; everything else is fixed.
 
 ```python
 import torch
@@ -223,5 +208,5 @@ class GuidedDiffusionSampler:
         return (img / 2 + 0.5).clamp(0, 1)
 ```
 
-The harness supplies the network and the schedule; `update_rule` is the open slot, and the time loop's
-spacing (and thus how the fixed NFE budget is spent) is set by `timesteps`.
+The harness supplies the network and the schedule; `update_rule` is the open slot, and the time
+loop's spacing (and thus how the NFE budget is spent) is set by `timesteps`.

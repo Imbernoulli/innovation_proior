@@ -1,29 +1,16 @@
 ## Research question
 
 A sequence model built entirely out of self-attention and per-position feed-forward
-layers has one structural property that becomes a problem the moment you remove
-recurrence and convolution: it has no notion of order. Self-attention computes each
-output as a content-based weighted average over all positions, and that average is
-**permutation-equivariant** — permute the input tokens and the outputs come out
-permuted the same way, with identical values. A per-position feed-forward layer acts on
-each position independently and cannot see order either. So a stack of these layers sees
-its input as a *set* of token vectors, not a sequence: "the cat sat" and "sat cat the"
-are indistinguishable to it. Yet the task is sequence transduction, where order is
-meaning.
+layers has one structural property: it has no notion of order. Self-attention computes
+each output as a content-based weighted average over all positions, and that average is
+**permutation-equivariant** — permute the input tokens and the outputs come out permuted
+the same way, with identical values. A per-position feed-forward layer acts on each
+position independently and cannot see order either. So a stack of these layers sees its
+input as a *set* of token vectors, not a sequence: "the cat sat" and "sat cat the" are
+indistinguishable to it. Yet the task is sequence transduction, where order is meaning.
 
-The precise problem is therefore: design a representation of a token's position in the
-sequence that can be injected into a width-`d_model` model so that order becomes
-recoverable, subject to several constraints that a usable scheme must meet at once.
-(1) It has to be a fixed-width-`d_model` object so it can ride alongside the token
-embeddings without changing the rest of the architecture. (2) Its magnitude must stay
-bounded as the position index grows, so that long sequences don't drive activations
-outside the range the network was trained in. (3) Distinct positions need distinct
-codes, so the model can in principle tell any two positions apart. (4) It should make
-*relative* position easy to use, because what matters linguistically is usually "how far
-back" a token is, not its absolute index — and that relationship should look the same
-everywhere in the sequence. (5) Ideally it should be defined for positions **beyond the
-longest sequence seen in training**, so the model has a chance to run on longer inputs at
-test time. No scheme in use at the time meets all five together.
+The question is: how do you represent a token's position in the sequence so that order
+can be recovered by a width-`d_model` self-attention model?
 
 ## Background
 
@@ -42,54 +29,37 @@ all positions in parallel. Convolutional sequence models — the Extended Neural
 2014; Luong et al. 2015) route information between arbitrary positions in one hop. The
 load-bearing concept underneath all of this is **attention**: an output is a weighted sum
 of values, the weights a softmax of a compatibility score between a query and each key.
-The crucial structural fact about it — the thing that creates the present problem — is
-that the score depends only on the *contents* of the query and key vectors, not on where
-they sit. Permute the keys and values and the softmax weights permute with them and the
-output is unchanged. Attention dissolved the long-range-dependency problem (any position
-reaches any other in one hop) precisely *because* it is blind to distance and order; that
-same blindness is what now has to be repaired by something external.
+The crucial structural fact about it is that the score depends only on the *contents* of
+the query and key vectors, not on where they sit. Permute the keys and values and the
+softmax weights permute with them and the output is unchanged.
 
-There is a known diagnostic about position counters that any candidate scheme has to
+There is a known observation about position counters that any candidate scheme has to
 respect. A raw integer index `t` used as a feature is unbounded: it keeps growing with
 sequence length, so a model trained on short sequences sees position values at test time
-it was never exposed to, and large-magnitude inputs destabilize the downstream linear
-layers. Normalizing the index into `[0, 1]` by dividing by the sequence length removes the
-unboundedness but breaks consistency: the same step of one position corresponds to a
-different numeric delta in a short sequence than in a long one, so "one token later" has
-no fixed meaning across examples. Both of these are pre-method facts about how naive
-position counters behave, independent of any particular architecture.
+it was never exposed to. Normalizing the index into `[0, 1]` by dividing by the sequence
+length removes the unboundedness but breaks consistency: the same step of one position
+corresponds to a different numeric delta in a short sequence than in a long one, so
+"one token later" has no fixed meaning across examples.
 
 ## Baselines
 
 **Implicit position via recurrence (Sutskever et al. 2014; Bahdanau et al. 2014).** In a
 recurrent encoder-decoder, position is not represented at all — it is carried by the order
 of computation, since state `t` is produced after state `t-1`. Core idea: `h_t =
-f(h_{t-1}, x_t)`, with the decoder attending over encoder states. Gap: the very mechanism
-that supplies order, the step-by-step recurrence, is the sequential bottleneck the field
-is trying to eliminate. Take recurrence away and the order information vanishes with it,
-leaving nothing in its place.
+f(h_{t-1}, x_t)`, with the decoder attending over encoder states.
 
-**Learned absolute position embeddings (Gehring et al. 2017, ConvS2S).** The first clean
-"position as an addable vector" scheme. Keep a learned table `p_1, …, p_L ∈ ℝ^d`, one
-trainable vector per absolute index up to a maximum length `L`, and add `p_t` to the token
-embedding at position `t`: the input to position `t` is `embed(x_t) + p_t`. Convolutions
-only see a local window, so without this the model cannot recover absolute order; the
-added embeddings give it back, at negligible cost (a single addition). This is the direct
-template — order injected as a width-`d` vector summed into the embeddings. Gaps: (1) the
-table is only defined for indices `1…L`; position `L+1` has no vector, so the scheme has
-literally nothing to say about any position longer than the longest training sequence — it
-cannot extrapolate. (2) Each `p_t` is learned independently of every other, so there is no
-built-in relationship between the code for position `t` and the code for position `t+k`;
-any regularity relating nearby positions has to be discovered from data rather than
-guaranteed by the construction, and a relationship learned at small indices need not hold
-at large ones.
+**Learned absolute position embeddings (Gehring et al. 2017, ConvS2S).** Keep a learned
+table `p_1, …, p_L ∈ ℝ^d`, one trainable vector per absolute index up to a maximum length
+`L`, and add `p_t` to the token embedding at position `t`: the input to position `t` is
+`embed(x_t) + p_t`. Convolutions only see a local window, so without this the model
+cannot recover absolute order; the added embeddings give it back, at negligible cost (a
+single addition). This is the direct template — order injected as a width-`d` vector
+summed into the embeddings.
 
-**A single bounded periodic counter.** A natural fix for the unbounded-index problem is to
-pass the index through one bounded periodic function, e.g. `sin(ω t)`, giving a value in
-`[-1, 1]` for every `t`. Core idea: boundedness and definedness everywhere come for free
-from periodicity. Gap: a single sinusoid aliases — `sin(ω t)` returns to the same value
-every period, so distinct positions collide and become indistinguishable, and a single
-scalar channel carries far too little information to identify a position among hundreds.
+**A single bounded periodic counter.** A natural fix for the unbounded-index problem is
+to pass the index through one bounded periodic function, e.g. `sin(ω t)`, giving a value
+in `[-1, 1]` for every `t`. Core idea: boundedness and definedness everywhere come for
+free from periodicity.
 
 ## Evaluation settings
 

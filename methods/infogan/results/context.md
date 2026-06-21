@@ -11,34 +11,30 @@ Such a representation is useful precisely because the downstream tasks are unkno
 if the salient factors are laid out as separate, interpretable dimensions, whatever supervised task
 arrives later can read off the dimensions it needs.
 
-Generative modeling is an attractive route — the belief is that a model good enough to *synthesize*
-the data must have captured its factors of variation. But there is no free lunch: it is trivial to
-build a perfect generative model whose internal representation is arbitrarily entangled and useless.
-So generation alone does not produce disentanglement. The two prominent deep generative models, the
-variational autoencoder and the adversarial network, both take an unstructured latent vector and are
-free to use it however minimizes their training loss — which generally means entangling all the
-factors together, so no single latent coordinate corresponds to a semantic feature.
+Generative modeling is one route — the belief is that a model good enough to *synthesize* the data
+must have captured its factors of variation. The two prominent deep generative models, the variational
+autoencoder and the adversarial network, both take an unstructured latent vector and use it however
+minimizes their training loss, so a single latent coordinate need not correspond to a semantic feature.
 
 The precise question: **is there a way to make a deep generative model learn a disentangled,
 interpretable representation — one latent coordinate per semantic factor — entirely without
-supervision, on complex image datasets, and without paying a large computational or training-stability
-cost?** Every prior method that recovers disentangled factors leans on supervision of some kind:
-labels for the factors, or knowledge of which pairs of examples share a factor, or temporal grouping.
-A solution would have to *induce* the structure from the data alone, forcing the model to spend
-specific latent coordinates on specific factors without ever being told what those factors are.
+supervision, on complex image datasets?** Prior methods that recover disentangled factors lean on
+supervision of some kind: labels for the factors, or knowledge of which pairs of examples share a
+factor, or temporal grouping. A solution would have to *induce* the structure from the data alone,
+spending specific latent coordinates on specific factors without ever being told what those factors are.
 
 ## Background
 
 The field state (mid-2010s deep generative modeling): adversarial and variational generators produce
-increasingly convincing images, but their latent spaces are entangled, and disentangling them has so
-far required supervision. The load-bearing concepts a solution rests on:
+increasingly convincing images, and disentangling their latent spaces has so far been done with
+supervision. The load-bearing concepts a solution rests on:
 
 - **The adversarial framework (Goodfellow et al., 2014).** A generator `G` maps a noise vector
   `z ~ p_noise` to a sample, implicitly defining a distribution `P_G`; a discriminator `D(x)`
   estimates the probability that `x` is real. They play the minimax game
   `min_G max_D V(D,G) = E_{x~p_data}[log D(x)] + E_{z}[log(1 - D(G(z)))]`, whose optimal discriminator
   for a fixed `G` is `D*(x) = p_data(x) / (p_data(x) + P_G(x))`. The input noise `z` is a single
-  unstructured vector with no imposed meaning, so `G` is free to use it in a highly entangled way.
+  unstructured vector with no imposed meaning.
 
 - **A stable convolutional adversarial architecture (Radford et al., 2015).** The set of architectural
   constraints — strided/fractionally-strided convolutions, batch normalization in both networks
@@ -70,30 +66,26 @@ The prior methods a new procedure would be measured against and reacts to:
 
 - **The adversarial framework with an unstructured noise input (Goodfellow et al., 2014); the stable
   convolutional variant (Radford et al., 2015).** Powerful generators, and the convolutional variant's
-  noise space supports basic vector arithmetic. *Gap:* the latent input is unstructured, so the model
-  has no incentive to map any single latent coordinate to a single semantic factor — the
-  representation is entangled by default.
+  noise space supports basic vector arithmetic. The latent input is a single unstructured vector.
 
 - **DC-IGN — Deep Convolutional Inverse Graphics Network (Kulkarni et al., 2015).** Learns graphics
   codes (pose, lighting, elevation) for 3D-rendered images by *clamping*: during training it presents
-  minibatches in which only one factor varies and forces the rest of the code to stay fixed.
-  *Gap:* requires supervised knowledge of which factor varies in each minibatch — the salient factors
-  must be known and grouped in advance, so factors that are not anticipated cannot be discovered.
+  minibatches in which only one factor varies and forces the rest of the code to stay fixed, using
+  supervised knowledge of which factor varies in each minibatch.
 
 - **disBM — disentangling Boltzmann machine (Reed et al., 2014).** A higher-order Boltzmann machine
   that disentangles by clamping a part of the hidden units across a pair of data points known to match
-  in all-but-one factor. *Gap:* weak supervision (knowing which examples share which factor).
+  in all-but-one factor (weak supervision: knowing which examples share which factor).
 
-- **hossRBM — higher-order spike-and-slab RBM (Desjardins et al., 2012).** To the extent any prior
-  method disentangles fully unsupervised, this one does, separating emotion from identity on a face
-  dataset. *Gap:* it can only disentangle *discrete* latent factors, and its computational cost grows
-  *exponentially* in the number of factors, so it does not scale.
+- **hossRBM — higher-order spike-and-slab RBM (Desjardins et al., 2012).** Disentangles fully
+  unsupervised, separating emotion from identity on a face dataset. It disentangles *discrete* latent
+  factors, and its computational cost grows exponentially in the number of factors.
 
 - **Supervised / weakly-supervised disentangling: bilinear models (Tenenbaum & Freeman, 2000),
   multi-view perceptron (Zhu et al., 2014), recurrent latent-transform models (Yang et al., 2015),
   adversarial autoencoders (Makhzani et al., 2015), semi-supervised deep generative models (Kingma et
   al., 2014).** All separate a labeled factor (often the class) from the rest of the variation by
-  *matching part of the representation to a supplied label*. *Gap:* they all consume supervision.
+  *matching part of the representation to a supplied label*.
 
 ## Evaluation settings
 
@@ -121,10 +113,9 @@ The benchmarks, datasets, and protocol that form the natural yardstick:
 ## Code framework
 
 The available substrate is a stable convolutional adversarial-training harness (the
-strided-conv / batchnorm / leaky-ReLU recipe with Adam). What exists: a generator that takes a single
-latent vector, a discriminator/classifier body, a binary cross-entropy adversarial loss, and the
-alternating update loop. What is missing is whatever it takes to make a single latent coordinate
-correspond to a single semantic factor without supervision.
+strided-conv / batchnorm / leaky-ReLU recipe with Adam): a generator that takes a single latent
+vector, a discriminator/classifier body, a binary cross-entropy adversarial loss, and the alternating
+update loop.
 
 ```python
 import torch
@@ -158,5 +149,4 @@ def train_step(real, opt_g, opt_d):
     pass
 ```
 
-This harness can train a stable convolutional adversarial pair, but nothing in it ties a latent
-coordinate to a semantic factor — that is the open problem.
+This harness trains a stable convolutional adversarial pair from an unstructured latent vector.

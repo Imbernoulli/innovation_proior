@@ -6,13 +6,9 @@ The design space here is the **attention block's KV structure** — how keys and
 
 ## Prior art / Background / Baselines
 
-The control and the baselines all share one structural fact: the KV cache is large because it stores separate keys and values per head.
-
-- **Dense multi-head attention (Vaswani et al., 2017).** Each query head has its own key and value projection, so the layer attends over multiple relations in parallel. Gap: every head materializes separate K and V, so the cache stores one K/V pair per head and scales directly with head count.
-- **The KV cache.** During generation, past K/V are stored rather than recomputed, making per-step arithmetic linear in history. Gap: it does not bound the number of stored KV heads; the cache still grows with sequence length, batch size, and head count.
-- **Roofline memory-bandwidth model (Williams et al., 2009).** Counting bytes versus operations shows that, for long-sequence decoding, streaming the cache dominates the arithmetic cost. Gap: the diagnostic identifies per-head K/V as the source of bandwidth pressure but does not itself say how to shrink the stored state.
-
-The fixed substrate below is the standard dense layer these converged on, and the editable interface is exactly the region where the per-head KV state can be reduced.
+- **Dense multi-head attention (Vaswani et al., 2017).** Each query head has its own key and value projection, so the layer attends over multiple relations in parallel. The cache stores one K/V pair per head and scales directly with head count.
+- **The KV cache.** During generation, past K/V are stored rather than recomputed, making per-step arithmetic linear in history.
+- **Roofline memory-bandwidth model (Williams et al., 2009).** Counting bytes versus operations shows that, for long-sequence decoding, streaming the cache dominates the arithmetic cost.
 
 ## Fixed substrate / Code framework
 

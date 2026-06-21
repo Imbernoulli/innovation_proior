@@ -11,23 +11,16 @@ first sketches or hallucinates a backbone with a desired geometry and then needs
 sequence whose chemistry is compatible with that geometry (good packing, satisfied
 hydrogen bonds, no buried unpaired charges).
 
-The problem is hard for three coupled reasons. First, the map is **many-to-one and
-degenerate**: many sequences fold to nearly the same backbone, so there is no single
-"correct" answer and a model must capture a *distribution* over compatible sequences, not
-a point prediction. Second, the dependencies between residues are **long-range in
-sequence but local in 3D**: two residues far apart in the chain can be in direct contact
-in space and must be chosen jointly, while two sequence-adjacent residues may point into
-opposite environments. Third, the relevant signal is **purely geometric and must be
-invariant** to how the structure happens to be placed in the coordinate frame — rotating
-or translating the whole molecule cannot change the sequence it should encode.
+The map is many-to-one and degenerate: many sequences fold to nearly the same backbone.
+Dependencies between residues are long-range in sequence but local in 3D — two residues
+far apart in the chain can be in direct contact in space, while two sequence-adjacent
+residues may point into opposite environments. And the relevant signal is purely
+geometric, which should be invariant to how the structure happens to be placed in the
+coordinate frame — rotating or translating the whole molecule cannot change the sequence
+it should encode.
 
-A solution has to: read raw 3D coordinates and produce per-residue amino-acid
-probabilities; be invariant to rigid-body motion; scale to proteins of hundreds of
-residues on a single GPU; model the joint distribution over the sequence rather than each
-residue in isolation; and — for it to be useful in real design pipelines — stay reliable
-when the input backbone is *imperfect* (predicted, hallucinated, or low-resolution rather
-than a perfect crystal structure), and flexible enough that a designer can fix some
-positions and let the model fill in the rest.
+How should a learned model read raw 3D coordinates and produce per-residue amino-acid
+probabilities over sequences compatible with a given backbone?
 
 ## Background
 
@@ -36,11 +29,8 @@ et al. 2011; Alford et al. 2017) scores a sequence–structure pair with a hand-
 energy function — a weighted sum of van der Waals, solvation, hydrogen-bonding,
 electrostatic, and statistical rotamer terms — and searches over amino-acid identities
 and side-chain rotamers with Monte-Carlo simulated annealing (the `fixbb` protocol). It
-encodes decades of structural-biology knowledge, but it is slow (seconds to minutes per
-design, side-chain packing dominating the cost), and its energy function and sampling are
-both approximations, so designs frequently fail and the failures are hard to diagnose.
-On native backbones its recovery of the natural amino acid is roughly a third of
-positions.
+encodes decades of structural-biology knowledge. On native backbones its recovery of the
+natural amino acid is roughly a third of positions.
 
 In parallel, deep learning reframed the task as **conditional sequence modeling**: learn
 `p(sequence | structure)` directly from the Protein Data Bank, letting the model discover
@@ -73,8 +63,8 @@ GPU for long proteins. But a well-evidenced fact in protein science (Marks et al
 Morcos et al. 2011) is that the contacts that matter are *spatially local*: a residue's
 energetically relevant partners are its neighbors in 3D, of which there are a small
 constant number regardless of chain length. Restricting attention/messages to a
-**`k`-nearest-neighbor graph in space** (`k` around 30) therefore loses little and turns
-the cost linear in length.
+**`k`-nearest-neighbor graph in space** (`k` around 30) therefore turns the cost linear
+in length.
 
 Representing the backbone as an *invariant* graph requires care. Pairwise distances among
 backbone atoms are invariant to rigid-body motion by construction. A single representative
@@ -99,33 +89,23 @@ Cb = -0.58273431 * a + 0.56802827 * b - 0.54067466 * c + CA,
 which gives every residue a side-chain-pointing reference atom from backbone coordinates
 alone.
 
-Two diagnostic findings about existing learned models set up the design space. (i) On this
-data, a *plain multilayer-perceptron* message aggregator `Δh_i = sum_j MLP(h_i, h_j,
-e_ij)` was observed to reach *better* held-out perplexity than multi-head attention over
-the same graph (Ingraham et al. 2019, Table 3) — the costlier attention mechanism tended
-to overfit, so the simpler symmetric sum generalized better. (ii) Local *orientation*
-information helped above bare distances, but even distance-only graphs already beat
-profile-based neural baselines — much of the discriminative geometry lives in
-inter-atomic distances. These observations caution against assuming that attention or
-explicit orientation machinery is automatically worth its extra complexity.
+On this data, a *plain multilayer-perceptron* message aggregator `Δh_i = sum_j MLP(h_i,
+h_j, e_ij)` was observed to reach *better* held-out perplexity than multi-head attention
+over the same graph (Ingraham et al. 2019, Table 3). Local *orientation* information
+helped above bare distances, but even distance-only graphs already beat profile-based
+neural baselines.
 
 ## Baselines
 
 **Rosetta `fixbb` (physics-based; Leaver-Fay et al. 2011; Alford et al. 2017).** Scores a
 sequence–structure pair with a fixed, hand-engineered energy function and searches
 amino-acid identity plus side-chain rotamers by Monte-Carlo simulated annealing. Strong
-priors from structural biology; no learning. **Limitations:** seconds-to-minutes per
-design dominated by rotamer packing; the energy function is an approximation with manually
-tuned weights; sensitive to small backbone imperfections, so it degrades on
-non-crystallographic (e.g. NMR or predicted) backbones; native-sequence recovery on
-native backbones sits around a third of positions.
+priors from structural biology; no learning.
 
 **SPIN2 (O'Connell et al. 2018) and related profile predictors.** Neural networks that
 predict a position-specific amino-acid profile from local structural descriptors. Faster
-than Rosetta but treat each position's distribution given local context, with limited
-coupling between positions, and are computationally heavy per protein. **Limitation:** they
-predict per-position profiles rather than a coherent joint over the full sequence, so
-they do not capture the correlated choices that contact pairs demand.
+than Rosetta; treat each position's distribution given local context, with limited
+coupling between positions.
 
 **Structured Transformer / Struct2Seq (Ingraham, Garg, Barzilay, Jaakkola, 2019).** The
 load-bearing prior art: cast design as autoregressive language modeling conditioned on the
@@ -146,16 +126,7 @@ left-to-right (N→C), masking so position `i` sees the full structure but only 
 emitted amino acids `s_{<i}`. Three encoder and three decoder layers, hidden dimension
 128, trained with the Transformer (warmup) learning-rate schedule, dropout 0.1, and label
 smoothing 0.1. It improved markedly over profile baselines and beat Rosetta on both
-recovery and speed. **Limitations / where it stalls:** (a) the encoder refines only the
-**node** embeddings — the geometric **edge** features, which carry the inter-residue
-signal, are computed once at featurization and then held fixed through every layer;
-(b) the factorization is **strictly left-to-right**, so at inference a position can
-condition only on lower-index residues, which prevents using arbitrary fixed positions as
-context (needed for partial redesign, symmetry, or multi-chain complexes); (c) the model
-is trained on crystal-exact coordinates, so it has only ever seen sub-Ångström-accurate
-backbones; (d) it carries explicit orientation/quaternion edge features and multi-head
-attention even though Ingraham et al.'s ablation found a plain MLP aggregator generalized
-better.
+recovery and speed.
 
 **GVP-GNN (Jing, Eismann, Suriana, Townshend, Dror, 2021).** An SE(3)-equivariant
 alternative on the same task and the same CATH split. Node and edge features carry both
@@ -165,9 +136,7 @@ vectors and invariance for scalars. Node features include `(sin, cos)(φ, ψ, ω
 forward/reverse `Cα` unit vectors, and the imputed `Cβ − Cα` direction (tetrahedral
 geometry); edges carry the `Cα–Cα` unit vector, a 16-Gaussian distance RBF (0–20 Å), and a
 sinusoidal `i − j`. It reuses Ingraham's masked autoregressive encoder–decoder (three
-graph-propagation steps each). **Limitation:** the equivariant vector machinery and dual
-scalar/vector bookkeeping add architectural complexity; it inherits the same fixed
-left-to-right decoding and trains on exact coordinates.
+graph-propagation steps each).
 
 ## Evaluation settings
 

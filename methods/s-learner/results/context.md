@@ -20,16 +20,14 @@ helps) and probe mechanisms (read off which covariates modulate the effect).
 
 The difficulty is structural, not statistical. For each unit we ever observe only *one* of
 its two potential outcomes — `Y(W_i)` — and never the counterfactual one, so the
-unit-level effect `D_i = Y_i(1) - Y_i(0)` is never directly seen. Worse, two assignment
-mechanisms collide. In an *observational* study treatment is not randomized: units that got
-the treatment may differ systematically in `X` from those that did not, so a raw
-treated-minus-control comparison conflates the effect with pre-existing differences
-(confounding). And the effect itself is *heterogeneous* — it can vary across the covariate
-space in arbitrary, nonlinear ways — so even with confounding handled, the quantity to be
-estimated is a whole function, not a single number. A solution must take noisy, partially
-observed outcomes under an assignment that depends on covariates and recover the entire
-effect surface `tau(x)`, while being robust to model misspecification and stable across
-random train/test splits.
+unit-level effect `D_i = Y_i(1) - Y_i(0)` is never directly seen. In an *observational*
+study treatment is not randomized: units that got the treatment may differ systematically
+in `X` from those that did not, so a raw treated-minus-control comparison conflates the
+effect with pre-existing differences (confounding). And the effect itself is *heterogeneous*
+— it can vary across the covariate space in arbitrary, nonlinear ways — so the quantity to
+be estimated is a whole function, not a single number. The question is how to turn noisy,
+partially observed outcomes under an assignment that depends on covariates into an estimate
+of the entire effect surface `tau(x)`.
 
 ## Background
 
@@ -129,42 +127,24 @@ tau_hat(x) = mu_hat_1(x) - mu_hat_0(x).
 Because the two arms are fit by two different models, the treatment can never be lost: it
 is *which* model is used. Under ignorability and overlap each arm-model targets the right
 counterfactual surface, and the EMSE is controlled by the two response-fit errors,
-`EMSE(tau_hat) <= 2·(mu_1-error) + 2·(mu_0-error)`. **Limitation:** the two models are tuned
-to fit `mu_0` and `mu_1` *individually*, each with its own regularization, and the data is
-split so each model sees only its own arm. When `mu_0` and `mu_1` are individually complex
-but their difference is simple, the procedure spends its capacity on the complex surfaces
-and the simple contrast inherits two independent estimation errors; when one arm is small
-(`n << m`), that arm's model is fit on few points and its error dominates. The error is
-governed by the smoothness of the *response* surfaces, not the (often greater) smoothness
-of the *effect*, so structure in the effect is not exploited.
+`EMSE(tau_hat) <= 2·(mu_1-error) + 2·(mu_0-error)`.
 
 **Outcome regression / g-computation with a flexible Bayesian model (Hill 2011; Green &
 Kern 2012).** Fit a single flexible model of the outcome on the covariates and a treatment
 indicator with a nonparametric Bayesian regressor (BART), giving a fitted response surface
 `f(x, w)`, and read the effect off as the difference of that surface across the indicator,
 `f(x, 1) - f(x, 0)`, at fixed `x`. BART supplies coherent uncertainty intervals, needs
-little tuning, and handles many predictors. **Limitation:** the approach was developed and
-demonstrated specifically with BART as the regressor, and the treatment indicator is one
-input among many to a regularized model — what happens to the estimated effect when the
-indicator's contribution is shrunk, and whether the same construction works with an
-arbitrary off-the-shelf learner rather than BART in particular, is not characterized.
+little tuning, and handles many predictors.
 
 **Propensity reweighting (IPW; Rosenbaum & Rubin 1983).** Estimate `e_hat(x) = P(W=1|X=x)`
 and reweight outcomes by the inverse propensity to recreate a pseudo-randomized comparison.
-**Limitation:** it estimates averages well but is high-variance for a covariate-resolved
-effect surface, and weights blow up where overlap is weak (`e(x)` near 0 or 1); it does not
-directly produce a smooth `tau(x)`.
 
 **Subgroup average effects (Hansen & Bowers 2009).** Partition the covariate space into
-meaningful subgroups and report the ATE within each. **Limitation:** the partition is
-chosen by hand, the resolution is coarse, and the effect is constant within a subgroup, so
-genuinely continuous heterogeneity is not captured.
+meaningful subgroups and report the ATE within each.
 
 **Modified-splitting forest (Causal Forest; Wager & Athey 2017).** A random forest whose
 splitting criterion is changed to target treatment-effect heterogeneity directly rather
-than outcome prediction. **Limitation:** it requires altering the internals of the forest
-algorithm, so it is tied to one base learner and cannot reuse an arbitrary, already-trusted
-supervised regressor as a black box.
+than outcome prediction.
 
 ## Evaluation settings
 

@@ -1,12 +1,12 @@
 ## Research Question
 
-I want an unsupervised density model for high-dimensional continuous data such as images. The useful representation target is not just a low-dimensional code; it is a coordinate system in which the transformed data distribution is easy to model. The sharp version is to find a deterministic transform `h = f(x)` whose coordinates are independent under a simple prior,
+I want an unsupervised density model for high-dimensional continuous data such as images. The target is a coordinate system in which the transformed data distribution is easy to model. The setting is to find a deterministic transform `h = f(x)` whose coordinates are independent under a simple prior,
 
 ```text
 p_H(h) = product_d p_{H_d}(h_d).
 ```
 
-The model should combine four properties that usually come separately: exact maximum-likelihood training, exact data-to-code inference, easy unbiased ancestral sampling, and a representation with the same dimensionality as the data. The hard constraint is that `f` must be expressive enough to untangle real images while still making both the likelihood and inverse computation cheap.
+The model should support exact maximum-likelihood training, exact data-to-code inference, and unbiased ancestral sampling, with a representation having the same dimensionality as the data.
 
 ## Probability Tooling Already On The Table
 
@@ -17,21 +17,21 @@ p_X(x) = p_H(f(x)) * |det df(x)/dx|,
 log p_X(x) = log p_H(f(x)) + log |det df(x)/dx|.
 ```
 
-With a factorial prior the first term is just a coordinate-wise sum. The determinant term is not optional bookkeeping: it corrects the scale effect of an invertible preprocessing. If `f` contracts a neighborhood around data, the prior density at the transformed point may rise, but the log-determinant falls by the corresponding local volume change. In the data-to-code direction this term penalizes contraction and rewards expansion around high-density regions.
+With a factorial prior the first term is just a coordinate-wise sum. The determinant term corrects the scale effect of an invertible preprocessing. If `f` contracts a neighborhood around data, the prior density at the transformed point may rise, but the log-determinant falls by the corresponding local volume change. In the data-to-code direction this term penalizes contraction and rewards expansion around high-density regions.
 
 Composition is also available. If `f = f_L o ... o f_1`, the inverse composes the layer inverses in reverse order, and the Jacobian determinant is the product of the layer determinants. The open design problem is therefore to find elementary bijective layers whose inverse and determinant are cheap while leaving enough room for deep nonlinear functions.
 
-## Existing Routes And Gaps
+## Existing Routes
 
-Undirected graphical models such as RBMs and DBMs define flexible densities, but the partition function is intractable. Training and sampling rely on MCMC, and likelihood evaluation needs approximations such as annealed importance sampling, which can be optimistic.
+Undirected graphical models such as RBMs and DBMs define flexible densities, with training and sampling handled via MCMC, and likelihood evaluation via approximations such as annealed importance sampling.
 
-Variational autoencoders have fast ancestral sampling and a learned recognition model, but the encoder is stochastic and approximate. The objective is a lower bound on likelihood, not the likelihood itself, and the decoder is only encouraged to reconstruct through a likelihood term.
+Variational autoencoders use a stochastic recognition model and optimize a lower bound on the likelihood.
 
-Autoregressive density estimators write `p(x)` as an ordered product of one-dimensional conditionals. This gives an exact tractable likelihood because the dependency structure is triangular, but sampling is sequential in the dimension count and the fixed ordering is part of the model.
+Autoregressive density estimators write `p(x)` as an ordered product of one-dimensional conditionals. The dependency structure is triangular, and sampling proceeds sequentially in the dimension count under a fixed ordering.
 
-Adversarial generators can sample in parallel from a simple noise source, but they do not provide a tractable likelihood or an exact encoder from data back to latent variables.
+Adversarial generators sample in parallel from a simple noise source.
 
-Earlier learned-transform models point in the right direction but miss at least one needed property. Linear independent-component methods are restricted and require maintaining linear constraints; Gaussianization uses a greedy layered transform; richer neural transforms without a built-in bijective structure do not make inference, sampling, and likelihood all tractable.
+Earlier learned-transform models explore related ideas. Linear independent-component methods apply linear constraints; Gaussianization uses a greedy layered transform; and various neural transform architectures explore bijective structures.
 
 ## Data Protocol And Fair Evaluation
 

@@ -16,18 +16,12 @@ s_i = E[Y | f(X) = s_i],
 i.e. among instances that receive score `s_i`, the proportion of positives is `s_i`. There is
 a unique map that achieves this on a given dataset, `mu(s_i) = E[Y | f(X) = s_i]`, but fitting
 it directly overfits: if `f` outputs a distinct score on every training instance, the
-training-perfect map collapses to the 0/1 labels and is wildly overconfident off the training
-set. So calibration is done with a *parametric family* carrying an inductive bias, fitted on a
-held-out calibration set.
+training-perfect map collapses to the 0/1 labels. So calibration is done with a *parametric
+family* carrying an inductive bias, fitted on a held-out calibration set.
 
-The precise goal here is a calibration family that (1) is fitted as cheaply as the standard
-parametric method — ideally a single call to an off-the-shelf routine; (2) does not require
-much labelled calibration data, so it is usable on small calibration sets where a fully
-non-parametric fit would overfit; (3) is rich enough to undo the kinds of score distortion
-that real classifiers actually produce, including distortions in the *opposite* direction
-from what the standard parametric family can represent; and (4) cannot make a classifier that
-is already well-calibrated *worse*. Each existing method below achieves a strict subset; none
-achieves all four. Closing that gap is the problem.
+The question here is what parametric calibration family to use: a family of maps from the raw
+score to a calibrated posterior, fitted cheaply on a small held-out calibration set, that can
+undo the kinds of score distortion real classifiers produce.
 
 ## Background
 
@@ -41,35 +35,29 @@ field state and the load-bearing facts:
   Reliability diagrams (binned score against empirical positive rate) reveal that different
   model families distort their scores in characteristic, repeatable ways. Maximum-margin
   methods and boosting push scores *toward the middle*, producing a sigmoid-shaped reliability
-  curve — the empirical positive rate is more extreme than the score, so the scores need to be
-  *spread out* toward 0 and 1. This is the well-documented case the standard parametric method
-  was built for. But other widely used classifiers do the opposite. Naive Bayes multiplies
-  many per-feature likelihood ratios and, when features are correlated, double-counts evidence,
-  so its scores are pushed *to the extremes* near 0 and 1; the original-formulation Adaboost
-  (probabilities read off the additive-logistic-regression view of Friedman, Hastie &
-  Tibshirani 2000) does the same. For those, the empirical positive rate is *less* extreme
-  than the score: the correct map has to *pull scores back in from the extremes*, an
-  inverse-sigmoid shape.
+  curve — the empirical positive rate is more extreme than the score. This is the case the
+  standard parametric method was built for. Other widely used classifiers do the opposite.
+  Naive Bayes multiplies many per-feature likelihood ratios and, when features are correlated,
+  double-counts evidence, so its scores are pushed *to the extremes* near 0 and 1; the
+  original-formulation Adaboost (probabilities read off the additive-logistic-regression view
+  of Friedman, Hastie & Tibshirani 2000) does the same. For those, the empirical positive rate
+  is *less* extreme than the score, an inverse-sigmoid-shaped reliability curve.
 
 - **A score that lives on `[0, 1]` is a bounded quantity.** A model of the per-class score
-  distribution that places mass outside `[0, 1]` is incoherent for such scores. This matters
-  because the standard parametric calibration family is derived from a per-class density
-  assumption, and the natural densities for a bounded score are not the ones that assumption
-  uses.
+  distribution that places mass outside `[0, 1]` is incoherent for such scores.
 
-- **The likelihood-ratio route to a calibration map.** A clean way to derive a parametric
+- **The likelihood-ratio route to a calibration map.** A way to derive a parametric
   calibration family is to posit a density for the score *within each class*, `p(s | +)` and
   `p(s | -)`, form the likelihood ratio `LR(s) = p(s | +) / p(s | -)`, and (under a uniform
   class prior, so the likelihood ratio equals the posterior odds) read off the calibrated
-  posterior `mu(s) = 1 / (1 + LR(s)^{-1})`. The shape of the resulting map is entirely
-  determined by the assumed per-class densities. This is the device that produced the standard
-  sigmoid family, and it is the device any competing family would be derived through.
+  posterior `mu(s) = 1 / (1 + LR(s)^{-1})`. The shape of the resulting map is determined by the
+  assumed per-class densities. This is the device that produced the standard sigmoid family.
 
 - **Fitting by log-loss is fitting by maximum likelihood.** The standard goodness-of-fit
   measure for probability estimates is log-loss,
   `LL(p_hat, y) = sum_i [ -y_i ln p_hat_i - (1 - y_i) ln(1 - p_hat_i) ]`, which equals the
   negative log-likelihood of the labels under the predicted probabilities. Minimising log-loss
-  is maximum-likelihood estimation. So any calibration family whose map can be written as a
+  is maximum-likelihood estimation. So a calibration family whose map can be written as a
   logistic-regression posterior in some transformed feature(s) can be fitted by an existing
   logistic-regression solver, rather than by a bespoke optimiser.
 
@@ -91,39 +79,25 @@ LR(s) = p(s|+)/p(s|-)
 ```
 
 and `mu = 1/(1 + LR(s)^{-1}) = 1/(1 + exp(-gamma(s - m)))`, exactly the sigmoid. Conversely
-every such sigmoid corresponds to a pair of equal-variance Gaussians. Platt explicitly
+every such sigmoid corresponds to a pair of equal-variance Gaussians. Platt also
 considered the richer two-Gaussian-*unequal*-variance posterior `1/(1 + exp(a f^2 + b f + c))`
 and rejected it because it is non-monotonic in the score. Fitting is maximum-likelihood on the
 cross-entropy, i.e. univariate logistic regression with feature `s` and label `y`, fit on a
-held-out / cross-validated set to avoid overfitting.
-**Gaps (observed limitations).** The equal-variance-Gaussian assumption is a poor fit for
-bounded scores, and crucially the sigmoid family can only *spread scores toward the extremes*;
-it has no member that pulls extreme scores back in, so on classifiers whose distortion is the
-inverse-sigmoid kind (Naive Bayes, original Adaboost) the best logistic fit is a poor fit and
-can leave the probabilities *worse than the raw scores*. The family is translation-invariant
-in `s`, so it cannot represent asymmetric distortions where one class is scored to the extreme
-while the other clusters near the middle. And the identity map `mu(s) = s` is not a member of
-the family for any finite parameters — so applying logistic calibration to a classifier that is
-already calibrated will move its scores and *un*calibrate it.
+held-out / cross-validated set.
 
 **Isotonic calibration (Zadrozny & Elkan, 2002; pair-adjacent-violators, Ayer et al., 1955).**
 Non-parametric: fit the best monotonically non-decreasing step function from scores to labels,
 `min_{m isotonic} sum_i (y_i - m(f(x_i)))^2`, solved by the pair-adjacent-violators algorithm
 (equivalently, the slopes of the ROC convex hull read as empirical likelihood ratios). It can
-capture *any* monotonic distortion, so it sidesteps the shape-mismatch problem entirely.
-**Gaps (observed limitations).** Learning-curve analysis (Niculescu-Mizil & Caruana, 2005)
-shows isotonic calibration is markedly more prone to overfitting than the parametric sigmoid:
-it needs substantially more calibration data to reach the same reliability, and on small
-calibration sets it overfits and underperforms. Its output is piecewise-constant, not smooth,
-and it carries no parametric inductive bias to lean on when data is scarce.
+capture any monotonic distortion. Learning-curve analysis (Niculescu-Mizil & Caruana, 2005)
+characterises how much calibration data it needs relative to the parametric sigmoid; its output
+is piecewise-constant.
 
 **Linear-in-log-odds recalibration (Lichtenstein, Fischhoff & Phillips, 1977; Turner et al.,
 2014).** Map the log-odds of the score linearly and squash back through a sigmoid,
 `mu(s) = 1/(1 + 1/exp(a * ln(s/(1-s)) + c))`. Used in the human-forecasting and
-forecast-aggregation literature to sharpen or flatten probabilities. **Gap.** It is offered as
-a useful empirical transform with no underlying probabilistic model of the score, so it comes
-with no principled account of *when* it is the right family, and (being a single shape
-parameter on the log-odds) it is symmetric and cannot represent class-asymmetric distortion.
+forecast-aggregation literature to sharpen or flatten probabilities. It is offered as an
+empirical transform with a single shape parameter on the log-odds.
 
 ## Evaluation settings
 
@@ -150,9 +124,9 @@ A calibration map plugs in between a fixed base classifier and the metric comput
 model produces positive-class scores on a held-out calibration split (with labels) and on a
 test split; the calibration object is fitted on the former and applied to the latter. The
 substrate that already exists is the score/label arrays, a numerically-safe clip to keep scores
-strictly inside `(0, 1)`, and an off-the-shelf logistic-regression solver. What is *not* settled
-is the calibration family itself — the per-class score model, the resulting map, and the feature
-transform (if any) that would let an existing solver fit it. That is the single empty slot.
+strictly inside `(0, 1)`, and an off-the-shelf logistic-regression solver. The calibration
+family itself — the per-class score model, the resulting map, and the feature transform (if
+any) that would let an existing solver fit it — is the empty slot.
 
 ```python
 import numpy as np
@@ -186,3 +160,5 @@ class CalibrationMethod:
 
 The outer harness supplies calibration scores+labels to `fit` and test scores to
 `predict_proba`; the design of the map and its feature transform is what fills the stubs.
+</content>
+</invoke>

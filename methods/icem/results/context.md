@@ -5,23 +5,21 @@ Model-based control on high-dimensional, contact-rich systems increasingly leans
 (MPC) loop: at every environment step, replan an `h`-step sequence of actions by sampling
 candidate sequences, rolling each one through a (ground-truth or learned) dynamics model,
 scoring them by a cost, and executing the first action of the chosen sequence. These methods
-are attractive precisely because they need no gradients of the model or the cost, tolerate
-black-box and non-differentiable objectives, are relatively insensitive to hyperparameters,
-and are less prone to getting stuck in poor local optima than gradient-based shooting. They
-have been shown to plan well even on *learned* models and on *sparse-reward* manipulation
-tasks, sometimes matching or beating model-free RL.
+need no gradients of the model or the cost, tolerate black-box and non-differentiable
+objectives, are relatively insensitive to hyperparameters, and are less prone to getting stuck
+in poor local optima than gradient-based shooting. They have been shown to plan well even on
+*learned* models and on *sparse-reward* manipulation tasks, sometimes matching or beating
+model-free RL.
 
-The problem is cost. Each candidate sequence requires a full model rollout over the horizon,
-and these optimizers need *many* candidates per replanning step to drive the sampling
-distribution onto good actions — on the order of thousands of rollouts per environment step
-in published settings (one standard configuration evaluates and then discards roughly
-fifty-five thousand individual planned action entries *per step*). At a control rate of tens
-of milliseconds per step, that sample count makes online, real-time planning on a robot
-impossible. The precise goal is therefore a sampling-based MPC optimizer that reaches comparable
-task performance with a *drastically smaller per-step sample budget* (tens to a few hundred
-rollouts), so that the optimizer's wall-clock per step drops into the real-time regime, while
-keeping the gradient-free, robust character that made these methods appealing in the first
-place. The budget is the bottleneck; everything is about spending it well.
+Each candidate sequence requires a full model rollout over the horizon, and these optimizers
+draw many candidates per replanning step to move the sampling distribution onto good actions —
+on the order of thousands of rollouts per environment step in published settings (one standard
+configuration evaluates and then discards roughly fifty-five thousand individual planned action
+entries *per step*). At a control rate of tens of milliseconds per step, that sample count
+sets the optimizer's wall-clock per step. The question is how to allocate a sampling-based MPC
+optimizer's per-step rollout budget — how to draw, select, and carry candidate action
+sequences across the inner iterations and across environment steps — and how task performance
+behaves as that budget is varied.
 
 ## Background
 
@@ -54,25 +52,22 @@ removes half the variance there, the corresponding real parts are multiplied by 
 realized variance matches the target; the whole series is then divided by a normalizer
 `σ = 2·√(Σ wₖ²)/T` (with the Nyquist weight halved for even `T`) to give unit variance.
 
-**Why the temporal correlation of *actions* matters for exploration.** Consider the simplest
+**Temporal correlation of *actions* and the spread of trajectories.** Consider the simplest
 continuous-time link between actions and states, `dx/dt = a(t)` — the state is the running
 integral of the action. With white-noise (uncorrelated) actions, `x(t)` is a Brownian random
-walk, which on average stays close to its start: independent increments cancel, so a fixed
-amount of action "energy" produces only a small net displacement. This is a known mismatch
-for exploration: natural foragers searching sparse environments do not move by Brownian
-diffusion but by long, temporally correlated "Lévy-walk" excursions that cover far more ground
-for the same energy. So the *correlation structure* of the perturbations, not just their
-variance, controls how far a sampled trajectory ranges from where it started — which is exactly
-what a planner needs when reward is sparse and the model must be probed far from the current
-state to find any signal.
+walk: independent increments cancel, so a fixed amount of action "energy" produces only a small
+net displacement, and `x(t)` stays close to its start on average. Studies of natural foragers
+searching sparse environments describe movement not by Brownian diffusion but by long,
+temporally correlated "Lévy-walk" excursions that cover more ground for the same energy. So the
+*correlation structure* of the perturbations, not just their variance, sets how far a sampled
+trajectory ranges from where it started.
 
-**Elite statistics estimate many parameters from few samples.** A population-based optimizer
-that refits a `d×h`-dimensional mean and (diagonal) standard deviation from only a handful of
-top "elite" samples is estimating a high-dimensional distribution from very little data; the
-fit is noisy step to step. Smoothing the refit across iterations (a momentum/EMA on the
-distribution parameters) is the standard remedy. Relatedly, as such an optimizer's sampling
-distribution narrows toward an optimum, the marginal value of each *additional* sample in a
-late iteration drops, since the distribution is already concentrated.
+**Elite statistics from few samples.** A population-based optimizer that refits a
+`d×h`-dimensional mean and (diagonal) standard deviation from a handful of top "elite" samples
+is estimating a high-dimensional distribution from little data; the fit varies step to step.
+Smoothing the refit across iterations (a momentum/EMA on the distribution parameters) is the
+standard remedy. As such an optimizer's sampling distribution narrows toward an optimum, it
+concentrates over successive iterations.
 
 ## Baselines
 
@@ -88,27 +83,19 @@ iteration: draw `N` samples, evaluate `f`, sort, keep the best `K` ("elite set";
 cost quantile), and refit `μ, σ` to the elites. Iterating concentrates the distribution onto
 low-cost `x`. For trajectory optimization `n = d×h` and each `x` is a whole action sequence;
 because samples are drawn *independently per timestep*, the covariance is diagonal and the
-per-timestep perturbations are uncorrelated — i.e. white noise along the horizon. **Gap:** the
-elite quantile must be estimated well at every iteration, which demands a large `N`; and once
-the inner loop ends, the entire fitted distribution and every elite set generated along the
-way are thrown away, so each step re-solves almost from scratch.
+per-timestep perturbations are uncorrelated — i.e. white noise along the horizon.
 
 **CEM for MPC, with standard modifications (Chua et al. 2018, PETS; Wang & Ba 2020).** The
 common way CEM is run inside MPC adds two pieces. *Shift initialization:* the next step's mean
 is the previous step's optimized mean shifted by one timestep (warm start), rather than a
-constant. *Momentum in the refit:* because a small elite set must set many distribution
-parameters, the update is smoothed, `μ^{i+1} = α·μ^i + (1-α)·μ_elite` with `α ∈ [0,1]` over
-inner CEM-iterations `i` (and likewise for `σ`). Actions are kept in range with *truncated*
-normal distributions whose bounds are adapted to the action limits. **Gap:** still white-noise
-perturbations and still a large `N`; the truncated-normal sampling under-represents actions
-near the boundary; and the distribution/elites are still discarded each step apart from the
-shifted mean.
+constant. *Momentum in the refit:* the update is smoothed,
+`μ^{i+1} = α·μ^i + (1-α)·μ_elite` with `α ∈ [0,1]` over inner CEM-iterations `i` (and likewise
+for `σ`). Actions are kept in range with *truncated* normal distributions whose bounds are
+adapted to the action limits.
 
 **The PETS sampling variant (Chua et al. 2018, documented only in source).** A particular
 truncation rule: truncate always at `2σ`, and cap `σ` to be no larger than half the minimum
-distance to the action bounds. **Gap:** a heuristic on the truncated-normal sampling; it does
-not change the white-noise nature or the sample count, and shares the discard-everything
-behavior.
+distance to the action bounds.
 
 **Model Predictive Path Integral control, MPPI (Williams, Aldrich & Theodorou 2015; Williams
 et al. 2016).** A sampling-based MPC derived from path-integral stochastic optimal control.
@@ -117,16 +104,8 @@ noise `δu`, rolls out, and updates each control by an *exponentially cost-weigh
 the perturbations,
 `u_i ← u_i + Σ_k exp(-S(τ_k)/λ)·δu_{i,k} / Σ_k exp(-S(τ_k)/λ)`,
 where `S(τ_k)` is the cost-to-go of rollout `k` and `λ` is a temperature; it warm-starts by
-shifting the control sequence each step and achieves real-time rates by sampling rollouts on a
-GPU. **Gap:** the perturbations `δu` are again temporally uncorrelated (white) Gaussian noise,
-and the soft-weighted update, like CEM's elite fit, still needs a large number of rollouts `K`
-to give a low-variance control update; the per-step compute is paid down by hardware, not by
-spending fewer samples.
-
-Across all of these, two limitations recur. The candidate action sequences are perturbed by
-*temporally uncorrelated* noise, so individual rollouts explore only diffusively and a sparse
-reward is rarely struck; and each replanning step *discards* almost all of the rollouts it
-just evaluated, so the large sample budget buys information that is used once and thrown away.
+shifting the control sequence each step and samples rollouts on a GPU to reach real-time rates.
+The perturbations `δu` are temporally uncorrelated (white) Gaussian noise.
 
 ## Evaluation settings
 
@@ -148,7 +127,7 @@ The natural yardsticks for a sampling-based MPC optimizer, all available at the 
 - **Protocol.** Use the ground-truth MuJoCo dynamics for the algorithm-only study (so model
   error does not confound the optimizer comparison) and learned models separately. Sweep the
   *per-step sample budget* (total rollouts per environment step) over a wide range, on a
-  log scale, to read off how performance degrades as the budget shrinks. Metrics are
+  log scale, to read off how performance changes as the budget shrinks. Metrics are
   cumulative reward (locomotion/stand-up) or task success rate (manipulation), and the
   *number of rollouts per step* needed to reach a target performance level (sample
   efficiency), plus wall-clock seconds per step. Same hyperparameters across tasks where

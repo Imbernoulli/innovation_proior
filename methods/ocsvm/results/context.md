@@ -4,18 +4,11 @@ We are given only unlabelled observations `x_1, ..., x_l` sampled i.i.d. from an
 unknown distribution `P` on an input space `X`, often with `X` a high-dimensional
 subset of `R^N`. The goal is to learn a simple region `S` that contains most of the
 probability mass, so that a future point falling outside `S` can be treated as novel,
-faulty, or anomalous. A useful procedure should also expose a direct knob for the
-fraction of training points it is willing to leave outside the learned region, because
-condition-monitoring and novelty-detection settings often come with a prior belief
-about contamination.
+faulty, or anomalous. Condition-monitoring and novelty-detection settings frequently
+come with a prior belief about the contamination fraction in training data.
 
-The obvious density-estimation route is too broad for this target. Estimating a full
-density in high dimension can require data exponential in `N`, and it recovers much
-more information than the support-estimation task asks for. It also assumes a density
-exists, while a distribution can have singular components and still have a meaningful
-support or high-mass region. The problem is therefore to estimate a region directly,
-without a parametric density model, with tractable high-dimensional computation and
-with an interpretable control over the fraction of points rejected.
+The question is how to estimate such a region directly, without a parametric density
+model and with tractable computation in high dimension.
 
 ## Background
 
@@ -53,9 +46,7 @@ w = sum_i alpha_i y_i Phi(x_i),
 f(x) = sgn(sum_i alpha_i y_i k(x_i, x) + b),
 ```
 
-where only support vectors with `alpha_i > 0` appear. This machinery is powerful and
-computationally well understood, but the supervised formulation assumes two labelled
-classes.
+where only support vectors with `alpha_i > 0` appear.
 
 A separate statistical line describes the target region itself. Einmahl and Mason's
 multidimensional quantile framework fixes a class `C` of measurable sets and a size
@@ -68,15 +59,12 @@ U(alpha) = inf { lambda(C) : P(C) >= alpha, C in C }.
 With `lambda` equal to Lebesgue measure, the minimizer is a minimum-volume set
 containing at least an `alpha` fraction of the probability mass; for `alpha = 1`, this is
 the support when the density exists, and the set remains meaningful even when it does
-not. The difficulty is computational: direct input-space volume minimization over a
-rich high-dimensional class is not a practical algorithm.
+not.
 
 The `nu` reparameterization of SVMs is also available. In the supervised `nu`-SVM,
 one replaces an opaque penalty constant by `nu in (0, 1]`, introduces a margin
 variable `rho`, and proves that `nu` upper-bounds the fraction of margin errors while
-lower-bounding the fraction of support vectors. This is exactly the kind of
-practitioner-facing control a novelty detector would need, but it is attached to a
-labelled margin problem.
+lower-bounding the fraction of support vectors.
 
 ## Baselines
 
@@ -87,19 +75,13 @@ related density estimators first estimate `p`, for example
 p_hat(x) = (1/l) sum_i k(x_i, x),
 ```
 
-then accept points whose estimated density exceeds a threshold. This directly yields
-a level-set rule, but it solves the harder density problem, suffers in high dimension,
-and is not defined as a density when the underlying measure has singular components.
-Remote atypical points can also keep affecting the estimated density rather than only
-the boundary decision.
+then accept points whose estimated density exceeds a threshold, yielding a level-set
+rule.
 
 **Minimum-volume-set estimators.** Sager, Hartigan, Nolan, Polonik, and Tsybakov
 study estimators of the minimum-size set carrying probability mass `alpha`, with
 results on consistency, rates, VC-type richness, bracketing entropy, and particular set
-families such as convex sets, ellipsoids, or piecewise-polynomial approximations. The
-gap is algorithmic: these works make the target object precise, but direct volume
-optimization in high dimension remains intractable for ordinary kernel-method
-workflows.
+families such as convex sets, ellipsoids, or piecewise-polynomial approximations.
 
 **Feature-space balls and data-domain descriptions.** The smallest-enclosing-sphere
 idea appears in capacity bounds and in data-domain description methods. Its soft
@@ -119,15 +101,11 @@ s.t.       sum_i alpha_i = 1,   0 <= alpha_i <= C,
 ```
 
 with center `a = sum_i alpha_i Phi(x_i)`. A point is accepted when its
-feature-space distance from the center is at most `R`. This gives a closed
-description, but its primitive object is a center-radius rule rather than the signed
-kernel-expansion interface used by ordinary SVM software.
+feature-space distance from the center is at most `R`.
 
 **Neural-network boundaries and synthetic outliers.** One can train a network to
 produce a boundary around the target data, or synthesize artificial outliers and train
-a two-class classifier. The neural route inherits architecture, initialization, and
-stopping issues. The synthetic-outlier route needs a credible way to fill the complement
-of the target set, which becomes increasingly unrealistic as dimension grows.
+a two-class classifier.
 
 ## Evaluation settings
 
@@ -145,10 +123,8 @@ quantities to inspect, not outcome claims.
 ## Code framework
 
 The available software substrate is a kernel-method estimator with a standard `fit` /
-`decision_function` interface. The missing part is the rule that learns from unlabelled
-data and converts the fitted quantity into an anomaly ranking. One object fits on
-unlabelled features, delegates hard optimization to a kernel solver, and returns larger
-values for more unusual points.
+`decision_function` interface. One object fits on unlabelled features, delegates hard
+optimization to a kernel solver, and returns larger values for more unusual points.
 
 ```python
 class SupportRegionDetector:

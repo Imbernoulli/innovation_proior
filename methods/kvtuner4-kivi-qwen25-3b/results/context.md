@@ -7,19 +7,14 @@ token can attend to all previous tokens without recomputing their projections. T
 cache size grows linearly with batch size and sequence length, so long-context and
 large-batch serving can become memory-bandwidth bound: each decode step streams a
 large cache from GPU memory while the compute units do little work. Quantizing the
-cache is the most direct way to shrink this bottleneck, but the problem is sharper
-than "make the cache low bit." Round-to-nearest INT8 KV quantization is usually
+cache reduces this memory footprint. Round-to-nearest INT8 KV quantization is usually
 near lossless, INT4 is often acceptable, and INT2 frequently corrupts generation;
 some model families are already sensitive when the key cache drops to INT4.
 
-The desired quantizer must therefore satisfy several constraints at once. It should
-push the effective bit width well below a uniform 8-bit cache while preserving hard
-generation tasks such as multi-step math and long-context retrieval. It must be
-streaming-friendly, because KV tensors arrive token by token. It should not require
-per-token or per-page precision decisions inside a layer that would break ordinary
-attention kernels and paged-cache layouts. It also has to cope with the empirical
-fact that different layers and different model families tolerate quantization very
-differently; a single bad layer can flip a token and poison the rest of a generation.
+The research question is how to design a KV-cache quantizer that pushes effective
+bit width below a uniform 8-bit cache while preserving generation quality on hard
+tasks such as multi-step math and long-context retrieval, for the 36-layer
+Qwen2.5-3B-Instruct model.
 
 ## Background
 
@@ -79,27 +74,21 @@ precision drops to INT4 in settings where other models mainly fail at INT2.
 ## Baselines
 
 **Uniform round-to-nearest.** Quantize every layer's keys and values to the same
-precision with the same grouping mode. It is simple and fast, but it ignores both
-key/value asymmetry and layer sensitivity. A global budget either overpays for
-robust layers or breaks the few layers that need more precision.
+precision with the same grouping mode. It is simple and fast.
 
 **KIVI.** Quantizes keys per-channel and values per-token, with group size 32 and a
 recent fp16 residual window so per-channel key statistics can be formed in a
-streaming setting. This is strong and tuning-free, but the precision is uniform
-across layers. The original experiments use residual length 128 in many settings
+streaming setting. The original experiments use residual length 128 in many settings
 and also report residual length 32 as a faster comparable setting.
 
 **KVQuant.** Quantizes keys before RoPE so channel outliers remain consistent, uses
 an offline sensitivity-weighted non-uniform datatype, and stores a small fraction of
 numerical outliers in a sparse full-precision representation. It reaches very low
-effective precision, but the non-uniform datatype, sparse outlier path, and custom
-CUDA kernels are a heavier deployment target than a plain integer grid.
+effective precision with custom CUDA kernels.
 
-**Online fine-grained mixed precision.** Methods such as QAQ, MiKV, and ZipCache try
-to identify important tokens, pages, or entries at decode time and keep them at
-higher precision. They can improve accuracy at the same average bit budget, but
-intra-layer precision variation is hard to fuse with standard attention kernels and
-paged caches, and the online selection logic adds per-step control-flow overhead.
+**Online fine-grained mixed precision.** Methods such as QAQ, MiKV, and ZipCache
+identify important tokens, pages, or entries at decode time and keep them at higher
+precision, adjusting the effective bit budget per step.
 
 ## Evaluation settings
 

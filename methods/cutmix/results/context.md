@@ -1,8 +1,8 @@
 ## Research question
 
-Convolutional image classifiers trained by minimizing average cross-entropy on a finite training set tend to latch onto the single most discriminative part of an object — the head of a person, the face of a dog — and ignore the rest. This is fragile: it generalizes poorly when the discriminative part is occluded or absent, and it localizes poorly, because the network's evidence for a class is concentrated on a small patch rather than the full object extent. A family of *regional dropout* regularizers addresses this by deleting a contiguous region of each training image, forcing the network to find class evidence elsewhere and thereby attend to the whole object. They work — both classification and weakly-supervised localization improve. But the deletion has a cost: the removed pixels are replaced with zeros or random noise, so they carry no signal at all. Every training image now spends a fraction of its area on uninformative content, and CNNs are data-hungry.
+Convolutional image classifiers trained by minimizing average cross-entropy on a finite training set tend to concentrate their class evidence on the single most discriminative part of an object — the head of a person, the face of a dog. A family of *regional dropout* regularizers deletes a contiguous region of each training image, forcing the network to find class evidence elsewhere and thereby attend to the whole object; both classification and weakly-supervised localization improve, and the removed pixels are replaced with zeros or random noise.
 
-The question is whether the "attend to the whole object" benefit of regional dropout can be kept while making the deleted region carry useful information instead of wasting it. A good answer would: (i) retain a genuine *region* being dropped from each image, so the whole-object/localization benefit survives; (ii) ensure no training pixel is wasted; (iii) keep the augmented images locally natural (no artifacts that confuse the model about where the object is); (iv) add negligible compute and leave the network, optimizer, and loss untouched.
+The question is how to construct, from a raw minibatch of images and labels, an augmented (input, target) pair that improves a CNN's classification and localization — what each training image should be transformed into, and what supervision the transformed image should carry.
 
 ## Background
 
@@ -12,19 +12,19 @@ The question is whether the "attend to the whole object" benefit of regional dro
 
 **Label softening.** Label smoothing (Szegedy et al., 2016) replaces the one-hot target with a softened distribution, discouraging overconfidence. It establishes that a *soft* multi-class target is a legitimate and beneficial training signal — relevant because any method that blends two images will want to blend their labels.
 
-**Mixing whole images.** Mixup (Zhang et al., 2017) takes a different route to filling the off-data region: rather than deleting pixels, it forms a per-pixel convex blend of two images and the matching convex blend of their one-hot labels, with the mixing weight drawn from a Beta distribution. Every pixel stays informative and the label tracks the mixture. The diagnostic limitation, visible in the mixed images themselves and in their class activation maps, is that a translucent pixel-wise overlay of two photographs is *locally unnatural* — a ghosted superposition that exists in no real image — and the network's activation map on such an input is diffuse and confused about where each object is. This helps classification but degrades localization and detection transfer.
+**Mixing whole images.** Mixup (Zhang et al., 2017) takes a different route: rather than deleting pixels, it forms a per-pixel convex blend of two images and the matching convex blend of their one-hot labels, with the mixing weight drawn from a Beta distribution. Every pixel stays informative and the label tracks the mixture.
 
 ## Baselines
 
-**Cutout (DeVries & Taylor, 2017).** Cut a single fixed-size square out of each input image at a uniformly random location and set those pixels to zero (the dataset mean after normalization). Core idea: a contiguous input-space dropout that simulates occlusion, forcing the network to use the whole object rather than one patch. Algorithm: sample a center, zero a square of fixed side length around it (clipped at borders); label unchanged. Gap: the zeroed square is informationless — a sizable fraction of every image contributes nothing to the forward pass or the gradient, which is wasteful for a data-hungry model.
+**Cutout (DeVries & Taylor, 2017).** Cut a single fixed-size square out of each input image at a uniformly random location and set those pixels to zero (the dataset mean after normalization). Core idea: a contiguous input-space dropout that simulates occlusion, forcing the network to use the whole object rather than one patch. Algorithm: sample a center, zero a square of fixed side length around it (clipped at borders); label unchanged.
 
-**Random Erasing (Zhong et al., 2017).** Same regional deletion, but the erased rectangle is filled with random pixel values (and its size/aspect ratio are randomized). Core idea and gap as Cutout — the filled region is still noise, carrying no class signal.
+**Random Erasing (Zhong et al., 2017).** Same regional deletion, but the erased rectangle is filled with random pixel values (and its size/aspect ratio are randomized).
 
-**Hide-and-Seek (Singh & Lee, 2017).** Partition the image into a grid of patches and randomly hide a subset each iteration, again to spread localization evidence over the object. Gap: hidden patches are deleted content, same information-loss issue.
+**Hide-and-Seek (Singh & Lee, 2017).** Partition the image into a grid of patches and randomly hide a subset each iteration, again to spread localization evidence over the object.
 
-**DropBlock (Ghiasi et al., 2018).** Regional dropout moved into feature space — drop contiguous blocks of a feature map rather than scattered units. Core idea: contiguous removal is more effective than pointwise dropout in convolutional layers. Gap: operates on internal activations, not pixels; still a removal, not a reuse, of information.
+**DropBlock (Ghiasi et al., 2018).** Regional dropout moved into feature space — drop contiguous blocks of a feature map rather than scattered units. Core idea: contiguous removal is more effective than pointwise dropout in convolutional layers.
 
-**Mixup (Zhang et al., 2017).** x̃ = λx_A + (1−λ)x_B, ỹ = λy_A + (1−λ)y_B, λ ~ Beta(α, α). Core idea: no deletion at all — a global convex blend of two images and their labels, so every pixel is informative and the supervision is a soft mixture. Gap: the per-pixel blend is locally unnatural (ghosting), there is no contiguous region being dropped so the regional-dropout/localization benefit is absent, and the resulting activation maps are diffuse — classification improves but localization and detection-transfer suffer.
+**Mixup (Zhang et al., 2017).** x̃ = λx_A + (1−λ)x_B, ỹ = λy_A + (1−λ)y_B, λ ~ Beta(α, α). Core idea: no deletion at all — a global convex blend of two images and their labels, so every pixel is informative and the supervision is a soft mixture.
 
 ## Evaluation settings
 

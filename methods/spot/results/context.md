@@ -4,29 +4,19 @@
 
 We are handed a fixed dataset `D = {(s, a, r, s')}` collected by some unknown behavior policy
 `pi_beta`, with no ability to interact with the environment, and asked to learn the best
-possible continuous-control policy from it alone. The obvious move is to run an off-the-shelf
+possible continuous-control policy from it alone. The standard move is to run an off-the-shelf
 off-policy actor-critic (DDPG/TD3-style): fit `Q_theta(s, a)` by minimizing the Bellman error
 against a bootstrapped target, and train a deterministic actor `pi_phi` to maximize
-`Q_theta(s, pi_phi(s))`. This fails, and fails in a specific, diagnosable way. The Bellman
-target `r + gamma * Q_target(s', pi(s'))` evaluates the critic at actions `pi(s')` that the
-actor proposes — and nothing ties those actions to the data. When the actor proposes an action
-the dataset never contained, `Q_theta` is being asked to extrapolate, and a function
-approximator's extrapolation on an out-of-distribution (OOD) action is unconstrained; it can be
-arbitrarily large. The actor, maximizing `Q`, is then *drawn toward* exactly those OOD actions
-with erroneously high value, the inflated values get bootstrapped back through the Bellman
-backup, and the error compounds over iterations until the value estimates and the policy
-diverge. This is *extrapolation error*, and it is the central obstacle of learning from a fixed
-batch.
+`Q_theta(s, pi_phi(s))`. Applied naively to a fixed batch, these methods suffer from
+*extrapolation error*: the Bellman target `r + gamma * Q_target(s', pi(s'))` evaluates the critic
+at actions `pi(s')` that the actor proposes, and a function approximator's extrapolation on an
+out-of-distribution (OOD) action is unconstrained. The actor, maximizing `Q`, is drawn toward
+OOD actions with erroneously high value, the inflated values get bootstrapped back through the
+Bellman backup, and the error compounds over iterations until the value estimates and the policy
+diverge.
 
-The precise goal is therefore a continuous-control offline RL method that (1) keeps the learned
-policy's actions inside the region where the behavior policy actually put mass — the *support*
-of `pi_beta` — so the critic is not queried far off-distribution; (2) avoids replacing that support
-condition with an over-restrictive imitation objective; (3) stays *pluggable* — implementable as a
-small, non-intrusive modification on top of a standard off-policy algorithm, so it adds no
-inference-time machinery beyond a single forward pass of the policy and can inherit improvements
-from online RL; and (4) leaves the offline and online learning objectives close enough that an
-offline-pretrained actor-critic can continue learning once fresh interaction becomes available.
-Each existing family below achieves a subset; none achieves all four at once.
+The question is: how can we train a continuous-control policy from a fixed offline dataset while
+keeping the actor's actions in the region where the behavior policy actually put mass?
 
 ## Background
 
@@ -81,18 +71,13 @@ It fits a CVAE generative model of the behavior policy, then defines the policy 
 `N` candidate actions from the VAE, apply a learned bounded perturbation `xi_phi(s, a_i)` to each,
 and *act by argmax of `Q`* over the perturbed candidates,
 `pi(s) = argmax_{a_i + xi_phi(s,a_i)} Q_theta(s, a_i + xi_phi(s,a_i))`, `a_i ~ VAE`. The value
-update uses clipped double-Q. **Gap:** the constraint is welded into the policy parameterization,
-so *every action selection* — at training and at deployment — requires sampling the generative
-model, perturbing, and scoring with the critic. That is intrusive and slow at inference, couples
-the algorithm tightly to its generative component, and muddies which piece
-earns the performance.
+update uses clipped double-Q.
 
 **PLAS (Zhou et al. 2020) and EMaQ (Ghasemipour et al. 2021).** Variations on the same
 parameterization theme. PLAS runs the policy in the *latent* space of the generative model and
 decodes, `pi(s) = D_beta(pi_phi(s))`, so latent actions map to in-distribution actions by
 construction. EMaQ strips BCQ's perturbation model and just takes `argmax_{a_i} Q(s, a_i)` over
-VAE samples. **Gap:** same intrusive structure — the constraint lives in the architecture and the
-inference path runs through secondary generative/critic components.
+VAE samples.
 
 **BEAR (Kumar et al. 2019).** The first to argue for constraining *support* rather than the
 full distribution: matching distributions is overly restrictive (if `pi_beta` is near-uniform,
@@ -100,11 +85,6 @@ matching it forces near-random behavior even when the data supports a strong pol
 only needs the learned policy's actions to lie *in the support* of `pi_beta`. It is implemented as
 a *regularizer*: penalize the actor by the *sampled maximum mean discrepancy* (MMD) between actions
 drawn from `pi_phi` and dataset actions, keeping it under a threshold via a Lagrange multiplier.
-**Gap:** MMD is a distributional distance, not a density/support condition; BEAR's claim that it
-constrains *support* rests on an empirically-observed property that, *at small sample counts*, the
-sampled MMD between a distribution and a uniform distribution over its support can be lower than
-between the distribution and itself. That is a fragile, sample-count-dependent surrogate; in
-practice the constraint is loose and OOD actions leak through, and the method is unstable.
 
 **TD3+BC (Fujimoto et al. 2021).** The minimalist regularization baseline: take TD3 and add a
 single behavior-cloning term to the actor,
@@ -112,16 +92,7 @@ single behavior-cloning term to the actor,
 relative weight of the penalty from depending on the (reward-dependent) scale of `Q`, it folds a
 normalization into the multiplier: `lambda = alpha / ((1/N) sum_i |Q(s_i, a_i)|)`, with `alpha=2.5`,
 the mean absolute `Q` over the minibatch (detached, not differentiated). Pluggable, fast, one
-line of change. **Gap:** the BC penalty `(pi(s) - a)^2` is again a *distributional* closeness to
-the single logged action — it pulls the policy toward imitating the data point rather than toward
-"any action the behavior policy would plausibly have taken," so on multimodal or suboptimal data
-it over-constrains and cannot exploit the freedom the support genuinely allows.
-
-So the prior art splits cleanly: the **parameterization** family (BCQ/PLAS/EMaQ) gets a genuine
-density/support handle on the constraint but pays an intrusive, slow inference path; the
-**regularization** family (BEAR/TD3+BC) is pluggable and fast but enforces a *divergence/imitation*
-proxy that does not coincide with the support condition the theory actually asks for. Neither is
-simultaneously pluggable *and* a direct match to the density-based support constraint.
+line of change.
 
 ## Evaluation settings
 

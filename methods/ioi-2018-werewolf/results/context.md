@@ -17,9 +17,7 @@ The switch vertex $v_s$ therefore must satisfy $L \le v_s \le R$. Consecutive
 vertices on the walk must be joined by an edge. The walk may revisit vertices.
 Decide each query independently: output yes if such a walk exists, no otherwise.
 
-Both $N$ and $Q$ can be large (each up to a few hundred thousand), so an answer
-that does independent graph work for every query will be too slow; the queries
-have to share preprocessing.
+Both $N$ and $Q$ can be large (each up to a few hundred thousand).
 
 ## Code framework
 

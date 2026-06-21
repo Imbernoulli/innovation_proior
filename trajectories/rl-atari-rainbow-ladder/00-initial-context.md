@@ -11,34 +11,24 @@ The designed object is the deep Q-learning agent itself — how the action-value
 represented, how the bootstrap target is built, how transitions are sampled from replay, and how the
 agent explores. Everything around that is held fixed: the ALE games, the $84\times84$ grayscale
 4-frame-stack preprocessing, the $200$M-frame budget, the no-ops evaluation protocol, and the
-single-agent/single-hyperparameter constraint. The free variable is which modification to the deep
-Q-learning recipe to add next and what it buys on the median game.
+single-agent/single-hyperparameter constraint.
 
 ## Prior art / Background / Baselines
 
-The current baselines, and the concrete gap each leaves open:
+The current baselines:
 
 - **Neural fitted Q / online Q-learning from pixels.** A single network bootstraps from its own
   output on the correlated stream of live frames, with the target computed from the same weights
-  being updated. Gap: the regression target moves with every gradient step and the sample stream is
-  highly correlated, so training oscillates or diverges.
+  being updated.
 
 - **Tabular Q-learning and its overestimation.** The max over noisy action-value estimates
-  systematically selects the higher values. Gap: the upward bias does not vanish with function
-  approximation; it is amplified when errors are large and correlated across states.
+  systematically selects the higher values.
 
 - **Exploration by $\epsilon$-greedy dithering.** Random actions are injected independently of state
-  with a hand-set schedule. Gap: unstructured, state-independent noise is inefficient for discovering
-  coordinated exploratory sequences before any reward appears, and the schedule is the same in
-  well-known and unknown states alike.
+  with a hand-set schedule.
 
 - **The scalar value object.** The learned object is a single number per state-action, the mean of
-  the return. Gap: it discards the shape of the return distribution, so stochastic rewards,
-  transitions, and policy drift are all forced into variance in one wobbly number.
-
-Each rung of the ladder closes one of the open gaps — instability, overestimation, exploration,
-replay sampling, head architecture, or the value object — and re-measures the median HNS across all
-57 games.
+  the return.
 
 ## Fixed substrate / Code framework
 

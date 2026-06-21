@@ -6,9 +6,9 @@ A message-passing GNN produces one embedding per node, but graph classification 
 
 The starting readouts are flat global reductions over the final-layer node embeddings.
 
-- **Global mean / max pooling.** Reduce the final node embeddings elementwise by mean or max across each graph. Gap: mean discards count information, and max discards multiplicity and proportion information; neither is injective over multisets of node features, so structurally different graphs can collapse to the same vector.
-- **Global sum pooling.** Sum the final node embeddings across each graph. Gap: it is still a single flat reduction over one layer, unable to use the embeddings produced at earlier layers or any organization of nodes between a single node and the full graph.
-- **Set-aggregation readouts (e.g., Set2Set).** Run a permutation-invariant recurrent or attention-based set network over all final node embeddings. Gap: it still flattens the whole node set at once, ignores representations from earlier layers, and adds a large recurrent module that must be fit on small graph datasets.
+- **Global mean / max pooling.** Reduce the final node embeddings elementwise by mean or max across each graph.
+- **Global sum pooling.** Sum the final node embeddings across each graph.
+- **Set-aggregation readouts (e.g., Set2Set).** Run a permutation-invariant recurrent or attention-based set network over all final node embeddings.
 
 These methods share the same backbone, classifier, and training setup and mark the readout slot that is open for modification.
 

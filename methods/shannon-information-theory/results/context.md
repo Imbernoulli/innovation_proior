@@ -19,10 +19,6 @@ agreed answer:
    and so let the transmission rate fall toward zero. Is that true? Is there a well-defined maximum rate at
    which a given channel can carry information, and if so can it be approached *with* arbitrarily small error?
 
-A satisfactory theory would have to (a) define a measure of information independent of meaning, with sensible
-units; (b) characterize the compressibility of an arbitrary statistical source; and (c) define the capacity of
-a noisy channel and say exactly what rate and reliability are simultaneously achievable.
-
 ## Background
 
 **The logarithmic measure (Nyquist, Hartley).** The first quantitative handle came from telegraphy.
@@ -48,9 +44,7 @@ carry the same information, forces K = K0 log s, hence
     H = n log s = log(s^n),
 
 "the logarithm of the number of possible symbol sequences." Setting n = 1, one selection from s equally
-likely symbols carries log s of information. This is the direct ancestor of a probabilistic measure — but it
-assumes the symbols are **equally likely and independent**, it has **no model of source statistics**, and it
-says **nothing about noise or about the best way to encode**.
+likely symbols carries log s of information.
 
 **Entropy in statistical mechanics (Boltzmann, Gibbs).** In the kinetic theory of gases the quantity
 
@@ -64,31 +58,24 @@ and additive over independent subsystems. This form is part of the standing math
 **Signals and noise as stochastic processes (Wiener, Kolmogorov).** Contemporaneously, Wiener and (earlier)
 Kolmogorov treated signal and noise as random processes and solved the problem of optimal linear
 filtering/prediction: extract the best estimate of a signal from noisy data in the mean-square sense. This
-established the *probabilistic* modeling of communication waveforms and the continuum/spectral machinery,
-but it was an estimation theory — recovering a waveform — not a theory of how much information a source
-generates or how much a channel can carry.
+established the *probabilistic* modeling of communication waveforms and the continuum/spectral machinery.
 
 **The diagnostic facts about real sources.** Natural-language sources are conspicuously redundant: in English
 the letters are far from equiprobable, and successive letters are strongly dependent (digram, trigram
 statistics). One can *see* this by generating random text from successively higher-order letter statistics —
-the output grows steadily more English-like as more structure is included. This redundancy is what makes
-compression possible and is a pre-existing, measurable fact about sources, not a property of a particular
-encoding scheme.
+the output grows steadily more English-like as more structure is included. This redundancy is a pre-existing,
+measurable fact about sources, not a property of a particular encoding scheme.
 
 ## Baselines
 
 - **Nyquist's W = K log m (1924).** Establishes the logarithm as the natural measure of signaling capability,
-  but only as transmission *speed* for equiprobable code values; deterministic, no source model, no noise.
+  as transmission *speed* for equiprobable code values; deterministic, no source model, no noise.
 - **Hartley's H = log(s^n) = n log s (1928).** The first explicit "amount of information" stripped of meaning,
-  via additivity over selections. Gap: equiprobable independent symbols only; no statistical source model;
-  no treatment of noise; no notion of an optimal code or a compression limit.
+  via additivity over selections; assumes equally likely and independent symbols.
 - **Boltzmann/Gibbs entropy S = −k Σ p log p.** A standard mathematical form from statistical mechanics, with
-  its standard properties (maximized at uniform, additive over independent systems) — living in physics, not
-  identified as a measure of *information*.
+  its standard properties (maximized at uniform, additive over independent systems) — living in physics.
 - **Wiener–Kolmogorov filtering/prediction.** Probabilistic, optimal in mean-square error, the state of the art
-  for getting signal out of noise. Gap: an estimation theory for waveforms; it does not quantify information
-  content, source compressibility, or a channel's information-carrying limit, and it lives in the continuum
-  rather than addressing discrete coding.
+  for getting signal out of noise; an estimation theory for recovering waveforms from noisy observations.
 
 ## Evaluation settings
 

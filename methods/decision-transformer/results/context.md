@@ -1,8 +1,8 @@
 ## Research question
 
-We are given a fixed dataset of trajectories: sequences of states, actions, and rewards collected by some unknown mix of policies, ranging from random flailing to occasional competence. We cannot interact with the environment to gather more data, ask for corrections, or explore. From this static, mixed-quality logbook alone, can we produce a controller that behaves well, ideally better than the typical trajectory in the data?
+We are given a fixed dataset of trajectories: sequences of states, actions, and rewards collected by some unknown mix of policies, ranging from random flailing to occasional competence. We cannot interact with the environment to gather more data, ask for corrections, or explore. From this static, mixed-quality logbook alone, can we produce a controller that behaves well?
 
-This is the offline reinforcement learning problem. It matters because in most real settings, including robotics, health, recommendation, and driving, online trial-and-error is expensive, slow, or dangerous, while logged experience is abundant. A solution has to extract useful behavior from data that is often mediocre, avoid the instabilities that plague value learning when fresh corrective interaction is unavailable, and ideally recombine useful fragments of different trajectories into behavior that no single logged trajectory exhibits in full. The central tension is that the obvious supervised approach copies the data and inherits its average quality, while the obvious RL approach bootstraps a value function and becomes fragile exactly when it cannot collect new data to correct its errors.
+This is the offline reinforcement learning problem. It matters because in most real settings, including robotics, health, recommendation, and driving, online trial-and-error is expensive, slow, or dangerous, while logged experience is abundant. The task is to extract useful behavior from data that is often mediocre, using only the fixed log.
 
 ## Background
 
@@ -12,37 +12,37 @@ $$R_t=\sum_{t'=t}^{T} r_{t'}.$$
 
 The goal is a policy maximizing expected return $\mathbb{E}[\sum_t r_t]$.
 
-**Temporal-difference learning and the deadly triad.** The dominant control recipe learns a value function by bootstrapping: a Q-learning backup updates
+**Temporal-difference learning.** The dominant control recipe learns a value function by bootstrapping: a Q-learning backup updates
 
 $$Q(s_t,a_t)\leftarrow r_t+\gamma\max_{a'}Q(s_{t+1},a').$$
 
-The target is built from the current estimate at the next state. Reward information therefore propagates backward through Bellman backups one step at a time; in sparse- or delayed-reward problems, useful signal can take many updates to reach early actions and can be distracted by intermediate reward signals (Hung et al., 2019). A discount $\gamma<1$ helps make discounted Bellman operators contractive and keeps infinite-horizon returns finite, but it also biases control toward near-term reward. Most importantly, combining function approximation, bootstrapping, and off-policy data is the classic deadly triad (Sutton & Barto). All three ingredients appear when a neural value function is trained by bootstrapping on a fixed off-policy log.
+The target is built from the current estimate at the next state, so reward information propagates backward through Bellman backups one step at a time (Hung et al., 2019). A discount $\gamma<1$ makes discounted Bellman operators contractive and keeps infinite-horizon returns finite. Combining function approximation, bootstrapping, and off-policy data is the classic deadly triad (Sutton & Barto), and all three ingredients appear when a neural value function is trained by bootstrapping on a fixed off-policy log.
 
-**Why the offline case is especially fragile.** With a fixed dataset, the value-learning loop has a second failure mode: the max or policy improvement step queries $Q$ at actions that are not well covered by the data. The network extrapolates there, optimistic errors are selected by maximization, and subsequent bootstrapped targets amplify those errors. Because no new rollouts arrive, the policy never receives corrective evidence for the unsupported actions it drifts toward. This extrapolation and overestimation pathology is a central diagnostic in offline RL (Fujimoto et al., 2019; Levine et al., 2020).
+**The offline setting.** With a fixed dataset, the policy-improvement step queries $Q$ at actions that may not be well covered by the data, and the network extrapolates there. Because no new rollouts arrive, the policy receives no further corrective evidence. Extrapolation and value estimation under a static dataset are central topics in offline RL (Fujimoto et al., 2019; Levine et al., 2020).
 
 **Sequence models that scale.** Separately, autoregressive Transformers (Vaswani et al., 2017; Radford et al., 2018; Brown et al., 2020) show that a single model trained by maximum likelihood can model high-dimensional, multimodal distributions over long sequences. A self-attention layer maps token embeddings $\{x_i\}_{i=1}^n$ to outputs $\{z_i\}_{i=1}^n$ by projecting each token to query, key, and value vectors and forming
 
 $$z_i=\sum_{j=1}^{n}\operatorname{softmax}_j\!\left(\frac{\langle q_i,k_j\rangle}{\sqrt{d_k}}\right)v_j,$$
 
-with causal GPT-style attention restricting the sum to $j\le i$. A single self-attention layer can associate positions separated by many tokens directly, without propagating information step by step. These models also come with a mature training stack: residual blocks, layer normalization, AdamW, warmup schedules, weight decay conventions, and scalable causal masking.
+with causal GPT-style attention restricting the sum to $j\le i$. A single self-attention layer can associate positions separated by many tokens directly. These models come with a mature training stack: residual blocks, layer normalization, AdamW, warmup schedules, weight decay conventions, and scalable causal masking.
 
-**Conditional generation.** Generative models can be steered by conditioning on a class label, control code, prompt, or other side information. Existing controllable-generation work usually treats the conditioning variable as fixed across a whole sequence.
+**Conditional generation.** Generative models can be steered by conditioning on a class label, control code, prompt, or other side information.
 
 ## Baselines
 
-**Q-learning and TD control (Watkins, 1989; DQN, Mnih et al., 2013, 2015).** These methods fit $Q_\theta$ against bootstrapped Bellman targets and act greedily or near-greedily. They are strong online baselines and the backbone of many RL systems, but in an offline dataset they combine off-policy data, function approximation, and bootstrapping, and they are vulnerable to extrapolation error on unsupported actions.
+**Q-learning and TD control (Watkins, 1989; DQN, Mnih et al., 2013, 2015).** These methods fit $Q_\theta$ against bootstrapped Bellman targets and act greedily or near-greedily. They are strong online baselines and the backbone of many RL systems.
 
-**Offline value methods with conservatism.** BCQ and BEAR (Fujimoto et al., 2019; Kumar et al., 2019) restrict policy improvement toward the data support. CQL (Kumar et al., 2020) lowers values for actions outside the dataset distribution so the learned value is conservative. BRAC (Wu et al., 2019) regularizes toward the behavior policy, and AWR (Peng et al., 2019) performs advantage-weighted regression. Offline Atari comparisons naturally include REM and QR-DQN (Agarwal et al., 2020; Dabney et al., 2018). The shared limitation is that these methods still improve a policy using a learned value estimate, so much of the algorithmic machinery exists to keep that value estimate from being exploited.
+**Offline value methods with conservatism.** BCQ and BEAR (Fujimoto et al., 2019; Kumar et al., 2019) restrict policy improvement toward the data support. CQL (Kumar et al., 2020) lowers values for actions outside the dataset distribution so the learned value is conservative. BRAC (Wu et al., 2019) regularizes toward the behavior policy, and AWR (Peng et al., 2019) performs advantage-weighted regression. Offline Atari comparisons include REM and QR-DQN (Agarwal et al., 2020; Dabney et al., 2018).
 
 **Behavior cloning.** Pure supervised learning regresses actions on states,
 
 $$\max_\theta \sum_t \log \pi_\theta(a_t\mid s_t).$$
 
-It has no Bellman backup, target network, or learned critic, so it is stable. Its limitation is equally direct: it imitates the behavior distribution in the dataset and averages across high- and low-quality trajectories. A percentile variant clones only the top-$X\%$ of trajectories by return, trading data volume for data quality, but choosing $X$ requires evaluation feedback that the offline setting withholds.
+It has no Bellman backup, target network, or learned critic. A percentile variant clones only the top-$X\%$ of trajectories by return, trading data volume for data quality.
 
 **Return-conditioned supervised policies.** Upside-down RL and reward-conditioned policies (Schmidhuber, 2019; Srivastava et al., 2019; Kumar et al., 2019) train a supervised policy conditioned on a desired return or command. The common form is close to a single-step supervised policy that maps the current state and a command to an action.
 
-**Transformers inside RL.** Prior attention-based RL systems (Zambaldi et al., 2018; Parisotto et al., 2020) use Transformer modules as memory or representation components inside actor-critic optimization. They address architecture and training stability, but the optimization loop remains value-based.
+**Transformers inside RL.** Prior attention-based RL systems (Zambaldi et al., 2018; Parisotto et al., 2020) use Transformer modules as memory or representation components inside actor-critic optimization, addressing architecture and training stability while the optimization loop remains value-based.
 
 ## Evaluation settings
 

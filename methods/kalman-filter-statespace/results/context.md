@@ -11,19 +11,8 @@ of how uncertain that estimate is.
 Three flavors of the same problem go under one name, *estimation*: if we want `x(t1)` for `t1 < t`
 it is smoothing (interpolation); for `t1 = t`, filtering; for `t1 > t`, prediction. "Best" must be
 made precise — penalize the estimation error `ε = x(t1) − x̂(t1)` by a loss `L(ε)` and minimize the
-expected loss (the risk). What is wanted is a rule that:
-
-1. is **recursive / online** — it folds in each new measurement as it arrives, in bounded work,
-   without re-processing the entire past record;
-2. does **not assume stationarity** — the system, the noise statistics, and the available data length
-   may all vary with time;
-3. is **well suited to machine computation** — a procedure a computer can iterate, not an integral
-   equation to be solved analytically per problem;
-4. comes with the **covariance of its own error**, so the estimate is self-rating;
-5. handles the case where **only part of the state is measured**, reconstructing the hidden
-   coordinates from noisy observations of the rest.
-
-The prevailing tool meets essentially none of these cleanly. That gap is the problem.
+expected loss (the risk). The question is what form such an estimator should take for a linear dynamic
+system driven by Gaussian noise, and how it should be derived and computed.
 
 ## Background
 
@@ -83,36 +72,24 @@ and prediction. Modeling signal and noise as stationary random processes with kn
 spectra, Wiener showed the optimal linear mean-squared-error filter is characterized by the
 Wiener–Hopf integral equation, solved by *spectral factorization* in the frequency domain; the result
 is the optimal filter's impulse response. It is the correct answer for stationary signal-plus-noise and
-is the yardstick. Its open limitations:
-
-- The optimum is delivered as an **impulse response**; synthesizing a physical/realizable filter from
-  that data is itself a non-trivial task.
-- **Numerical determination** of the optimal impulse response is involved and "poorly suited to machine
-  computation," and degrades rapidly as the problem grows in dimension.
-- Each **generalization** — growing-memory filters, finite data records, nonstationary statistics —
-  requires a fresh and frequently difficult derivation; there is no single machine that covers them.
-- The derivations **obscure the assumptions**; what is actually being assumed (stationarity, rational
-  spectra, infinite/whole-record data) is not transparent, and the method is intrinsically *batch* and
-  frequency-domain.
+is the yardstick.
 
 **Bode–Shannon (1950), "A Simplified Derivation of Linear Least-Squares Smoothing and Prediction."**
 Re-derives the Wiener result by *whitening*: model the signal as white noise passed through a shaping
 filter, so the problem reduces to handling white noise. This supplies the shaping-filter / state-space
-representation of a random process, but the estimation itself is still posed and solved in the
-stationary, whole-record frequency domain.
+representation of a random process, with the estimation posed in the stationary, whole-record frequency
+domain.
 
 **Finite-memory and nonstationary extensions (Zadeh–Ragazzini 1950; Booton 1952; Blum 1958).**
 Patches onto the Wiener program: Zadeh–Ragazzini handle finite memory, Booton the nonstationary
-Wiener–Hopf equation, Blum gives recursion formulas for growing-memory digital filters. Blum's is the
-only prior *explicit recursion* for the growing-memory case — but it is special-cased and algebraically
-heavy, "much more complicated" than a single uniform recursion would be.
+Wiener–Hopf equation, Blum gives recursion formulas for growing-memory digital filters, the only prior
+*explicit recursion* for the growing-memory case.
 
 **Least squares and its recursive form (Gauss; recursive least squares).** Choose the estimate
 minimizing the sum of squared residuals between predicted and observed quantities; the solution is the
 normal equations. In recursive form, each new observation updates the previous estimate by a correction
 proportional to its residual, with a gain that shrinks as data accumulate, so no batch re-inversion is
-needed. This is the ancestor of the online, "correct-by-a-weighted-residual" structure, but classical
-least squares carries no dynamic model of how the unknown itself evolves between observations.
+needed.
 
 ## Evaluation settings
 

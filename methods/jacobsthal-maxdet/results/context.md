@@ -47,33 +47,21 @@ unreachable; the record construction scores `320/342 ≈ 0.9357`. The headline y
 | Best reported LLM-evolution result (ThetaEvolve) | ~197 | ~0.576 |
 | Symmetric-design baseline (this method) | 49 | 0.1433 |
 
-This method designs the *starting* rung: a principled, parameter-free, number-theoretic sign
-matrix that is guaranteed legal and gives a concrete baseline determinant. It is not expected to
-approach the record — its purpose is to establish the floor from which any searched construction
-must climb.
-
 ## Prior art
 
 - **Hadamard's bound (1893).** For any real matrix with entries in `[−1,1]`, `|det| ≤ n^{n/2}`,
-  attained iff the rows are orthogonal. *Gap here:* attainable only for `n = 1, 2` and `n ≡ 0
-  (mod 4)`; for `n = 29` it is loose and unreachable, giving only an upper bound `29^{14.5}` far
-  above what any `±1` matrix of this order can reach.
+  attained iff the rows are orthogonal. The bound is attainable for `n = 1, 2` and `n ≡ 0 (mod 4)`
+  and gives an upper bound `29^{14.5}` for `n = 29`.
 - **Barba (1933) / Ehlich / Wojtas residue-class bounds.** Sharper ceilings keyed to `n mod 4`.
   For `n ≡ 1 (mod 4)`, Barba's bound is `|det| ≤ √(2n−1)·(n−1)^{(n−1)/2}`, which for `n = 29`
-  equals `√57 · 28^{14} = 2^28 · 7^12 · (49√57) = 2^28 · 7^12 · 369.94…`. *Gap:* the bound is met
-  with equality only when a `±1` matrix `R` exists with `RRᵀ = (n−1)I + J` (a specific Gram
-  structure), which for `n = 29` it does not — the record `320` falls short of `369.94`.
+  equals `√57 · 28^{14} = 2^28 · 7^12 · (49√57) = 2^28 · 7^12 · 369.94…`.
 - **Paley / Jacobsthal construction (1933).** For a prime `q ≡ 1 (mod 4)`, the quadratic-residue
   (Legendre-symbol) matrix `Q`, `Q_{ij} = χ(i−j)`, is symmetric and satisfies `QQᵀ = qI − J`.
-  Adding the identity gives a `±1` matrix `R = Q + I` with a clean, computable determinant. This
-  is the object the present method builds. *Gap:* it is a fixed symmetric design; its determinant
-  is far below the record, because the structure that makes it elegant pins it to one local
-  configuration.
+  Adding the identity gives a `±1` matrix `R = Q + I` with a clean, computable determinant.
 - **Conference matrices.** A matrix `C` with zero diagonal and `±1` off-diagonal satisfying
   `CCᵀ = (n−1)I` is a *conference matrix*; symmetric conference matrices of order `n+1` exist
   exactly when `n+1 ≡ 2 (mod 4)` and the number theory cooperates. For `n = 29`, `n + 1 = 30 ≡ 2
-  (mod 4)` and `29` is a prime `≡ 1 (mod 4)`, so Paley's construction supplies one for free — the
-  almost-orthogonal structure this method needs is realizable.
+  (mod 4)` and `29` is a prime `≡ 1 (mod 4)`, so Paley's construction supplies one for free.
 
 ## The fixed substrate
 

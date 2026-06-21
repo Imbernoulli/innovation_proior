@@ -11,14 +11,11 @@ backward passes are done in low precision (bfloat16 activations, with a float32 
 the weights). The single most consequential layer, numerically, is this final softmax: it is
 the one place where a very wide vector of real-valued logits is pushed through an exponential.
 
-The goal is to make this output-layer training signal numerically safer under a *fixed*
-architecture, dataset, optimizer, and compute budget while still optimizing the same
-next-token distribution. There is a hard constraint that makes this subtle: the replacement
-must improve the actual model, not merely make the reported number smaller. A modification that
-lowers a scalar loss by rescaling logits or changing the target distribution would no longer
-be the same maximum-likelihood problem. The open problem is where the instability enters this
-last softmax layer, and whether the loss can remove that obstacle without changing what
-distribution is being scored.
+The question is whether the output-layer loss formulation can be modified to improve numerical
+stability under a *fixed* architecture, dataset, optimizer, and compute budget while still
+optimizing the same next-token distribution. Any replacement must preserve the
+maximum-likelihood scoring rule: a modification that lowers a scalar loss by rescaling logits
+or changing the target distribution would no longer be the same training objective.
 
 ## Background
 
@@ -80,11 +77,7 @@ The prior art that a new output-layer objective would be measured against and re
 
 **Plain next-token cross-entropy.** The default: `CE = log Z - l_y`, averaged over all
 non-padding positions, with hard one-hot targets and no modification. It is the correct
-maximum-likelihood objective and the thing to beat. Its limitation for numerical stability is
-not that the likelihood formula is wrong; it is that it applies no explicit pressure to keep raw
-logits small before the softmax computes `exp` and `logsumexp`. In low precision, that leaves the
-output layer dependent on whatever scale the rest of training happens to produce, and large raw
-logits are exactly where the exponential becomes unreliable.
+maximum-likelihood objective and the thing to beat.
 
 **Label smoothing (Szegedy et al. 2015).** A widely used output-layer regularizer that softens
 the hard one-hot target into a mixture with a uniform distribution: the target mass on the
@@ -92,22 +85,11 @@ true class becomes `(1-eps) + eps/V` and every other class gets `eps/V` (default
 Equivalently the loss becomes `(1-eps)·H(onehot, p) + eps·H(uniform, p)`. The motivation is to
 stop the model from becoming over-confident: with hard targets the optimizer keeps pushing the
 true-class logit gap toward infinity, which hurts calibration and generalization; the uniform
-floor caps how large that gap wants to be. Its limitation as a tool for the present problem:
-label smoothing changes the *target distribution* the model is fit to, so it changes *what*
-distribution is being modeled — it deliberately trades a little log-likelihood on the true
-distribution for calibration. And it constrains the logit *gap* between classes, not the raw
-magnitude of the values entering the final exponential, so it is not a direct tool for reducing
-roundoff exposure in the softmax computation.
+floor caps how large that gap wants to be.
 
 **Gradient clipping (Pascanu et al. 2013).** The default stability mechanism for deep-network
 training: when the global gradient norm exceeds a threshold, rescale the whole gradient down to
-that threshold before the optimizer step. It is universally enabled in large-LM training. Its
-limitation is that it is *reactive* — it acts only once a step has already produced a dangerous
-gradient, clamping the symptom (the exploding update) rather than the cause (whatever in the
-forward state, such as drifted large logits, made the exponential blow up). It is observed that
-clipping is enabled and yet loss spikes still occur. And tightening it to clip more
-aggressively, in order to force stability, comes at a steep cost to model quality — over-tight
-update/gradient clipping has been found to stabilize a run while badly degrading the loss.
+that threshold before the optimizer step. It is universally enabled in large-LM training.
 
 **Mesh-parallelism training framework (Shazeer et al. 2018).** Not a loss, but the substrate:
 a framework for expressing data- and model-parallel Transformer training across a mesh of
@@ -115,9 +97,7 @@ accelerators, in which the large-vocabulary final softmax and its cross-entropy 
 distributed low precision. It is the setting in which the numerical behavior of the partition
 function becomes a first-class engineering concern, because the softmax over a 50k+ vocabulary,
 in bfloat16, on a sharded device mesh, is exactly where the roundoff-vs-magnitude problem
-above bites. Its relevance is that it defines *where* and *in what precision* the partition
-function gets exponentiated; it leaves open what objective-level change, if any, can reduce that
-numerical exposure while preserving the ordinary next-token likelihood.
+above bites.
 
 ## Evaluation settings
 

@@ -19,22 +19,14 @@ squared gradient magnitude `‖∇L(z)‖² = ‖G(z)‖²` (the sign flip on th
 the norm) is a direct, always-defined measure of how close `z` is to a solution. The goal is an
 algorithm whose iterate `z^k` drives `‖G(z^k)‖²` to zero as fast as possible, in the
 **last iterate** (not an average and not the best-so-far), in the **unconstrained** setting
-`R^n × R^m`. The pain is sharp: even the simplest convex-concave instances make the obvious
-method diverge, and on the squared gradient norm the prevailing methods stall at a `O(1/k)`
-ceiling that nobody had been able to break, with the optimal rate unknown. A solution would
-have to settle both questions at once — find a faster last-iterate rate on `‖G(z)‖²`, and
-ideally come with a matching lower bound establishing that it is the best possible.
+`R^n × R^m`.
 
-Why this measure, and why it is the hard one. Classical minimax theory measures suboptimality
-by the *duality gap* `sup_{ỹ∈Y} L(x, ỹ) - inf_{x̃∈X} L(x̃, y)`. The gap is the natural analogue
-of minimization error, and on it the optimal `O(R/k)` rate was long known (mirror-prox, dual
-extrapolation). But the gap needs *bounded* domains `X, Y` to be finite, is awkward to measure
-in practice, and does not generalize past convex-concave. The gradient norm has none of these
-defects and stays meaningful for differentiable non-convex-concave games (adversarial training,
-GANs), which is exactly the regime people care about — yet almost no convergence rates on the
-gradient norm existed, and there was good reason to suspect the gap-optimal method (extragradient)
-would *not* be gradient-norm-optimal: different suboptimality measures can demand different
-acceleration mechanisms.
+Why this measure. Classical minimax theory measures suboptimality by the *duality gap*
+`sup_{ỹ∈Y} L(x, ỹ) - inf_{x̃∈X} L(x̃, y)`. The gap is the natural analogue of minimization
+error, and on it the optimal `O(R/k)` rate was long known (mirror-prox, dual extrapolation). The
+gap needs *bounded* domains `X, Y` to be finite and does not generalize past convex-concave. The
+gradient norm stays meaningful for differentiable non-convex-concave games (adversarial training,
+GANs), which is exactly the regime people care about.
 
 ## Background
 
@@ -51,8 +43,7 @@ The field state, and the diagnostic facts that frame the problem:
   gradient method (descend in `x`, ascend in `y`) spirals *outward* and diverges; in continuous
   time the flow `ż = -G(z)` conserves `‖z - z*‖²` and circles the solution forever, and the
   explicit-Euler discretization grows it (Ryu, Yuan & Yin 2019, who call this the "Dirac-GAN").
-  Any serious minimax method must first defeat this rotation, and the bilinear instance is the
-  standard stress test.
+  The bilinear instance is the standard stress test for minimax methods.
 
 - **Worst-case `(δ, ν)` / smoothed-absolute-value instances.** Beyond the bilinear toy, a
   standard hard family interpolates a tiny bilinear coupling with smoothed-absolute-value terms,
@@ -82,8 +73,7 @@ The field state, and the diagnostic facts that frame the problem:
 State of the art at the time: on the duality gap, `O(R/k)` was known and *optimal*. On the
 squared gradient norm, the best was `O(R²/k)` and only **best-iterate** for extragradient and
 optimistic methods; anchoring gave a **last-iterate** rate but only `O(R²/k^{2-2p})` and at the
-price of a *diminishing* step size. No method reached `O(R²/k²)`, and whether it was even
-achievable — together with the matching lower bound — was open.
+price of a *diminishing* step size.
 
 ## Baselines
 
@@ -96,10 +86,7 @@ z^{k+1} = z^k - α G(z^k).
 ```
 
 The direct transcription of "descend in `x`, ascend in `y`." Core idea: follow the saddle
-operator downhill. Limitation: on the bilinear `L = xy` it diverges (the rotation, above); even
-when it converges it does so only under strict convexity in one variable, and never with a
-last-iterate gradient-norm guarantee on general convex-concave problems. It is the baseline that
-*fails first*, and motivates everything that follows.
+operator downhill.
 
 **Extragradient (EG), Korpelevich 1977.**
 
@@ -111,8 +98,8 @@ z^{k+1}   = z^k - α G(z^{k+1/2}).    (corrector: step from z^k with the look-ah
 Core idea: do not commit to the gradient at the current point; take a tentative step to a
 predicted point `z^{k+1/2}`, evaluate `G` *there*, and apply that corrected direction back at
 `z^k`. The extra evaluation lets EG converge on monotone `R`-Lipschitz problems for `α < 1/R`,
-including the bilinear instance the naive method blows up on. The load-bearing estimate is a
-one-step descent of distance-to-solution: with `w = z - α G(z)` and `z^+ = z - α G(w)`,
+including the bilinear instance. The load-bearing estimate is a one-step descent of
+distance-to-solution: with `w = z - α G(z)` and `z^+ = z - α G(w)`,
 
 ```
 ‖z - z*‖² - ‖z^+ - z*‖² ≥ (1 - α²R²)‖z - w‖² = (1 - α²R²) α² ‖G(z)‖²,
@@ -120,11 +107,6 @@ one-step descent of distance-to-solution: with `w = z - α G(z)` and `z^+ = z - 
 
 so summing over `i = 0..k` telescopes the left side to at most `‖z^0 - z*‖²` and gives a
 **best-iterate** bound `min_{i≤k} ‖G(z^i)‖² ≤ ‖z^0 - z*‖² / (α²(1-α²R²)(k+1)) = O(R²/k)`.
-Limitation: this is `O(1/k)`, and it is only *best-iterate* — the bound is on the smallest
-gradient norm seen so far, with no guarantee the **last** iterate keeps improving, so one must
-track the best-so-far. Worse, for the restricted "1-SCLI" algorithm class that contains EG, the
-last-iterate squared gradient norm provably cannot be pushed below `O(1/k)` (Golowich et al.
-2020). EG, on its own, sits at a ceiling.
 
 **Popov's algorithm / optimistic gradient descent (Popov 1980).**
 
@@ -133,8 +115,7 @@ z^{k+1} = z^k - 2α G(z^k) + α G(z^{k-1}).
 ```
 
 Core idea: keep EG's anti-cycling benefit but use the *previous* gradient as the prediction, so
-each step needs only one fresh gradient evaluation instead of two. Limitation: it lives in the
-same `O(1/k)` best-iterate-gradient-norm class as EG; the saving is per-iteration cost, not rate.
+each step needs only one fresh gradient evaluation instead of two.
 
 **Simultaneous gradient descent with anchoring (SimGD-A), Ryu, Yuan & Yin 2019.**
 
@@ -145,13 +126,8 @@ z^{k+1} = z^k - ((1-p)/(k+1)^p) G(z^k) + ((1-p)γ/(k+1)) (z^0 - z^k),   p ∈ (1
 Core idea: transplant the Halpern anchor onto gradient steps — at every step add a pull back
 toward the start `z^0` with a `1/(k+1)` coefficient. This is the first method to get a
 **last-iterate** rate on the squared gradient norm, `O(1/k^{2-2p})`, and it tames the bilinear
-cycling because the anchor damps the rotation. Limitation: the gradient step size is forced to
-*diminish* like `(1-p)/(k+1)^p` (both in theory and in experiments), so the method crawls; and
-since `p` must stay `> 1/2`, the rate only approaches `O(1/k)` from below — it can never reach
-`O(1/k²)`. Anchoring delivers last-iterate convergence but is shackled to a shrinking step.
-
-The landscape leaves three separate obstacles: control the rotation, control the **last** iterate,
-and keep enough progress per step to go beyond `O(1/k)`. No baseline above supplies all three.
+cycling because the anchor damps the rotation. The gradient step size diminishes like
+`(1-p)/(k+1)^p`, with `p ∈ (1/2, 1)`.
 
 ## Evaluation settings
 

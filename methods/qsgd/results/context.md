@@ -14,17 +14,9 @@ iteration: on commodity multi-GPU setups the communication of gradients can take
 of wall-clock time than the gradient computation itself, and that share only worsens as more
 GPUs are added. The bottleneck is bytes on the wire, not flops.
 
-The precise goal is to drive down the number of bits each worker transmits per iteration —
-ideally far below `32n` — while keeping the optimization on track. "On track" has to mean
-something provable, not just "it seemed to work on one model": the compression must not break the
-convergence guarantee that plain SGD enjoys, and it should expose a *knob* that smoothly trades
-communicated bits against optimization progress, so a practitioner can dial precision to match
-their network's bandwidth. A solution would have to (1) shrink bits-per-iteration by a large
-factor, (2) come with a convergence bound under the standard assumptions used for SGD, (3) leave
-the per-worker memory and per-iteration compute essentially unchanged (no second model copy, no
-expensive per-step encoding that eats the bandwidth savings), and (4) work as a drop-in on top of
-existing SGD with no delicate new hyperparameters to babysit. Each existing approach below hits a
-subset of these; none hits all four.
+The question is how to drive down the number of bits each worker transmits per iteration —
+ideally far below `32n` — while keeping the optimization on track, meaning with a provable
+convergence guarantee under the standard assumptions used for SGD.
 
 ## Background
 
@@ -60,9 +52,7 @@ A second background thread is the empirical observation, by practitioners buildi
 training systems, that gradient communication is *the* scaling bottleneck for large models, and
 that lossy compression of gradients can relieve it — reduced-precision representations, and more
 aggressive schemes that send drastically fewer bits per coordinate, were already in use in
-production frameworks (DistBelief; CNTK; TensorFlow). The caveat attached to these schemes in the
-literature is that they are heuristics: they often work, but they can also fail to converge, and
-when they work it is not from any guarantee.
+production frameworks (DistBelief; CNTK; TensorFlow).
 
 A third thread is integer coding. The values produced by an aggressive gradient representation
 are not uniformly distributed — small magnitudes are common, large ones rare — so a fixed-width
@@ -83,8 +73,7 @@ wall.
 
 ## Baselines
 
-These are the prior gradient-compression methods a drop-in replacement would be measured against
-and would react to.
+These are the prior gradient-compression methods a new scheme would be measured against.
 
 **1-bit SGD with error feedback (Seide, Fu, Droppo, Li & Yu, Interspeech 2014).** The most
 aggressive scheme in production. Reduce each gradient coordinate to a single bit — its position
@@ -102,26 +91,14 @@ Delta(t)   = G(t) - Q_inverse( G_quant(t) ),
 so the error suppressed in one round is folded into a later round and "all gradients are
 eventually added up into the model (in the limit)." Combined with AdaGrad, automatic minibatch
 sizing, double buffering, and model parallelism, this enabled state-of-the-art scaling of speech
-DNNs. **Gaps:** (1) the quantizer is *biased*, so it lives outside the standard SGD convergence
-theorem — it is empirically observed to preserve accuracy under certain conditions, but there is
-no convergence guarantee even under strong assumptions, and without error feedback it can
-diverge; (2) the compression level is essentially fixed at ~1 bit per coordinate, with no smooth
-knob to trade more bits for less variance or to push compression further; (3) the error-feedback
-residual is a full extra model-sized buffer, an added per-worker memory cost; (4) the production
-implementation quantizes per matrix column, which on convolution-heavy networks means quantizing
-columns of dimension 1-3 — very low variance but no real communication saving, sometimes slower
-than not compressing at all.
+DNNs.
 
 **Low-precision / reduced-precision SGD, analyzed by "Buckwild!" (De Sa, Zhang, Olukotun & Re,
 NIPS 2015).** The first work to put convergence guarantees on low-precision SGD. Using a
 martingale framework that treats various perturbations (asynchrony, rounding) as forms of noise
 in a unified model, it derives convergence rates for SGD when the gradients are represented in
-low-precision fixed-point arithmetic, *assuming* the quantization is unbiased, the problem is
-convex, and the gradients are sparse, and it bounds the error probability. **Gaps:** the
-guarantees lean on a sparsity assumption and target the error probability of low-precision *local
-arithmetic* on CPUs rather than a precision-vs-communication tradeoff; there is no dense-regime
-guarantee, no smooth bits-vs-iterations dial, and no validation on neural-network training on
-GPUs.
+low-precision fixed-point arithmetic, assuming the quantization is unbiased, the problem is
+convex, and the gradients are sparse, and it bounds the error probability.
 
 **Plain parallel SGD (no compression).** Send the full 32-bit gradient. This is the correctness
 baseline: it is exactly the standard SGD/minibatch theorem, no extra variance, but `32n` bits per

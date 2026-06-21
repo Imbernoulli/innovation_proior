@@ -19,16 +19,10 @@ whole game is to keep `E[N_a(n)]` small for every sub-optimal arm. This is the
 exploration-versus-exploitation dilemma: pull the apparent best arm to cash in, but pull the
 others enough to be sure they really are worse.
 
-The precise goal is a policy that is, at once: (1) an *index* policy — for each arm it
-computes one number from that arm's own data and pulls the arm of highest index, which keeps
-it simple and `O(K)` per round; (2) *online and horizon-free* — no dependence on the horizon
-`n`, which is often unknown; (3) *tuning-free* — no problem-dependent or horizon-dependent
-constant to set by hand; (4) *distribution-free* in its guarantee — a regret bound that holds
-for *all* `[0, 1]`-bounded reward distributions, not just a parametric family; and (5) as
-close as theoretically possible to the best achievable per-arm pull count. There is a known
-floor on (5) (stated below), and the existing index policies all sit strictly above it. Each
-prior method achieves a subset of these; none achieves all five at the optimal constant.
-Closing that gap is the problem.
+The question is how to design a simple *index* policy — one that computes a single number from
+each arm's own data and pulls the arm of highest index — that is online and horizon-free, with
+a per-arm pull count as close as possible to the information-theoretic floor established by
+Lai and Robbins (1985).
 
 ## Background
 
@@ -105,48 +99,30 @@ probability `~ 1 - t^{-4}` is `sqrt(2 log t / N_a)`. Auer et al. prove the finit
 E[R_n] <= sum_{a : mu_a < mu_{a*}} 8 log n / Delta_a  +  (1 + pi^2/3) sum_a Delta_a,
 ```
 
-so `E[N_a(n)] <= 8 log n / Delta_a^2 + C`. This is `O(log n)`, horizon-free, tuning-free, and
-distribution-free — it ticks four of the five boxes. **Gap:** the constant is far from the
-floor. The bonus is *symmetric* and depends only on `N_a` and the `[0, 1]` range, never on
-how extreme `mu_hat_a` is, so its width does not shrink near `0` or `1`; it is the inverse of
-Pinsker's quadratic, and Pinsker is loose exactly where `d` is steep. Concretely UCB1's
-leading constant is `8/Delta_a^2` versus the floor `1/d(mu_a, mu_{a*})`, and `d(mu_a, mu_{a*})
->= 2 Delta_a^2` with the gap large for small/large means — so on low-reward arms (rare-event
-regimes common in advertising or clinical trials) UCB1 over-explores heavily.
+so `E[N_a(n)] <= 8 log n / Delta_a^2 + C`. This is `O(log n)`, horizon-free, and tuning-free.
+The bonus is *symmetric* and depends only on `N_a` and the `[0, 1]` range.
 
 **UCB2 (Auer et al., 2002).** A re-tuned variant with leading constant `(1 + epsilon)/2`
-instead of `8`, attaining the right `1/2` factor against the *quadratic* divergence.
-**Gap:** it carries a parameter `alpha` that must be tuned, and the right `alpha` depends on
-the problem and the horizon — losing the horizon-free, tuning-free property; and it is still
-against the quadratic proxy, not `d`.
+instead of `8`, attaining the right `1/2` factor against the *quadratic* divergence. It
+carries a parameter `alpha` whose right value depends on the problem and the horizon.
 
 **UCB-Tuned (Auer et al., 2002).** Replaces the variance proxy `1/4` by an *empirical*
 per-arm variance estimate inside the bonus, so well-behaved arms get tighter intervals.
-Empirically strong. **Gap:** no theoretical guarantee at all, and it is observed to be
-"risky" — its distribution of sub-optimal pulls has a heavy upper tail, casting doubt on
-whether the tails are controlled uniformly in `n`.
+Empirically strong.
 
 **UCB-V (Audibert, Munos & Szepesvári, 2009).** Puts an *empirical Bernstein* bonus in the
 index, with a non-asymptotic correction term of order `3 log t / N_a` demanded by Bennett's
-and Bernstein's inequalities. **Gap:** for a sub-optimal arm, `N_a` grows no faster than the
-`log t` exploration level, so `log t / N_a` does not vanish; the correction term stays
-significant on moderate horizons, and finite-time performance is disappointing.
+and Bernstein's inequalities.
 
 **MOSS (Audibert & Bubeck, 2010).** An improved UCB using an exploration term of the form
 `log( t / (K N_a) )_+`, achieving the *distribution-free minimax-optimal* rate
-`O(sqrt(K n))`. **Gap:** it optimizes the worst-case (minimax) rate, not the instance-optimal
-constant; it is still a range-based, quadratic-proxy bonus and does not reach the Lai-Robbins
-per-arm floor.
+`O(sqrt(K n))`.
 
 **DMED — Deterministic Minimum Empirical Divergence (Honda & Takemura, 2010).** A
 large-deviations *elimination* policy: maintain a list of arms close enough to the current
 empirical best to still be plausibly optimal, and play them. The closeness test uses the
 empirical divergence `N_a d(mu_hat_a, max_b mu_hat_b) < log t`. DMED is first-order optimal
-for bounded-support models. **Gap:** it is an *elimination* policy that compares each arm's
-estimate to the *empirical best arm's estimate*, not to that arm's own upper confidence
-bound; empirically, arm-elimination variants under-perform the corresponding index policies
-(any arm DMED would drop is also dropped by the index version, but the index version is less
-aggressive and more stable), and DMED requires the rate function of the reward law.
+for bounded-support models and requires the rate function of the reward law.
 
 ## Evaluation settings
 
@@ -186,25 +162,25 @@ deviation budget scales with `t` and `N_a`. That is the single empty slot.
 import numpy as np
 
 
-def kl_bernoulli(p, q):
+def divergence_bernoulli(p, q):
     """KL(Bernoulli(p) || Bernoulli(q)), edges clipped to [eps, 1-eps]."""
     p = np.clip(p, 1e-10, 1 - 1e-10)
     q = np.clip(q, 1e-10, 1 - 1e-10)
     return p * np.log(p / q) + (1 - p) * np.log((1 - p) / (1 - q))
 
 
-def upper_confidence_value(mu_hat, n, budget):
+def largest_consistent_mean(mu_hat, n, budget):
     """Largest mean q in [mu_hat, 1] whose divergence from mu_hat costs at most `budget`:
-       max { q : n * kl_bernoulli(mu_hat, q) <= budget }.
-       Found by root-finding on the increasing branch q -> kl(mu_hat, q) (convex, increasing
+       max { q : n * divergence_bernoulli(mu_hat, q) <= budget }.
+       Found by root-finding on the increasing branch q -> d(mu_hat, q) (convex, increasing
        on [mu_hat, 1]), with the Pinsker/Gaussian bound as a safe upper endpoint."""
     if n == 0:
         return 1.0
     threshold = budget / n
     upper = min(1.0, mu_hat + np.sqrt(threshold / 2.0))
-    # bisection / Newton on q in (mu_hat, upper) for kl_bernoulli(mu_hat, q) == threshold;
+    # bisection / Newton on q in (mu_hat, upper) for divergence_bernoulli(mu_hat, q) == threshold;
     # if the entire bracket is inside the ball, the helper returns the upper endpoint.
-    return _root_find(lambda q: kl_bernoulli(mu_hat, q) - threshold, mu_hat, upper)
+    return _root_find(lambda q: divergence_bernoulli(mu_hat, q) - threshold, mu_hat, upper)
 
 
 class BanditPolicy:

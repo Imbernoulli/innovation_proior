@@ -12,7 +12,6 @@ Equivalently: how should `N` congruent non-overlapping spherical caps be packed 
 
 The question splits into two halves of utterly different character. A **lower bound** `d_N >= delta` is a *construction*: exhibit `N` points that are pairwise `>= delta` apart and you are done — a picture suffices. The **upper bound** `d_N <= delta`, together with **uniqueness** of the optimal arrangement up to isometry, is the hard half: it must rule out a *continuum* of configurations at once, certifying that no arrangement of `N` points does better. "Solving" the Tammes problem for a given `N` means closing this gap exactly and proving uniqueness — not reporting a numerically optimized arrangement. The pollen-grain values that have been pinned exactly are `N = 3, 4, 6, 12` (Fejes Tóth 1943), `N = 5, 7, 8, 9` (Schütte–van der Waerden 1951), `N = 10, 11` (Danzer 1963), and `N = 24` (Robinson 1961); `N = 13` and `N = 14` stood open for decades and are the natural test of whether a method is genuinely principled.
 
-What a satisfying solution must produce: a *finite* certificate that the continuous optimization over the `2N`-dimensional configuration manifold attains its maximum exactly at one arrangement.
 
 ## Background
 
@@ -50,25 +49,23 @@ a positive-definite kernel. Schoenberg (1942) proved `f(cos theta)` is positive-
 |C| f(1) + sum_{x != y} f(<x,y>) = |C|^2 f_0 + sum_{k>=1} (f_k / r_k) sum_j ( sum_{x in C} v_{k,j}(x) )^2,
 ```
 
-so if `f_0 > 0`, `f_k >= 0` for `k >= 1`, and `f(t) <= 0` on `[-1, cos psi]`, the right side is `>= |C|^2 f_0` and the left side's off-diagonal sum is `<= 0`, giving `|C| <= f(1)/f_0`. This bounds the *cardinality* of a code at a fixed angle. It is tight for the kissing problem only in dimensions `8` and `24`; on `S^2` it brackets `d_13 < 58.5°` and `d_14 < 56.58°` (the latter via the semidefinite strengthening of Bachoc–Vallentin) but produces a numerical gap, not the exact `d_N` nor a uniqueness statement.
+so if `f_0 > 0`, `f_k >= 0` for `k >= 1`, and `f(t) <= 0` on `[-1, cos psi]`, the right side is `>= |C|^2 f_0` and the left side's off-diagonal sum is `<= 0`, giving `|C| <= f(1)/f_0`. This bounds the *cardinality* of a code at a fixed angle. It is tight for the kissing problem only in dimensions `8` and `24`; on `S^2` it brackets `d_13 < 58.5°` and `d_14 < 56.58°` (the latter via the semidefinite strengthening of Bachoc–Vallentin).
 
 **The local structure of an optimum.** The motivating empirical observation, going back to Schütte–van der Waerden and Danzer, is that an optimal arrangement is *jammed*: at the maximum, the configuration is rigid — there is no way to nudge any subset of points to strictly increase the closest distance, and the pairs sitting exactly at the minimum distance are the ones holding it in place. Slack pairs (distance strictly greater than the minimum) impose no constraint on local motion. This jamming was read off the small-`N` optima long before any general theory of it was available.
 
 ## Baselines
 
-**Spherical-trigonometry case analysis (Schütte–van der Waerden 1951–53; Danzer 1963).** The classical route to small-`N` optima: study the irreducible taut-pair graph, enumerate its possible combinatorial types *by hand*, and use spherical trigonometry plus area arguments to discard all but the optimum. This is rigorous and is how `N <= 11` were settled, but it is a heavy, ad hoc, case-by-case enumeration; the number of admissible graphs grows explosively and by `N = 13` (tens of millions of candidate graphs) hand enumeration is hopeless. It also leaves uniqueness delicate.
+**Spherical-trigonometry case analysis (Schütte–van der Waerden 1951–53; Danzer 1963).** The classical route to small-`N` optima: study the irreducible taut-pair graph, enumerate its possible combinatorial types *by hand*, and use spherical trigonometry plus area arguments to discard all but the optimum. This is rigorous and is how `N <= 11` were settled.
 
-**Fejes Tóth area bound (1943).** The `(2N-4)(3 alpha(d) - pi) <= 4 pi` bound above. General and clean, but sharp only at `N = 3, 4, 6, 12`; at the open cases it is far too loose (it does not even beat `60°` at `N = 13`).
+**Fejes Tóth area bound (1943).** The `(2N-4)(3 alpha(d) - pi) <= 4 pi` bound above. General and clean, sharp exactly when the sphere tiles into equilateral triangles (`N = 3, 4, 6, 12`).
 
-**Delsarte LP bound and its SDP strengthening (Delsarte–Goethals–Seidel 1977; Kabatiansky–Levenshtein 1978; Bachoc–Vallentin 2008).** The cardinality bound `|C| <= f(1)/f_0` and its three-point semidefinite refinement. Uniform and powerful — it solved the kissing number in dimensions `8` and `24`, and Musin's modification (relaxing the sign constraint near `t = 1` and counting points in a cap) closed `k(3) = 12` and `k(4) = 24`. But for the Tammes problem it bounds the wrong quantity: it caps how many points fit at a fixed angle, yielding `d_13 < 58.5°`, `d_14 < 56.58°` — a numerical bracket above the true value, with no exact equality and no uniqueness.
+**Delsarte LP bound and its SDP strengthening (Delsarte–Goethals–Seidel 1977; Kabatiansky–Levenshtein 1978; Bachoc–Vallentin 2008).** The cardinality bound `|C| <= f(1)/f_0` and its three-point semidefinite refinement. Uniform and powerful — it solved the kissing number in dimensions `8` and `24`, and Musin's modification (relaxing the sign constraint near `t = 1` and counting points in a cap) closed `k(3) = 12` and `k(4) = 24`. For the Tammes problem it gives `d_13 < 58.5°` and `d_14 < 56.58°`.
 
-**Connelly's rigidity / stress-matrix machinery (Connelly 2005).** Tensegrity theory supplies a certificate language for first-order stationarity of constrained frameworks, in terms of equilibrium stresses on the active edges. Developed for bar-and-cable frameworks, it has not been aimed at sphere packings.
-
-The gap all of these leave: the analytic bounds give brackets, not exact values; the hand enumeration does not scale past `N = 11`. Nothing turns the continuous optimization at `N = 13, 14` into a *finite, checkable* proof of the exact optimum and its uniqueness.
+**Connelly's rigidity / stress-matrix machinery (Connelly 2005).** Tensegrity theory supplies a certificate language for first-order stationarity of constrained frameworks, in terms of equilibrium stresses on the active edges, developed for bar-and-cable frameworks.
 
 ## Evaluation settings
 
-The yardstick is the table of `d_N` for small `N`, comparing the best construction (lower bound, from Sloane's spherical-code tables) against a proof of optimality (upper bound + uniqueness). The decisive cases are `N = 13` and `N = 14`: long-conjectured optimal arrangements `P_13` (with `psi(P_13) ≈ 57.1367°`) and `P_14` (`psi(P_14) ≈ 55.67057°`) exist as constructions, bracketed above by `58.5°` and `56.58°` respectively; a method is judged principled only if it collapses each bracket to the exact value *and* certifies uniqueness up to isometry, with a proof that is finite and machine-checkable. Angles are measured geodesically on `S^2`; the equivalent inner-product form uses `<x, y> <= cos psi`.
+The yardstick is the table of `d_N` for small `N`, comparing the best construction (lower bound, from Sloane's spherical-code tables) against a proof of optimality (upper bound + uniqueness). The decisive open cases are `N = 13` and `N = 14`: long-conjectured optimal arrangements `P_13` (with `psi(P_13) ≈ 57.1367°`) and `P_14` (`psi(P_14) ≈ 55.67057°`) exist as constructions, bracketed above by `58.5°` and `56.58°` respectively. Angles are measured geodesically on `S^2`; the equivalent inner-product form uses `<x, y> <= cos psi`.
 
 ## Code framework
 

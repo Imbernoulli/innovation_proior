@@ -5,21 +5,18 @@ test accuracy out of that budget. The released object is a model whose parameter
 and the guarantee must be worst-case: removing any single training example must barely change the
 output distribution. The only thing being designed is the **DP mechanism** — how per-sample gradients
 are clipped, how Gaussian noise is calibrated, and whether either of those adapts over training.
-Everything else (model, data pipeline, optimizer, privacy accountant) is frozen. The whole game is
-the bias/variance trade-off of private learning: clip too hard and the aggregate is biased toward
-small-gradient examples; clip too soft and the noise — whose scale rises with the clip norm — drowns the
-signal. The mechanism that sits best on that edge at the same budget wins.
+Everything else (model, data pipeline, optimizer, privacy accountant) is frozen.
 
 ## Prior art / Background / Baselines
 
 The starting point is the line of work that established gradient-level privatization.
 
 - **Output / objective perturbation for private ERM (Chaudhuri–Monteleoni–Sarwate 2011; Bassily–Smith–Thakurta 2014).**
-  Core idea: add noise to the final weights or to the objective, calibrated to the sensitivity of the minimizer. Gap: the minimizer of a deep network trained by a long SGD trajectory is too sensitive to individual examples; the noise level required for an honest guarantee is impractical.
+  Add noise to the final weights or to the objective, calibrated to the sensitivity of the minimizer.
 - **Noisy SGD in the loop (Song–Chaudhuri–Sarwate 2013; Bassily et al. 2014).**
-  Core idea: add noise inside the optimizer, at the gradient, each step. Gap: gradient contributions can be arbitrarily large, so the aggregate update has no finite sensitivity and standard composition cannot yield a useful privacy budget.
+  Add noise inside the optimizer, at the gradient, each step.
 - **Advanced (strong) composition (Dwork–Rothblum–Vadhan 2010).**
-  Core idea: composing `k` mechanisms each `(epsilon, delta)`-private costs roughly `epsilon·sqrt(2k ln(1/delta'))` instead of `k·epsilon`. Gap: it composes mechanisms generically and ignores the specific Gaussian structure of the noise added at every step, so the privacy loss grows faster with iteration count than the mechanism requires.
+  Composing `k` mechanisms each `(epsilon, delta)`-private costs roughly `epsilon·sqrt(2k ln(1/delta'))` instead of `k·epsilon`.
 
 ## Fixed substrate / Code framework
 

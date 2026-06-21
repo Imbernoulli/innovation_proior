@@ -57,18 +57,11 @@ linear transition and Gaussian likelihood, so the distribution is represented by
 mean and covariance and the Kalman equations close recursively.
 
 The extended Kalman approach linearizes nonlinear functions around the current
-estimate and still carries a single Gaussian. This is fragile when the true
-posterior is not close to one Gaussian. In bearings-only tracking, range is weakly
-identified from angle measurements, so the state distribution can be a curved
-ridge or have multiple plausible regions. A local Gaussian approximation can
-become overconfident and diverge.
+estimate and still carries a single Gaussian.
 
-Gaussian-sum filters improve expressiveness by using mixtures, but components
-proliferate and must be merged or pruned. Grid filters approximate the density
-directly on a fixed lattice, but the lattice does not automatically follow the
-probability mass and the number of nodes grows rapidly with dimension. Earlier
-accept-reject Monte Carlo updates keep a sample representation but can shrink the
-sample size over time.
+Gaussian-sum filters improve expressiveness by using mixtures. Grid filters
+approximate the density directly on a fixed lattice. Earlier accept-reject Monte
+Carlo updates keep a sample representation updated as observations arrive.
 
 ## Pre-Method Ingredients
 
@@ -83,10 +76,6 @@ sampling-resampling perspective adds a second step: draw from the existing sampl
 with probabilities proportional to the importance weights, producing an
 approximately unweighted sample from the tilted target. The target only needs to
 be known up to proportionality, which matches Bayes' rule.
-
-The caveat is already visible before any dynamic method is designed: if the
-sampling distribution and target distribution have little overlap, a few weights
-dominate and many samples contribute almost nothing.
 
 ## Starting Scaffold
 
@@ -104,7 +93,6 @@ class StateSpaceModel:
         """Evaluate log g(y_k | x_k) for each state."""
 ```
 
-The missing design is the recursive representation and update rule. It must keep
-an approximation to `p(x_k | y_{1:k})`, turn the prediction integral into a
-bounded-cost operation, absorb each likelihood without computing the normalizing
-integral, and avoid long-run collapse of the approximation.
+The open question is how to maintain a tractable, recursive approximation to
+`p(x_k | y_{1:k})` using only these three operations, updating online as each
+observation arrives.

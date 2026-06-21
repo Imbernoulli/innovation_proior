@@ -18,12 +18,6 @@ high-dimensional, unstructured** array of pixels with no pre-existing dictionary
 Any unsupervised vision objective that wants a tokenized comparison set must
 therefore *build that dictionary itself*, on the fly, out of the data.
 
-A solution would have to (a) define a self-supervised objective over images that
-needs no human labels, (b) produce a representation that transfers — i.e. a
-*standard* backbone with no task-specific architectural surgery, so the features
-drop straight into detectors and segmenters, and (c) scale to large, even
-uncurated, image collections.
-
 ## Background
 
 **Contrastive learning as dictionary look-up.** A unifying way to view a family of
@@ -68,19 +62,7 @@ grayscale) of the same image; they are a positive pair, every other image is a
 negative.
 
 **Large-batch optimization.** Goyal et al. (2017) showed large-batch SGD can train
-ImageNet fast using a linear learning-rate scaling rule plus warmup. But large-batch
-optimization remains delicate: without the scaling rule accuracy drops (~2% at batch
-1024), and it is unclear the trend extrapolates to much larger batches even with
-enough memory. So any approach that obtains many negatives *by enlarging the batch*
-inherits all of large-batch optimization's open difficulties.
-
-**Diagnostic observations about existing systems.** Two empirical facts about the
-prior art set up the problem. First, methods using contrastive losses consistently
-improve as the number of negatives grows — observed under the memory-bank mechanism
-and consistent with the InfoNCE MI bound. Second, when the comparison set is built
-from feature vectors that were computed at many different, stale encoder states (as
-in a per-sample feature table updated once per epoch), the resulting representation
-quality is measurably worse.
+ImageNet fast using a linear learning-rate scaling rule plus warmup.
 
 ## Baselines
 
@@ -96,23 +78,13 @@ per dataset image. Each step samples negative rows from the bank — no extra fo
 pass — so the effective comparison set is the whole dataset (very large). After a
 feature is computed it is written back with a per-sample update
 `v_i ← (1−λ) v_i + λ f_θ(x_i)`, plus a proximal term `λ‖v_i^(t) − v_i^(t−1)‖²` to
-damp drift. **Gap:** a bank entry was last written the previous time *that specific
-image* was sampled — up to a whole epoch ago, by a very different encoder state. The
-keys in any one step therefore come from encoders scattered across the entire past
-epoch and are mutually *inconsistent*. The per-sample write-back smooths each row's
-stored feature over time, but two rows written at two different times still disagree.
-The table also stores all N samples, which does not scale to
-billion-image data.
+damp drift.
 
 **End-to-end contrastive learning.** Both the query and key encoders are updated by
 back-propagation, and the keys are the *other samples in the current minibatch*. The
-keys are then perfectly consistent — all encoded by the current encoder. **Gap:**
-the dictionary size equals the minibatch size, so it is capped by GPU memory.
-Enlarging it means large-batch training, which is itself an open problem (needs the
-linear scaling rule; accuracy degrades without it; extrapolation is uncertain). Some
-variants enlarge the comparison set via many spatial positions, but those require
-patchifying the input or customizing receptive fields, which complicates
-transferring the backbone to downstream tasks.
+keys are then perfectly consistent — all encoded by the current encoder. The
+dictionary size equals the minibatch size. Some variants enlarge the comparison set
+via many spatial positions, using patchified inputs or customized receptive fields.
 
 **Earlier pretext-task methods** (relative patch position, jigsaw, colorization,
 rotation prediction, clustering, exemplar). These define a hand-crafted surrogate
@@ -146,9 +118,7 @@ The pre-existing primitives: a deep CNN backbone (ResNet) that ends in a global
 average pool plus a final linear layer producing a fixed-dimensional vector; L2
 normalization; a data pipeline producing two augmented views of each image;
 softmax cross-entropy; and an SGD training loop. The contrastive objective itself
-is a softmax over one positive key and many negative keys. What is not yet
-decided is the single empty slot below: how to obtain the keys used in that
-comparison.
+is a softmax over one positive key and many negative keys.
 
 ```python
 import torch

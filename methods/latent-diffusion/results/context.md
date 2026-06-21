@@ -1,25 +1,8 @@
 ## Research question
 
 How can we generate high-resolution, photorealistic images of complex natural
-scenes — with the broad distribution coverage and stable training of
-likelihood-based models — *without* paying the enormous compute cost that the
-best such models currently demand?
-
-The sharpest instance of the problem is in denoising diffusion models. They have
-become the strongest image generators by sample quality and density estimation,
-they avoid the mode collapse and training instability of adversarial methods,
-and they support flexible test-time control (inpainting, colorization,
-guidance). But they operate directly on the pixel grid and must be evaluated
-repeatedly along a long denoising chain. Training a strong model takes on the
-order of 150–1000 V100-days; drawing 50k samples takes days on a high-end GPU;
-sampling needs tens to a thousand sequential network evaluations. This puts
-training out of reach for all but a few labs, leaves a large energy footprint,
-and makes even *using* a trained model slow.
-
-A successful method would (a) cut both training and sampling compute by a large
-factor, (b) preserve sample quality and the mode-covering behavior of a
-likelihood objective, (c) keep the flexible conditioning and guidance that make
-diffusion attractive, and (d) scale gracefully to megapixel resolutions.
+scenes with the broad distribution coverage and stable training of
+likelihood-based models?
 
 ## Background
 
@@ -44,8 +27,7 @@ spends a large share of the bits on **perceptual compression** — removing
 imperceptible high-frequency detail — while changing almost nothing about the
 semantics or layout of the image. A second regime, with the remaining bits, does
 the actual **semantic/conceptual** modeling — what objects are present and how
-they are arranged. The same expensive sequential network is run at full
-pixel-space resolution across both regimes.
+they are arranged.
 
 **The denoising-diffusion machinery.** A diffusion model defines a fixed forward
 process that gradually adds Gaussian noise. With signal/noise schedules
@@ -76,35 +58,29 @@ classifier.
 
 **GANs** (Goodfellow et al. 2014; BigGAN, Brock et al. 2019; StyleGAN, Karras
 et al. 2019). A generator and discriminator play a minimax game. They sample a
-high-resolution image in a single forward pass and produce sharp results, but
-adversarial training is hard to optimize and prone to mode collapse, so they
-miss parts of the data distribution (low recall). Gap: distribution coverage and
-training stability.
+high-resolution image in a single forward pass and produce sharp results.
 
 **VAEs and normalizing flows** (Kingma & Welling 2013; RealNVP/Glow, Dinh et al.
 2017). Likelihood-based, well-behaved optimization, fast sampling. A VAE encodes
 to a Gaussian latent with a KL term toward $\mathcal N(0,1)$ and decodes; a flow
-uses invertible maps for exact likelihood. Gap: sample quality lags GANs.
+uses invertible maps for exact likelihood.
 
 **Autoregressive models** (PixelRNN/PixelCNN, van den Oord et al. 2016; PixelCNN++,
 Salimans et al. 2017). Factorize the image likelihood pixel-by-pixel and achieve
 strong density estimation, but sampling is inherently sequential over all
-positions, so they are confined to low resolution. Gap: sampling cost scales
-catastrophically with resolution.
+positions.
 
 **Denoising diffusion models** (Sohl-Dickstein et al. 2015; DDPM, Ho et al.
 2020; score-based SDEs, Song et al. 2021). The forward/reverse process above with
 an $\epsilon$-prediction UNet trained on the simplified objective
-$\mathbb E_{x,\epsilon,t}\|\epsilon-\epsilon_\theta(x_t,t)\|_2^2$. SOTA quality
-and coverage, flexible. Gap: every step is a full pixel-space network
-evaluation, so training (hundreds of GPU-days) and sampling (many sequential
-steps) are extremely expensive.
+$\mathbb E_{x,\epsilon,t}\|\epsilon-\epsilon_\theta(x_t,t)\|_2^2$. State-of-the-art quality
+and coverage, flexible conditioning and guidance.
 
 **Class-conditional pixel diffusion** (ADM / "Diffusion Models Beat GANs",
 Dhariwal & Nichol 2021). The strongest pixel-space diffusion model at the time,
 with an "ablated UNet" (BigGAN-style residual blocks, attention at several
-resolutions) and classifier guidance. It is precisely the model whose 150–1000
-V100-day training cost defines the pain. Gap: cost.
+resolutions) and classifier guidance. Training costs on the order of 150–1000
+V100-days; drawing 50k samples takes days on a high-end GPU.
 
 **Two-stage compress-then-model** (VQ-VAE, van den Oord et al. 2017; VQ-VAE-2,
 Razavi et al. 2019; VQGAN / Taming Transformers, Esser et al. 2020; DALL·E,
@@ -113,18 +89,11 @@ VQGAN, an encoder/decoder trained with a perceptual loss plus a patch-based
 adversarial loss and a vector-quantization codebook (perceptual + adversarial
 losses keep reconstructions on the image manifold and avoid the blur of pure
 $L_2$/$L_1$). Then model the prior over the latent codes with an autoregressive
-transformer. This is the right decomposition, but the second-stage transformer's
-cost is quadratic in sequence length, so it forces a *high* compression rate
-(e.g. 16×) to keep the token sequence short. That discards detail, requires
-billions of transformer parameters, and serializes the 2D latent into a 1D
-raster order that ignores its spatial structure. Gap: the compression level is
-dictated by the transformer's appetite, not by what preserves quality.
+transformer operating on the serialized token sequence.
 
 **Jointly learned latent + score prior** (LSGM, Vahdat et al. 2021). Learns the
 encoder/decoder *and* a score-based diffusion prior over the latent
-simultaneously. Gap: jointly optimizing reconstruction and the generative prior
-requires a delicate weighting between the two, and the latent space is a moving
-target while the prior is being learned.
+simultaneously, with both trained end-to-end.
 
 ## Evaluation settings
 

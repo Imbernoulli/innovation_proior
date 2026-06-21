@@ -6,10 +6,10 @@ The diffusion policy is trained and frozen. The only design target is the **reve
 
 The frozen actor is a Diffusion Q-Learning policy (Wang et al., ICLR 2023): a conditional diffusion model over actions trained with a behavior-cloning denoising loss plus a Q-maximization term. At inference it predicts noise via ε_θ(a_t, t, s) and draws actions by solving the reverse process. The available samplers in the pipeline are the baselines:
 
-- **DDPM ancestral sampling.** Reverses the forward Markov chain one noisy step at a time using the learned noise predictor. Gap: many sequential steps are required; return or sample quality drops when the step budget is cut too far.
-- **DDIM.** Uses a deterministic, non-Markovian trajectory that shares the training marginals, allowing fewer steps than DDPM. Gap: quality collapses sharply once the step count falls below a moderate threshold.
-- **DPM-Solver / DPM-Solver++.** High-order solvers for the diffusion ODE, including multistep variants. Gap: they are tuned for image-generation schedules and metrics; on this policy the return-per-step trade-off is still weak at very low NFE.
-- **Probability-flow ODE.** The deterministic counterpart to the reverse SDE with matching marginals. Gap: discretization error still requires enough steps to keep returns high.
+- **DDPM ancestral sampling.** Reverses the forward Markov chain one noisy step at a time using the learned noise predictor.
+- **DDIM.** Uses a deterministic, non-Markovian trajectory that shares the training marginals, allowing fewer steps than DDPM.
+- **DPM-Solver / DPM-Solver++.** High-order solvers for the diffusion ODE, including multistep variants.
+- **Probability-flow ODE.** The deterministic counterpart to the reverse SDE with matching marginals.
 
 The actor, its training, and the inference loop are fixed; the remaining freedom is the choice of solver and step count.
 

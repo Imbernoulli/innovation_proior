@@ -10,13 +10,7 @@ their size; two black bodies in equilibrium at the same temperature have identic
 That universality is a promise: somewhere there is a single law of nature, $u(\nu,T)$, waiting to be
 written down.
 
-The question is to find it. A solution must do three things at once. It must reduce, at high frequency
-(short wavelength), to the exponential fall-off that experiment confirms there. It must reduce, at low
-frequency (long wavelength, high temperature), to the linear-in-$T$ behaviour that newer infrared
-measurements reveal. And it must be finite when integrated over all frequencies, because the total
-radiated energy is finite and obeys the Stefan–Boltzmann $T^4$ law. No formula on the table
-does all three. Finding the one that does — and understanding *why* it must have
-the form it has — is the problem.
+The question is to find it.
 
 ## Background
 
@@ -50,15 +44,13 @@ the measured intensity instead grows linearly with $T$. Re-expressed through the
 $R \equiv -1/(d^2S/dU^2)$ for a single resonator (the positive reciprocal of the negative second
 derivative of its entropy with respect to its energy), the
 data say: $R\propto U$ for small energy (the Wien regime), but $R\propto U^2$ for large energy (the
-new long-wave regime). Two clean empirical limits, in conflict with any single exponential.
+new long-wave regime). Two clean empirical limits.
 
-**The classical mode-counting law and its divergence.** Independently, treating cavity radiation as
+**The classical mode-counting law.** Independently, treating cavity radiation as
 electromagnetic standing waves, one counts modes: the number per unit volume with frequency in
 $[\nu,\nu+d\nu]$ is $8\pi\nu^2/c^3\,d\nu$ (two polarizations, mode-number sphere). Classical
 equipartition assigns each mode a mean energy $kT$. The product gives $u = 8\pi\nu^2 kT/c^3$, linear
-in $T$ and matching the long-wave data — but it grows without bound as $\nu\to\infty$, so
-$\int_0^\infty u\,d\nu$ **diverges**. A purely classical equipartition spectrum cannot be the answer:
-it has no finite total energy and contradicts Stefan–Boltzmann.
+in $T$ and matching the long-wave data.
 
 **Boltzmann's bridge between entropy and counting.** The other load-bearing idea is statistical: for a
 system whose macrostate can be realized in $W$ microscopic ways, the entropy is $S = k\log W$ (within
@@ -76,21 +68,18 @@ $S(U)$ as a function of its energy.
 
 **Wien's distribution law.** $u(\nu,T)=C\nu^3 e^{-a\nu/T}$, equivalently
 $\rho=C'\lambda^{-5}e^{-c_2/\lambda T}$. Core idea: a Maxwell–Boltzmann
-analogy for the radiation, consistent with Wien's displacement law. *Gap:* fits short waves, fails at
-long waves — the Rubens–Kurlbaum deviations. In resonator terms it corresponds to $R\propto U$, i.e.
-$d^2S/dU^2 = -\alpha/U$, giving an entropy that is wrong for large $U$.
+analogy for the radiation, consistent with Wien's displacement law. In resonator terms it corresponds
+to $R\propto U$, i.e. $d^2S/dU^2 = -\alpha/U$.
 
 **The classical equipartition / standing-wave law.** Mode density
 $8\pi\nu^2/c^3$ times equipartition energy $kT$ gives $u\propto T\lambda^{-4}$. Core idea: count
-electromagnetic standing-wave modes in a box, give each the classical thermal energy $kT$. *Gap:*
-matches the long-wave data but diverges at high frequency — no finite total energy, violating
-Stefan–Boltzmann. It corresponds to $R\propto U^2$ alone, the opposite extreme from Wien.
+electromagnetic standing-wave modes in a box, give each the classical thermal energy $kT$.
+It corresponds to $R\propto U^2$, the opposite extreme from Wien.
 
 **Thermodynamic interpolation via $R(U)$.** Given the two limits $R\propto U$ (Wien) and $R\propto U^2$
 (long-wave), one can write the simplest law containing both, $R=U(U+\beta)/\alpha$, i.e.
 $d^2S/dU^2 = -\alpha/[U(U+\beta)]$, integrate, and impose Wien scaling. This produces a spectral
-formula of the right shape. *Gap:* it is an interpolation — it matches the limiting regimes but carries no
-physical account of *why* entropy should take that form. A formula without a mechanism.
+formula of the right shape.
 
 ## Evaluation settings
 
@@ -103,5 +92,3 @@ Stefan–Boltzmann $T^4$ constraint) and the displacement of the spectral peak (
 A candidate law is judged by whether a single functional form fits the short-wave exponential fall-off,
 the long-wave linear-in-$T$ rise, and the finite $T^4$ total simultaneously, with frequency-independent
 universal constants.
-
-

@@ -1,8 +1,6 @@
 ## Research question
 
-We want a voting rule that takes a finite profile of strict individual rankings over a finite set of social alternatives and returns one alternative. The issue is not recombining rankings into an attractive compromise; it is whether incentive compatibility can coexist with genuine collective choice. The goal is demanding but natural: every alternative should be reachable for some profile, no single voter should always get their top-ranked outcome, and voters should never be able to obtain a strictly better outcome by misreporting their preferences.
-
-The tension is between collective choice and incentives. A rule can be responsive to many voters, or it can try to make truthful reporting a dominant strategy. With at least three alternatives, the question is whether those two aims can coexist under the mild nonimposition requirement that no alternative is ruled out in advance.
+We study voting rules that take a finite profile of strict individual rankings over a finite set of social alternatives and return one alternative. The question is whether incentive compatibility can coexist with genuine collective choice. With at least three alternatives, can a rule be both strategy-proof and responsive to many voters, under the mild nonimposition requirement that no alternative is ruled out in advance?
 
 ## Background
 
@@ -16,15 +14,15 @@ This line sits near Arrow's impossibility theorem but does not simply repeat it.
 
 ## Baselines
 
-Plurality chooses the alternative with the most first-place votes. It is onto and non-dictatorial, but a voter may have reason to abandon a favorite with little support and vote for a more viable compromise. The rule reacts strongly to reports, and that responsiveness creates profitable misreports.
+Plurality chooses the alternative with the most first-place votes. It is onto and non-dictatorial, and reacts strongly to the reported first-place votes.
 
-Runoff-style rules use first-place support and then eliminate or compare finalists. They are also onto and non-dictatorial, but a voter can sometimes change which alternatives survive to the later stage. The strategic problem is not just ranking a favorite first; it is controlling the agenda induced by the reported profile.
+Runoff-style rules use first-place support and then eliminate or compare finalists across stages. They are also onto and non-dictatorial.
 
-Borda count assigns scores by rank position and chooses the highest total score. It uses more information than plurality, but the additional rank information creates more dimensions for strategic movement. A voter may lower a strong rival or raise a compromise, changing the score comparison in a favorable direction.
+Borda count assigns scores by rank position and chooses the highest total score. It uses more rank information than plurality, drawing on each voter's full ranking.
 
-Pairwise majority and Condorcet-oriented procedures make majority comparisons central. With three or more alternatives, majority preferences can cycle, so any single-valued selection rule must choose a way to break or resolve cycles. That choice point can become strategically relevant.
+Pairwise majority and Condorcet-oriented procedures make majority comparisons central. With three or more alternatives, majority preferences can cycle, so any single-valued selection rule must choose a way to break or resolve cycles.
 
-Dictatorship is the incentive-compatible benchmark. It is strategy-proof because the decisive voter's best report is truthful and no other voter can affect the outcome. It is onto when the dictator can rank any alternative first. Its gap is normative rather than technical: it abandons collective choice.
+Dictatorship is the incentive-compatible benchmark. It is strategy-proof because the decisive voter's best report is truthful and no other voter can affect the outcome. It is onto when the dictator can rank any alternative first. It concentrates the choice in a single voter.
 
 ## Evaluation settings
 

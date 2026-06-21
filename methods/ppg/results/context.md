@@ -4,24 +4,12 @@
 
 Every actor-critic algorithm carries two learned quantities — a policy `π` and a value function `V` —
 and a practical implementation must decide whether to **share network parameters** between them or
-keep **separate networks**. Both choices have a real cost.
+keep **separate networks**. Sharing lets features learned for one objective help the other, which is
+valuable on high-dimensional inputs such as vision. Separate networks remove interaction between the
+two objectives and allow each to be trained with its own sample reuse.
 
-Sharing has a clear upside: features learned for one objective help the other, and on high-dimensional
-inputs (e.g. vision) a single representation that serves both is far more efficient than learning two.
-But sharing forces two compromises. First, the two losses must be combined with a relative weight, and
-however that weight is chosen, the gradient of one objective can **interfere** with the other —
-optimizing the value can degrade the policy and vice versa. Second, a shared trunk all but requires
-`π` and `V` to be trained on the **same data with the same sample reuse** (the same number of
-optimization epochs per batch), which is an arbitrary coupling. Separate networks remove both problems
-— no interference, independent sample reuse — but throw away the feature sharing entirely.
-
-The question: can we **keep the feature sharing of a shared network while recovering the
-non-interference and the independent sample reuse of separate networks**? Two facts about on-policy
-actor-critic make this worth chasing. (1) When parameters are shared, policy↔value interference
-measurably hurts performance — yet on high-dimensional benchmarks sharing is also necessary, so simply
-separating the networks is not a free fix. (2) Value-function optimization tolerates a far higher
-level of sample reuse than policy optimization does; much of the benefit that on-policy methods get
-from extra epochs over a batch is really the *value function* being better trained, not the policy.
+The question: how should on-policy actor-critic organize the relationship between policy and value
+parameters on high-dimensional benchmarks where visual representations matter?
 
 ## Background
 
@@ -51,7 +39,7 @@ initialized student networks to reduce the impact of non-stationarity and improv
 
 **Off-policy replay for sample efficiency.** SAC (Haarnoja et al. 2018), DDPG (Lillicrap et al. 2015),
 and ACER (Wang et al. 2017) use replay buffers to reuse data via off-policy updates; SAC also uses
-*separate* policy and value networks, to avoid the very interference described above.
+separate policy and value networks.
 
 ## Baselines
 
@@ -59,17 +47,15 @@ and ACER (Wang et al. 2017) use replay buffers to reuse data via off-policy upda
 shared trunk feeding a policy head and a value head, trained with `L^clip + β_S·S[π] + vfcoef·L^value`,
 GAE advantages, and a single sample-reuse setting (epochs per batch) applied to both objectives. A
 hyperparameter sweep is used to pick a near-optimal value-loss weight and a near-optimal number of
-epochs. Gap: the value-loss weight is a forced compromise that risks policy↔value interference, and a
-single epochs-per-batch setting couples policy and value sample reuse — empirically the method's
-apparent need for several epochs is the value function being under-trained, not the policy.
+epochs.
 
-**PPO with separate networks.** Removes the interference and the weight, but on high-dimensional
-benchmarks performs *worse* than the shared baseline because it loses feature sharing. Gap: gives up
-the representation sharing that is critical on vision inputs.
+**PPO with separate networks.** Removes the need to combine the two losses with a relative weight
+and allows independent sample reuse for each objective, but on high-dimensional benchmarks requires
+learning two independent visual encoders.
 
 **On-policy alternatives — TRPO, ACKTR, A3C/IMPALA, V-MPO, AWR.** Different policy objectives within
-the same actor-critic frame; all face the identical shared-vs-separate decision and the same coupled
-sample reuse. Gap: none of them decouples policy and value training while preserving shared features.
+the same actor-critic frame; all face the same shared-vs-separate decision and the same coupled
+sample reuse.
 
 ## Evaluation settings
 
@@ -78,16 +64,15 @@ with image observations, designed so that improvements are expected to transfer 
 shared visual representations matter. The protocol: train for a fixed total of environment timesteps
 (on the order of 10⁸) across parallel vectorized workers, with reward normalization so that discounted
 returns have roughly unit variance, and report sample efficiency (return as a function of timesteps),
-typically averaged over a few seeds with standard deviation across runs. Natural ablation axes — for
-isolating the two observations above — are the level of policy sample reuse, the level of value sample
-reuse, and the choice of clipping versus a KL penalty.
+typically averaged over a few seeds with standard deviation across runs. Natural ablation axes are
+the level of policy sample reuse, the level of value sample reuse, and the choice of clipping versus
+a KL penalty.
 
 ## Code framework
 
 The primitives that already exist: a (possibly shared) convolutional encoder feeding a policy head and
 a value head, GAE, a PPO clipped-surrogate policy update with an entropy bonus, a value-regression
-loss, Adam, and an on-policy rollout loop over vectorized environments. The open question above — how
-to reconcile feature sharing with non-interference and independent sample reuse — is left as stubs.
+loss, Adam, and an on-policy rollout loop over vectorized environments.
 
 ```python
 import torch

@@ -5,18 +5,11 @@
 A diffusion model generates an image by repeatedly denoising. The trained object is a network
 `eps_theta(x_t, t)` that, given a noisy image `x_t` and the noise level `t`, predicts the noise that
 was added; sampling runs this network backwards from pure noise down to a clean image. That much is
-unconditional — it draws *some* image from the data distribution. The problem here is **control**: we
-want `p(x | c)` for a side input `c` — at minimum a class label, but ideally also richer conditions
-like a text caption or a spatial layout — and the only handle we have on the generative process is the
-denoiser. So the design question is mechanical and specific: *by what architectural operation does the
-condition `c` enter `eps_theta`, turning it into `eps_theta(x_t, t, c)`*, such that (1) the conditioning
-is strong enough to actually steer the output toward `c`; (2) it does not destabilize a denoiser whose
-backbone, normalization, and training recipe are already carefully tuned for the unconditional task; (3)
-one and the same mechanism can carry conditions of very different shapes — a single class index, a
-variable-length sequence of caption tokens, a spatial map — rather than needing a bespoke wiring per
-modality; and (4) it adds little compute and few parameters. Each existing way of injecting a condition
-satisfies some of these and stalls on others. Finding the injection operator that satisfies all four at
-once is the problem.
+unconditional — it draws *some* image from the data distribution. Here the target is **conditional**
+generation: we want `p(x | c)` for a side input `c` — at minimum a class label, possibly also richer
+conditions like a text caption or a spatial layout — and the only handle on the generative process is
+the denoiser. The design question is mechanical and specific: *by what architectural operation does the
+condition `c` enter `eps_theta`, turning it into `eps_theta(x_t, t, c)`*?
 
 ## Background
 
@@ -62,49 +55,43 @@ Attention(Q, K, V) = softmax( Q K^T / sqrt(d_k) ) V.
 
 Each query forms a dot product with every key; a softmax over those scores gives weights; the output for
 that query is the weighted sum of the values. The output has one row per query, of the value dimension.
-The `1/sqrt(d_k)` scaling is not cosmetic: if query and key components are roughly independent with unit
-variance, the dot product `q . k = sum_{i=1}^{d_k} q_i k_i` has variance `d_k`, so for large `d_k` the
-logits grow, the softmax saturates near one-hot, and its gradient nearly vanishes; dividing by `sqrt(d_k)`
-restores unit-variance logits. **Multi-head** attention runs `h` such functions in parallel on separately
-projected, lower-dimensional copies of `Q, K, V` (each of width `d_model/h`), concatenates, and projects
-once more, so the model can attend in several representation subspaces at once instead of being forced to
-average them into one. Vaswani et al. distinguish three uses; the one relevant here is *encoder-decoder
-attention*, where the queries come from one sequence and the keys/values come from a **different**
-sequence, letting every position in the first read over all positions in the second. Attention is
-agnostic to the length of the key/value set: the same layer accepts one key or many.
+The `1/sqrt(d_k)` scaling has an effect on training: if query and key components are roughly independent
+with unit variance, the dot product `q . k = sum_{i=1}^{d_k} q_i k_i` has variance `d_k`, so for large
+`d_k` the logits grow, the softmax saturates near one-hot, and its gradient nearly vanishes; dividing by
+`sqrt(d_k)` restores unit-variance logits. **Multi-head** attention runs `h` such functions in parallel on
+separately projected, lower-dimensional copies of `Q, K, V` (each of width `d_model/h`), concatenates, and
+projects once more, so the model can attend in several representation subspaces at once instead of being
+forced to average them into one. Vaswani et al. distinguish three uses: self-attention within the encoder,
+masked self-attention within the decoder, and *encoder-decoder attention*, where the queries come from one
+sequence and the keys/values come from a **different** sequence, letting every position in the first read
+over all positions in the second. Attention is agnostic to the length of the key/value set: the same layer
+accepts one key or many.
 
 ## Baselines
 
-These are the conditioning mechanisms a new injection method would be measured against and would react to.
+These are the conditioning mechanisms a new injection method is measured against.
 
 **FiLM / adaptive group-norm conditioning (Perez et al., AAAI 2018; the diffusion default).** Embed the
 condition, map it through an MLP to a per-channel scale and shift, and apply that affine to the
 group-normalized features inside each residual block. For a class label, add the class embedding to the
 timestep embedding and reuse the timestep's FiLM path. Core idea: condition by *modulating feature
-statistics*. **Limitation:** the modulation is a single per-channel scale/shift applied identically at
-every spatial location, drawn from the condition without reference to the image content at that location.
-It is a global, content-agnostic affine — a low-bandwidth handle — and it accepts only a fixed-size
-condition vector, so it has no natural way to absorb a variable-length set of condition elements such as
-a caption's tokens.
+statistics* with a single per-channel scale/shift applied identically at every spatial location, taking a
+fixed-size condition vector.
 
 **Adaptive group normalization + classifier guidance (Dhariwal & Nichol 2021, "Diffusion Models Beat
-GANs").** The strongest class-conditional pixel-space diffusion model of the time. Conditioning is AdaGN:
-the combined class-and-timestep embedding produces per-channel scale/shift on the group norm (a more
-careful FiLM), in a UNet with attention at several resolutions (32, 16, 8). To sharpen class adherence at
-sampling time it adds *classifier guidance*: a separate classifier `p_phi(y | x_t)`, trained on noised
-images, whose log-probability gradient `grad_{x_t} log p_phi(y | x_t)` is added to the predicted score to
-shift the reverse-process mean toward the class. **Limitation:** the in-network conditioning is still the
-per-channel affine of AdaGN — the same global, spatially-uniform handle as FiLM — so the only way the
-method gets *strong* class control is by paying for a **second, separately trained, noise-robust
-classifier** and back-propagating through it at every sampling step. The bandwidth problem is solved
-outside the denoiser, at the cost of an extra model and extra sampling compute.
+GANs").** A strong class-conditional pixel-space diffusion model. Conditioning is AdaGN: the combined
+class-and-timestep embedding produces per-channel scale/shift on the group norm (a more careful FiLM), in
+a UNet with attention at several resolutions (32, 16, 8). To sharpen class adherence at sampling time it
+adds *classifier guidance*: a separate classifier `p_phi(y | x_t)`, trained on noised images, whose
+log-probability gradient `grad_{x_t} log p_phi(y | x_t)` is added to the predicted score to shift the
+reverse-process mean toward the class. Core idea: AdaGN affine inside the network, plus a separately
+trained noise-robust classifier back-propagated through at each sampling step.
 
 **Input concatenation (used for spatially-aligned conditions, e.g. SR3, Saharia et al. 2021).** When the
 condition is itself an image-shaped map aligned to the output (a low-resolution image for
 super-resolution, a mask for inpainting), simply concatenate it to the noisy input along the channel axis
-and let the first convolution mix them. Core idea: condition by *stacking it onto the input*.
-**Limitation:** it requires the condition to be spatially aligned and image-shaped; a class index or a
-caption has no spatial layout to align, so concatenation does not apply to them at all.
+and let the first convolution mix them. Core idea: condition by *stacking it onto the input*; it applies
+when the condition is spatially aligned and image-shaped.
 
 ## Evaluation settings
 

@@ -10,8 +10,7 @@ Netherlands — *what is the shortest way to travel from Rotterdam to Groningen?
 an algorithm that, given a road map with distances, produces the minimum-total-length route
 between two named places, and that is small and frugal enough to actually run on the ARMAC:
 the map is reduced to 64 cities so that a city fits in 6 bits, and the machine has very
-little memory, so the method must not require holding the whole branch list in store at
-once.
+little memory.
 
 ## Background
 
@@ -21,26 +20,19 @@ road never has negative length — and a road may be one-way, so the length from
 not equal the length from Y to X. The quantity wanted is the minimum total length over all
 routes from a source P to a target Q.
 
-The structural fact that makes this tractable is **optimal substructure**: if R lies on a
+A structural fact about this problem is **optimal substructure**: if R lies on a
 minimum-length route from P to Q, then the portion from P to R is itself a minimum-length
 route from P to R. Equivalently, a shortest path is built out of shortest paths to its
-intermediate points. This already suggests that brute enumeration of complete routes is
-wasteful, since shorter routes share their prefixes.
+intermediate points.
 
 At the time, this kind of problem is barely regarded as mathematics. The prevailing attitude
 is that there is a finite number of ways of going from A to B and obviously one of them is
-shortest, so there is nothing to fuss about; discrete, combinatorial algorithms have not yet
-acquired mathematical respectability and there are no journals that obviously want them. The
-interesting content is therefore not *that* a shortest route exists but *how cheaply* it can
-be found on a small machine — how little of the map must be stored, and how little
-recomputation must be done.
+shortest; discrete, combinatorial algorithms have not yet acquired mathematical
+respectability and there are no journals that obviously want them.
 
 A second, sibling problem from the same setting: on the back panel of a machine, many points
 must be tied to the same voltage with copper wire; minimizing the total wire is the
-minimum-total-length **tree** spanning a set of points. It shares the "grow a structure by
-repeatedly adding the cheapest admissible segment" flavour, and it exposes the same memory
-pressure: a method that sorts or stores all possible branches is unattractive on a small
-machine.
+minimum-total-length **tree** spanning a set of points.
 
 ## Baselines
 
@@ -48,23 +40,14 @@ machine.
 The label-correcting approach. Keep a tentative distance `d[v]` for *every* node (∞ at
 start, 0 at the source). Repeatedly look for any edge `(u, v)` that violates
 `d[v] ≤ d[u] + length(u, v)` and "relax" it by setting `d[v] := d[u] + length(u, v)`; stop
-when no edge violates. Under the road-distance assumptions it is correct and conceptually
-simple, but it keeps a label for the whole node set and, to find violations, must be able to
-scan all the edge data; a node's label can be corrected many times before it stabilizes. The
-gap it leaves: it needs repeated access to the entire branch list — exactly the store
-pressure the small machine cannot absorb — and it spends work re-relaxing nodes whose labels
-later turn out not to have changed.
+when no edge violates. Under the road-distance assumptions it is correct. It keeps a label
+for the whole node set, and to find violations it scans the edge data; a node's label can be
+corrected several times before it stabilizes.
 
 **Kruskal (1956); Loberman and Weinberger (1957)** — for the spanning-tree sibling. Both
 first sort all of the up-to ½n(n−1) edges by length and then add edges cheapest-first
-(skipping any that would form a cycle). Correct, but sorting all edges means *storing all
-edges simultaneously*; even when an edge's length is a computable function of the endpoints'
-coordinates, the method still demands all the branch data at once. The gap: the same memory
-problem — the whole edge set has to be resident.
-
-Across both: the prior art front-loads the entire graph (scan-all-edges, or sort-all-edges),
-which a 1956 machine with room for only a handful of branches cannot afford, and it does more
-relaxation work than the structure of the problem requires.
+(skipping any that would form a cycle), storing the edges together for the sort. An edge's
+length may itself be a computable function of the endpoints' coordinates.
 
 ## Evaluation settings
 

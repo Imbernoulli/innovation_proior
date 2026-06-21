@@ -4,10 +4,10 @@ Joint-embedding self-supervised learning trains an encoder so that two augmented
 
 ## Prior art / Background / Baselines
 
-- **Siamese metric learning (DrLIM and earlier work).** A shared-weight twin network maps two inputs to a common embedding and a pair loss pulls similar pairs together while pushing dissimilar pairs apart up to a margin. **Gap:** the attract-only form used for unlabeled views collapses to a constant map; the full margin loss requires labeled positive/negative pairs.
-- **Contrastive SSL (InfoNCE, SimCLR, MoCo).** Repulsion is restored by treating in-batch negatives as dissimilar pairs in a softmax over pairwise similarities. **Gap:** it needs large batches or a memory queue to obtain enough negatives, and its performance is sensitive to the temperature hyperparameter.
-- **Asymmetric SSL (BYOL, SimSiam).** Negatives are dropped and collapse is avoided through an asymmetric pair of branches — a predictor plus stop-gradient, with an EMA target in BYOL. **Gap:** non-collapse is an empirical property of the coupled dynamics rather than a guarantee of a single scalar objective.
-- **Information-maximization SSL (Barlow Twins, whitening methods).** Non-collapse is made a consequence of a batch-level representational criterion rather than pairwise repulsion. **Gap:** existing criteria are tied to specific batch statistics whose relationship to downstream transfer and backbone scale is not established.
+- **Siamese metric learning (DrLIM and earlier work).** A shared-weight twin network maps two inputs to a common embedding and a pair loss pulls similar pairs together while pushing dissimilar pairs apart up to a margin.
+- **Contrastive SSL (InfoNCE, SimCLR, MoCo).** Repulsion is restored by treating in-batch negatives as dissimilar pairs in a softmax over pairwise similarities.
+- **Asymmetric SSL (BYOL, SimSiam).** Negatives are dropped and collapse is avoided through an asymmetric pair of branches — a predictor plus stop-gradient, with an EMA target in BYOL.
+- **Information-maximization SSL (Barlow Twins, whitening methods).** Non-collapse is made a consequence of a batch-level representational criterion rather than pairwise repulsion.
 
 ## Fixed substrate / Code framework
 

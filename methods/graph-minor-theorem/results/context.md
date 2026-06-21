@@ -1,58 +1,35 @@
 ## Problem
 
-Before the Graph Minor Theorem, many graph classes were understood by special forbidden-pattern
-theorems. Forests forbid cycles. Planar graphs forbid K_5 and K_{3,3} as minors. Outerplanar graphs
-have their own small excluded-minor list. These examples suggested a general question: if a graph
-property is preserved under deleting vertices, deleting edges, and contracting edges, must there
-always be a finite list of minimal forbidden minors?
+Several graph classes are characterized by special forbidden-pattern theorems. Forests forbid cycles.
+Planar graphs forbid K_5 and K_{3,3} as minors. Outerplanar graphs have their own small excluded-minor
+list. A graph H is a minor of G when H can be obtained from G by deleting vertices, deleting edges, and
+contracting edges. These examples raise a general question: if a graph property is preserved under all
+three minor operations, is there always a finite list of minimal forbidden minors that describes it?
 
-The difficulty is that the bad graphs for a minor-closed class can be infinite. The obstruction set
-is finite only if the minor-minimal bad graphs cannot form an infinite antichain, meaning an infinite
-collection in which no graph contains another as a minor.
+For a minor-closed class, the candidate obstructions are the graphs outside the class that are minimal
+under taking minors. The obstruction set is finite exactly when these minor-minimal bad graphs cannot
+form an infinite antichain, meaning an infinite collection in which no graph is a minor of another.
 
 ## Earlier View
 
-The older style of classification was largely per-family. One chose a graph class, found its special
-geometric or combinatorial description, and then proved the exact forbidden patterns for that class.
-This worked beautifully for planarity, where topology supplies a visible obstruction theory, but it
-did not explain why arbitrary minor-closed classes should have finite descriptions.
+Classification has so far been per-family. One chooses a graph class, finds its special geometric or
+combinatorial description, and then proves the exact forbidden patterns for that class. This proceeds
+cleanly for planarity, where topology supplies a visible obstruction theory. Each obstruction list is
+treated as a separate target: the question asked is which individual graphs must be excluded for a
+given class.
 
-That approach treats each obstruction list as a separate target. It asks which individual graphs must
-be excluded. Robertson and Seymour changed the question to why an infinite obstruction list cannot
-exist in the first place.
+## Known Tools
 
-## Robertson-Seymour Reframing
+Some machinery for analyzing graphs by their structure is available. Tree decompositions describe a
+graph as pieces arranged along a tree, with a treewidth parameter measuring how tree-like the graph
+is. Graphs of bounded treewidth admit a tree-like encoding. Kruskal's tree theorem gives a
+well-quasi-ordering result for finite trees under a topological-embedding order: in any infinite
+sequence of trees, one embeds into a later one. Clique-sums glue graphs together along shared cliques
+and are used to build larger graphs from smaller controlled pieces.
 
-The decisive move is to treat the minor relation itself as the main object. The Graph Minor Theorem
-says that finite graphs are well-quasi-ordered by minors: in every infinite sequence of finite graphs,
-some earlier graph is a minor of a later one. Equivalently, there is no infinite antichain under the
-minor order.
+## Research Question
 
-For a minor-closed class F, consider the graphs outside F that are minimal under taking minors. If
-there were infinitely many of them, they would form an infinite antichain. The theorem rules that out.
-Thus every minor-closed graph family is described by a finite set of excluded minors, even when the
-set is too large or too hard to write down explicitly.
-
-## Structural Machinery
-
-The proof is order-theoretic in its conclusion, but structural in its mechanism. Tree decompositions
-make graphs analyzable as pieces arranged along a tree. Bounded-treewidth graphs can be encoded in a
-tree-like way, so well-quasi-ordering arguments related to Kruskal-style tree arguments become
-available.
-
-The hard case is unbounded complexity. Robertson and Seymour's structure theory says, roughly, that
-graphs excluding a fixed minor can be assembled by clique-sums from controlled pieces: graphs nearly
-embedded on bounded-genus surfaces, with bounded exceptional vertices and bounded vortices. Tree
-decompositions provide the skeleton for gluing these pieces, while the excluded-minor structure
-theorem explains what the pieces can look like.
-
-## Deep Shift
-
-The unique insight is that infinite graph families can be compressed by combining decomposition with
-well-quasi-ordering. Instead of listing all possible bad graphs, the theory proves that the minor
-order has enough global regularity to force a finite obstruction basis.
-
-This is a deep shift from classifying graphs one at a time to classifying the structure of whole graph
-families. The solution is not a better catalogue. It is a method: decompose graphs into controlled
-tree-like and surface-like parts, prove that these controlled parts are well behaved under minors,
-and conclude that every minor-closed property has only finitely many minimal forbidden witnesses.
+The setting is the family of all minor-closed properties of finite graphs at once, rather than any
+single class. The question is whether the minor relation on finite graphs has enough global regularity
+to determine, for every such property, the structure of its forbidden patterns, and how the
+order-theoretic behavior of minors relates to the structural decomposition of the graphs involved.

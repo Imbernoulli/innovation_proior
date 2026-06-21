@@ -16,15 +16,15 @@ The downstream geometric payoff is regular-value abundance. If critical values h
 
 ## Baselines
 
-- **Inverse and implicit function theorems.** These give complete local structure at points where the derivative has maximal rank. In coordinates, a full-rank map becomes a projection, and fibers are smooth manifolds. Gap: the theorems say nothing quantitative about the target image of the rank-deficient locus.
+- **Inverse and implicit function theorems.** These give complete local structure at points where the derivative has maximal rank. In coordinates, a full-rank map becomes a projection, and fibers are smooth manifolds.
 
-- **Constant-rank theorem.** If the rank is locally constant, the map can be straightened so that its image locally lies in a lower-dimensional coordinate plane. That immediately suggests zero target volume when the local rank is `< m`. Gap: critical sets need not have constant rank, and the rank can change on complicated subsets.
+- **Constant-rank theorem.** If the rank is locally constant, the map can be straightened so that its image locally lies in a lower-dimensional coordinate plane. That immediately suggests zero target volume when the local rank is `< m`.
 
-- **Naive small-critical-set strategy.** One might try to prove the critical points themselves are small. This is false: a constant map has every point critical, and rank-zero behavior can persist on large subsets. Gap: the theorem must measure the image, not the domain set.
+- **Naive small-critical-set strategy.** One might try to prove the critical points themselves are small. A constant map has every point critical, and rank-zero behavior can persist on large subsets. The relevant question is about the image in the target, not the size of the domain set.
 
-- **Change-of-variables intuition.** For maps `R^m -> R^m`, a nonzero Jacobian determinant preserves positive `m`-dimensional volume locally, while determinant zero suggests volume collapse. Gap: determinant language only covers square maps and does not by itself handle maps between different dimensions or the global union of critical pieces.
+- **Change-of-variables intuition.** For maps `R^m -> R^m`, a nonzero Jacobian determinant preserves positive `m`-dimensional volume locally, while determinant zero suggests volume collapse.
 
-- **Continuity alone.** Purely continuous maps can behave too wildly for a volume-squeezing conclusion; differentiability is the load-bearing hypothesis that converts rank deficiency into local flattening. Gap: without Taylor control, there is no reliable estimate on how much target volume a small domain box can fill.
+- **Continuity alone.** Purely continuous maps can behave wildly; differentiability converts rank deficiency into local flattening via Taylor expansion, and this is the load-bearing hypothesis for controlling target volume.
 
 ## Evaluation settings
 

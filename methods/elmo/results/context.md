@@ -2,21 +2,13 @@
 
 Across nearly every neural NLP system, the first thing that happens to a sentence is that each word is looked
 up in a table of pretrained vectors. These vectors are the workhorse input feature for question answering,
-textual entailment, semantic role labeling, coreference, named-entity recognition, and sentiment. But the
-lookup table assigns exactly one vector to each word *type*: the string "play" maps to a single point in space
-no matter what sentence it sits in. That point has to simultaneously stand for the theatrical play, the sports
-play, the children's play, and the verb — so it ends up an averaged blur of all of them, and a downstream model
-can never recover which sense was meant. Polysemy is structurally unrepresentable. Worse, a single vector also
-fuses two very different kinds of information — the word's syntactic role (is it a noun here? a verb?) and its
-fine-grained meaning — into one undifferentiated point, with no way for a task to ask for one without the other.
+textual entailment, semantic role labeling, coreference, named-entity recognition, and sentiment. The lookup
+table assigns one vector to each word *type*: the string "play" maps to a single point in space no matter what
+sentence it sits in, and that point stands for the theatrical play, the sports play, the children's play, and
+the verb alike.
 
-The problem, stated precisely: produce a representation of a word that is a function of the *entire sentence it
-appears in*, so that the same string gets different vectors in different contexts; that captures both the
-syntactic and the semantic facets of word use; that can be computed for any token including ones never seen in
-training; and that can be dropped into an existing supervised model with minimal surgery and a modest amount of
-labeled data. A solution has to come from somewhere other than the labeled task data itself, because the labeled
-datasets for most of these tasks are small — the knowledge of what words mean in context has to be transferred
-in from large amounts of unlabeled text.
+The question is how to produce a word representation drawn from large amounts of unlabeled text that can be fed
+into these existing supervised models, given that the labeled datasets for most of these tasks are small.
 
 ## Background
 
@@ -24,10 +16,9 @@ in from large amounts of unlabeled text.
 (Mikolov et al., 2013) learns vectors by predicting context words from a target (skip-gram) or vice versa; GloVe
 (Pennington et al., 2014) factorizes global co-occurrence counts. Both produce one dense vector per vocabulary
 entry, capturing distributional similarity. They are pretrained once on large corpora and reused everywhere
-(Turian et al., 2010, established this transfer recipe). Their structural limit is exactly the research question:
-one vector per type, no context, and nothing for out-of-vocabulary words.
+(Turian et al., 2010, established this transfer recipe). They give one vector per type.
 
-**Subword and character input.** To attack the OOV and morphology problems, a line of work represents a word
+**Subword and character input.** One line of work represents a word
 from its characters or character n-grams: fastText (Bojanowski et al., 2017), charagram (Wieting et al., 2016),
 and compositional character models (Ling et al., 2015). A character-level CNN over a word, in particular, has
 been used as the input layer of neural language models (Kim et al., 2015; Jozefowicz et al., 2016): a small
@@ -41,45 +32,37 @@ CNN-BIG-LSTM; Merity et al., 2017; Melis et al., 2017) stack LSTM layers (Hochre
 token-embedding or character-CNN input and predict the next token with a softmax over the vocabulary on the top
 layer. The internal hidden states of such a model are, by construction, functions of the whole left context.
 
-**What different layers of a deep RNN encode.** A recurring empirical finding is that stacked recurrent layers
-specialize. Supervising low-level tasks (e.g., POS tagging) at the *lower* layers of a deep network improves
-high-level tasks at the upper layers (Sogaard & Goldberg, 2016; Hashimoto et al., 2017). In a two-layer LSTM
-encoder of a machine-translation system, the first-layer representations predict POS tags better than the
-second-layer ones, even though the deeper system has higher BLEU (Belinkov et al., 2017). The top layer of a
-biLSTM around a pivot word has been shown to learn word sense (context2vec; Melamud et al., 2016). These are
-recurring observations about where different kinds of information sit within a deep recurrent encoder.
+**What different layers of a deep RNN encode.** Stacked recurrent layers have been observed to specialize.
+Supervising low-level tasks (e.g., POS tagging) at the *lower* layers of a deep network improves high-level
+tasks at the upper layers (Sogaard & Goldberg, 2016; Hashimoto et al., 2017). In a two-layer LSTM encoder of a
+machine-translation system, the first-layer representations predict POS tags better than the second-layer ones,
+even though the deeper system has higher BLEU (Belinkov et al., 2017). The top layer of a biLSTM around a pivot
+word has been shown to learn word sense (context2vec; Melamud et al., 2016).
 
 ## Baselines
 
 **word2vec / GloVe (context-independent embeddings).** Core idea: learn a fixed vector per word type from
-distributional statistics over a large corpus; reuse as frozen (or fine-tuned) input features. Gap: a single
-vector per type cannot disambiguate polysemy, conflates syntax and semantics, and provides nothing for OOV
-tokens. This is the feature these systems are trying to improve on.
+distributional statistics over a large corpus; reuse as frozen (or fine-tuned) input features. This is the
+feature these systems currently use.
 
 **CoVe — contextualized vectors from machine translation (McCann et al., 2017).** Core idea: train an
 attentional sequence-to-sequence neural MT system on parallel (e.g., English→German) data; the *encoder* is a
 two-layer biLSTM. After training, freeze the encoder and use its TOP-layer hidden states as contextual word
 vectors, concatenated with GloVe and fed into downstream task models (e.g., a biattentive classification
-network for sentiment, an entailment model). This genuinely makes word vectors context-dependent and improves
-several tasks. Gaps: (1) it needs *parallel* translation data, which is far scarcer than monolingual text, so
-the encoder is trained on a comparatively small corpus; (2) it exposes only one depth level of the encoder, so
-the task cannot inspect whether other internal levels carry useful information; (3) the supervised MT objective
-may bias the representations.
+network for sentiment, an entailment model). This makes word vectors context-dependent and improves several
+tasks.
 
 **TagLM / biLM features for tagging (Peters et al., 2017).** Core idea: pretrain a *bidirectional* LM (forward
 and backward LMs, independently parameterized) on unlabeled text; concatenate the TOP-layer biLM hidden state
-into a sequence tagger's token representation. Establishes that LM pretraining on monolingual text transfers and
-that bidirectional and large-scale LMs help. Gaps: only the top layer is exposed (again discarding lower layers),
-and the two directions use fully independent parameters.
+into a sequence tagger's token representation. LM pretraining on monolingual text transfers, and bidirectional
+and large-scale LMs help.
 
 **context2vec (Melamud et al., 2016).** Core idea: a biLSTM reads the left and right context around a pivot word
-and produces a context embedding; the top layer learns word sense. Gap: again a single (top) layer, and the
-representation is of the *context*, not a deep multi-layer function of the token.
+and produces a context embedding; the top layer learns word sense.
 
 **Pretrain-then-finetune encoders (Dai & Le, 2015; Ramachandran et al., 2017).** Core idea: pretrain an
 encoder-decoder with a language-model or autoencoder objective, then fine-tune the whole thing on the
-supervised task. Gap: this couples the size of the supervised model to the pretrained model and requires
-fine-tuning the large network on each task, rather than reusing a fixed universal representation as a feature.
+supervised task.
 
 ## Evaluation settings
 

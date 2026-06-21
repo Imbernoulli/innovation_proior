@@ -45,7 +45,7 @@ naturally distributes the perturbation over many coordinates, the opposite of wh
 sparse attacks need extra machinery (saliency, boundary geometry, or combinatorial search) to pick
 *which* few pixels.
 
-Several facts about the design space are load-bearing before a new attack is built:
+Several facts about the design space are relevant:
 
 - **Decision boundaries near natural images are mostly flat with few sensitive directions**
   (curvature analyses in the DeepFool/SparseFool line). The space is curved and sensitive only along
@@ -67,53 +67,41 @@ Several facts about the design space are load-bearing before a new attack is bui
 
 ## Baselines
 
-These are the prior attacks a new sparse black-box method would be compared against and reacts to.
+The prior sparse and black-box attacks in the literature:
 
 **JSMA — Jacobian Saliency Map Attack (Papernot et al., 2016, arXiv:1511.07528).** A white-box L0
 attack. It computes the forward derivative (Jacobian) of the network outputs with respect to the
 input, builds a *saliency map* ranking how strongly each input pixel pushes the logits toward a
 chosen target class, and greedily fixes a small number of the most salient pixels to extreme values,
-re-computing the saliency after each pick. **Limitation:** it requires gradients (the Jacobian) and
-full model access — a white-box method that does not apply when only output probabilities are
-visible.
+re-computing the saliency after each pick.
 
 **SparseFool (Modas et al., CVPR 2019, arXiv:1811.02248).** A white-box L0 attack that exploits the
 low curvature of decision boundaries: it repeatedly linearizes the boundary (DeepFool-style) to find
 the minimal perturbation toward it, then sparsifies that perturbation onto few coordinates.
-**Limitation:** again white-box and gradient-dependent — it needs to query the boundary geometry of
-the model, unavailable to a black-box attacker.
 
-**One-Pixel attack (Su et al., 2019, arXiv:1710.08864).** The first black-box L0 attack, and the
-closest ancestor. It encodes a perturbation as a fixed-length *candidate solution* — an array of
-`(x, y, R, G, B)` five-tuples, one per modified pixel — and searches over both *which* pixels and
-*what new RGB values* to write into them using Differential Evolution. The fitness is exactly the
-quantity a black-box attacker can read: the predicted probability of the true class (untargeted) or
-the target class (targeted). With a population on the order of 400 candidates and an early stop when
-the prediction flips, it can fool small images by changing as few as one pixel. **Limitation:** the
-candidate solution mixes discrete pixel *positions* with *continuous color values* over `[0,255]^3`
-per pixel, so the search space is large; DE must evaluate an entire population each generation, and
-on larger images it needs many thousands of queries and its success rate collapses — it works on
-`32x32` but fails as images grow.
+**One-Pixel attack (Su et al., 2019, arXiv:1710.08864).** A black-box L0 attack. It encodes
+a perturbation as a fixed-length *candidate solution* — an array of `(x, y, R, G, B)` five-tuples,
+one per modified pixel — and searches over both *which* pixels and *what new RGB values* to write
+into them using Differential Evolution. The fitness is exactly the quantity a black-box attacker can
+read: the predicted probability of the true class (untargeted) or the target class (targeted). With a
+population on the order of 400 candidates and an early stop when the prediction flips, it can fool
+small images by changing as few as one pixel.
 
 **ScratchThat (Jere et al., 2019).** A black-box L0 attack, also DE-based, that draws colored lines
-(Bezier curves) across the image. **Limitation:** the perturbation is large and visible, and the DE
-search is again query-heavy.
+(Bezier curves) across the image.
 
 **PatchAttack (Yang et al., 2020).** Uses reinforcement learning to place pre-computed texture
-patches over the image. **Limitation:** the patches are large and easily detected.
+patches over the image.
 
 **Square Attack (Andriushchenko et al., ECCV 2020, arXiv:1912.00049).** A black-box `L_inf`/`L2`
 attack built on random search: hold the current adversarial iterate, sample a random *localized
 square* update that lies on the boundary of the norm ball, accept it if the margin loss decreases,
 else discard; stop as soon as the image is adversarial. It is highly query-efficient and needs only
-the model's output. **Limitation for this problem:** it is a *dense* `L_inf`/`L2` attack — its
-square updates inject new pixel values across a contiguous region and it is not formulated for the
-`L0` sparse budget — but its accept-if-improves random-search core and its preference for localized
-updates are the algorithmic template a sparse method can borrow.
+the model's output probabilities.
 
 ## Evaluation settings
 
-The natural yardsticks in place at the time:
+The standard yardsticks:
 
 - **Datasets / models.** CIFAR-10 (`32x32`), TinyImageNet, and full ImageNet, attacking standard
   classifiers — ResNet (e.g. ResNet18/20/50, He et al. 2016) and VGG (VGG11/16, Simonyan & Zisserman

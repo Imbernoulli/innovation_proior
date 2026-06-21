@@ -5,27 +5,23 @@
 Self-attention is the computational bottleneck of Transformer models: for a sequence of
 length `N` and head dimension `d`, forming the score matrix `S = QK^T`, applying a row-wise
 softmax, and multiplying by `V` costs `O(N^2 d)` FLOPs and, in a naive implementation,
-`O(N^2)` extra memory. The memory pressure has already been solved by tiled, IO-aware
-kernels that never materialize the `N x N` matrices, and a better-parallelized successor
-raised throughput further. The open problem is a throughput one on the newest datacenter
-GPU (the NVIDIA Hopper H100): the best available exact-attention kernel reaches only about
-35% of the device's theoretical peak FLOPs, whereas a well-tuned matrix-multiply (GEMM)
-kernel on the same chip reaches 80-90%. The goal is to close that gap — to design a fused
-forward attention kernel that keeps the chip's compute units near saturation
-— while remaining numerically faithful (max-abs error against a high-precision reference must
-stay tiny) and supporting the standard causal mask. The pain point is not arithmetic count;
-the kernel already does the minimal, matmul-dominated FLOPs. The pain point is that the
-chip's specialized units sit idle for much of the run.
+`O(N^2)` extra memory. Tiled, IO-aware kernels never materialize the `N x N` matrices, and a
+better-parallelized successor raised throughput further. The question is how to design a fused
+forward attention kernel for the newest datacenter GPU (the NVIDIA Hopper H100) that keeps the
+chip's compute units busy, while remaining numerically faithful (max-abs error against a
+high-precision reference must stay tiny) and supporting the standard causal mask. As a
+reference point, the best available exact-attention kernel reaches about 35% of the device's
+theoretical peak FLOPs, whereas a well-tuned matrix-multiply (GEMM) kernel on the same chip
+reaches 80-90%.
 
-Two facts about the new hardware reframe what "fast" means here. First, the chip is deeply
-*asynchronous*: matrix multiply runs on Tensor Cores driven by an asynchronous warpgroup-wide
-instruction (WGMMA), memory movement between global and shared memory runs on a separate
-dedicated asynchronous unit (the Tensor Memory Accelerator, TMA), and these issue without
-blocking. Second, the chip offers cheap *low precision*: an 8-bit floating point format (FP8,
-e4m3) runs matmul at roughly double the FP16/BF16 throughput. An attention algorithm written
-for the previous, effectively synchronous, FP16 world uses neither — it follows a synchronous
-schedule and runs only in 16-bit. A solution would have to put both of these new hardware
-capabilities to work for attention while remaining numerically faithful.
+The Hopper chip exposes two capabilities not present in the previous generation. First, it is
+deeply *asynchronous*: matrix multiply runs on Tensor Cores driven by an asynchronous
+warpgroup-wide instruction (WGMMA), memory movement between global and shared memory runs on a
+separate dedicated asynchronous unit (the Tensor Memory Accelerator, TMA), and these issue
+without blocking. Second, it offers cheap *low precision*: an 8-bit floating point format
+(FP8, e4m3) runs matmul at roughly double the FP16/BF16 throughput. The standard attention
+kernel was written for the previous, effectively synchronous, FP16 hardware: it follows a
+synchronous schedule and runs only in 16-bit.
 
 ## Background
 
@@ -62,25 +58,20 @@ generically improves the compiler's ability to find a good instruction schedule
 strict operand-layout constraints (FP8 WGMMA accepts only operands contiguous in the inner
 contraction dimension, and the FP32 accumulator layout does not match the operand-A layout).
 
-**The throughput imbalance that makes softmax expensive.** Matmul and the special functions
+**The relative throughput of matmul and special functions.** Matmul and the special functions
 needed by softmax live on different units with very different throughput. On the H100 SXM5,
 FP16 matmul peaks near 989 TFLOPS, while the multi-function unit that computes the exponential
 delivers only about 3.9 TFLOPS (16 special-function operations per SM per clock × 132 SMs ×
 1.83 GHz) — a ratio of roughly 256x. For an FP16 forward pass at head dimension 128 there are
-about 512x more matmul FLOPs than exponential FLOPs, but the exponential is 256x slower, so
-the exponential can take on the order of half the wall-clock time of the matmul. Moving to
-FP8 only sharpens this: matmul doubles, the exponential does not.
+about 512x more matmul FLOPs than exponential FLOPs, while the exponential is 256x slower, so
+the exponential can take on the order of half the wall-clock time of the matmul. Under FP8,
+matmul doubles and the exponential does not.
 
-**The diagnostic finding that motivates everything.** The best existing fused exact-attention
-kernel on Hopper measures at about 35% of peak FLOPs, against 80-90% for an optimized GEMM.
-Part of this is using previous-generation (synchronous) Tensor Core instructions instead of
-Hopper's; more fundamentally, that kernel adheres to a synchronous model — it issues a matmul,
-waits, does softmax, waits, does the next matmul — so the asynchronous units it could overlap
-instead idle in turn, and it never touches FP8. Separately, large language models are known to
-carry *outlier features*: a small fraction of activation entries with magnitude far larger
-than the rest (Dettmers et al. 2022; Sun et al. 2024), which is exactly the regime that makes
-naive low-precision quantization (one scale factor per tensor) lose accuracy, since one
-outlier inflates the scale and crushes the precision of every ordinary value.
+**Low-precision quantization and outlier features.** A common quantization scheme uses one
+scale factor per tensor. Large language models are known to carry *outlier features*: a small
+fraction of activation entries with magnitude far larger than the rest (Dettmers et al. 2022;
+Sun et al. 2024). Under per-tensor quantization, one outlier sets the scale for the whole
+tensor.
 
 ## Baselines
 
@@ -100,16 +91,14 @@ then  y_i = e^{x_i − m_V} / d_V.
 A short induction proves `m_V = max_k x_k` and `d_V = Σ_j e^{x_j − m_V}`, so this equals the
 two-pass safe softmax exactly. The combine step `[m_i, d_i] ⊕ [m_j, d_j] =
 [max(m_i,m_j), d_i e^{m_i−max} + d_j e^{m_j−max}]` is associative and commutative, so the
-reduction can be done block-wise in any order. **Gap:** this is a softmax primitive in
-isolation; used directly on attention scores it still requires the full `S` to exist, so it
-does not by itself avoid materializing the `N×N` matrices.
+reduction can be done block-wise in any order. This is a softmax primitive in isolation;
+applied directly to attention scores it operates on the full `S`.
 
 **Standard attention.** Compute `S = QK^T` and write it to HBM; read it back, compute
 `P = softmax(S)`, write `P`; read `P` and `V`, compute `O = PV`, write `O`. This materializes
-two `N×N` matrices, costing `O(N^2)` memory and `Θ(Nd + N^2)` HBM accesses; since softmax,
-masking and dropout on the `N×N` matrix are memory-bound, the HBM traffic dominates the
-runtime. **Gap:** the wall-clock time is set by quadratic HBM traffic, not by the
-matmul-dominated FLOPs, and the intermediate matrices make long sequences infeasible.
+two `N×N` matrices, costing `O(N^2)` memory and `Θ(Nd + N^2)` HBM accesses; softmax,
+masking and dropout on the `N×N` matrix are memory-bound, so the HBM traffic dominates the
+runtime.
 
 **Tiled IO-aware fused attention (FlashAttention, Dao et al. 2022).** Split `Q, K, V` into
 blocks, stream them through SMEM, and apply the online-softmax recurrence block-wise so the
@@ -119,17 +108,15 @@ HBM. For the backward pass, store only `O` and the softmax statistics and *recom
 on chip from the blocks (selective checkpointing). The IO complexity drops from `Θ(Nd + N^2)`
 to `Θ(N^2 d^2 / M)` for SRAM size `M`; since `d^2 ≪ M` for typical `d` (64-128) and `M`
 (~100 KB), that is many times fewer HBM accesses, and a matching lower bound shows no exact
-algorithm can asymptotically beat `Θ(N^2 d^2 / M)` across the SRAM range. **Gap:** it
-parallelizes only over `(batch × heads)`, so occupancy collapses for long sequences with
-small batch; its inner loop and "split-K" warp partitioning force intermediate results
-through SMEM with synchronization; and, written for the previous synchronous model, it
-under-utilizes compute on a newer chip.
+algorithm can asymptotically beat `Θ(N^2 d^2 / M)` across the SRAM range. It parallelizes over
+`(batch × heads)`, and its inner loop uses "split-K" warp partitioning that routes
+intermediate results through SMEM with synchronization.
 
 **Better-parallelized fused attention (FlashAttention-2, Dao 2023).** Several refinements of
-the tiled kernel that target the cost of the *non-matmul* work — important because on the
-prior-generation A100 each non-matmul FLOP costs about 16x a matmul FLOP (312 vs 19.5
-TFLOPs/s). (1) Defer the normalization: instead of dividing the running output by `ℓ` at every
-block, carry an un-normalized accumulator `Õ` and divide once at the very end —
+the tiled kernel that target the cost of the *non-matmul* work — on the prior-generation A100
+each non-matmul FLOP costs about 16x a matmul FLOP (312 vs 19.5 TFLOPs/s). (1) Defer the
+normalization: instead of dividing the running output by `ℓ` at every block, carry an
+un-normalized accumulator `Õ` and divide once at the very end —
 `Õ^{(2)} = diag(e^{m^{(1)}−m^{(2)}}) Õ^{(1)} + e^{S^{(2)}−m^{(2)}} V^{(2)}`, then
 `O = diag(ℓ^{(last)})^{-1} Õ^{(last)}`. (2) Keep only the logsumexp `L = m + log(ℓ)` for the
 backward pass rather than both `m` and `ℓ`. (3) Reorder the loops so the outer loop is over
@@ -139,10 +126,8 @@ occupancy when batch×heads is small. (4) Partition the query block across the w
 (rather than splitting K/V), so each warp produces a complete slice of the output with no
 inter-warp reduction, cutting SMEM traffic. (5) For causal masking, skip blocks that are
 entirely in the future, and apply the elementwise mask only on the diagonal-crossing boundary
-blocks. **Gaps:** block sizes are tuned by hand over a few choices, with auto-tuning
-left as future work; and the algorithm still follows a synchronous model — it makes no use of
-the new chip's asynchronous Tensor Core / memory units, and runs only in 16-bit precision —
-which is why it leaves the bulk of the new chip's peak FLOPs on the table.
+blocks. Block sizes are tuned by hand over a few choices; the algorithm follows a synchronous
+model and runs in 16-bit precision.
 
 ## Evaluation settings
 

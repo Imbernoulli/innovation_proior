@@ -6,11 +6,6 @@ rule. Gauss and Legendre proposed, from computation, that the density near \(x\)
 by \(1/\log x\), equivalently that the main scale should be \(x/\log x\) or the logarithmic
 integral. The problem is to turn that empirical law into a theorem.
 
-The obstruction is that direct enumeration sees only the primes already listed. It gives
-\(\pi(x)\) exactly for a fixed \(x\), but it does not explain why the cumulative count should
-have a stable asymptotic. A proof has to replace direct counting by an object whose global
-behavior can be controlled.
-
 ## Background
 
 Euler's product is the first object that contains all primes at once:
@@ -42,26 +37,23 @@ primes up to three million has fluctuations, and that the periodic terms explain
 fluctuations should be expected.
 
 Hadamard's 1896 article begins from the logarithmic form of \(\zeta\) for
-\(\operatorname{Re}s>1\), states that \(\zeta\) has no zeros there, and identifies the missing
-boundary assertion as the absence of zeros on the line \(\operatorname{Re}s=1\). The article's
+\(\operatorname{Re}s>1\), states that \(\zeta\) has no zeros there, and identifies the boundary
+assertion as the absence of zeros on the line \(\operatorname{Re}s=1\). The article's
 opening explicitly sets out to prove that conclusion, then uses it for arithmetic consequences.
 
 ## Baselines
 
-Direct sieving gives exact finite counts. It is indispensable for data but remains an
-enumeration procedure. It cannot convert the irregular local sequence of primes into an
-asymptotic law.
+Direct sieving gives exact finite counts and is indispensable for data.
 
-The logarithmic-integral approximation fits the observed trend. It captures the empirical
-scale but does not by itself explain why the scale is forced, nor why the errors fluctuate.
+The logarithmic-integral approximation fits the observed trend and captures the empirical
+scale.
 
 Chebyshev's real-variable estimates move from \(\pi(x)\) to \(\theta(x)\) and \(\psi(x)\), and
-they prove that \(\pi(x)\log x/x\) stays between explicit positive constants for large \(x\).
-This shows the right order of magnitude, but not the limiting constant.
+they prove that \(\pi(x)\log x/x\) stays between explicit positive constants for large \(x\),
+showing the right order of magnitude.
 
 Riemann's explicit formula gives a structural account of the fluctuations through zeros of
-\(\zeta\). Its difficulty is that the formula is only as useful as the information available
-about those zeros, especially near the boundary line \(\operatorname{Re}s=1\).
+\(\zeta\) and their relationship to the boundary line \(\operatorname{Re}s=1\).
 
 ## Evaluation settings
 
@@ -69,8 +61,7 @@ The main target is the asymptotic statement
 \[
 \pi(x)\sim \frac{x}{\log x}.
 \]
-Equivalent targets are \(\theta(x)\sim x\) and \(\psi(x)\sim x\). A proof may naturally pass
-through \(\psi\), because \(\psi\) is tied to the Dirichlet series for \(-\zeta'(s)/\zeta(s)\).
+Equivalent targets are \(\theta(x)\sim x\) and \(\psi(x)\sim x\).
 
 The analytic checks are: convergence in \(\operatorname{Re}s>1\), meromorphic continuation of
 \(\zeta\), the simple pole at \(s=1\), nonvanishing on the line \(\operatorname{Re}s=1\), and a
@@ -85,8 +76,5 @@ is a proof pipeline:
 - Define \(\pi(x)\), \(\theta(x)\), \(\psi(x)\), and \(\Lambda(n)\).
 - Establish the equivalences among \(\pi(x)\sim x/\log x\), \(\theta(x)\sim x\), and
   \(\psi(x)\sim x\).
-- Express the Dirichlet series of \(\Lambda\) using the logarithmic derivative of Euler's
-  product.
 - Insert the analytic facts about \(\zeta\) at and near \(\operatorname{Re}s=1\).
-- Use a contour/Perron or Tauberian bridge to pass from the singularity at \(s=1\) to the
-  asymptotic for \(\psi(x)\), then return to \(\pi(x)\).
+- Derive the asymptotic for \(\psi(x)\) and return to \(\pi(x)\).

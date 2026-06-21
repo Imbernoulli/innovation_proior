@@ -4,11 +4,11 @@
 
 How can we estimate the probability distribution `p(x)` of natural images in a way that is simultaneously *tractable* — letting us compute the exact likelihood of an image and sample new ones — and *expressive* enough to capture the highly nonlinear, long-range, and multimodal correlations between pixels that make natural images what they are?
 
-Natural images are high-dimensional and highly structured, so a good density model would unlock image compression, inpainting, deblurring, and generation (and, conditioned on side information, text-to-image or future-frame prediction). The central obstacle is the trade-off between expressiveness and tractability: powerful models tend to require intractable inference, while tractable models tend to be too weak to capture the dependencies. A satisfactory method must keep an *exact, tractable likelihood* while being expressive enough to model every pixel-to-pixel dependency, including the dependencies between the color channels within a single pixel, with no independence shortcuts.
+Natural images are high-dimensional and highly structured, so a good density model would unlock image compression, inpainting, deblurring, and generation (and, conditioned on side information, text-to-image or future-frame prediction).
 
 ## Background
 
-**Latent-variable models.** Most work on generative image modeling uses stochastic latent-variable models such as the VAE (Kingma & Welling, 2013; Rezende, Mohamed & Wierstra, 2014), which aim to extract meaningful latent representations. They come with an intractable inference step — the likelihood is only bounded (the ELBO), not computed exactly — and they typically impose independence structure in the latents, which can limit how faithfully the full pixel dependency structure is modeled.
+**Latent-variable models.** Most work on generative image modeling uses stochastic latent-variable models such as the VAE (Kingma & Welling, 2013; Rezende, Mohamed & Wierstra, 2014), which aim to extract meaningful latent representations. They come with an intractable inference step — the likelihood is only bounded (the ELBO), not computed exactly — and they typically impose independence structure in the latents.
 
 **Autoregressive / fully-visible models.** An alternative that is exactly tractable casts the joint distribution of the pixels as a product of conditionals: `p(x) = Π_i p(x_i | x_{<i})`. This is the approach of fully-visible neural networks (Neal, 1992; Bengio & Bengio, 1999) and NADE (Larochelle & Murray, 2011). There are no latent variables and no approximate inference: the likelihood is exact, and generation is ancestral. The factorization turns density estimation into a *sequence* problem — predict the next pixel given all previous ones — so the quality of the model hinges entirely on how expressive the conditional sequence model is.
 
@@ -22,11 +22,11 @@ Natural images are high-dimensional and highly structured, so a good density mod
 
 ## Baselines
 
-**Fully-visible / NADE-style autoregressive models (Neal, 1992; Bengio & Bengio, 1999; Larochelle & Murray, 2011).** Factorize `p(x) = Π_i p(x_i | x_{<i})` and model each conditional with a (shallow) neural network. Strength: exact tractable likelihood, no latent variables. Gap: the conditional models are not expressive enough to capture the nonlinear long-range dependencies of natural images, and the original formulations did not scale to large color images.
+**Fully-visible / NADE-style autoregressive models (Neal, 1992; Bengio & Bengio, 1999; Larochelle & Murray, 2011).** Factorize `p(x) = Π_i p(x_i | x_{<i})` and model each conditional with a (shallow) neural network. Exact tractable likelihood, no latent variables.
 
-**Two-dimensional LSTM for images (Theis & Bethge, 2015).** A 2D LSTM scanning top-left to bottom-right, with *continuous* pixel conditionals. Strength: handles long-range dependencies via the recurrent 2D state; promising on grayscale and textures. Gap: the continuous conditional limits multimodality and is harder to learn; the fully sequential 2D recurrence over every pixel is slow; demonstrated on grayscale rather than large-scale color images.
+**Two-dimensional LSTM for images (Theis & Bethge, 2015).** A 2D LSTM scanning top-left to bottom-right, with *continuous* pixel conditionals. Handles long-range dependencies via the recurrent 2D state; demonstrated on grayscale images and textures.
 
-**Latent-variable models (VAE; Kingma & Welling, 2013; Rezende et al., 2014).** Encoder/decoder with a latent prior, trained on the ELBO. Strength: learns representations, scalable training. Gap: only a *lower bound* on the likelihood (intractable exact inference), and latent independence assumptions, so it does not deliver an exact density that captures the full pixel dependency structure.
+**Latent-variable models (VAE; Kingma & Welling, 2013; Rezende et al., 2014).** Encoder/decoder with a latent prior, trained on the ELBO. Learns representations and supports scalable training.
 
 ## Evaluation settings
 

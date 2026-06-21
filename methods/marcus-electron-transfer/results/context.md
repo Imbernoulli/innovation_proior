@@ -14,11 +14,7 @@ aqueous cation) are *slow*, while the analogous exchange between large complex i
 (Fe(CN)₆³⁻/Fe(CN)₆⁴⁻, MnO₄⁻/MnO₄²⁻) is *fast*. A simple electron transfer of this kind breaks and
 forms no chemical bonds and, in the self-exchange case, produces products identical to the reactants —
 so the usual rate-controlling factor, the relative stability of products versus reactants, is removed
-entirely. These are arguably the simplest reactions in chemistry, and yet the standard rate theory of
-the day cannot say why one is slow and the other fast, nor even get the *sign* of their measured
-entropies of activation right (they are large and negative, between like-charged ions, where naive
-arguments predicted a positive contribution). A correct theory has to identify what actually
-constitutes the activation barrier when no bonds move, and turn it into a computable number.
+entirely. These are arguably the simplest reactions in chemistry.
 
 ## Background
 
@@ -54,11 +50,7 @@ transfer, the environment is less foreign, and the reaction is fast. The same pi
 ensuing symposium discussion, explained why a complex ion with a large change in metal–ligand bond
 length on reduction (Co(NH₃)₆³⁺/²⁺) is nonetheless slow: now it is the *inner-shell* nuclear
 coordinates that are left in a foreign configuration. This qualitative account captured the size
-trend strikingly well. Two things were left unsettled, however: the actual back-of-the-envelope
-estimate of the resulting solvation barrier did not hold up quantitatively; and, taken literally, a
-frozen-nuclei electron jump straight up from the reactant's equilibrium configuration is a *vertical*
-transition — the kind a photon induces — so as a description of a reaction proceeding **in the dark**
-it leaves the energy books unbalanced.
+trend strikingly well.
 
 **Nonequilibrium polarization as a physical state (Platzman & Franck 1952; polaron work of Pekar and
 Fröhlich, early 1950s).** When a dissolved ion absorbs light, the electron is promoted essentially
@@ -76,11 +68,8 @@ change instantly; the atomic and orientation parts are sluggish.
 
 **The earlier tunnelling treatment (Weiss 1954; Marcus, Zwolinski & Eyring 1954).** A prior attempt
 treated the slow step as the electron tunnelling through a barrier between the two ions, with a
-probability falling off exponentially in the tunnelling distance, ≈ exp(−β r_ab). It correctly sensed
-that a reorganization of the solvation atmospheres precedes the jump, but it mishandled which
-elementary step is rate-limiting (tacitly letting the reorganized state only go forward to products,
-never relax back to reactants), and it omitted the frequency with which the electron actually strikes
-the barrier, which threw the estimated tunnelling rate off by orders of magnitude.
+probability falling off exponentially in the tunnelling distance, ≈ exp(−β r_ab). It recognized that
+a reorganization of the solvation atmospheres precedes the jump.
 
 **The empirical facts to be explained (pre-theory observations).** (i) Self-exchange between small
 aqueous cations is slow; between large complex ions, fast. (ii) Measured entropies of activation for
@@ -92,35 +81,23 @@ for inorganic redox), and any theory must reproduce them.
 
 ## Baselines
 
-The methods a quantitative electron-transfer theory would be measured against, and where each stalls:
+The methods a quantitative electron-transfer theory would be measured against:
 
 - **Absolute-rate theory applied directly to an electron-transfer "activated complex."** Take the
   reacting pair as a single activated complex, compute its free energy of formation by ordinary means,
-  insert into k=(kT/h)exp(−ΔF\*/kT). *Where it stalls:* the theory presupposes a reaction coordinate
-  along which bonds stretch, and a recipe for ΔF\* from that motion. In a pure electron transfer no
-  bonds break or form, so there is no such coordinate and no prescription for the barrier; the
-  framework gives the *form* of a rate law but cannot furnish ΔF\* for this class of reaction.
+  insert into k=(kT/h)exp(−ΔF\*/kT). The theory gives the *form* of a rate law in terms of ΔF\*.
 
 - **Equilibrium continuum electrostatics for the activated complex (Born / q₁q₂DR).** Estimate the
   solvation free energy of the activated complex by treating it as a charged sphere whose polarization
-  field is in equilibrium with its charge. *Where it stalls:* its defining assumption — polarization
-  always equilibrated to the instantaneous charges — is precisely what cannot hold at the moment of an
-  electron transfer, where the heavy solvent has not had time to follow the charge. Used as written it
-  describes a state the reaction never passes through, and it contains no quantity that could register
-  how far the solvent's slow polarization sits from equilibrium.
+  field is in equilibrium with its charge. This gives a concrete route to ΔF\* through Born and Coulomb
+  terms.
 
 - **Libby's Franck–Condon argument.** Qualitatively correct and the source of the key physical
   picture (frozen nuclei → foreign solvent environment → barrier; barrier larger for small ions).
-  *Where it stalls:* the numerical estimate of the barrier did not survive scrutiny, and the literal
-  vertical-jump-from-the-reactant-minimum picture corresponds to an energy-non-conserving (optical)
-  event, leaving open how the same physics operates thermally, in the dark, with the books balanced.
-  It offers a mechanism but not a computable, parameter-free free energy of activation.
+  Offers a mechanism linking ion size, the Franck–Condon principle, and observed reaction rates.
 
 - **The electron-tunnelling-barrier treatment.** Locates the slowness in a tunnelling probability
-  exp(−β r_ab) and recognizes that solvent reorganization precedes the jump. *Where it stalls:* it
-  gets the kinetic bookkeeping of the elementary steps wrong (no reverse relaxation of the reorganized
-  state) and leaves out the strike frequency, so its rate estimates are unreliable; and it locates the
-  difficulty in the electronic step rather than in the cost of preparing the nuclear configuration.
+  exp(−β r_ab) and recognizes that solvent reorganization precedes the jump.
 
 ## Evaluation settings
 
@@ -141,9 +118,7 @@ without arbitrary parameters.
 
 A scaffold for turning electrostatic inputs into a predicted rate. The pieces that already
 exist are the dielectric/geometric inputs, the Born and Coulomb electrostatics, and the
-transition-state rate law k = Z·exp(−ΔF\*/kT). What is missing is the one quantity that the whole
-problem turns on — the free energy of activation ΔF\* for a reaction in which no bonds move — and the
-electrostatic state from which it must be computed.
+transition-state rate law k = Z·exp(−ΔF\*/kT).
 
 ```python
 import numpy as np

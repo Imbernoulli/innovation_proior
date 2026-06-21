@@ -6,30 +6,16 @@ By this point a normalization layer sits after almost every convolution in a dee
 recenters and rescales the activations of that layer, which controls the scale of internal
 features, eases optimization, lets training use higher learning rates, and acts as a mild
 regularizer. The standard recipe is to pick *one* normalization operation and use it
-identically in every normalization layer of the whole network. That single global choice turns
-out to be where the trouble is. Which operation is best is not fixed: it depends on the task
-(image classification behaves differently from artistic style transfer, which behaves
-differently from a recurrent language model), on the architecture (a convolutional backbone
-versus a detection head versus an LSTM cell), and — sharply — on the minibatch size used during
-training. Today this choice is made by hand: a practitioner reads the literature, decides "use
-batch statistics for classification, use per-image statistics for stylization," and bakes that
-one operation into every layer. Two costs follow. First, model design is cumbersome and
-fragile — moving to a new task or a smaller batch can require swapping the normalizer and
-re-tuning. Second, and more fundamental, a single operation imposed uniformly is *suboptimal*:
-even within one trained network, different layers and different stages plausibly want different
-treatment, and a global choice cannot give it to them.
+identically in every normalization layer of the whole network. Which operation is best depends
+on the task (image classification behaves differently from artistic style transfer, which
+behaves differently from a recurrent language model), on the architecture (a convolutional
+backbone versus a detection head versus an LSTM cell), and — sharply — on the minibatch size
+used during training. Today this choice is made by hand: a practitioner reads the literature,
+decides "use batch statistics for classification, use per-image statistics for stylization,"
+and bakes that one operation into every layer.
 
-The precise goal is a normalization layer that does not force this choice up front. It should
-(1) be a drop-in replacement for the per-channel normalization layer already used after each
-convolution — same constructor `(num_features=C)`, same input/output shape `[N,C,H,W]`, the
-same learnable per-channel affine — so it can be swapped in without touching the architecture,
-data pipeline, optimizer, or training loop; (2) remain numerically stable and well-defined in
-both training and evaluation, including at small batch sizes where batch statistics become
-unreliable; (3) add only a negligible number of parameters and essentially no extra compute
-over the cost of estimating the statistics one normalizer already needs; and (4) determine its
-own behavior from data rather than from a hand-set hyper-parameter. Each existing normalization
-layer occupies one fixed point in the space of "which pixels do I pool statistics over"; the
-problem is that committing to one point, globally and by hand, is the very thing that hurts.
+The question is whether there is a principled way to determine which statistics a normalization
+layer should use, across different tasks, architectures, and batch-size regimes.
 
 ## Background
 
@@ -66,23 +52,23 @@ mean and variance:
 
 The choice of `I` is the entire design space, and the known methods are particular choices.
 
-**Feature statistics, batch dependence, and the small-batch failure.** Two empirical facts about
-this design space set up the problem. First, the choice of `I` carries different *information*:
+**Feature statistics, batch dependence, and the small-batch regime.** Two empirical facts about
+this design space are relevant. First, the choice of `I` carries different *information*:
 pooling over the batch keeps each example's per-channel mean/variance as a usable signal (it
 subtracts one shared mean across the batch), whereas pooling within a single image subtracts
 that image's own per-channel mean and variance and so erases exactly that per-image signal — a
 distinction that matters because per-channel feature statistics are known to encode an image's
 "style" (texture, contrast, color cast), which is a nuisance in some tasks and the label in
-others. Second, and decisively for this problem: when the mean and variance are estimated from
-the batch, their *quality* depends on how many samples the batch has. With a large batch the
-batch mean and variance are good estimates of the population statistics; as the batch shrinks
-the estimates become noisy, and the normalization injects that noise into every forward pass.
-This is a reported, reproducible degradation — batch-statistic normalization that is excellent
-with many samples per GPU loses accuracy as the per-GPU sample count drops, and in the
-one-sample-per-GPU convolutional case its training statistic collapses to the same spatial
-scope as instance-style pooling while retaining the batch-normalization train/test machinery.
-Tasks like detection and segmentation force the small-minibatch regime, because large input
-images leave room for only a couple of samples per GPU.
+others. Second, when the mean and variance are estimated from the batch, their *quality* depends
+on how many samples the batch has. With a large batch the batch mean and variance are good
+estimates of the population statistics; as the batch shrinks the estimates become noisy, and
+the normalization injects that noise into every forward pass. This is a reported, reproducible
+degradation — batch-statistic normalization that is excellent with many samples per GPU loses
+accuracy as the per-GPU sample count drops, and in the one-sample-per-GPU convolutional case
+its training statistic collapses to the same spatial scope as instance-style pooling while
+retaining the batch-normalization train/test machinery. Tasks like detection and segmentation
+force the small-minibatch regime, because large input images leave room for only a couple of
+samples per GPU.
 
 ## Baselines
 
@@ -94,36 +80,25 @@ the layer input `h ∈ R^{N×C×H×W}`; all share the template above and differ 
 dimensions, per channel: `I_bn = {(n,i,j)}`, so `μ_bn, σ²_bn ∈ R^{C}` — `2C` statistics, one
 mean and one variance per channel. At test time the batch is not available or not
 representative, so BN replaces the batch statistics with population estimates accumulated during
-training (a running average). **Limitation:** the statistics are estimated from the batch, so
-their noise grows as the batch shrinks; accuracy degrades steadily at small batch and, in the
-reported one-sample-per-GPU setting, the method fails to converge. It also carries a train/test
-discrepancy (live batch statistics during training, accumulated population statistics at test).
+training (a running average).
 
 **Instance Normalization — IN (Ulyanov, Vedaldi & Lempitsky 2016).** Pool over only the spatial
 dimensions, separately for each sample and channel: `I_in = {(i,j)}`, so `μ_in, σ²_in ∈ R^{N×C}`
 — `2NC` statistics. It subtracts each image's own per-channel mean and divides by its own
 standard deviation, identically at train and test, so it has no batch dependence at all. This is
 the right choice for artistic stylization, where erasing per-image style is the point.
-**Limitation:** by removing each image's per-channel mean and variance, IN discards the
-inter-sample, per-channel statistics — which in a discriminative task can be useful signal —
-and is reported to lose classification accuracy when dropped into a recognition network in place
-of BN.
 
 **Layer Normalization — LN (Ba, Kiros & Hinton 2016).** Pool over all channels and spatial
 positions within a single sample: `I_ln = {(c,i,j)}`, so `μ_ln, σ²_ln ∈ R^{N}` — `2N`
 statistics, one mean and one variance per sample. Like IN it has no batch dependence and is
 applied identically at train and test; it was introduced to ease optimization of recurrent
-networks. **Limitation:** it collapses all channels of a sample into one shared mean and
-variance, which suits the homogeneous units of an RNN but is a coarser choice for convolutional
-feature maps whose channels can have very different scales.
+networks.
 
 **Group Normalization — GN (Wu & He 2018).** Partition the channels into `g` groups and pool
 over each group of channels together with the spatial positions, per sample. It is
 batch-independent and was motivated precisely by BN's small-batch degradation. Its limiting
 cases place it inside the same family: one group recovers layer-style pooling, one channel per
-group recovers instance-style pooling. **Limitation:** the number of groups `g` is a
-hyper-parameter that must be chosen, and it can want different values in different networks; and
-once chosen, GN is still a *single fixed* statistical choice imposed on every layer.
+group recovers instance-style pooling.
 
 **Reparameterizing the weights instead of the activations — WN (Salimans & Kingma 2016).**
 A different lever entirely: rather than normalizing activations, reparameterize each weight
@@ -136,16 +111,7 @@ the activation-space methods by how each one effectively constrains the filter n
 **Variants that patch BN's batch dependence — BRN (Ioffe 2017), BKN (Wang et al. 2018).** Batch
 Renormalization adds correction factors `r, d` so that training and inference use closer
 statistics, reducing minibatch dependence; Batch Kalman Normalization estimates a full
-covariance across layers. **Limitation:** BRN introduces two extra hyper-parameters that need
-per-network tuning; BKN estimates a `C×C` covariance, costing `C²` parameters and `O(NC²HW)`
-compute, and requires careful per-architecture wiring. Both remain, fundamentally, a single
-batch-statistic recipe applied uniformly.
-
-**The shape of the gap, common to all.** Every one of these makes a single, fixed decision about
-the pooling set `I`, taken once and applied to every normalization layer of the network. Which
-decision is best varies by task, by architecture, and (for the batch-dependent ones) by batch
-size, and the decision is currently made by hand. None of them lets the network's own training
-signal influence, per layer, which statistics get used.
+covariance across layers.
 
 ## Evaluation settings
 

@@ -8,14 +8,12 @@ samples a discrete architecture, the sampled child model is trained, its
 validation performance becomes a reward, and the controller is updated toward
 architectures that score well.
 
-The formulation is useful, but the cost is dominated by the inner evaluation
-loop. Each sampled child model is initialized from scratch, trained to
-convergence, measured once, and discarded. In the NASNet-scale setting, this
-means 450 GPUs for 3-4 days, or 32,400-43,200 GPU-hours. Using less compute had
-already been observed to produce less compelling architectures, so the research
-question is not just "search faster"; it is how to remove the repeated
-from-scratch child training while still letting the controller compare
-architectures by validation performance.
+In this formulation each sampled child model is initialized from scratch,
+trained to convergence, measured once, and discarded. In the NASNet-scale
+setting, this means 450 GPUs for 3-4 days, or 32,400-43,200 GPU-hours. The
+research question is how to run reinforcement-learning architecture search so the
+controller can compare candidate architectures by validation performance at much
+lower compute.
 
 Background
 
@@ -48,25 +46,19 @@ Baselines
 Reinforcement-learning NAS and NASNet use an LSTM controller to sample a child
 architecture, train the child to convergence, score it on validation data, and
 update the controller with REINFORCE. NASNet searches for reusable convolutional
-and reduction cells. The architectures are strong, but the from-scratch
-child-training loop costs tens of thousands of GPU-hours.
+and reduction cells.
 
 Evolutionary NAS with weight inheritance maintains a population of architectures,
-mutates selected parents, and carries parent weights into nearby children. It
-reduces reinitialization waste, but reuse is local to parent-child mutations:
-each new child only benefits when it is near a previously trained parent.
+mutates selected parents, and carries parent weights into nearby children, so a
+new child is initialized from a previously trained parent.
 
-SMASH / HyperNetworks avoid training each child by generating a child's weights
-from an architecture encoding. The drawback is that the generated weights are
-restricted by the hypernetwork parameterization; tensor-product generation
-pushes child weights into a low-rank subspace, so the search may favor
-architectures that look good under generated low-rank weights rather than under
-ordinary unconstrained training.
+SMASH / HyperNetworks generate a child's weights from an architecture encoding
+through a hypernetwork rather than training each child, using tensor-product
+generation to map the encoding to child weights.
 
 Performance prediction, progressive search, and hierarchical search reduce the
 number or length of child-training runs by predicting final accuracy from partial
-signals, growing architectures progressively, or searching over motifs. They
-still leave a per-candidate training/evaluation cost.
+signals, growing architectures progressively, or searching over motifs.
 
 Evaluation settings
 
@@ -85,15 +77,13 @@ architecture-search reward, while final accuracy is reported on the test set.
 
 For any search method, the protocol separates the data used to train child
 weights from the validation data used to reward the controller. Search cost is a
-first-class metric, reported in GPU-hours or GPU-days, because the main
-bottleneck is the repeated child-training loop.
+first-class metric, reported in GPU-hours or GPU-days.
 
 Code framework
 
 The starting scaffold is the existing RL-based NAS harness: an autoregressive
 controller, a child-network builder, a training loop that gives the child enough
-optimization to be scored, and a REINFORCE update from validation reward. The
-open slot is how a sampled architecture obtains its weights.
+optimization to be scored, and a REINFORCE update from validation reward.
 
 ```python
 class Controller(object):

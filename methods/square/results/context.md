@@ -16,18 +16,13 @@ The attacker can query the model on inputs of its choosing and read back the out
 (logits or softmax), but has **no access to weights, no access to gradients**, and no ability
 to backpropagate. Every query costs something — in a real deployment (an ML API) queries are
 rate-limited, billed, or monitored — so the attacker is given a hard **per-sample query
-budget** `N`. The goal is therefore not merely "find an adversarial example" but "find one
-with as few forward queries as possible, at the highest success rate." The two quantities that
-matter are the **success rate** (fraction of inputs successfully flipped within budget) and
-the **average number of queries** used. A method that needs tens of thousands of queries per
-image is close to useless at scale; one that flips most images in a few dozen to a few hundred
-queries is the prize.
+budget** `N`. The two quantities that matter are the **success rate** (fraction of inputs
+successfully flipped within budget) and the **average number of queries** used.
 
 Two structural facts about the problem shape everything below. First, for the `Linf` threat
 model the perturbation is constrained component-wise, `|x_hat_i - x_i| <= eps`, so the feasible
 set is a high-dimensional box and its *corners* — where every component is pushed to `x_i +/-
-eps` (clipped to `[0,1]`) — are the extreme points; an optimizer that wants to use its budget
-maximally is drawn toward the boundary of that box. Second, the images are processed by
+eps` (clipped to `[0,1]`) — are the extreme points. Second, the images are processed by
 **convolutional** networks, whose first layer correlates small local `s x s` patches of the
 input against learned filters — so the *spatial structure* of a perturbation, not just its
 per-pixel budget, governs how strongly it moves the network's internal activations.
@@ -44,14 +39,11 @@ and assemble an estimate of `grad_x L`. NES-style estimators (Ilyas et al. 2018)
 variance scales with the input dimension `d`, which for ImageNet is ~150k, so a single usable
 gradient costs many queries; whole attacks run into the tens of thousands of queries.
 
-**Gradient masking / obfuscated gradients.** A second, sharper problem with gradient-based
-black-box attacks. Many proposed defenses do not actually remove adversarial examples; they
-merely make the *gradient signal* useless — shattered, stochastic, or vanishing gradients
-(Athalye et al. 2018; Papernot et al. 2017). Any attack that estimates and follows a local
-gradient — white-box PGD *and* finite-difference black-box attacks — is fooled into reporting
-a model "robust" when it is not. Athalye et al. 2018 documented this as the reason a slate of
-ICLR defenses fell to adaptive attacks. The lesson: an attack that does **not rely on local
-gradient information at all** would be a more honest robustness probe, immune to this failure.
+**Gradient masking / obfuscated gradients.** Many proposed defenses do not actually remove
+adversarial examples; they merely make the *gradient signal* useless — shattered, stochastic,
+or vanishing gradients (Athalye et al. 2018; Papernot et al. 2017). Athalye et al. 2018
+documented this as the reason a slate of ICLR defenses fell to adaptive attacks that follow
+local gradient information.
 
 **The corner observation for `Linf`.** A line of work observed empirically that successful
 `Linf` perturbations almost always take values `+/- eps` in every component — they sit at a
@@ -89,42 +81,26 @@ These are the prior methods a new black-box attack would be measured against and
 **NES / SPSA gradient-estimation attacks (Ilyas et al. 2018; Uesato et al. 2018; Bhagoji et
 al. 2018).** Estimate the gradient of the loss from score queries — sample directions `u_i`,
 form `grad ~ (1/sigma) E[L(x + sigma u_i) u_i]` (NES) or a simultaneous-perturbation finite
-difference (SPSA) — then take a PGD step on the estimate, repeating. **Limitations:** the
-estimator's variance grows with input dimension, so each step costs many queries and the total
-runs into the tens of thousands for high-resolution images; and because it probes the *local
-gradient*, it is exactly the family that gradient masking defeats — on an obfuscated-gradient
-defense it reports failure even when the model is not truly robust. Dimensionality-reduction
-tricks (PCA of the data, autoencoder latent search, low-dimensional noise priors) cut the cost
-somewhat but do not change the underlying gradient-probing principle.
+difference (SPSA) — then take a PGD step on the estimate, repeating. Dimensionality-reduction
+tricks (PCA of the data, autoencoder latent search, low-dimensional noise priors) reduce the
+per-step cost.
 
 **SimBA — simple black-box attack via orthonormal search (Guo et al. 2019).** A random-search
 variant for `L2`: maintain a perturbation; at each step pick a direction from a fixed
 orthonormal basis (pixel basis or DCT basis), try adding `+alpha` or `-alpha` times that
-direction, and keep whichever lowers the loss. **Limitations:** each accepted move is a small
-`L2` step, so query efficiency is suboptimal; and because the basis directions are mutually
-orthogonal, a move that later turns out to be suboptimal *cannot be undone* by subsequent
-moves — the attack cannot revisit and correct a region of the image once it has committed
-budget there.
+direction, and keep whichever lowers the loss.
 
 **Discrete corner-search attacks (Moon et al. 2019; Al-Dujaili & O'Reilly 2019).** Exploit the
 corner observation: restrict every component to `+/- eps` and search the discrete cube. Both
 divide the image by a **coarse, a-priori-fixed grid**, allow component-wise flips of `-eps`/`+eps`
 within that lower-dimensional space, run a local / combinatorial search, then refine the grid
-and repeat; Al-Dujaili & O'Reilly motivate it as estimating gradient *signs*. **Limitations:**
-the grid that determines where changes can happen is fixed in advance and only coarsely refined,
-so the *positions and sizes* of the regions being modified are not themselves optimized — the
-search cannot freely choose where to spend budget.
+and repeat; Al-Dujaili & O'Reilly motivate it as estimating gradient *signs*.
 
 **Evolutionary / tiling attacks (Meunier et al. 2019, building on Ilyas et al. 2019).** Reduce
 the search dimension with the "tiling trick" — divide the perturbation into a set of tiles and
 evolve the tile values with discrete/continuous evolutionary algorithms — reaching near-SOTA
-`Linf` query efficiency. **Limitations:** as in the prior-art tiling work, both the size and
-the position of the tiles are fixed at the start and never optimized; the method searches only
-the tile *values* over a frozen partition of the image.
-
-The common thread across the discrete / tiled baselines is that a fixed partition limits how
-adaptively the perturbation can be changed, while the gradient-estimation baselines pay an
-`O(d)`-per-step query tax and inherit the gradient-masking vulnerability.
+`Linf` query efficiency. The size and position of tiles are fixed at the start; the method
+searches tile *values* over a fixed partition of the image.
 
 ## Evaluation settings
 

@@ -30,7 +30,6 @@ lower bound. Published Table 1 (excess over LB; lower is better):
 | Weibull 5k | 4.23% | 3.98% | 0.68% |
 | Weibull 100k | 4.00% | 3.79% | 0.03% |
 
-The discovered heuristic beats Best Fit on every dataset and widens the gap as streams grow.
 
 ## The fixed substrate
 

@@ -15,13 +15,6 @@ parallel to the x- or y-axis; the polygon is simple (no self-intersection); and 
 length (perimeter) is at most `4 × 10^5`. The objective is the raw value `a − b + 1`; there is no
 partial credit beyond which fish the polygon happens to enclose.
 
-The tension is entirely geometric. A bigger net catches more mackerel but also more sardine and
-spends more of the scarce perimeter budget; a tighter net excludes sardine but may miss outlying
-mackerel and must pay for every staircase notch it cuts. Because mackerel and sardine are drawn
-from overlapping clustered shoals, the two species interleave, and the right net is an irregular
-rectilinear region that hugs mackerel-dense pockets while routing its boundary around sardine
-clusters — all under a perimeter ceiling that makes boundary length a hard currency.
-
 ## Prior art / Background / Baselines
 
 The published contest frontier provides two reference points:
@@ -35,18 +28,13 @@ Local raw-objective means live on an absolute scale and are not directly compara
 relative performance scale; the contest numbers give only the competitive context.
 
 - **Single axis-aligned bounding box.** Search all axis-aligned rectangles via 2D prefix sums to
-  maximize `a − b`. *Gap:* a single convex rectangle cannot carve sardine out of a mackerel shoal
-  nor reach two separated mackerel pockets without swallowing the sardine-rich gap between them.
+  maximize `a − b`.
 - **Grid-cell greedy region growing.** Bucket the sea into a coarse grid, score each cell by
   `(#mackerel − #sardine)`, and greedily grow a connected, hole-free cell region under the
-  perimeter budget, then trace its rectilinear boundary. *Gap:* coarse grid quantization freezes
-  the boundary at cell resolution, and a local frontier greedy easily gets trapped by the perimeter
-  ceiling without any way to undo an early bad inclusion.
+  perimeter budget, then trace its rectilinear boundary.
 - **Simulated annealing on the polygon (ALE-Agent).** Run SA over the net, moving the boundary and
   adding/removing staircase steps, with a spatial index (kd-tree) and incremental scoring so each
-  candidate is cheap. This is the established strong method and sits at 2880 (5th). *Gap:* the
-  search plateaus below the best known scores; many accepted boundary moves reshape the net without
-  improving the objective, so long runs yield only marginal gains.
+  candidate is cheap. This is the established strong method and sits at 2880 (5th).
 
 ## Fixed substrate / Code framework
 

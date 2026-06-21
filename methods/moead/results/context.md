@@ -14,15 +14,9 @@ PF (convergence) and **well distributed along it** (diversity/spread). The PF ca
 concave, disconnected, or — with three or more objectives — a curved surface, so the method
 must handle all of these geometries.
 
-The precise goal is a single algorithm that simultaneously: (1) drives the whole population
-toward the PF with strong, sustained selection pressure even after the population becomes
-mutually non-dominated; (2) keeps the approximation evenly spread without an expensive,
-delicately-tuned, bolt-on diversity device; (3) costs little per generation (the dominant
-machinery of the day is super-linear in the population size); (4) works for two objectives
-and for three or more, including nonconvex and disconnected fronts; and (5) is able to make
-use of the large body of single-objective and mathematical-programming theory rather than
-discarding it. Each existing method below achieves a subset of these; none achieves all at
-once. Closing that gap is the problem.
+The question is how to design an evolutionary algorithm that produces a finite, evenly spread,
+well-converged approximation to the Pareto front in a single run, for problems with two or more
+objectives and fronts of any geometry.
 
 ## Background
 
@@ -34,12 +28,7 @@ concepts:
 - **Pareto dominance and the partial order.** `x` dominates `y` iff `f_i(x) <= f_i(y)` for
   all `i` and strictly for at least one. Dominance is the bedrock comparison in multi-objective
   EAs, but it is only a *partial* order: two points can be mutually non-dominated and hence
-  incomparable. A diagnostic observed about dominance-based methods is exactly this — once the
-  population becomes mostly mutually non-dominated (which happens early, and almost immediately
-  when `m` is large, since the fraction of incomparable pairs grows fast with the number of
-  objectives), dominance stops separating individuals and the pressure that pushes the front
-  toward optimality weakens. Diversity then has to be supplied by a *second*, separate
-  mechanism.
+  incomparable.
 
 - **Scalarization — the classical decomposition theory (e.g. Miettinen, *Nonlinear
   Multiobjective Optimization*).** A cornerstone of traditional (non-evolutionary)
@@ -112,20 +101,11 @@ the last front that does not fit entirely is truncated by **crowding distance** 
 objective, sort the front, give the two extreme points infinite distance, and give each
 interior point the sum over objectives of the normalized gap between its two neighbors,
 `sum_i (f_i^{next} - f_i^{prev}) / (f_i^{max} - f_i^{min})`; keep the most spread-out points.
-**Gap:** selection rests on a *partial* order — once the front is full of mutually
-non-dominated points, dominance no longer separates them and the push toward the PF relies on
-the crowding tie-break, a *separate* density heuristic stapled on for diversity rather than an
-intrinsic property; the fast sort is `O(m N^2)` per generation; and because an individual is
-never tied to any scalar subproblem, none of the single-objective or scalarization theory can
-be brought to bear.
 
 **SPEA2 (Zitzler, Laumanns & Thiele, EUROGEN 2001 / TIK-Report 103) and PAES (Knowles &
 Corne).** Other strong non-decomposition methods: SPEA2 assigns each individual a strength-based
 fitness plus a `k`-nearest-neighbor density estimate (`k = sqrt(N + |archive|)`) and maintains
 an external archive; PAES is a (1+1) evolution strategy with an adaptive grid for density.
-**Gap:** same family limitation — they treat the MOP as a whole and rank by dominance plus a
-bolt-on density device; the partial-order weakening and the inability to reuse scalar machinery
-persist; SPEA2's density computation is itself costly.
 
 **MOGLS — multi-objective genetic local search (Jaszkiewicz, *EJOR* 137, 2002; building on
 Ishibuchi & Murata).** Closer in spirit to scalarization: at each iteration it draws a weight
@@ -133,11 +113,7 @@ vector `lambda` *at random*, forms a temporary elite population (TEP) of the `K`
 solutions under the Tchebycheff (or weighted-sum) aggregation `g(. | lambda)`, recombines and
 locally-improves two of them, and inserts the result into a current set `CS` that is allowed
 to grow large (in reported settings `|CS|` reaches 3000-7000), with an external archive `EP`
-of non-dominated points. **Gap:** because a *fresh random* weight is drawn every iteration,
-the search effort is spread thinly over effectively infinitely many subproblems rather than
-concentrated on a fixed, finite set of representatives the decision maker actually wants; and
-forming the TEP costs `O(K |CS|)` per iteration with `|CS|` in the thousands, so each step is
-expensive. There is no fixed roster of subproblems that each retain their own current best.
+of non-dominated points.
 
 ## Evaluation settings
 

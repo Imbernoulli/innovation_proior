@@ -1,22 +1,22 @@
 ## Research question
 
-A Mixture-of-Experts (MoE) layer replaces a dense feed-forward block with `N` expert FFNs and a small **router** that, for every token, emits a probability vector over the experts and sends the token to its **top-K** experts. The promise is sparse scaling — capacity grows with `N` while per-token compute stays at `K` experts — but the router is trained only by the language-model cross-entropy, which has no reason to spread tokens evenly. A router that sends almost everything to a handful of experts lowers training loss just as well, because those few experts simply receive more gradient and more capacity. Left alone, the router **collapses**: a few experts soak up the traffic, the rest receive almost no tokens and never train. Collapse wastes the very parameters the MoE was built to add, and under expert parallelism it also hurts throughput, because the most-loaded expert gates the all-to-all.
+A Mixture-of-Experts (MoE) layer replaces a dense feed-forward block with `N` expert FFNs and a small **router** that, for every token, emits a probability vector over the experts and sends the token to its **top-K** experts. Sparse scaling lets model capacity grow with `N` while per-token compute stays at `K` experts. The router is trained jointly with the language model by the cross-entropy objective.
 
-The design target is the **load-balancing loss** `L_balance` that is added to the cross-entropy during training:
+In practice, MoE training often couples an auxiliary **load-balancing loss** `L_balance` added to the cross-entropy:
 
 ```
 L_total = L_CE + λ · L_balance
 ```
 
-`L_balance` is a differentiable penalty, computed from the router's own statistics, that pushes the router toward using all experts — without dropping tokens, without changing the architecture, and without flattening the specialization that makes a sparse model worth training. A penalty strong enough to force perfect equality also erases learned preferences and hands back a model no better than a dense one. The whole problem lives in that tension: balance the load *and* keep the experts specialized.
+`L_balance` is a differentiable penalty, computed from the router's own statistics, that encourages the router to spread token assignments across experts. What formulations of `L_balance` are effective for this role?
 
 ## Prior art / Background / Baselines
 
-- **Switch Transformer / GShard auxiliary loss (Lepikhin et al. 2020; Fedus et al. 2021).** The standard fix is a penalty proportional to `N · Σ_i f_i · P_i`, where `f_i` is the fraction of tokens dispatched to expert `i` and `P_i` is the mean router probability mass assigned to expert `i`. The product is minimized, for fixed `f`, when probability is moved off over-used experts. *Observed limitation:* `f_i` is computed on the **local micro-batch**, a small and noisy sample. Forcing every micro-batch toward uniform penalizes legitimate topic structure within a mini-batch, so the penalty buys balance by suppressing specialization.
+- **Switch Transformer / GShard auxiliary loss (Lepikhin et al. 2020; Fedus et al. 2021).** The standard formulation is a penalty proportional to `N · Σ_i f_i · P_i`, where `f_i` is the fraction of tokens dispatched to expert `i` and `P_i` is the mean router probability mass assigned to expert `i`. The product gives a differentiable proxy for load imbalance, and `f_i` is computed on the local micro-batch.
 
-- **DeepSeek auxiliary-loss-free balancing (Wang et al. 2024).** This approach drops the gradient penalty entirely and instead keeps a per-expert bias added **only** to routing scores for top-K selection, updating it once per step based on recent load: over-used experts lose bias, under-used experts gain bias. *Observed limitation:* it is a control loop rather than a differentiable objective, so the router receives no gradient signal about balance and the approach targets only counts, not the specialization trade-off.
+- **DeepSeek auxiliary-loss-free balancing (Wang et al. 2024).** This approach maintains a per-expert bias added only to routing scores for top-K selection, updating it once per step based on recent load: over-used experts lose bias, under-used experts gain bias. The router weights receive no gradient from this balancing mechanism.
 
-- **Global-batch load-balancing loss (Qiu et al. 2025).** This keeps the Switch penalty form but computes `f_i` over the **global batch** rather than the local micro-batch. The idea is that balance is a corpus-level property, so any single micro-batch can be as specialized as its content demands as long as usage evens out globally. *Observed limitation:* the penalty equalizes average usage but remains symmetric, leaving a tail of under-used experts in practice because the gradient there is weak.
+- **Global-batch load-balancing loss (Qiu et al. 2025).** This keeps the Switch penalty form but computes `f_i` over the **global batch** rather than the local micro-batch, on the premise that load balance is a corpus-level property.
 
 ## Fixed substrate / Code framework
 

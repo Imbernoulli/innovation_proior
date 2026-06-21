@@ -4,10 +4,10 @@ GPT-2 Medium language-model pretraining at ~355M parameters. The run is fully sp
 
 ## Prior art / Background / Baselines
 
-- **Scaled dot-product attention.** The attention score is `q_m^T k_n / sqrt(d_k)`. The `1/sqrt(d_k)` rescaling keeps the softmax from saturating when q and k have unit-variance entries. Gap: it fixes logit scale but encodes no positional information and does not control q/k magnitude drift as training proceeds.
-- **Learned absolute position embeddings.** A trainable vector per position is added to the token embedding before the stack: `x_i <- x_i + wpe[i]`. Gap: it is absolute, additive, and capped at the trained length; the offset between positions is implicit, not built into the attention score.
-- **Sinusoidal absolute encoding.** Fixed sinusoidal functions of position with geometric wavelengths replace the learned table. Gap: it removes the length cap but is still additive and absolute, so relative offsets are not represented directly in the attention score.
-- **Pre-LayerNorm residual block.** Layer normalization is placed before each sublayer: `x <- x + Attn(LN(x))`, `x <- x + MLP(LN(x))`. Gap: layer norm sits outside attention; the q/k product itself is unnormalized and can drift in scale during training.
+- **Scaled dot-product attention.** The attention score is `q_m^T k_n / sqrt(d_k)`. The `1/sqrt(d_k)` rescaling keeps the softmax from saturating when q and k have unit-variance entries.
+- **Learned absolute position embeddings.** A trainable vector per position is added to the token embedding before the stack: `x_i <- x_i + wpe[i]`. It is absolute and additive, with a separate table entry for each position up to `block_size`.
+- **Sinusoidal absolute encoding.** Fixed sinusoidal functions of position with geometric wavelengths replace the learned table, providing a deterministic encoding without a length cap.
+- **Pre-LayerNorm residual block.** Layer normalization is placed before each sublayer: `x <- x + Attn(LN(x))`, `x <- x + MLP(LN(x))`. The normalized input enters the attention projections.
 
 ## Fixed substrate / Code framework
 

@@ -11,13 +11,8 @@ real ordered axis: a temporal waveform, or a physical profile sampled along a sp
 coordinate, where adjacent samples are coupled by the underlying process and a salient local
 motif can occur at different positions along the axis.
 
-The precise goal is to learn this mapping end-to-end by gradient descent on a differentiable
-loss, from a finite training set, with a model that (1) generalizes well without an
-astronomically large training set, (2) is robust to the position at which a local feature
-appears — small shifts and distortions of the input should not require relearning the feature
-from scratch — and (3) actually exploits, rather than discards, the known local structure and
-ordering of the input. Each of these is something the standard tool of the day fails at, in a
-way made precise below; closing all three at once is the problem.
+The goal is to learn this mapping end-to-end by gradient descent on a differentiable loss, from a
+finite training set, given an input whose coordinates carry a known local structure and ordering.
 
 ## Background
 
@@ -48,74 +43,53 @@ E_test − E_train ≈ k · (h / P)^α,    0.5 ≲ α ≲ 1,
 
 with `h` the effective capacity of the machine (roughly its VC dimension, which grows with the
 number of free parameters) and `P` the number of training samples. For a fixed dataset size
-`P`, *fewer free parameters means a smaller `h` and a smaller generalization gap.* This is the
-quantitative lever: any way to cut the number of independent parameters without cutting the
-useful capacity buys generalization.
+`P`, fewer free parameters means a smaller `h` and a smaller generalization gap.
 
 **The biological and computational template for local-then-pool processing.** Hubel & Wiesel's
 (1962) study of the cat's visual cortex described two cell classes arranged in a feedforward
 hierarchy: *simple cells*, with small, oriented, localized receptive fields that act like local
 oriented-edge detectors, and *complex cells*, which respond to the same oriented feature over a
-*range of positions* — i.e. they tolerate where the feature is. The lesson is a two-stage motif:
-detect a local feature, then become insensitive to its exact location. Fukushima's neocognitron
-(1980) turned this into a multilayer artificial network: alternating layers of feature-extracting
-units whose weights are *replicated across position* (the same local detector applied
-everywhere) and pooling units that grant tolerance to small shifts, cascaded so that local
-features are integrated into higher-order features and the whole network recognizes patterns
-regardless of position. Crucially, the neocognitron was trained by *unsupervised
-self-organization*, with no globally supervised objective — so its detectors were never tuned to
-an actual discriminative task by gradient descent.
+*range of positions* — i.e. they tolerate where the feature is. The motif is two stages: detect a
+local feature, then become insensitive to its exact location. Fukushima's neocognitron (1980)
+turned this into a multilayer artificial network: alternating layers of feature-extracting units
+whose weights are *replicated across position* (the same local detector applied everywhere) and
+pooling units that grant tolerance to small shifts, cascaded so that local features are integrated
+into higher-order features and the whole network recognizes patterns regardless of position. The
+neocognitron is trained by *unsupervised self-organization*, with no globally supervised
+objective.
 
 **Tying parameters together.** Connections in a network need not each carry their own weight: a
 group of connections can be constrained to share a single parameter (Rumelhart et al. 1986, in
 the "T-versus-C" shape-discrimination problem). Such an equality constraint among connection
 strengths is cheap to enforce and, by construction, reduces the count of independent parameters.
 
-**A diagnostic fact about the unstructured baseline.** When a fully-connected network is trained
-directly on raw, size-normalized character images, it can fit the training set while leaving a much
-larger held-out error than its connection count alone would suggest. The capacity relation gives
-the reason to suspect the many *independent* parameters: they inflate `h`, so reducing free
-parameters without discarding useful structure becomes a real target rather than an aesthetic
-preference.
+**The unstructured baseline.** When a fully-connected network is trained directly on raw,
+size-normalized character images, it fits the training set while leaving a larger held-out error.
+The capacity relation ties held-out error to `h`, which grows with the number of independent
+parameters.
 
 ## Baselines
 
 **Fully-connected multilayer network on raw inputs (the standard classifier).** Alternate
 layers of matrix multiplication and a component-wise squashing nonlinearity; train end-to-end by
 back-propagation; output through a softmax or RBF layer. It is a universal approximator and the
-default supervised learner. Its limitations on a structured, position-varying input are three,
-and they are concrete:
-
-- *Parameter explosion / weak generalization.* A first fully-connected layer with, say, a
-  hundred hidden units on an input of a few hundred coordinates already carries tens of thousands
-  of independent weights; on a 2D image it is far worse. By the capacity relation this large `h`
-  forces a large training set and overfits when data is limited (the diagnostic fact above), and
-  the weights cost memory that can rule out some implementations.
-- *No tolerance to position.* The network has no built-in invariance to translations or local
-  distortions. To recognize a feature wherever it appears, it must learn the same detector
-  independently at many positions, with similar weight patterns scattered across the input — and
-  learning that redundantly requires many training instances covering the space of positions.
-- *Topology is thrown away.* The input coordinates can be presented in any fixed permutation
-  without affecting training: the architecture is blind to which coordinates are neighbors. Yet
-  the input has strong local structure — adjacent coordinates are correlated by the underlying
-  signal — and that structure is precisely the information being discarded.
+default supervised learner. A first fully-connected layer with, say, a hundred hidden units on an
+input of a few hundred coordinates carries tens of thousands of independent weights; on a 2D image
+the count is far larger. The architecture is invariant to a fixed permutation of the input
+coordinates — it treats them as an unordered vector, with no built-in notion of which coordinates
+are neighbors and no built-in invariance to translations of the input.
 
 **Hand-designed local feature extractor followed by a trainable classifier (traditional pattern
 recognition).** A fixed front end computes local features engineered by hand (oriented-gradient
 estimators, on-center/off-surround detectors, and the like), and only the back-end classifier is
-trained. This respects locality and can build in some invariance, and it sidesteps the
-parameter-count problem of an FC net on raw pixels. Its limitation is that the front end is
-*frozen and human-designed*: the features are not optimized for the task, designing them is
-laborious and brittle across domains, and the most informative local structure for a given
-problem may not be among the ones a person thought to encode.
+trained. This respects locality and can build in some invariance. The front end is frozen and
+human-designed: its features are fixed in advance rather than optimized against the prediction
+error.
 
 **Self-organized hierarchical local-feature network (neocognitron line).** A cascade of
-position-replicated local-feature layers and pooling layers, achieving shift-tolerant
-recognition (above). Its limitation as a learning machine is the training procedure: it
-self-organizes its detectors without a supervised, end-to-end objective, so the detectors are
-never driven by the actual prediction error. There is, at this point, no demonstration that such
-a position-replicated hierarchy can be trained *as one differentiable system by gradient descent*
-on a discriminative loss.
+position-replicated local-feature layers and pooling layers, achieving shift-tolerant recognition
+(above). Its detectors are set by unsupervised self-organization rather than driven by a
+supervised, end-to-end objective.
 
 ## Evaluation settings
 

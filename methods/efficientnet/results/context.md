@@ -4,22 +4,17 @@ Image classifiers based on convolutional networks keep getting more accurate by 
 The 2012 winner (AlexNet) had a few tens of millions of parameters; by 2017 the strongest single
 model (SENet) reached 82.7% ImageNet top-1 with ~145M parameters; by 2018 a giant model trained
 with pipeline parallelism across many accelerators (GPipe) reached 84.3% with ~557M parameters at
-480×480 input. The pattern is clear: when a larger compute budget is available, people "scale up"
-an existing network for better accuracy.
+480×480 input. When a larger compute budget is available, people "scale up" an existing network for
+better accuracy.
 
-What is *not* clear is how to scale. A convolutional network has three obvious knobs that all cost
-compute and all buy accuracy: how deep it is (number of layers), how wide it is (number of channels
-per layer), and how large the input image is (resolution). Common practice fixes a network at one
-budget and then, given more resources, enlarges *one* of these dimensions — usually depth, sometimes
-width, increasingly resolution. Scaling two or three together is possible but is done by hand, which
-is tedious and tends to land on configurations that are good neither for accuracy nor for FLOPS.
+A convolutional network has three knobs that each cost compute and each buy accuracy: how deep it is
+(number of layers), how wide it is (number of channels per layer), and how large the input image is
+(resolution). Common practice fixes a network at one budget and then, given more resources, enlarges
+one of these dimensions — usually depth, sometimes width, increasingly resolution. Scaling two or
+three together is done by hand.
 
-The precise problem: given a baseline network and a target resource budget (FLOPS and memory), find
-a *principled, reusable* rule for distributing that budget across depth, width, and resolution that
-beats single-dimension scaling — and whose cost of being derived does not blow up as the target
-budget grows. A good solution must (a) say concretely how many extra layers, channels, and pixels to
-add for a given budget, (b) make the budget knob mean something consistent, and (c) be cheap enough
-to apply to a whole family of model sizes.
+The question: given a baseline network and a target resource budget (FLOPS and memory), how to
+distribute that budget across depth, width, and resolution to obtain a family of model sizes.
 
 ## Background
 
@@ -31,36 +26,32 @@ H_i×W_i shrinks (pooling/strided convs) while the channel count C_i grows. The 
 quantities are exactly the length L_i (depth), the channel count C_i (width), and the input spatial
 size H_i, W_i (resolution).
 
-Three pieces of accumulated wisdom describe what each knob buys, and where each saturates:
+Three pieces of accumulated wisdom describe what each knob buys:
 
 - **Depth.** Stacking more layers is the most common way to scale (it is how an 18-layer residual
   net becomes a 200-layer one). Deeper networks capture richer, more hierarchical features and tend
-  to transfer well. But depth is hard to train — gradients vanish through long stacks — and although
-  skip connections and batch normalization largely fix trainability, the *accuracy* return on extra
-  depth diminishes sharply: a ~1000-layer residual net is no more accurate than a ~100-layer one.
+  to transfer well. Skip connections and batch normalization make very deep networks trainable.
+  Empirically, the accuracy return on extra depth diminishes: a ~1000-layer residual net is about as
+  accurate as a ~100-layer one.
 
-- **Width.** Increasing the number of channels is the usual lever for small models (the "depth
+- **Width.** Increasing the number of channels is the usual lever for small models (the "width
   multiplier" of mobile networks scales channels). Wider layers capture finer-grained features and
-  are easier to optimize than very deep ones. But a network that is very wide and shallow struggles
-  to form high-level abstractions, and accuracy saturates quickly as width alone is pushed up.
+  are easier to optimize than very deep ones. Accuracy rises with width and then levels off as width
+  alone is pushed up.
 
 - **Resolution.** Feeding larger images lets the network see finer patterns. Input size has crept up
   over the years — from 224×224 in early networks to 299×299, 331×331, and 480×480 in the largest
-  recent models, with 600×600 common in detection. Again, accuracy rises with resolution but the
-  gain tapers off at very high resolutions.
+  recent models, with 600×600 common in detection. Accuracy rises with resolution and the gain
+  tapers off at very high resolutions.
 
-The diagnostic that frames everything: scaling up *any single* one of these dimensions improves
-accuracy, but for each of them the curve flattens — accuracy gain diminishes as the model gets
-bigger, with each single-dimension curve plateauing around the low 80s in top-1. So single-dimension
-scaling has a built-in ceiling.
+Plotting accuracy against each single dimension: scaling up any one of these dimensions improves
+accuracy, with each single-dimension curve flattening around the low 80s in top-1.
 
-A second, sharper diagnostic concerns the *interaction* between dimensions. If width is scaled while
-depth and resolution are held at their baseline values, accuracy saturates early. But if the same
-width scaling is applied on top of a network that is *already* deeper and run at *higher* resolution,
-width scaling keeps paying off and reaches markedly higher accuracy at the *same* FLOPS. Prior
-theoretical and empirical work had already noted that depth and width are coupled and both matter for
-expressive power, but stopped at those two dimensions and did not bring resolution into the same
-picture.
+The dimensions interact. If width is scaled while depth and resolution are held at their baseline
+values, accuracy levels off early. If the same width scaling is applied on top of a network that is
+already deeper and run at higher resolution, width scaling reaches higher accuracy at the same FLOPS.
+Prior theoretical and empirical work noted that depth and width are coupled and both matter for
+expressive power.
 
 Two cheap, near-free architectural primitives underpin efficient modern networks and are part of the
 landscape:
@@ -87,19 +78,16 @@ The prior methods a new scaling rule would be measured against, or would build o
 - **Residual networks (He et al., 2016).** The canonical depth-scalable family. A block computes
   x + F(x) so that identity is the default and gradients reach early layers undiminished, making very
   deep networks trainable. Residual nets are scaled by adding layers (e.g. from 18 to 200). They are
-  the de-facto depth-scaling baseline. Limitation here: depth-only scaling, and its accuracy return
-  saturates (a thousand-layer variant ≈ a hundred-layer one).
+  the de-facto depth-scaling baseline.
 
 - **Wide residual networks (Zagoruyko & Komodakis, 2016).** Argue that one can trade depth for width:
   a shallower-but-much-wider residual net matches or beats a very deep thin one and trains faster.
-  The canonical width-scaling baseline. Limitation: width-only; very wide shallow nets miss
-  high-level features, and accuracy saturates with width.
+  The canonical width-scaling baseline.
 
 - **Depthwise separable / mobile networks v1 (Howard et al., 2017; Xception, Chollet, 2017).** Build
   whole networks out of depthwise separable convolutions, with a global "width multiplier" and a
   "resolution multiplier" to trade accuracy for size. The standard way to make small efficient
-  networks scalable. Limitation: scaling is per-single-dimension multipliers, hand-set; no rule for
-  jointly balancing depth, width, resolution.
+  networks scalable.
 
 - **Inverted-residual mobile networks v2 (Sandler et al., 2018).** Refine the mobile block into an
   *inverted residual with a linear bottleneck*. Each block keeps a thin channel representation at its
@@ -108,29 +96,24 @@ The prior methods a new scaling rule would be measured against, or would build o
   **linear** — no activation — because a ReLU applied in the narrow bottleneck destroys information
   that cannot be recovered. The residual skip connects the thin bottleneck endpoints, which is cheap
   to add and keeps the large expanded tensor from ever having to be carried across blocks (a memory
-  win). This block is the standard efficient building unit. Limitation: still scaled by a single
-  width/resolution multiplier.
+  win). This block is the standard efficient building unit.
 
 - **Squeeze-and-excitation networks (Hu et al., 2018).** Insert the channel-attention unit above into
-  a strong backbone. Reached 82.7% ImageNet top-1, the best single model of its time, but at ~145M
-  parameters. Limitation: extremely large; great accuracy per nothing-much-compute of the SE unit
-  itself, but the host network is heavy.
+  a strong backbone. Reached 82.7% ImageNet top-1, the best single model of its time, at ~145M
+  parameters.
 
 - **Platform-aware architecture search (Tan et al., 2018).** Instead of hand-designing the mobile
   block, search for it. A reinforcement-learning controller searches a factorized hierarchical space
   (each stage may pick its own kernel size, expansion ratio, whether to include squeeze-and-excitation,
   whether to add a skip) under a multi-objective reward that multiplies accuracy by a soft penalty on
   measured latency, ACC(m)·(LAT(m)/T)^w. Produces strong mobile networks built from inverted-residual
-  blocks. This search machinery is available to *design a baseline* rather than to scale one;
-  measured latency can be swapped for FLOPS when no specific device is targeted. Limitation: search is
-  affordable at mobile size but its cost explodes for large models, so it cannot itself answer the
-  scaling question.
+  blocks. This search machinery can be used to design a baseline; measured latency can be swapped for
+  FLOPS when no specific device is targeted.
 
-- **Pipeline-parallel giant model (Huang et al., 2018).** Pushes accuracy by brute-force scaling — a
-  much larger network at 480×480 resolution, trainable only by partitioning across accelerators with
-  a specialized pipeline-parallelism library. Reaches 84.3% top-1 with ~557M parameters. This is the
-  state of the art that any efficient scaling method must compete with on accuracy while using far
-  fewer resources. Limitation: enormous and unwieldy; scaling done ad hoc (mostly resolution + size).
+- **Pipeline-parallel giant model (Huang et al., 2018).** Pushes accuracy by scaling up — a much
+  larger network at 480×480 resolution, trained by partitioning across accelerators with a specialized
+  pipeline-parallelism library. Reaches 84.3% top-1 with ~557M parameters. This is the state of the
+  art on accuracy.
 
 ## Evaluation settings
 

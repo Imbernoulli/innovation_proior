@@ -3,26 +3,13 @@
 ## Research question
 
 Training a deep convolutional classifier — a wide residual network on CIFAR-10/100, say — is, in
-practice, dominated by two hand-tuned knobs: the learning-rate *schedule* and the amount of L2 weight
+practice, governed by two hand-tuned knobs: the learning-rate *schedule* and the amount of L2 weight
 decay. The optimizer itself is almost always plain stochastic gradient descent with momentum; the model,
 the data augmentation, the batch size, and the weight decay are held fixed by convention. What is left to
-decide is how the scalar learning rate `eta_t` should evolve over the run. A single constant rate is wrong
-in a familiar way: too large and training is unstable or never settles, too small and it crawls and may
-never escape a bad region. So the rate has to *change* over training, and the question is the precise
-shape of that change.
-
-The reigning answer is a piecewise-constant staircase — keep `eta` fixed, then divide it by a constant at
-a few hand-picked epochs — and it works, but it is unsatisfying on several counts that a better schedule
-would have to fix. The drop *locations* (which epochs) and the drop *factor* (by how much) are both
-free numbers that must be tuned, and they are tuned as *fractions of a total budget* `T` that itself must
-be fixed in advance. The schedule is discontinuous, with abrupt jumps. And its "anytime" behavior is
-poor: a good solution exists essentially only at the very end of the run, so stopping early leaves you
-stranded mid-plateau at a learning rate that is too high for the region you are in. The precise goal is a
-schedule that is **smooth**, needs **few hyperparameters** (ideally just an initial rate and a notion of
-run length), has good **anytime performance** (a usable solution is available at many points, not only the
-last epoch), and — a bonus the staircase cannot offer — can be made to produce **several distinct good
-solutions** over a single run. The optimizer, loop, and other hyperparameters stay fixed; only the
-schedule changes.
+decide is how the scalar learning rate `eta_t` should evolve over the run. A single constant rate is
+unsuitable: too large and training is unstable or never settles, too small and it crawls. So the rate is
+made to *change* over training, and the question is the precise shape of that change. The optimizer, loop,
+and other hyperparameters stay fixed; only the schedule changes.
 
 ## Background
 
@@ -35,16 +22,15 @@ done by the stochastic gradient step
 x_{t+1} = x_t - eta_t * grad f_t(x_t),
 ```
 
-where `grad f_t` is the gradient on a small `t`-th minibatch and `eta_t` is the learning rate. One would
-like to use second-order information, `x_{t+1} = x_t - eta_t H_t^{-1} grad f_t(x_t)`, but forming and
+where `grad f_t` is the gradient on a small `t`-th minibatch and `eta_t` is the learning rate. One could
+use second-order information, `x_{t+1} = x_t - eta_t H_t^{-1} grad f_t(x_t)`, but forming and
 inverting the Hessian `H_t` is intractable for large `n`, and limited-memory quasi-Newton (L-BFGS, Liu &
-Nocedal 1989) is out of favor in deep learning because of the stochasticity of `grad f_t`, the
+Nocedal 1989) is little used in deep learning given the stochasticity of `grad f_t`, the
 ill-conditioning of `f`, and the abundance of saddle points produced by the hierarchical structure of the
 parameter space (Fukumizu & Amari 2000; Dauphin et al. 2014). Diagonal adaptive methods such as AdaDelta
-(Zeiler 2012) and Adam (Kingma & Ba 2014) approximate the inverse Hessian cheaply, but — and this is the
-key empirical fact of the moment — the state-of-the-art residual networks (He et al. 2015; Huang et al.
-2016; Zagoruyko & Komodakis 2016) were *not* trained with those. They used plain SGD with (Nesterov)
-momentum,
+(Zeiler 2012) and Adam (Kingma & Ba 2014) approximate the inverse Hessian cheaply. The state-of-the-art
+residual networks (He et al. 2015; Huang et al. 2016; Zagoruyko & Komodakis 2016) were trained with plain
+SGD with (Nesterov) momentum,
 
 ```
 v_{t+1} = mu_t * v_t - eta_t * grad f_t(x_t),
@@ -52,8 +38,8 @@ x_{t+1} = x_t + v_{t+1},
 ```
 
 with `v` initialized to zero, `eta_t` a decreasing learning rate, and `mu_t` a momentum coefficient
-trading off the current gradient against the accumulated velocity. So the lever that actually moves
-state-of-the-art results is the *schedule* of `eta_t`, not the choice of optimizer.
+trading off the current gradient against the accumulated velocity. The lever that moves
+state-of-the-art results in this regime is the *schedule* of `eta_t`.
 
 Several conceptual frames sit in the background.
 
@@ -66,10 +52,9 @@ sudden drops.
 **Restarts in gradient-free optimization.** When minimizing multimodal functions with evolution
 strategies such as CMA-ES, a standard device is to *restart* the search repeatedly, and to increase the
 search effort across restarts — e.g. start with a small population `lambda` and double it after each
-restart (Hansen 2009). Starting small and growing the budget per
-restart gives good anytime behavior — a decent solution quickly — while the later, larger restarts do the
-global search. This "increase the per-restart budget, often by doubling" pattern is well established in
-that community.
+restart (Hansen 2009). Starting small and growing the budget per restart gives a decent solution quickly,
+while the later, larger restarts do the global search. This "increase the per-restart budget, often by
+doubling" pattern is well established in that community.
 
 **Restarts in gradient-based optimization.** Classical first-order methods restart too. The conjugate
 gradient method flushes its history every `n` or `n+1` iterations (Fletcher & Reeves 1964), and Powell
@@ -83,7 +68,7 @@ x^T A x` as a linear dynamical system, they find the under-damped modes oscillat
 the mode tied to the smallest eigenvalue `mu` is `psi_mu ≈ sqrt(mu/L)` — so the *period* of the ripples is
 proportional to the square root of the condition number `L/mu`. Because the right momentum depends on a
 condition number that is unknown and varies locally across the landscape, one usually runs in the
-high-momentum rippling regime. Their fix is to **restart** — reset the momentum to zero and take the
+high-momentum rippling regime. Their device is to **restart** — reset the momentum to zero and take the
 current iterate as a fresh starting point — periodically. If `L` and `mu` were known, a fixed restart
 every `k* = e * sqrt(8L/mu)` iterations recovers the optimal linear rate
 `O(sqrt(L/mu) log(1/eps))`; and two
@@ -94,7 +79,7 @@ work: restarting a momentum method can recover fast convergence when the curvatu
 drifts, with fixed restarts exposing the square-root-condition-number timescale and adaptive restarts
 removing the need to know `mu`; a restart is fundamentally a *reset of the acceleration phase*.
 
-**Cyclical learning rates.** Smith (2015) demonstrated a striking empirical phenomenon for deep nets:
+**Cyclical learning rates.** Smith (2015) demonstrated an empirical phenomenon for deep nets:
 letting the global learning rate *rise and fall* cyclically between a lower and an upper bound — rather
 than only decrease — is beneficial overall, even though each rise temporarily harms performance. His
 triangular policy ramps `eta` linearly up from `base_lr` to `max_lr` and linearly back down over a cycle
@@ -104,46 +89,32 @@ optimization is plateaus around saddle points, whose small gradients stall progr
 learning rate accelerates traversal of those plateaus. The bounds are found with a cheap "LR range test"
 (sweep `eta` upward for a few epochs and watch where accuracy starts and stops improving).
 
-**Trajectory diversity.** A run that periodically resets and re-descends need not retrace one path; it
-can visit a sequence of different low-loss regions, so the iterates collected just before successive
-resets can serve as distinct candidate models.
-
 ## Baselines
 
-These are the schedules a new schedule would be measured against and reacts to. They share a fixed
+These are the schedules a new schedule would be measured against. They share a fixed
 substrate: SGD with momentum, fixed weight decay, the per-epoch (or per-iteration) learning rate set by
 the schedule.
 
 **Multi-step (staircase) decay — ResNet (He et al. 2015).** Hold `eta` constant, divide it by 10 when the
 error plateaus. Concretely on CIFAR-10: start at `eta_0 = 0.1`, divide by 10 at 32k and 48k iterations,
 terminate at 64k, with momentum 0.9 and weight decay 1e-4. Core idea: implement the coarse-to-fine
-transition as two or three discrete drops. **Gap:** the schedule is a discontinuous staircase whose drop
-*milestones* and drop *factor* are hand-tuned numbers tied to a pre-fixed total budget; between drops `eta`
-sits at a value chosen for an earlier phase, so the rate lags the region the iterate is actually in, and
-the only well-tuned solution is the final one.
+transition as two or three discrete drops.
 
 **Multi-step decay — Wide Residual Networks (Zagoruyko & Komodakis 2016).** The same family, tuned for
 WRNs and the standard CIFAR setup in use: SGD with Nesterov momentum 0.9, initial
 `eta_0 = 0.1`, weight decay 5e-4, dampening 0, minibatch 128, the learning rate dropped by a factor of
 0.2 at epochs 60, 120 and 160, for a total of 200 epochs; data augmentation is horizontal flips and
-4-pixel-pad random crops. This is the concrete state-of-the-art recipe. **Gap:** same as above — three
-hand-chosen milestones (60/120/160) and a hand-chosen factor (0.2), all expressed against a fixed
-200-epoch budget; no smooth transition and no usable intermediate checkpoint other than near the very end.
+4-pixel-pad random crops. This is the concrete state-of-the-art recipe.
 
 **Cyclical (triangular) learning rates (Smith 2015).** Oscillate `eta` linearly between `base_lr` and
 `max_lr` with cycle length `2 * stepsize`; pick the bounds with the LR range test. Core idea: a varying
-rate that periodically goes *up* helps overall, and removes most of the LR-tuning guesswork. **Gap:** the
-ramps are piecewise-linear, with constant slope and corners at the peak and trough; the policy oscillates
-within a fixed band, returning to a high `max_lr` each cycle and never settling to a low, fine finish; and
-it is presented as a band to keep the rate inside, not as a refinement that runs all the way down. The
-within-cycle profile is fixed to the triangle and the schedule never converges, so it pays for its
-LR-tuning savings with a perpetually oscillating, never-finely-annealed rate.
+rate that periodically goes *up* helps overall, with the bounds set by a cheap sweep rather than fine
+tuning.
 
 **Adaptive diagonal optimizers (AdaDelta, Zeiler 2012; Adam, Kingma & Ba 2014).** Rescale each
-coordinate's step by running gradient statistics, reducing manual rate tuning. **Gap:** orthogonal to the
-schedule question — they still run with some global `eta_t` schedule, and in this regime the
-strongest image-classification results came from plain SGD+momentum with a hand-scheduled rate, so these
-do not address the schedule-shape problem and are not the yardstick for it.
+coordinate's step by running gradient statistics, reducing manual rate tuning. They still run with some
+global `eta_t` schedule; in this regime the strongest image-classification results came from plain
+SGD+momentum with a hand-scheduled rate.
 
 ## Evaluation settings
 

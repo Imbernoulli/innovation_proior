@@ -19,13 +19,9 @@ we know about the signal class.
 
 By this time we have an extraordinarily good source of priors: pretrained denoising
 diffusion models, trained once on a signal class (ImageNet faces, fastMRI brains) and
-known to capture rich, multimodal structure. The prize is a *plug-and-play* sampler —
-one that takes any such pretrained prior and any forward operator `f` and produces
-posterior samples, **without retraining the prior for each new task**. To be useful a
-solution has to be (i) universal across tasks and across linear *and* nonlinear `f`,
-(ii) cheap and stable enough to run on a single GPU, and (iii) easy to tune, with a
-small number of interpretable knobs. The methods that exist achieve some of this but
-each pays a price somewhere; closing that gap is the problem.
+known to capture rich, multimodal structure. The question is how to build a *plug-and-play*
+sampler — one that takes any such pretrained prior and any forward operator `f` and produces
+posterior samples, **without retraining the prior for each new task**.
 
 ## Background
 
@@ -59,8 +55,7 @@ part and a likelihood part,
 ```
 
 The prior score `∇_{x_t} log p(x_t)` is exactly what the pretrained network gives. The
-likelihood score `∇_{x_t} log p(y | x_t)` is the trouble: although `p(y | x_0)` is a
-simple Gaussian, the quantity actually needed is
+likelihood score `∇_{x_t} log p(y | x_t)` requires computing
 
 ```
 p(y | x_t) = ∫ p(y | x_0) p(x_0 | x_t) dx_0,
@@ -108,9 +103,6 @@ mode-seeking framework: `KL(q || p)` concentrates `q` on a dominant mode of the 
 
 ## Baselines
 
-These are the prior plug-and-play samplers a new method would be measured against, and
-the classical denoising-regularization framework it would relate to.
-
 **DPS — Diffusion Posterior Sampling (Chung et al. 2022).** Attacks the intractable
 likelihood score head-on by approximating `p(y | x_t)` with `p(y | x̂_0)`, where
 `x̂_0 = E[x_0 | x_t]` is the Tweedie posterior mean. Under Gaussian noise this gives an
@@ -121,25 +113,15 @@ analytic guidance term, and the conditional score becomes
 ```
 
 plugged into a standard reverse-diffusion step. It is general — it handles nonlinear
-`f` and noisy `y` — and was a genuine advance. Its cost is twofold. First, the
-approximation `p(y|x_t) ≈ p(y|x̂_0)` is a point estimate that collapses the multimodal
-`p(x_0|x_t)` to its mean; the approximation is least trustworthy when the denoising
-posterior is broad or strongly multimodal, which is exactly the regime where many
-intermediate reverse-diffusion steps have to decide global structure.
-Second — and this is the operational pain — because `x̂_0(x_t)` is a function of `x_t`
-through the network, the guidance gradient `∇_{x_t}|| y - f(x̂_0(x_t)) ||^2` requires
-**backpropagating through the diffusion denoiser at every step** (a score-Jacobian /
-vector-Jacobian product), which is memory-hungry, slow on a GPU, a source of
-instability, and sensitive to the step-size schedule and initialization.
+`f` and noisy `y`. Because `x̂_0(x_t)` is a function of `x_t` through the network, the
+guidance gradient `∇_{x_t}|| y - f(x̂_0(x_t)) ||^2` requires **backpropagating through
+the diffusion denoiser at every step** (a score-Jacobian / vector-Jacobian product).
 
 **ΠGDM — Pseudoinverse-Guided Diffusion (Song et al. 2023).** Sharpens the guidance by
 modeling `p(x_0 | x_t)` as a Gaussian around `x̂_0` and folding the measurement operator
 in through its pseudoinverse, which improves the guidance approximation relative to
-DPS. It too provides a likelihood-score surrogate that is added to the prior score.
-Limitations: its pseudoinverse construction is tailored to **linear (and certain
-semi-linear, e.g. JPEG) operators**, so it does not straightforwardly cover general
-nonlinear `f`; and it still rests on a unimodal posterior-score approximation that is
-crude at non-small noise levels, and still differentiates through the model.
+DPS. It too provides a likelihood-score surrogate that is added to the prior score, and
+differentiates through the model.
 
 **RED — Regularization by Denoising (Romano, Elad & Milanfar 2016).** A classical, very
 different idea: use *any* image denoiser `f_den` as an explicit regularizer. Define the
@@ -161,17 +143,13 @@ collapses to
 
 so minimizing `E` by gradient descent needs **only the denoiser applied once per step —
 no differentiation of the denoiser**. This is the structural advantage worth noticing:
-a denoiser-based regularizer whose gradient is just a residual. RED is, however, built
-around a **single, fixed, deterministic** denoiser at one effective noise level, with no
-noise injected into its input, and it is a fixed-point/MAP-style procedure rather than a
-trajectory-based generative procedure. (A closely related observation: Reehorst &
-Schniter 2018 connect RED's residual to score matching for a single denoiser.)
+a denoiser-based regularizer whose gradient is just a residual. (A closely related
+observation: Reehorst & Schniter 2018 connect RED's residual to score matching for a
+single denoiser.)
 
 **PnP-ADMM / Plug-and-Play priors (Venkatakrishnan et al. 2013).** Inserts a denoiser
-as the proximal operator inside ADMM. Effective, but the denoiser need not correspond
-to any explicit prior `rho`, so there is no underlying cost being minimized, which
-limits flexibility in choice of optimizer and tuning — RED was in part a response to
-this.
+as the proximal operator inside ADMM, using the denoiser as an implicit prior at each
+ADMM subproblem step.
 
 ## Evaluation settings
 

@@ -18,22 +18,15 @@ one in as few forward passes as possible on as many images as possible. The two 
 
 The relevant score-based black-box attacks are the current points of comparison.
 
-- **White-box PGD (Madry et al. 2018).** Core idea: run projected gradient-ascent steps on the margin
-  loss, clipping back into the `L_inf` ball. Gap: it requires the model's gradient, which the
-  black-box assumption withholds.
-- **NES / finite-difference gradient estimation (Ilyas et al. 2018).** Core idea: rebuild a local
-  gradient from score queries by sampling random directions, then run PGD on the estimate. Gap:
-  estimator variance grows with input dimension, so each step costs many queries and full attacks
-  often need tens of thousands of queries; following the local gradient also makes the method
-  brittle against gradient-masking defenses.
-- **SimBA — orthonormal-basis random search (Guo et al. 2019).** Core idea: greedily add or subtract a
-  fixed step along a fixed orthonormal basis (pixel or DCT) whenever it lowers the true-class logit.
-  Gap: accepted moves are small `L2` steps, and basis directions cannot be undone later in the
-  opposite sign, so budget committed to a wrong region is unrecoverable.
-- **Discrete corner / sign-search attacks (Moon et al. 2019; Al-Dujaili & O'Reilly 2019).** Core idea:
-  restrict perturbations to the corners of the `L_inf` cube and search over a pre-defined discrete
-  grid of sign flips. Gap: the coordinate grid is fixed ahead of time and only coarsely refined, so
-  the search has little freedom to decide where to spend its query budget.
+- **White-box PGD (Madry et al. 2018).** Run projected gradient-ascent steps on the margin loss,
+  clipping back into the `L_inf` ball after each step. Requires access to the model's gradient.
+- **NES / finite-difference gradient estimation (Ilyas et al. 2018).** Rebuild a local gradient from
+  score queries by sampling random directions, then run PGD on the estimate.
+- **SimBA — orthonormal-basis random search (Guo et al. 2019).** Greedily add or subtract a fixed step
+  along a fixed orthonormal basis (pixel or DCT) whenever it lowers the true-class logit.
+- **Discrete corner / sign-search attacks (Moon et al. 2019; Al-Dujaili & O'Reilly 2019).** Restrict
+  perturbations to the corners of the `L_inf` cube and search over a pre-defined discrete grid of
+  sign flips.
 
 ## Fixed substrate / Code framework
 

@@ -12,33 +12,25 @@ in pixel count) the high-frequency texture detail is essentially absent from the
 
 The dominant supervised approach minimizes the per-pixel mean squared error (MSE) between the recovered
 image and the ground-truth high-resolution image. This is convenient because minimizing MSE also
-maximizes the peak signal-to-noise ratio (PSNR), the standard quantitative metric. But the resulting
-images, while high in PSNR, are perceptually unsatisfying: they are overly smooth and lack
-high-frequency texture. The precise question: **how do we recover *photo-realistic* fine texture when
-super-resolving at large (`4×`) upscaling factors — producing an image that looks like a real
-photograph at the higher resolution, rather than a blurred compromise — given that the standard
-per-pixel objective is exactly what produces the blur?** What is wanted is an output that is one
-sharp, natural-looking image rather than the average of the plausible set, judged by a criterion that
-tracks human perception rather than raw pixel distance — but how to formulate such an objective is open.
+maximizes the peak signal-to-noise ratio (PSNR), the standard quantitative metric. The question is
+how to recover *photo-realistic* fine texture when super-resolving at large (`4×`) upscaling factors,
+producing an image that looks like a real photograph at the higher resolution.
 
 ## Background
 
 The field state (mid-2010s deep super-resolution): convolutional networks have pushed SISR accuracy
-and speed forward, but all the leading methods optimize a pixel-wise loss and inherit its perceptual
-limitations. The load-bearing concepts and the key diagnostic observation:
+and speed forward. The load-bearing concepts:
 
-- **Why pixel-wise MSE blurs (the diagnostic insight).** For a given low-resolution input, the
+- **Why pixel-wise MSE averages solutions.** For a given low-resolution input, the
   high-resolution images consistent with it form a set of plausible sharp solutions. Minimizing the
   expected squared pixel error drives the estimate toward the *pixel-wise average* of that set — the
   conditional mean `E[I^HR | I^LR]`. Averaging many sharp, differently-textured images produces a
-  smooth image that may sit *off* the manifold of natural images entirely. So the smoothing is not a
-  modeling deficiency to be fixed with a bigger network; it is the direct, unavoidable consequence of
-  the per-pixel objective. Pixel-wise losses, being defined on pixel differences, cannot capture
+  smooth image. Pixel-wise losses, being defined on pixel differences, cannot capture
   perceptually relevant differences such as texture.
 
 - **The natural-image manifold.** Real photographs occupy a thin manifold in pixel space. The
   centroid between several manifold points generally sits *off* the manifold, in the smooth region
-  between them — which is where the per-pixel average lands.
+  between them.
 
 - **The adversarial framework (Goodfellow et al., 2014).** A generator and a discriminator play a
   minimax game; the discriminator learns to distinguish real images from generated ones and thereby
@@ -67,28 +59,25 @@ limitations. The load-bearing concepts and the key diagnostic observation:
 
 The prior methods a new procedure would be measured against and reacts to:
 
-- **Interpolation (bicubic, Lanczos; Duchon, 1979).** Fast filtering. *Gap:* oversimplifies SISR,
-  yielding overly smooth textures.
+- **Interpolation (bicubic, Lanczos; Duchon, 1979).** Fast filtering applied directly to the
+  low-resolution input.
 
 - **Example- and patch-based / sparse-coding / self-exemplar methods (Freeman et al., 2000; Glasner et
   al., 2009; Huang et al., 2015, SelfExSR).** Establish a complex LR↔HR mapping from training pairs or
-  cross-scale self-similarity. *Gap:* computationally heavy optimization; limited high-frequency
-  synthesis.
+  cross-scale self-similarity.
 
 - **SRCNN (Dong et al., 2014, 2016).** A three-layer fully-convolutional network trained end-to-end on
-  bicubically-upsampled inputs with an MSE loss; state of the art in PSNR at its time. *Gap:* shallow,
-  operates in HR space (expensive), and MSE-smooth.
+  bicubically-upsampled inputs with an MSE loss; state of the art in PSNR at its time.
 
 - **ESPCN (Shi et al., 2016).** Introduces sub-pixel convolution to learn the upscaling in LR space —
-  fast enough for real-time video. *Gap:* still optimizes pixel-wise MSE.
+  fast enough for real-time video — and trains with pixel-wise MSE.
 
 - **DRCN (Kim et al., 2016).** A deeply-recursive convolutional network capturing long-range pixel
-  dependencies with few parameters. *Gap:* MSE objective, hence the same perceptual ceiling.
+  dependencies with few parameters, trained with an MSE objective.
 
 - **Feature-space perceptual SR (Johnson et al., 2016; Bruna et al., 2016).** Replace pixel MSE with
   the Euclidean distance between VGG19 feature maps — the closest ancestors in spirit, and visibly more
-  convincing than pixel losses. *Gap:* the reconstructions still do not reach photo-realistic texture
-  at large upscaling factors.
+  convincing than pixel losses.
 
 ## Evaluation settings
 
@@ -100,23 +89,18 @@ The benchmarks, datasets, metrics, and protocol that form the natural yardstick:
 
 - **Quantitative metrics.** PSNR [dB] and SSIM (Wang et al., 2004), computed on the luminance
   (y-) channel of center-cropped images (a few border pixels removed) via a standard package, for fair
-  comparison across methods. These are the conventional yardsticks — and their key, known limitation is
-  that, being pixel-based, they do not capture perceptual quality (the highest-PSNR image is often not
-  the perceptually best one).
+  comparison across methods.
 
-- **Perceptual metric.** Because PSNR/SSIM miss perceptual quality, the appropriate yardstick is a mean
-  opinion score (MOS) test: human raters assign each super-resolved image an integer score from 1 (bad)
-  to 5 (excellent), with raters calibrated on anchor images, and significance assessed by paired
-  two-sided Wilcoxon signed-rank tests.
+- **Perceptual metric.** A mean opinion score (MOS) test: human raters assign each super-resolved image
+  an integer score from 1 (bad) to 5 (excellent), with raters calibrated on anchor images, and
+  significance assessed by paired two-sided Wilcoxon signed-rank tests.
 
 ## Code framework
 
 The available substrate is a deep-learning library with convolutions, residual blocks, batch
 normalization, learned upscaling layers, pre-trained image classifiers, and ordinary supervised
 training machinery. What exists is a strong residual SISR model that maps an LR image to an HR
-estimate and can be trained with pixel MSE. What is missing is the *objective*: the loss must keep the
-output tied to the specific low-resolution input while avoiding the pixel-average solution that gives
-high PSNR but poor texture.
+estimate and can be trained with pixel MSE.
 
 ```python
 import torch
@@ -147,7 +131,3 @@ def train_step(lr, hr, model, opt):
     loss.backward()
     opt.step()
 ```
-
-This scaffold can express the competing design choices from the background, but it does not decide
-which loss should replace pixel MSE. The open problem is to formulate that objective without handing
-the model the smooth conditional mean as its safest answer.

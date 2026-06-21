@@ -35,42 +35,10 @@ def solve(n, color, edges):
         g[a].append(b)
         g[b].append(a)
 
-    size = [1] * n
-    pivot_child = [-1] * n
-    parent = [-1] * n
-    stack = [(0, -1, False)]
-    # TODO
-
-    cnt = [0] * (n + 1)
-    max_freq = 0
-    sum_dom = 0
     ans = [0] * n
 
-    def add(u):
-        nonlocal max_freq, sum_dom
-        # TODO
-        pass
-
-    def remove(u):
-        # TODO
-        pass
-
-    def add_subtree(root):
-        # TODO
-        pass
-
-    def clear_subtree(root):
-        # TODO
-        pass
-
-    setrecursionlimit(1 << 20)
-
-    def dfs(u, mode):
-        nonlocal max_freq, sum_dom
-        # TODO
-        pass
-
     # TODO
+
     return ans
 
 

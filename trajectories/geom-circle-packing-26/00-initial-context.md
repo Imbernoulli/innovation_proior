@@ -12,15 +12,15 @@ A packing is feasible when, within tolerance `atol`:
 
 ## Prior art / Background / Baselines
 
-- **Equal-circle packing.** Core idea: optimize a single common radius for `n` circles in a square, tabulated extensively for many `n`. Gap: forcing equal radii ignores the advantage of mixing sizes, so the best equal-circle configurations are far from optimal for the sum-of-radii objective.
+- **Equal-circle packing.** Core idea: optimize a single common radius for `n` circles in a square, tabulated extensively for many `n`.
 
-- **Friedman's packing-center tables.** Core idea: collect hand- and computer-found configurations for small-`n` sum-of-radii problems. Gap: the standing value for `n = 26` is about `2.634`, and these tables do not provide a practical way to push it higher.
+- **Friedman's packing-center tables.** Core idea: collect hand- and computer-found configurations for small-`n` sum-of-radii problems. The standing value for `n = 26` is about `2.634`.
 
-- **5×5 grid + interstitial circle (scaffold baseline).** Core idea: place 25 equal circles on a regular grid and insert a 26th circle in the central gap. Gap: the rigid grid leaves boundary and interstitial space unused, giving a sum near `2.5414`, well below the known frontier.
+- **5×5 grid + interstitial circle (scaffold baseline).** Core idea: place 25 equal circles on a regular grid and insert a 26th circle in the central gap, giving a sum near `2.5414`.
 
-- **Multi-start SLSQP / nonlinear programming.** Core idea: generate many random initial center layouts and refine each with a constrained gradient-based local solver. Gap: each refinement is trapped in the basin of its initialization; approaching the frontier requires an impractical number of restarts.
+- **Multi-start SLSQP / nonlinear programming.** Core idea: generate many random initial center layouts and refine each with a constrained gradient-based local solver.
 
-- **Program-evolution / agentic search.** Core idea: treat the constructor itself as the object of search, using evolutionary or agent-driven mutation to build pipelines of initialization, local refinement, and restart/perturbation strategies. Gap: the published systems reach the frontier only after large autonomous search budgets, so a single bounded constructor still does not match them.
+- **Program-evolution / agentic search.** Core idea: treat the constructor itself as the object of search, using evolutionary or agent-driven mutation to build pipelines of initialization, local refinement, and restart/perturbation strategies.
 
 Current published frontier for `n = 26`:
 

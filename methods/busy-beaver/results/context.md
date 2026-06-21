@@ -1,14 +1,14 @@
 ## Scope
-Busy Beaver is a method for turning computability limits into a concrete extremal object. It starts with the same formal world as the halting problem: Turing machines with finitely many states, run on a blank tape, either halt or run forever. The shift is that it does not ask for a universal yes/no halting oracle. It asks, among machines of a fixed small size that do halt, which one does the most before stopping.
+The setting is the formal theory of computation built on Turing machines. A machine has finitely many internal states and operates on a one-way-infinite tape over a fixed small alphabet, usually two symbols. A finite transition table specifies, for each state and scanned symbol, what symbol to write, which way to move the head, and which state to enter next. Started on a blank tape, a machine either eventually reaches a halting state or runs forever.
 
-## Definition
-Fix a precise Turing-machine convention, usually two symbols and `n` non-halting states. There are only finitely many such machines. Run each on a blank tape and ignore the ones that never halt. The score version `Sigma(n)` is the maximum number of `1`s left on the tape by any halting `n`-state machine. The step version `S(n)` is the maximum number of steps taken before halting by any halting `n`-state machine.
+## The Machines Of A Fixed Size
+For a fixed number of states `n` and a fixed alphabet, a transition table has only finitely many entries, each chosen from a finite set of possibilities. So there are only finitely many distinct `n`-state machines, and one can in principle enumerate them all. Each such machine, run on a blank tape, produces a definite trajectory: a sequence of tape configurations that either reaches a halt after some finite number of steps or continues without end.
 
-## Core Insight
-The unique insight is that minimal machine size can be used as a measuring stick for maximal finite behavior. Busy Beaver does not merely say that some computations evade prediction. It defines a specific growth rate by asking for the largest output or longest finite run obtainable under a tiny description budget. That growth eventually exceeds every computable function, so it gives a named, concrete curve that lives beyond algorithmic reach.
+## The Halting Problem
+The central known result about this world is the undecidability of halting. There is no single algorithm that, given the description of an arbitrary Turing machine, always correctly decides whether that machine halts. Simulation gives one direction of evidence: if a machine does halt, running it long enough eventually reaches the halting state and confirms it. For a machine that never halts, plain simulation produces no terminating certificate on its own.
 
-## From Undecidable To Numeric
-The halting problem says there is no algorithm that always decides whether an arbitrary program stops. Busy Beaver adds a numerical contour to that boundary. If `S(n)` were computable, one could decide halting for every `n`-state machine by simulating it for exactly `S(n)` steps: a machine not halted by then never will. Therefore the noncomputability of Busy Beaver is not a separate curiosity; it is the halting barrier expressed as a finite but unknowable bound.
+## Computable Functions
+A function from naturals to naturals is computable when some Turing machine produces its value on every input. The computable functions are closed under the usual constructions and include functions that grow extremely fast in standard notation. Whether a given function is computable is a separate matter from how large its values are: a function can grow astronomically and still be computable, while computability is about whether an algorithm can produce the values at all.
 
-## Why It Matters
-Busy Beaver changes the mental image of undecidability. The boundary is not just a blank wall labeled "impossible." It has comparable landmarks: exact values for very small machines, lower bounds from discovered champions, and open gaps where proving non-halting becomes as hard as deep mathematics. This makes computability limits feel less like an abstract prohibition and more like a landscape with distances, cliffs, and partial maps.
+## Research Question
+Within this finite-but-unbounded world, every `n`-state machine that halts does so after some definite finite number of steps and leaves some definite finite output on the tape. The open question is whether the limits of finite computation under a bounded description size can be summarized as a concrete numerical quantity indexed by machine size, and how such a quantity relates to the halting problem and to the class of computable functions.

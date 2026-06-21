@@ -6,14 +6,11 @@ The hard part is not arithmetic. Each new token reads the entire weight set once
 
 ## Prior art / Background / Baselines
 
-**Naive eager PyTorch decode.** The loop calls `model(x, input_pos)` from Python for every token, relying on standard autograd dispatch and the framework allocator.
-*Limitation:* each step launches dozens of tiny CUDA kernels; at batch size 1 the GPU finishes them faster than the CPU can queue the next ones, so much wall-clock time is idle overhead rather than useful weight traffic.
+**Naive eager PyTorch decode.** The loop calls `model(x, input_pos)` from Python for every token, relying on standard autograd dispatch and the framework allocator. Each step launches dozens of tiny CUDA kernels across the 32 transformer layers.
 
 **Fused attention kernels (e.g., FlashAttention, xFormers memory-efficient attention).** They replace the materialized attention path with a single kernel that keeps the O(n) compute while reducing HBM traffic and kernel count.
-*Limitation:* attention is only a fraction of the layer; the model still pays per-layer Python/framework dispatch and still streams every weight matrix for every token, so batch-1 latency stays far below the raw bandwidth ceiling.
 
 **Production serving frameworks (e.g., FasterTransformer, DeepSpeed Inference, vLLM).** They use C++/CUDA fused kernels, optimized memory layouts, batching, or paged KV-cache management to push throughput under production conditions.
-*Limitation:* those optimizations are tuned for batched or multi-user serving; at batch size 1 the benefits are smaller—extra communication, memory-management work, or batch-oriented bookkeeping can leave single-stream latency still below the bandwidth ceiling.
 
 ## Fixed substrate / Code framework
 

@@ -18,7 +18,7 @@ Croot–Lev–Pach / Ellenberg–Gijswijt upper bound is `O(2.756^n)`):
 | max `|cap|` | 2 | 4 | 9 | 20 | 45 | 112 | 236 | ≥ 512 |
 
 Values through `n = 6` are proven optima; `n = 7` is `236`; at `n = 8` the best known lower
-bound `512` is the cap FunSearch discovered (Nature 2024), improving the prior best `496`.
+bound is `512`.
 
 ## How the score is defined
 
@@ -30,17 +30,20 @@ cap, checked by the standard incremental procedure: index each vector as `idx(v)
 ever already blocked when replayed in order (and there are no duplicates). This is `O(c^2 n)`;
 small instances are also cross-checked by an independent `O(c^3)` triple scan.
 
-## Where this method sits
+## The greedy-priority baseline
 
-This method, the **FunSearch-evolved priority**, is the endpoint. It feeds the same greedy-priority
-skeleton the priority function that an evolutionary program search (LLM + evaluator, millions of
-samples) actually *discovered* (Romera-Paredes et al., Nature 2024; verbatim from
-github.com/google-deepmind/funsearch, cap_set/cap_set.ipynb). The discovered function is deeply
-non-linear and dimension-specialized: it branches on the number of zeros, boosts full-weight
-vectors, applies position- and count-dependent multiplicative factors to each zero, and stacks
-reflection-pair `×1.5` bonuses. It is tuned for `n = 8`, so it is mediocre at smaller `n` (back at
-the `2^n` floor) and reaches its entire value at `n = 8`, where it builds the record `512`-cap
-(improving the previous best construction `496`). This reproduces the record; it does not beat it.
+A standard way to build a cap is a *greedy-priority* constructor. Assign every vector in
+`{0,1,2}^n` a real-valued **priority**, then repeatedly admit the highest-priority vector that is
+still available and, on admitting a point `p`, mark unavailable the closing point of the line
+`{p, q, r}` for each already-admitted `q`. The procedure terminates when no available vector
+remains; the returned set is a valid cap by construction.
+
+The skeleton is fixed; the only design freedom is the **priority function** `priority(el, n)`
+mapping a vector to a real number. A plain choice — for example a priority that breaks ties by a
+fixed ordering, or one weighting vectors by their Hamming weight or by symmetry under coordinate
+reflection — yields a cap whose size depends entirely on the ordering that the priority induces.
+Random multi-start (random priorities, keep the best run) is another baseline within the same
+skeleton.
 
 ## Code framework
 
@@ -70,6 +73,21 @@ def is_cap_set(vectors):
             is_blocked[blocking] = True
         is_blocked[idx] = True
     return True
+
+def construct(n, priority):
+    """Greedy-priority skeleton: admit highest-priority available vector, block line closers."""
+    av = all_vectors(n)
+    powers = 3 ** np.arange(n - 1, -1, -1)
+    priorities = np.array([priority(tuple(int(x) for x in v), n) for v in av], dtype=float)
+    capset = np.empty((0, n), dtype=np.int32)
+    while np.any(priorities != -np.inf):
+        k = int(np.argmax(priorities))
+        v = av[None, k]
+        blocking = np.einsum('cn,n->c', (-capset - v) % 3, powers).astype(np.int64)
+        priorities[blocking] = -np.inf
+        priorities[k] = -np.inf
+        capset = np.concatenate([capset, v], axis=0)
+    return capset
 ```
 
 The constructor returns a set of distinct vectors in `{0,1,2}^n`; the harness verifies the cap

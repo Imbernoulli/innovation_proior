@@ -4,12 +4,12 @@ A deep classifier `f(·; w)` is given, already trained on the full dataset `D`. 
 
 ## Prior art / Background / Baselines
 
-Existing approximate-unlearning methods remove `D_f` without retraining, but each leaves a concrete gap:
+Existing approximate-unlearning methods remove `D_f` without retraining:
 
-- **Retraining from scratch on `D_r` (reference, not a method here).** Train a fresh model on the retained data only. Gap: a full training run per request, infeasible at deletion scale.
-- **SISA.** Shard the training set, train one model per shard, and ensemble; only the shard containing the deleted point is retrained. Gap: it requires a training-time sharding decision and sacrifices accuracy by ensembling weak shards; it cannot be applied to an already-trained monolithic model.
-- **Fisher / NTK scrubbing.** Inject noise or apply a closed-form weight update sized by the Fisher information or an NTK linearization. Gap: it forms or inverts a large second-order matrix and assumes the edit is small; forgetting a whole class is a large edit, and the linearization fails.
-- **Amnesiac unlearning.** Record every parameter update during training and subtract those that touched `D_f`. Gap: must store the entire update history and depends on training-time bookkeeping.
+- **Retraining from scratch on `D_r` (reference, not a method here).** Train a fresh model on the retained data only.
+- **SISA.** Shard the training set, train one model per shard, and ensemble; only the shard containing the deleted point is retrained.
+- **Fisher / NTK scrubbing.** Inject noise or apply a closed-form weight update sized by the Fisher information or an NTK linearization.
+- **Amnesiac unlearning.** Record every parameter update during training and subtract those that touched `D_f`.
 
 The open question is how to edit an already-trained monolithic model given only the deletion-time minibatches.
 

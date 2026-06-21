@@ -1,15 +1,15 @@
 ## Research question
 
-Design the pointwise nonlinearity for deep convolutional networks so that test accuracy rises across three architecture/dataset pairs while everything else is frozen. The only designed object is the activation curve — the element-wise map applied after each Conv–BatchNorm pair and in the classifier head. It must be differentiable, shape-preserving, and a drop-in replacement for ReLU. The optimizer, learning-rate schedule, weight initialization, data augmentation, and model definitions are fixed; only the shape of the nonlinearity may change.
+Design the pointwise nonlinearity for deep convolutional networks so that test accuracy rises across three architecture/dataset pairs while everything else is frozen. The only designed object is the activation curve — the element-wise map applied after each Conv–BatchNorm pair and in the classifier head. The optimizer, learning-rate schedule, weight initialization, data augmentation, and model definitions are fixed; only the shape of the nonlinearity may change.
 
 ## Prior art / Background / Baselines
 
-Current pointwise nonlinearities and the gaps they leave:
+Current pointwise nonlinearities:
 
-- **ReLU** (`max(x,0)`): cheap, sparse, and has unit gradient for positive inputs, but outputs zero and has zero gradient on the entire negative half-line, so permanently negative units stop learning; it is also non-differentiable at the origin and piecewise-linear.
-- **Leaky ReLU / PReLU** (`max(x, px)` with a small constant or learned per-channel slope `p`): leaks a small gradient on the negative side, but remains piecewise-linear, kinked, and monotonic.
-- **ELU** (`x` for `x≥0`, `α(eˣ−1)` for `x<0`): negative saturation pushes mean activation toward zero, but it is monotonic, introduces an extra constant, and can be unstable in residual blocks unless BatchNorm sits at the block end.
-- **Self-gated smooth units** (SiLU/Swish `x·σ(βx)`, GELU `x·Φ(x)`, Mish `x·tanh(softplus(x))`): multiply the input by a smooth nonlinear function of itself, so they are differentiable everywhere, take small negative values, and are non-monotonic with a shallow negative bump; each is a single fixed curve, and which one works best varies by task and architecture.
+- **ReLU** (`max(x,0)`): cheap, sparse, and has unit gradient for positive inputs. Outputs zero on the negative half-line.
+- **Leaky ReLU / PReLU** (`max(x, px)` with a small constant or learned per-channel slope `p`): allows a small gradient on the negative side; piecewise-linear and monotonic.
+- **ELU** (`x` for `x≥0`, `α(eˣ−1)` for `x<0`): negative saturation pushes mean activation toward zero; monotonic.
+- **Self-gated smooth units** (SiLU/Swish `x·σ(βx)`, GELU `x·Φ(x)`, Mish `x·tanh(softplus(x))`): multiply the input by a smooth nonlinear function of itself, so they are differentiable everywhere, take small negative values, and are non-monotonic with a shallow negative bump.
 
 ## Fixed substrate / Code framework
 

@@ -2,9 +2,9 @@
 
 ## Research question
 
-Pre-trained language models -- BERT, RoBERTa, T5 -- store a surprising amount of world knowledge: BERT will fill "The ___ is the currency of the United Kingdom" with "pound." But that knowledge lives *implicitly*, smeared across millions of weights. Three problems follow. It is opaque: you cannot tell what the network knows or where it is stored. It is bounded by capacity: to hold more facts you must train an ever-larger network, which becomes prohibitively slow and expensive. And it is unmodular: you cannot revise, inspect, or swap out a fact without retraining.
+Pre-trained language models — BERT, RoBERTa, T5 — encode a surprising amount of world knowledge in their weights: BERT will fill "The ___ is the currency of the United Kingdom" with "pound." That knowledge lives implicitly, smeared across millions of parameters.
 
-The question: can language-model pre-training be augmented so that world knowledge is captured *explicitly and modularly*, stored in an external textual corpus the model learns to *retrieve* from rather than memorized in parameters? Concretely, before each prediction the model would consult a learned retriever, pull documents from a corpus (e.g. all of Wikipedia), and attend over them to inform its prediction. The crux is *learning the retriever end-to-end from the language-modeling signal alone*, with no labels for which document is the right one, and doing so when the retriever must score *millions* of candidate documents at every training step. The MIPS index can choose candidates, but the masked-LM loss must still update the retriever scores and the document encoder on the retrieved set.
+The question: can language-model pre-training be augmented so that world knowledge is stored explicitly in an external textual corpus that the model retrieves from before each prediction, rather than memorized in its parameters?
 
 ## Background
 
@@ -12,23 +12,23 @@ The question: can language-model pre-training be augmented so that world knowled
 
 **Open-domain QA as the knowledge yardstick.** Open-domain QA (Open-QA): given a question, output the answer string, with *no* pre-identified evidence document, unlike reading comprehension (SQuAD), where the gold passage is handed to the model. Open-QA forces a system to retain or retrieve knowledge from millions of documents, so it is the natural test of whether knowledge is accessible. Two paradigms exist. *Retrieval-based*: retrieve candidate documents from a textual corpus, then extract the answer span (DrQA, ORQA). *Generation-based*: a seq2seq model encodes the question and decodes the answer token-by-token from parametric knowledge (T5, GPT-2).
 
-**Dense inner-product retrieval and MIPS.** A retriever can score a (query, document) pair by the inner product of dense embeddings, f(x, z) = Embed_input(x)ᵀ Embed_doc(z); the retrieval distribution is a softmax over relevance scores. Because the ordering by p(z|x) matches the ordering by inner product, finding the top-k reduces to Maximum Inner Product Search (MIPS), which scales sub-linearly in the corpus size with the right index. This requires precomputing Embed_doc(z) for every document and building a search index — fast, but the index is only valid for the *current* doc-encoder parameters.
+**Dense inner-product retrieval and MIPS.** A retriever can score a (query, document) pair by the inner product of dense embeddings, f(x, z) = Embed_input(x)ᵀ Embed_doc(z); the retrieval distribution is a softmax over relevance scores. Because the ordering by p(z|x) matches the ordering by inner product, finding the top-k reduces to Maximum Inner Product Search (MIPS), which scales sub-linearly in the corpus size with the right index. This requires precomputing Embed_doc(z) for every document and building a search index.
 
-**Latent-variable view of retrieve-then-predict.** If "which document was retrieved" is unobserved, the document z is a latent variable and the output likelihood marginalizes over it: p(y|x) = Σ_z p(y|z,x) p(z|x). Maximizing this marginal trains the retriever without document labels — a retrieval that raises the probability of the correct y is implicitly rewarded. ORQA (Lee et al., 2019) is built exactly this way for Open-QA and trains by maximizing the marginal likelihood, with the retriever warm-started by the Inverse Cloze Task (ICT) — given a sentence, predict the passage it came from — and a *fixed* document index.
+**Latent-variable view of retrieve-then-predict.** If "which document was retrieved" is unobserved, the document z is a latent variable and the output likelihood marginalizes over it: p(y|x) = Σ_z p(y|z,x) p(z|x). Maximizing this marginal trains the retriever without document labels — a retrieval that raises the probability of the correct y is implicitly rewarded. ORQA (Lee et al., 2019) is built exactly this way for Open-QA and trains by maximizing the marginal likelihood, with the retriever warm-started by the Inverse Cloze Task (ICT) — given a sentence, predict the passage it came from — and a fixed document index.
 
-**Memory- and retrieval-augmented networks (prior art and its gaps).** Adding a discrete retrieval step to neural nets has a long history -- key-value memory networks, DrQA -- but these used *non-learned* retrievers such as TF-IDF or BM25 for the large-corpus step and never applied retrieval to *pre-training*. The kNN-LM (Khandelwal et al., 2020) retrieves similar LM contexts to improve memorization, but it was not fine-tuned for downstream tasks: a kNN over labeled examples cannot transfer, because at fine-tuning time the LM examples carrying the world knowledge are not labeled for the target task. Across this line of work, the large-corpus retrieval step is never driven by a pre-training signal, and where a retriever is learned at all its document side stays fixed.
+**Memory- and retrieval-augmented networks.** Adding a discrete retrieval step to neural nets has a long history — key-value memory networks, DrQA — using retrievers such as TF-IDF or BM25 for the large-corpus step. The kNN-LM (Khandelwal et al., 2020) retrieves similar LM contexts to improve memorization.
 
 **Diagnostic facts about MLM spans.** Not every masked token needs world knowledge — many ("of", function words, locally-predictable tokens) need only local context. Spans that *do* need world knowledge are typically *salient* — named entities ("United Kingdom") and dates ("July 1969").
 
 ## Baselines
 
-- **BERT-style MLM (parametric only).** Knowledge implicit in weights. **Gap:** opaque, capacity-bounded, unmodular — the very problems being attacked.
+- **BERT-style MLM (parametric only).** Knowledge implicit in weights.
 
-- **T5 / generation-based Open-QA (Roberts et al., 2020, concurrent).** A large seq2seq model generates the answer from parameters. Scales knowledge by scaling parameters — Base, Large, up to 11B. **Gap:** knowledge is implicit and uninterpretable; requires enormous parameter counts; cannot be edited without retraining.
+- **T5 / generation-based Open-QA (Roberts et al., 2020, concurrent).** A large seq2seq model generates the answer from parameters. Scales knowledge by scaling parameters — Base, Large, up to 11B.
 
-- **Heuristic-retrieval + reading (DrQA, HardEM, GraphRetriever, PathRetriever).** Retrieve ~20–80 documents with a *non-learned* sparse retriever (TF-IDF/BM25) or entity linking, optionally re-rank with a learned model, then read. **Gap:** the initial heuristic retrieval caps coverage — relevant documents missed by BM25 are never recoverable; the retriever is not optimized for the end task.
+- **Heuristic-retrieval + reading (DrQA, HardEM, GraphRetriever, PathRetriever).** Retrieve ~20–80 documents with a *non-learned* sparse retriever (TF-IDF/BM25) or entity linking, optionally re-rank with a learned model, then read.
 
-- **ORQA (Lee et al., 2019).** The closest prior: a latent-variable Open-QA model with a learned MIPS retriever, trained by marginal-likelihood maximization, retriever warm-started with ICT. **Gap:** the retriever is only *heuristically* pre-trained with ICT and the document index is *fixed* during training, so the document encoder is not refined by a language-modeling signal; there is no knowledge-rich pre-training stage tailored to make retrieval useful.
+- **ORQA (Lee et al., 2019).** A latent-variable Open-QA model with a learned MIPS retriever, trained by marginal-likelihood maximization, retriever warm-started with ICT.
 
 ## Evaluation settings
 

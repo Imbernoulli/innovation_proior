@@ -10,12 +10,9 @@ hyperconjugation, the imperfect cancellation of 1–4 nonbonded interactions acr
 subtle electronic effects all shape the barrier to rotation, and none of these is captured cleanly
 by the harmonic bond/angle springs or the pairwise nonbonded sum. A high-level quantum-mechanical
 (QM) calculation can produce the true rotational energy profile of a molecule as a function of a
-chosen dihedral angle. The problem: given that QM profile, determine the parameters of an explicit
-torsion term such that, when that term is *added* to everything else the force field already
-computes, the model reproduces the QM barrier. A solution has to (i) isolate the part of the
-barrier the rest of the force field does not already explain, (ii) represent it with a small,
-periodic, transferable functional form, and (iii) fix that form's coefficients from a finite set
-of scanned conformations without overfitting.
+chosen dihedral angle. Given that QM profile, how should the parameters of an explicit torsion term
+be determined so that, when that term is *added* to everything else the force field already
+computes, the model reproduces the QM barrier?
 
 ## Background
 
@@ -71,9 +68,7 @@ from a simulation engine — for example, by setting every torsional parameter t
 topology and recomputing the energies — so that the 1–4 scaling and every other term are treated
 exactly as they will be in production.
 
-**Overfitting and ringing.** A Fourier series with too many free amplitudes can fit the scattered
-scan points while oscillating wildly between them, and redundant terms trade off against each other
-in unphysical ways. Two established countermeasures predate any particular fitting algorithm:
+**Regularization and scan-point weighting.** Two established countermeasures address overfitting:
 restrict which periodicities are allowed (use only the chemically expected n), or admit all
 periodicities up to some cutoff and regularize — shrink redundant amplitudes toward zero (an L1 /
 Lasso penalty drives them exactly to zero), or bound the amplitudes to a physical range. A second,
@@ -89,21 +84,17 @@ de-emphasizes high, sparsely visited barriers.
 original all-atom parameterization fit V1, V2, V3 (and sometimes V4) for each torsion type to RHF
 rotational profiles of >50 small molecules, adjusting amplitudes so the summed MM curve matched the
 QM curve, with the nonbonded/bond/angle terms held fixed and the 1–4 interactions scaled by 0.5.
-The gap it leaves: the procedure is per-molecule, partly manual, and gives no guarantee that the
-amplitudes chosen are the global least-squares optimum; reproducibility and scale suffer.
 
 **AMBER torsion parameterization (Cornell et al. 1995).** Uses the same residual idea with explicit
 phases gamma_n, fitting V_n by matching QM conformational energies. Keeping gamma as a free
 parameter makes the model *nonlinear* in its parameters (cos(n phi - gamma) is not linear in
-gamma), which forces an iterative nonlinear optimizer and admits local minima.
+gamma), which requires a nonlinear optimizer.
 
 **General nonlinear optimizers (ForceBalance-style).** Modern pipelines pose torsion fitting as
 minimizing a weighted sum of squared QM-vs-MM energy deviations over the scan and descend it with a
 general optimizer (e.g. steepest descent / Levenberg–Marquardt), often holding periodicities,
 phases, and 1–4 scaling fixed and optimizing only the amplitudes. Automated tooling (TorsionDrive
-for the scan; bespoke per-molecule fits) wraps this. The gap: even in the restricted case where only
-the amplitudes are free, the descent is run as a general iterative loop — it is slower than necessary,
-depends on initialization and step size, and can stop short of the true minimum.
+for the scan; bespoke per-molecule fits) wraps this.
 
 ## Evaluation settings
 

@@ -16,14 +16,8 @@ single entry, so `y` is the list of observed entries.
 
 The hard regime is `m << n^2`. Then `A(X) = y` is badly underdetermined: an affine family of
 matrices fits the data exactly. For completion, setting all unobserved entries to zero is already
-a zero-training-error solution; so is setting them to many other values. The core question is
-therefore not whether an algorithm can fit the observations, but which exact fit it selects and
+a zero-training-error solution. The core question is which exact fit an algorithm selects and
 whether that selection generalizes to the unobserved entries.
-
-The desired procedure should use the observed-entry loss supplied by the scaffold and should not
-assume access to the hidden matrix except through the mask and values. The challenge is to make
-the optimizer choose a low-complexity completion from a large feasible set without hard-coding
-the answer through the observations themselves.
 
 ## Background
 
@@ -50,12 +44,6 @@ If `d` is large enough, no-spurious-local-minimum results such as Journée et al
 minima of the factorized problem correspond to global minima of the original least-squares
 problem, and Lee et al. explain why gradient descent avoids strict saddles almost surely.
 
-Those optimization results answer a limited question: whether local search can reach a global
-fit. In an underdetermined recovery problem, reaching a global fit is not enough. A full or very
-wide factorization can represent many zero-error matrices, including bad completions. The
-unresolved issue before the method is how the parameterization, initialization, and descent rule
-choose among those global fits.
-
 ## Baselines
 
 **Explicit nuclear-norm minimization.** Solve
@@ -65,9 +53,7 @@ min_X ||X||_*  subject to A(X) = y
 ```
 
 or a softened version of the same convex program. This gives the reference low-rank-promoting
-solution and has the cleanest recovery theory. Its limitation is that the regularizer is chosen
-explicitly and the solver is solving a nuclear-norm program, not merely training an
-over-parameterized model by gradient descent.
+solution and has the cleanest recovery theory.
 
 **Gradient descent on `X` directly.** Treat `F(X) = ||A(X)-y||_2^2` as a convex quadratic and
 run gradient descent in matrix space from `X = 0`. The gradient is always
@@ -79,14 +65,11 @@ min_X ||X||_F^2  subject to A(X) = y
 ```
 
 are satisfied: `A(X) = y` and `X = A*(ν)`. Thus this baseline selects the minimum-Frobenius-norm
-fit. For matrix completion that can be the observed-entries-only completion, which is a poor
-notion of simplicity.
+fit.
 
 **Low-rank factorized descent.** Choose a small `d`, optimize
 `min_U ||A(UU^T)-y||_2^2`, and rely on `rank(UU^T) <= d`. This can be effective when the true
-rank is known or well tuned. Its limitation is that the rank preference is a hard architectural
-constraint, so it does not answer what happens when the factorization is expressive enough to fit
-many completions.
+rank is known or well tuned.
 
 ## Evaluation settings
 

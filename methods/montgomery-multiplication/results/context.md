@@ -1,34 +1,26 @@
 ## Research question
 
-Large-integer modular arithmetic needs a faster way to compute `(a * b) mod N`
+Large-integer modular arithmetic needs an efficient way to compute `(a * b) mod N`
 for a fixed odd modulus `N`. The ordinary route multiplies first, producing a
-double-width product `T`, and then reduces `T` by division with quotient
-estimation against `N`. That division is the expensive part: it is irregular in
-software, awkward in hardware, and repeated many times inside modular
-exponentiation and factoring routines.
-
-The goal is to replace trial division by cheaper operations while still working
-for arbitrary odd moduli. A useful answer may spend some one-time setup per
-modulus, because cryptographic and number-theoretic computations perform many
-products under the same `N`. It must also keep intermediate values bounded, so a
-single multiplication and reduction does not require unbounded temporary storage.
+double-width product `T`, and then reduces `T` by division against `N`.
+Repeated modular exponentiation and factoring routines perform many such
+reductions under the same `N`, so a method that pays some one-time setup per
+modulus and handles arbitrary odd moduli is of interest.
 
 ## Background
 
 Residue classes modulo `N` can be represented by any complete residue system.
 The standard representative `x` in `[0, N - 1]` is convenient for comparison and
-addition, but it does not make multiplication cheap: after multiplying two
-representatives, reducing the product still asks for division by `N`.
+addition, but after multiplying two representatives the product still requires
+reduction by `N`.
 
 Division by a power of two is different. If `R = 2^k`, then `T mod R` is just the
-low `k` bits of `T`, and exact division by `R` is a right shift. This creates a
-promising direction: choose a radix `R` that is coprime to `N`, make `R > N`, and
-try to arrange the reduction so the only division left is by `R`.
+low `k` bits of `T`, and exact division by `R` is a right shift. Choosing a radix
+`R` coprime to `N` with `R > N` makes division by `R` a simple shift operation.
 
-The relevant algebraic primitive is already available. Since `N` is odd and
-`R` is a power of two, `gcd(N, R) = 1`, so extended Euclid gives inverses modulo
-both `N` and `R`. Whether those inverses can be turned into a reduction that
-avoids dividing by `N` is the open question.
+The relevant algebraic primitive is available. Since `N` is odd and `R` is a power
+of two, `gcd(N, R) = 1`, so extended Euclid gives inverses modulo both `N` and
+`R`.
 
 Repeated modular multiplication is the setting that makes a representation
 change worthwhile. RSA exponentiation, Pollard-style factoring methods, and
@@ -39,28 +31,20 @@ over those chains if every internal multiplication is cheaper.
 ## Baselines
 
 Classical long division reduces `T` by computing `q = floor(T / N)` and returning
-`T - qN`. Its advantage is directness: it works for every modulus and leaves
-numbers in the standard representative range. Its limitation is the trial
-quotient machinery. Multi-precision division repeatedly estimates quotient
-digits, corrects them, and propagates carries, which is exactly the irregular
-work a multiplication-heavy computation wants to avoid.
+`T - qN`. It works for every modulus and leaves numbers in the standard
+representative range. Multi-precision division repeatedly estimates quotient
+digits, corrects them, and propagates carries.
 
 Binary modular exponentiation reduces an exponentiation to a chain of squares
 and selected multiplies. That is the right high-level structure for RSA-style
-workloads, but it leaves each product as an ordinary modular multiplication.
-The number of products is controlled; the division-heavy reduction inside every
-product is still there.
+workloads, with each product computed as an ordinary modular multiplication.
 
 Special-form moduli, such as numbers close to powers of two, allow reductions by
-folding high bits back into low bits. Those reductions can be extremely fast, but
-the method depends on the shape of `N`. General public-key moduli and many
-number-theoretic workloads do not let the arithmetic choose such a convenient
-modulus.
+folding high bits back into low bits. Those reductions can be extremely fast for
+the specific moduli they support.
 
 Residue-number and redundant-representation approaches can reduce carry
-propagation or decompose arithmetic across channels. They introduce extra
-representation machinery and are not a simple drop-in replacement for repeated
-products modulo an arbitrary odd integer.
+propagation or decompose arithmetic across channels.
 
 ## Evaluation settings
 

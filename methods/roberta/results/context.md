@@ -4,17 +4,13 @@ A wave of self-training methods — ELMo (Peters et al. 2018), GPT (Radford et a
 2018), BERT (Devlin et al. 2018), cross-lingual LM pretraining (Lample & Conneau
 2019), XLNet (Yang et al. 2019) — has produced large, rapid gains on language
 understanding tasks. Each new method reports a new objective or architecture and
-a new state of the art. But the gains are hard to attribute. Pretraining is
+a new state of the art. The gains are hard to attribute. Pretraining is
 expensive, so each method is tuned only lightly; the corpora differ in size and
-are often private; and many design choices are changed at once. The precise
-question is whether the reported improvements come from the headline modeling
-idea (a new pretraining objective, a new architecture) or from mundane,
-under-reported choices: how long the model trains, how big the batches are, how
-much and which data it sees, how the masking is generated, how the input is
-formatted. A solution would isolate these factors under a single, controlled,
-well-tuned implementation and make the original masked-language-model recipe a
-properly tuned comparator, so the field can stop comparing under-trained
-baselines against well-trained successors.
+are often private; and many design choices are changed at once. The question is
+whether the reported improvements come from the headline modeling idea (a new
+pretraining objective, a new architecture) or from mundane, under-reported
+choices: how long the model trains, how big the batches are, how much and which
+data it sees, how the masking is generated, how the input is formatted.
 
 # Background
 
@@ -75,18 +71,13 @@ MLM + NSP on 16GB of text, then finetuned per task with a small head. Base is
 L=12, H=768, A=12, 110M parameters; large is L=24, H=1024, A=16, 355M. It set the
 prevailing state of the art on GLUE, SQuAD, and related tasks. Its reported recipe
 — 1M steps, batch 256, static masking, segment-pair input, both losses, 30K
-character-level BPE vocabulary — is the object under examination. The open gap:
-the recipe was never systematically tuned, so it is unknown how much of the
-headroom above BERT belongs to BERT itself if trained better.
+character-level BPE vocabulary — is the object under examination.
 
 **XLNet (Yang et al. 2019).** A permutation-based autoregressive pretraining
-objective intended to fix MLM's pretrain/finetune mismatch (the `[MASK]` token
-never appears at finetuning) while keeping bidirectional context. It reported
-beating BERT on GLUE, SQuAD, and RACE. But it changes many things at once: a new
-objective, roughly 10× more pretraining data than BERT, batches 8× larger for
-half the steps (so 4× as many sequences seen). Its headline win over BERT thus
-conflates objective with budget. Gap: the contribution of the objective alone is
-not isolated.
+objective that keeps bidirectional context while training autoregressively over
+all permutations of the token order. It reported beating BERT on GLUE, SQuAD,
+and RACE, using roughly 10× more pretraining data than BERT and batches 8× larger
+for half the steps.
 
 **Other post-BERT directions.** Multi-task finetuning (Liu et al. 2019),
 entity-aware pretraining (Sun et al. 2019), span-based masking (Joshi et al.

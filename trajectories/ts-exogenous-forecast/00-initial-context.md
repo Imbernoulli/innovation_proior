@@ -4,12 +4,10 @@ A multivariate series arrives with a designated **target** channel plus **exogen
 
 ## Prior art / Background / Baselines
 
-These are the relevant forecasters at this point, each with the gap it leaves.
-
-- **Informer.** A Transformer for long-horizon forecasting with ProbSparse attention and a generative decoder that emits the whole horizon in one pass. Gap: attention is still point-wise over single time steps, and all channels are treated with the same representation.
-- **Autoformer.** Replaces dot-product attention with an Auto-Correlation block that aggregates by series periodicity, with series decomposition built into every layer. Gap: the machinery is on the time axis; cross-channel structure is not modeled explicitly.
-- **FEDformer.** Attention in the frequency domain with a mixture of decomposition kernels. Gap: gains come from temporal-attention design, and all channels are still forecast symmetrically.
-- **The MS asymmetry.** These methods forecast every channel; here only the last channel is scored. That leaves the exogenous-fusion question unresolved: how side channels should specifically inform the target forecast.
+- **Informer.** A Transformer for long-horizon forecasting with ProbSparse attention and a generative decoder that emits the whole horizon in one pass. All channels share the same representation.
+- **Autoformer.** Replaces dot-product attention with an Auto-Correlation block that aggregates by series periodicity, with series decomposition built into every layer.
+- **FEDformer.** Attention in the frequency domain with a mixture of decomposition kernels.
+- **The MS asymmetry.** These methods forecast every channel; here only the last channel is scored.
 
 ## Fixed substrate
 

@@ -9,18 +9,9 @@ the "long-term memory" stored in slowly-changing weights. It is exactly what tas
 structure need — speech, music, control, any setting where the right output at time `t` depends
 on an input seen at some earlier time `t - q`.
 
-The trouble is *learning* what to store. The gradient-based learning rules for recurrent nets
-(Back-Propagation Through Time, Real-Time Recurrent Learning) do work when the lag `q` between
-the informative input and the moment its information is needed is small — a handful of steps. But
-as `q` grows, training either fails outright or takes a prohibitively long time. Empirically,
-existing recurrent learning algorithms do not reliably bridge minimal time lags beyond roughly
-ten steps. The precise goal is a recurrent architecture *and* a matching learning rule that can
-learn to bridge minimal time lags well in excess of 1000 steps, even when the inputs are noisy
-and incompressible (so there is no shortcut through local predictability); that does not lose the
-ability to handle short lags at the same time; and whose per-weight, per-time-step update cost
-stays `O(1)` — cheap and ideally local in both space and time, so it is usable online and on long
-sequences. Closing the gap between "recurrent nets can in principle remember" and "we can
-actually train them to remember over long lags" is the problem.
+The question is how to train a recurrent architecture to reliably store and use information over
+long temporal lags — specifically, what recurrent cell design and matching learning rule would
+allow credit to be assigned to inputs many steps in the past.
 
 ## Background
 
@@ -33,9 +24,9 @@ of every unit's activation to every weight, so it can update online but at `O(W^
 for `W` weights. Many related gradient methods (Elman 1988; Pearlmutter 1989; Schmidhuber 1992a)
 share the same gradient and the same behavior on long lags.
 
-The load-bearing diagnostic finding — knowable purely from the BPTT/RTRL recurrence, and the
-thing that frames everything — is *how the backpropagated error scales as it flows back in time*.
-Take the standard recurrent backprop signals: an output unit `k`'s error is
+The load-bearing diagnostic finding — knowable purely from the BPTT/RTRL recurrence — is *how the
+backpropagated error scales as it flows back in time*. Take the standard recurrent backprop
+signals: an output unit `k`'s error is
 `δ_k(t) = f_k'(net_k(t)) (d_k(t) - y_k(t))`, and a non-output unit `j`'s error is
 `δ_j(t) = f_j'(net_j(t)) Σ_i w_ij δ_i(t+1)`, where `f_i` is unit `i`'s differentiable activation,
 `net_i(t) = Σ_j w_ij y_j(t-1)`, and `w_ij` is the weight from `j` to `i`. Now follow the error
@@ -47,8 +38,7 @@ induction over `q`,
 ```
 
 with `l_0 = u`, `l_q = v`. Each of the `n^{q-1}` paths from `u` to `v` contributes a product of
-`q` factors of the form `f'(net) · w`. The behavior of that product as `q` grows decides
-everything:
+`q` factors of the form `f'(net) · w`. The behavior of that product as `q` grows:
 
 - If `|f'_{l_m}(net_{l_m}(t-m)) · w_{l_m l_{m-1}}| > 1` for all `m` along a path (which can happen,
   e.g. with a linear unit), the largest product *grows exponentially* in `q`. The error blows up;
@@ -56,7 +46,7 @@ everything:
   Doya 1992).
 - If `|f'_{l_m}(net_{l_m}(t-m)) · w_{l_m l_{m-1}}| < 1` for all `m`, the largest product *decays
   exponentially* in `q`. The error vanishes; the contribution of a long-ago input to the present
-  loss is exponentially small, so nothing can be learned over long lags in acceptable time.
+  loss is exponentially small.
 
 For the logistic sigmoid, `max f' = 0.25`, and `|f'(net) w| < 1.0` whenever `|w| < 4.0`. So with
 ordinary weight magnitudes the decaying case is the rule: error to long-past inputs vanishes. A
@@ -64,29 +54,24 @@ slightly extended bound that also tracks the number of units `n` is
 `|∂δ_v(t-q)/∂δ_u(t)| ≤ n (f'_max ||W||_A)^q`; choosing the matrix/vector norms
 `||W||_A := max_r Σ_s |w_rs|` and `||x|| := max_r |x_r|` gives `f'_max = 0.25` for the sigmoid,
 and if `|w_ij| ≤ w_max < 4/n` then `||W||_A ≤ n w_max < 4`, so with `τ := n w_max / 4 < 1` the
-factor is bounded by `n τ^q` — exponential decay in the lag. Two corollaries matter: increasing
-the weights does *not* rescue long-range flow (a larger `w` drives the unit into saturation where
+factor is bounded by `n τ^q` — exponential decay in the lag. Two corollaries: increasing
+the weights does *not* change this (a larger `w` drives the unit into saturation where
 `f'` collapses even faster), and increasing the learning rate does *not* either (it scales the
-long-range and short-range error identically, so the *ratio* that starves long-range credit
-assignment is unchanged). The lag itself, through the exponent `q`, is the obstacle.
+long-range and short-range error identically, so the *ratio* is unchanged). The lag itself, through
+the exponent `q`, is the operative quantity.
 
-This diagnostic fact frames the problem: gradient flow over long recurrences is exponentially
-attenuated (or exponentially amplified) by construction. Note also the sign structure: because
-the `n^{q-1}` path products can have different signs, simply adding units does not necessarily
-increase the total flow — the cancellation can make things worse, not better.
+Note also the sign structure: because the `n^{q-1}` path products can have different signs, simply
+adding units does not necessarily increase the total flow — the cancellation can make things worse.
 
 A handful of partial ideas were in the air. Time-Delay Neural Networks (Lang, Waibel and Hinton
 1990) and Plate's holographic method (1993) handle a fixed short window of past activations via
-explicit delays, but only for short lags. Mozer (1992) used adjustable *time constants* that slow
-down a unit's activation change, which lengthens its effective memory — but the time constants
-need external fine tuning, and Sun, Chen and Lee's (1993) related "add scaled old activation to
-current input" update tends to let the net input perturb the stored information, making long-term
-storage impractical. Schmidhuber's hierarchical sequence chunkers (1992b, 1993) can bridge
-arbitrary lags, but only when the subsequences across the lag are *locally predictable*; their
-performance degrades as the inputs get noisier and less compressible. Watrous and Kuhn (1992)
-used multiplicative units in second-order nets for finite-state induction, but with fully
-connected second-order sigma-pi units at `O(W^2)` cost per step and no mechanism enforcing
-constant error flow. None of these closes the long-lag, noisy-input gap cheaply.
+explicit delays. Mozer (1992) used adjustable *time constants* that slow down a unit's activation
+change, which lengthens its effective memory; Sun, Chen and Lee's (1993) related "add scaled old
+activation to current input" update carries a similar idea. Schmidhuber's hierarchical sequence
+chunkers (1992b, 1993) compress a sequence by predicting it at multiple time scales, so a higher
+level sees a shorter, chunked sequence and only the *unpredictable* events are passed up; this can
+bridge long lags. Watrous and Kuhn (1992) used multiplicative units in second-order nets for
+finite-state induction, with sigma-pi units at `O(W^2)` cost per step.
 
 ## Baselines
 
@@ -94,39 +79,27 @@ These are the prior methods a new approach would be measured against and would r
 
 **BPTT / RTRL (Werbos 1988; Williams and Zipser 1992; Robinson and Fallside 1987).** The exact
 recurrent gradient. BPTT unrolls the net over the whole sequence and backpropagates; RTRL carries
-the forward sensitivities so it can update online. Both implement the recurrence and error signals
-above. *Gap:* the backpropagated error over `q` steps is the product of `q` factors `f'·w`, which
-is forced to decay (or explode) exponentially in `q` (see Background). On long lags BPTT's
-credit assignment is dominated by recent inputs and the long-range signal is lost; RTRL pays a
-further `O(W^2)` per-step cost. Larger weights and larger learning rates do not change the
-long-vs-short ratio. So these methods learn short-lag structure and stall on long-lag structure.
+the forward sensitivities so it can update online at `O(W^2)` per-step cost. Both implement the
+recurrence and error signals above.
 
 **Time constants and time delays (Mozer 1992; Lang, Waibel and Hinton 1990; Plate 1993; Sun,
 Chen and Lee 1993).** Stretch a unit's effective memory either by a slow first-order time
-constant on its activation, or by feeding in explicit delayed copies of past activations. *Gap:*
-delays only cover a fixed, short window; time constants must be tuned by hand and are appropriate
-to a particular lag scale; and the additive "old activation + current input" form lets new input
-keep perturbing what is stored, so the stored quantity drifts rather than being held.
+constant on its activation, or by feeding in explicit delayed copies of past activations.
 
 **Hierarchical sequence chunkers (Schmidhuber 1992b, 1993).** Compress a sequence by predicting
 it at multiple time scales, so a higher level sees a shorter, chunked sequence and only the
-*unpredictable* events are passed up; this can bridge long lags. *Gap:* it relies on local
-predictability across the lag — when the sequence is noisy and incompressible there is nothing to
-chunk, and performance deteriorates as the noise level rises.
+*unpredictable* events are passed up; this can bridge long lags.
 
 **Multiplicative-unit second-order nets (Watrous and Kuhn 1992).** Use multiplicative
-(sigma-pi) units to gate signals in a recurrent net for finite-state language induction. *Gap:*
-the architecture does not enforce constant error flow and is not designed for long lags; with
-fully connected second-order units it costs `O(W^2)` per step.
+(sigma-pi) units to gate signals in a recurrent net for finite-state language induction, with
+fully connected second-order units at `O(W^2)` cost per step.
 
 **Non-gradient and discrete-error approaches (Bengio, Simard and Frasconi 1994; Bengio and
-Frasconi 1994; Puskorius and Feldkamp 1994).** Bengio et al. analyze the same long-term-dependency
-difficulty and try simulated annealing, multi-grid random search, time-weighted pseudo-Newton, and
-discrete error propagation; their EM "state network" can bridge long lags but only represents `n`
-discrete states. Kalman-filter-trained recurrent nets impose a derivative discount factor that
-decays past dynamics exponentially. *Gap:* the discrete-state approaches need an unacceptable
-number of states for continuous problems, and the discount-factor methods explicitly decay the
-very long-range dependencies they would need to keep.
+Frasconi 1994; Puskorius and Feldkamp 1994).** Bengio et al. analyze the long-term-dependency
+behavior of recurrent nets and try simulated annealing, multi-grid random search, time-weighted
+pseudo-Newton, and discrete error propagation; their EM "state network" can bridge long lags by
+representing `n` discrete states. Kalman-filter-trained recurrent nets impose a derivative
+discount factor that decays past dynamics exponentially.
 
 ## Evaluation settings
 
@@ -136,16 +109,14 @@ The natural yardsticks for long-range temporal credit assignment:
   appears at some step and the required output (a classification or a stored real value) is due
   many steps later, with the lag `q` swept up into the hundreds and beyond, to measure directly
   how far back a method can assign credit. Variants use local vs. distributed input encodings,
-  real-valued vs. symbolic inputs, and added noise / distractor symbols so the task cannot be
-  solved by short-window shortcuts.
+  real-valued vs. symbolic inputs, and added noise / distractor symbols.
 - **The "adding problem" and similar continuous storage tasks**, where the network must carry and
-  combine real-valued quantities across a long lag — a continuous problem that finite-state
-  methods cannot represent compactly.
-- **Noisy, incompressible input streams**, included specifically to defeat methods that rely on
-  local predictability or compressibility of the sequence.
-- Metrics: whether the task is solved at all (many prior methods simply cannot), the number of
-  successful runs out of many random seeds, and training speed. Protocol: per-time-step squared
-  error against a target signal, gradient updates, repeated over random initializations.
+  combine real-valued quantities across a long lag.
+- **Noisy, incompressible input streams**, included to test methods on sequences with low local
+  predictability.
+- Metrics: whether the task is solved at all, the number of successful runs out of many random
+  seeds, and training speed. Protocol: per-time-step squared error against a target signal,
+  gradient updates, repeated over random initializations.
 
 For a real-world regression deployment, the natural pipeline is a cross-sectional predictor over
 a fixed feature panel: a per-instrument window of recent observations (here six base

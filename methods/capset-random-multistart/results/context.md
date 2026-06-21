@@ -18,7 +18,7 @@ Croot–Lev–Pach / Ellenberg–Gijswijt upper bound is `O(2.756^n)`):
 | max `|cap|` | 2 | 4 | 9 | 20 | 45 | 112 | 236 | ≥ 512 |
 
 Values through `n = 6` are proven optima; `n = 7` is `236`; at `n = 8` the best known lower
-bound `512` is the cap FunSearch discovered (Nature 2024), improving the prior best `496`.
+bound is `512`.
 
 ## How the score is defined
 
@@ -30,16 +30,15 @@ cap, checked by the standard incremental procedure: index each vector as `idx(v)
 ever already blocked when replayed in order (and there are no duplicates). This is `O(c^2 n)`;
 small instances are also cross-checked by an independent `O(c^3)` triple scan.
 
-## Where this method sits
+## The greedy-construction baseline
 
-This method, **randomized greedy multi-start**, attacks the single weakness of the lexicographic
-floor — the fixed, geometry-blind order. It runs the same greedy admission rule (add a point iff
-it does not close a line, blocking the completing point of every line it forms) but offers the
-points in a *uniformly random* order, repeats over many independent restarts, and returns the
-largest cap found. A random order destroys the accidental alignment between counting order and
-the line-blocking structure, so it clears the `2^n` floor; taking the maximum over many restarts
-reaches the favorable right tail of the cap-size distribution. It removes the *bias* of a fixed
-order but not its *blindness*, which is why it plateaus below the optima as `n` grows.
+The simplest constructor is a **greedy fill in lexicographic order**. Enumerate all `3^n`
+vectors in counting order (the order `itertools.product` produces) and walk through them once,
+admitting a point iff it does not close a line with any already-admitted point; when a point is
+admitted, mark blocked the completing point of every line it forms with an earlier point. The
+admission rule is exactly the validity check above run forward, so the output is always a valid
+cap by construction. This single-pass greedy uses each vector at most once and runs in `O(c^2 n)`.
+On this fixed lexicographic order the construction reproduces a regular `2^n` cap.
 
 ## Code framework
 

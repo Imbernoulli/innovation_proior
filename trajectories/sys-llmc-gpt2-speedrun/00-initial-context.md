@@ -8,22 +8,22 @@ A GPT-2 forward pass is a stack of twelve identical transformer blocks, each: La
 
 The systems facts known before any kernel is written:
 
-- **Modern GPUs are dominated by tensor cores and memory bandwidth, not FP32 CUDA cores.** On an A100, generic FP32 throughput is ~19.5 TFLOPS while tensor-core BF16/FP16 throughput is ~312 TFLOPS. A kernel that multiplies in FP32 on the CUDA cores leaves most of the chip idle.
+- **Modern GPUs have tensor cores and CUDA cores with very different throughput.** On an A100, generic FP32 throughput is ~19.5 TFLOPS while tensor-core BF16/FP16 throughput is ~312 TFLOPS.
 - **Most non-matmul layers are memory-bound.** LayerNorm, GELU, residual adds, softmax, and elementwise AdamW updates move more bytes than they compute; their speed is set by HBM bandwidth and by how many times each byte is read/written.
 - **The attention score matrix is O(T²) in memory.** Materializing the full `(B, NH, T, T)` pre-softmax and post-softmax tensors, as a textbook three-pass attention does, costs bandwidth and capacity that grow quadratically with context.
 - **The vocabulary projection is the single largest activation.** The `(B, T, V)` logits tensor, with V≈50k, plus its softmax and gradient, is the largest buffer in the pass.
-- **BF16 has only 8 mantissa bits.** Storing weights and applying optimizer updates in BF16 rounds away small updates, so half-precision training has a known stability hazard that must be handled.
-- **One GPU is a throughput ceiling.** A 0.5M-token batch over 10B tokens is ~18,865 optimizer steps; on a single device that is a long wall-clock run even at high MFU. Multiple GPUs can share the batch only if gradients can be summed cheaply and optimizer state can be made to fit.
+- **BF16 has only 8 mantissa bits.** Storing weights and applying optimizer updates in BF16 rounds away small updates compared to FP32.
+- **One GPU is a throughput ceiling.** A 0.5M-token batch over 10B tokens is ~18,865 optimizer steps; multiple GPUs can share the batch by summing gradients and distributing optimizer state.
 
 The reference CPU implementation (~1000-line single-file C) establishes that the math is simple and correct; it trains at well under a thousand tokens/sec and exists only to be matched bit-for-bit by the GPU code.
 
 Baselines:
 
-- **Naive one-thread-per-output FP32 CUDA port.** Core idea: transcribe each CPU loop directly into a kernel that computes one output element by looping over the contraction dimension. Gap: it runs entirely in FP32 on the CUDA cores with uncoalesced, redundant memory accesses and every layer round-tripping through HBM, so it is an order of magnitude or more slower than library GEMMs.
-- **cuBLAS / cuBLASLt.** Core idea: call the vendor BLAS for near-peak tensor-core GEMMs. Gap: it does not choose the precision, fuse surrounding elementwise ops, implement the causal softmax, or shrink the large logits buffer.
-- **Mixed-precision training.** Core idea: run matmuls in FP16/BF16 on tensor cores while keeping master weights and reductions in FP32. Gap: it does not remove the rounding of small half-precision updates; BF16 avoids FP16 overflow but not the rounding problem.
-- **Textbook three-pass attention and streaming/online softmax.** Core idea: standard attention materializes the full T×T score matrix and applies a stable two-pass softmax, while online softmax keeps a running max and sum in one pass. Gap: online softmax avoids materializing the score matrix, but it still leaves QKᵀ and (·V) as separate matmuls and does not by itself exploit tensor cores or remove extra HBM traffic.
-- **Data-parallel SGD with all-reduce and ZeRO-style optimizer-state sharding.** Core idea: each GPU processes a different batch slice, gradients are averaged via all-reduce, and the redundant FP32 optimizer state can be sharded across the data-parallel group. Gap: it does not make the communication and sharded state fit a single-file C/CUDA trainer without erasing the speedup.
+- **Naive one-thread-per-output FP32 CUDA port.** Core idea: transcribe each CPU loop directly into a kernel that computes one output element by looping over the contraction dimension. It runs entirely in FP32 on the CUDA cores with each input row re-read once per output channel.
+- **Vendor BLAS libraries for GEMMs.** Core idea: call optimized vendor routines for matrix multiplications to get near-peak tensor-core utilization. The library selects tiled, shared-memory-staged kernels and dispatches to the tensor cores.
+- **Mixed-precision training.** Core idea: run matmuls in FP16/BF16 on tensor cores while keeping master weights and reductions in FP32. BF16 avoids FP16 overflow due to its wider exponent range.
+- **Textbook three-pass attention and streaming/online softmax.** Core idea: standard attention materializes the full T×T score matrix and applies a stable two-pass softmax, while online softmax keeps a running max and sum in one pass to compute the softmax without a separate pass over the scores.
+- **Data-parallel SGD with all-reduce and ZeRO-style optimizer-state sharding.** Core idea: each GPU processes a different batch slice, gradients are averaged via all-reduce, and the redundant FP32 optimizer state is sharded across the data-parallel group.
 
 ## Fixed substrate / Code framework
 

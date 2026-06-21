@@ -6,11 +6,11 @@ Pretrain a GPT-2-class decoder language model. Inside each block the position-wi
 
 The FFN slot holds pointwise activations run as ordinary PyTorch ops.
 
-- **ReLU FFN.** Hard zero threshold: `max(xW1, 0) W2`. Gap: for positive inputs it is exactly the identity, so a strongly-firing and a barely-firing unit pass through at the same unit slope; the positive half grows only linearly and adds no extra shaping.
-- **GELU FFN.** Smooth ReLU-like curve `xΦ(x)`. Gap: still asymptotically linear; each element needs an `erf`/`tanh` evaluation (costlier than a rectifier), and on LM perplexity it is roughly on par with — not clearly better than — ReLU. This is the scaffold's default fill.
-- **Swish FFN.** Sigmoid-gated self-product `xσ(βx)`. Gap: same asymptotically-linear shape and the same per-element sigmoid cost; it does not consistently beat ReLU/GELU on LM.
-- **GLU-variant FFNs (ReGLU/GEGLU/SwiGLU).** Replace the activation with a Hadamard product of two projections, one squashed. Gap: they require a third weight matrix `V` and a `2/3` inner-width shrink to keep parameter count matched; the editable interface below only hands the FFN two weights, so a gated FFN with its own gate matrix cannot be expressed.
-- **Vendor execution path.** The two matmuls run through cuBLAS near peak, while the activation runs as separate PyTorch elementwise ops. Gap: the wide `(tokens × 4d)` intermediate is streamed through HBM for each op in the activation chain, adding bandwidth cost and extra kernel launches.
+- **ReLU FFN.** Hard zero threshold: `max(xW1, 0) W2`.
+- **GELU FFN.** Smooth ReLU-like curve `xΦ(x)`. This is the scaffold's default fill.
+- **Swish FFN.** Sigmoid-gated self-product `xσ(βx)`.
+- **GLU-variant FFNs (ReGLU/GEGLU/SwiGLU).** Replace the activation with a Hadamard product of two projections, one squashed; they require a third weight matrix `V` and a `2/3` inner-width shrink to keep parameter count matched.
+- **Vendor execution path.** The two matmuls run through cuBLAS near peak, while the activation runs as separate PyTorch elementwise ops on the wide `(tokens × 4d)` intermediate.
 
 ## Fixed substrate / Code framework
 

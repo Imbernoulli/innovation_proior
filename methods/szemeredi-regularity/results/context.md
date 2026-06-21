@@ -11,15 +11,8 @@ counting in random graphs routine.
 
 Arbitrary dense graphs offer no such guarantee. A graph can have edge density $1/2$ overall yet
 hide all its edges inside one half, leaving the rest empty; local densities can swing wildly. The
-precise problem is this: **is there a way to decompose any large dense graph into a *bounded*
-number of pieces — bounded independently of how many vertices the graph has — so that between
-almost every pair of pieces the edges behave as uniformly as in a random graph?** If such a
-decomposition existed, then counting any fixed pattern in an arbitrary graph would reduce to a
-calculation on a bounded-size weighted object, and the entire machinery developed for random
-graphs would transfer to *all* dense graphs. The difficulty is the boundedness: chopping a graph
-into singletons makes every pair trivially uniform but tells us nothing; the value of any such
-result lies entirely in keeping the number of pieces under a single function of the uniformity
-tolerance, valid for arbitrarily large inputs.
+broad question is how to leverage the tools developed for random graphs — subgraph counting,
+extremal thresholds, removal arguments — when the input graph has no randomness built in.
 
 ## Background
 
@@ -38,9 +31,7 @@ $(1+o(1))\,n^\nu 2^{-\binom{\nu}{2}}$ times; that $e(G_n) \ge \tfrac14 n^2 + o(n
 $4$-cycle count is at most $(n/2)^4 + o(n^4)$ (the single pattern $C_4$ already forces everything);
 that every vertex subset $X$ spans $\tfrac14 |X|^2 + o(n^2)$ edges (edge-discrepancy); that
 $\sum_{x,y}\big||N(x)\cap N(y)| - n/4\big| = o(n^3)$ (codegrees concentrate). The lesson: *uniformity of
-edge distribution across all large sets is the same thing as control of subgraph counts.* A purely
-local version of this — applied to a single pair of vertex blocks rather than the whole graph — is
-the right target for an approximation theorem.
+edge distribution across all large sets is the same thing as control of subgraph counts.*
 
 **The counting/embedding heuristic.** If between two blocks $A, B$ the edges are distributed
 uniformly with density $d$, then for almost every vertex of $A$ its number of neighbours inside
@@ -57,11 +48,10 @@ arithmetic progressions of any length; Erdős and Turán (1936) conjectured this
 (1953) proved the $k=3$ case analytically (giving $r_3(n) = O(n/\log\log n)$); the $k=4$ case fell
 in 1969; the general case was settled in 1975 by a long elementary-combinatorial argument whose
 engine was a graph-decomposition statement — a "lemma on bipartite graphs" asserting that any
-large bipartite graph can be broken into nearly regular bipartite subgraphs. That embryonic
-statement, hand-built and tangled inside the progression proof, is the prior art a clean general
-tool would replace. (Behrend's 1946 construction, giving sets of density $\exp(-c\sqrt{\log n})$
-with no $3$-term progression, set the lower-bound backdrop and warned that any density theorem must
-survive surprisingly dense progression-free sets.)
+large bipartite graph can be broken into nearly regular bipartite subgraphs. (Behrend's 1946
+construction, giving sets of density $\exp(-c\sqrt{\log n})$ with no $3$-term progression, set the
+lower-bound backdrop and showed that any density theorem must survive surprisingly dense
+progression-free sets.)
 
 ## Baselines
 
@@ -70,29 +60,22 @@ progressions sits a self-standing lemma: given a bipartite graph on $A \cup B$ w
 set, one can find subsets on which the relative density is *nearly constant under further
 restriction* — formally, sets $C, C'$ with $\beta(S,T) \ge \beta(C,C') - \delta$ for all largish
 $S \subseteq C$, $T \subseteq C'$ — and one extracts these nearly-regular pieces by iterating a
-density-defect argument until the residual is small. It works, but it is bipartite, it is
-phrased for the one situation it was needed in, the bookkeeping ($\varepsilon(t)$ schedules,
-nested $Z_j, \bar C_j$ sequences) is intricate, and it does not produce a single bounded
-*partition* of one vertex set. Its limitation: it is a tool, not a theorem about graphs — there
-is no clean "every graph splits into a bounded number of uniform pairs" to hand to other problems.
+density-defect argument until the residual is small. The bookkeeping ($\varepsilon(t)$ schedules,
+nested $Z_j, \bar C_j$ sequences) is tailored to the bipartite setting within the progression proof.
 
 **Turán-type and Erdős–Stone counting (Turán 1941; Erdős–Stone 1946).** Turán: a graph with more
 than $\big(1 - \tfrac{1}{p-1}\big)\tfrac{n^2}{2}$ edges contains $K_p$; Erdős–Stone:
 $\mathrm{ex}(n, K_p(t,\dots,t)) = \big(1 - \tfrac{1}{p-1}\big)\binom{n}{2} + o(n^2)$, which pins
 down $\mathrm{ex}(n, L)$ asymptotically via $\chi(L)$. These give *thresholds* for the existence of
-a subgraph but are tied to specific excluded graphs; they do not provide a general
-structural approximation of an arbitrary graph that one could reuse across problems, and the
-$o(n^2)$ error is exactly the slack a uniform-block decomposition would explain.
+a subgraph.
 
 **Sieve / inclusion–exclusion subgraph counts.** Counts of fixed subgraphs can be produced
-directly by sieve-type formulas; effective but ad hoc per pattern, and they say nothing about the
-global structure of $G$ — they cannot, for instance, deliver the fact that few copies of $H$ means
-all copies are coverable by few edges.
+directly by sieve-type formulas; effective for specific patterns when the graph structure is
+otherwise known.
 
 **Random-graph counting (the gold standard one wants to imitate).** In $G(n,p)$ subgraph counts are
-forced by the uniform edge distribution. The whole point of the sought decomposition is to let an
-arbitrary graph inherit this. The baseline is thus "what you can do *if* the graph happens to be
-random-looking" — and the gap is that arbitrary graphs are not.
+forced by the uniform edge distribution. The whole point of any structural approximation is to let
+an arbitrary graph inherit this.
 
 ## Evaluation settings
 
@@ -109,5 +92,3 @@ are extremal and Ramsey-type:
 - Metrics are the usual ones: number of copies $H \to G$, edges removable to destroy all copies of
   $H$, density thresholds. The yardstick parameters are the uniformity tolerance and the density
   floor below which a block is treated as empty.
-
-

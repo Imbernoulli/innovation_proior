@@ -4,41 +4,32 @@ Modern convolutional networks rely on a normalization layer inserted after (most
 convolutions to keep the distribution of intermediate features controlled — this is what
 lets very deep networks train at all, and it speeds up and stabilizes optimization. The
 dominant such layer normalizes each channel using the mean and variance computed over the
-mini-batch. That single design choice — using the batch as the population over which
-statistics are estimated — is the source of a cluster of problems.
+mini-batch, i.e. it uses the batch as the population over which statistics are estimated.
 
-The precise problem: build a per-layer feature normalization whose effect does **not**
-depend on the batch dimension. Concretely it should (1) estimate its statistics from
-something other than the batch, so accuracy does not collapse when the per-device batch is
-small (2, 4 images), (2) compute exactly the same function during training and at
-inference — no statistics accumulated by a running average that must then be frozen, hence
-no train/test discrepancy and no inconsistency when transferring a pre-trained model to a
-small-batch task — and (3) still match the accuracy of the batch-based layer in the regime
-where the batch is large and that layer already works well. Many high-value vision tasks
-(detection, instance segmentation, video) are forced into batch sizes of 1–2 per device by
-the memory cost of high-resolution inputs and 3D convolutions, so the batch-size
-restriction directly limits which models can be built.
+The question: how should a per-layer feature normalization choose the population of feature
+positions over which it estimates each mean and variance? Many high-value vision tasks
+(detection, instance segmentation, video) run at batch sizes of 1–2 images per device
+because of the memory cost of high-resolution inputs and 3D convolutions, so any normalizer
+is used across a wide range of batch sizes.
 
 ## Background
 
 **Why normalize hidden features at all.** Normalizing the *input* data makes training
 faster (LeCun et al. 1998). Inside the network, controlling the distribution of each
 layer's activations keeps gradients well-scaled and lets optimization proceed through many
-layers. Weight-initialization schemes (Glorot & Bengio 2010; He et al. 2015) try to set up
-good feature distributions analytically, but they rest on assumptions about the feature
-distribution that stop holding once training moves the weights, so they do not by
-themselves keep activations well-behaved throughout training. An explicit normalization
-*layer* that re-centers and re-scales features on the fly is more robust.
+layers. Weight-initialization schemes (Glorot & Bengio 2010; He et al. 2015) set up good
+feature distributions analytically from assumptions about the feature distribution at
+initialization. An explicit normalization *layer* re-centers and re-scales features on the
+fly during training.
 
 **Early normalization layers.** Local Response Normalization (LRN) was used in AlexNet
 (Krizhevsky et al. 2012) and successors: it normalizes each pixel using a small
-neighborhood of channels around it, i.e. a local, per-pixel statistic. It predates and is
-weaker than the more global schemes that followed.
+neighborhood of channels around it, i.e. a local, per-pixel statistic.
 
-**The batch-statistics view and its general form.** A large family of normalization layers
-can be written in one form. Let a feature tensor be indexed by i = (i_N, i_C, i_H, i_W) in
-(N, C, H, W) order — batch, channel, height, width. Each method picks a set S_i of feature
-positions that share one mean and variance, then standardizes:
+**The general form.** A large family of normalization layers can be written in one form.
+Let a feature tensor be indexed by i = (i_N, i_C, i_H, i_W) in (N, C, H, W) order — batch,
+channel, height, width. Each method picks a set S_i of feature positions that share one
+mean and variance, then standardizes:
 
     x̂_i = (x_i − μ_i) / σ_i,
     μ_i = (1/m) Σ_{k∈S_i} x_k,
@@ -49,37 +40,24 @@ per-channel affine transform y_i = γ x̂_i + β (γ, β indexed by channel) res
 representational power that pure standardization would remove. The methods below differ
 **only** in how S_i is chosen; everything else is shared.
 
-**Diagnostic finding — batch-based normalization degrades at small batch.** When the
-normalization statistics are estimated over the batch axis, the quality of those estimates
-depends on how many samples the batch provides. Measured on ResNet-50 / ImageNet, the
-validation error of the batch-based layer climbs sharply as the per-device batch shrinks:
-about 23.6, 23.7, 24.8, 27.3, 34.7 % at batch sizes 32, 16, 8, 4, 2. Fewer samples make the
-sample statistics noisier, and the usual divide-by-m variance estimate has a larger
-finite-sample bias; the model error tracks this loss of statistical quality. This
-degradation is a property of normalizing along the batch dimension, not of any particular
-network.
+**Batch-statistics behavior across batch sizes.** When the normalization statistics are
+estimated over the batch axis, the quality of those estimates depends on how many samples
+the batch provides. Measured on ResNet-50 / ImageNet, the validation error of the
+batch-based layer is about 23.6, 23.7, 24.8, 27.3, 34.7 % at per-device batch sizes 32, 16,
+8, 4, 2. At inference there is no batch to pool over, so population statistics are
+accumulated by a running average during training and frozen for testing.
 
-**Diagnostic finding — the batch is not always a stable or meaningful population.** Because
-the statistics depend on the batch, the layer behaves differently at inference, where there
-is no batch to pool over: population statistics are accumulated by a running average during
-training and frozen for testing, so the function computed at test time is not the one
-computed during training. The frozen statistics can also be wrong when the data
-distribution shifts (transfer). And the batch is not always i.i.d. — e.g. when many
-regions sampled from a single image form the batch, the samples are correlated, which
-further corrupts the estimate. So beyond the small-batch noise, the very reliance on a
-"batch" creates inconsistency across training, transferring, and testing.
-
-**Classical vision features and the channels of a conv layer.** Classical hand-designed
-vision features are often *group-wise* and normalized *within groups*. A HOG descriptor
-(Dalal & Triggs 2005) is built from spatial cells, each a histogram of gradient
-orientations, and the histogram is normalized within each block/orientation group; SIFT
-(Lowe 2004) similarly normalizes orientation histograms; GIST, VLAD, and Fisher Vectors are
-grouped sub-vectors (e.g. one sub-vector per cluster). A well-accepted neuroscience model
-normalizes responses divisively across populations of cells with related receptive-field
-and frequency tunings. As for the channels of a convolutional layer: a filter and its
-horizontally-flipped counterpart produce similar response distributions on natural images,
-and empirically the channels are different filters (edges, colors, textures, frequencies)
-whose response distributions — means and variances — genuinely differ from one another.
+**Classical vision features.** Classical hand-designed vision features are often computed
+*group-wise* and normalized *within groups*. A HOG descriptor (Dalal & Triggs 2005) is
+built from spatial cells, each a histogram of gradient orientations, normalized within each
+block/orientation group; SIFT (Lowe 2004) similarly normalizes orientation histograms;
+GIST, VLAD, and Fisher Vectors are grouped sub-vectors (e.g. one sub-vector per cluster). A
+well-accepted neuroscience model normalizes responses divisively across populations of
+cells with related receptive-field and frequency tunings. As for the channels of a
+convolutional layer, empirically the channels are different filters (edges, colors,
+textures, frequencies) whose response distributions — means and variances — differ from one
+another, and a filter and its horizontally-flipped counterpart produce similar response
+distributions on natural images.
 
 ## Baselines
 
@@ -87,40 +65,29 @@ whose response distributions — means and variances — genuinely differ from o
 channel, pool over (N, H, W) — every position in that channel across the whole batch and
 all spatial locations shares one μ, σ. Add the per-channel affine y = γ x̂ + β. It eases
 optimization, enables very deep networks, and the noise from random batch sampling acts as
-a regularizer that helps generalization. **Gap:** S_i spans the batch axis, so estimate
-quality depends on batch size (small-batch degradation above) and the layer needs frozen
-running statistics at inference (train/test discrepancy above). It needs a "sufficiently
-large" batch (e.g. 32 per device) to work well.
+a regularizer that helps generalization. It uses a "sufficiently large" batch (e.g. 32 per
+device) and accumulates frozen running statistics for inference.
 
 **Per-sample, all-channel normalization (Ba et al. 2016).** S_i = { k | k_N = i_N }: for
 each sample, pool over all of (C, H, W). Batch-independent — same at train and test, no
-running statistics — and effective for recurrent models (RNN/LSTM). **Gap for vision:** it
-forces *all* channels of a sample to share one mean and variance, i.e. it assumes every
-channel makes a similar contribution. In a convolutional layer the channels are different
-filters (edges, colors, textures, frequencies) with genuinely different response
-distributions, so a single shared statistic over all of them is too coarse.
+running statistics — and effective for recurrent models (RNN/LSTM). All channels of a
+sample share one mean and variance.
 
 **Per-sample, per-channel normalization (Ulyanov et al. 2016).** S_i = { k | k_N = i_N,
 k_C = i_C }: for each sample and each channel, pool over (H, W) only. Also batch-independent
-and strong for style transfer and generative models. **Gap for vision:** with only the
-spatial pixels of a single channel, it has no access to any other channel — it cannot use
-the dependence *between* channels at all, which limits its accuracy on recognition.
+and strong for style transfer and generative models. Each channel is normalized using only
+its own spatial pixels.
 
 **Weight normalization (Salimans & Kingma 2016).** Normalizes the *filter weights* rather
-than the features (reparameterizing each weight vector by its direction and a separate
-scale). Batch-independent, but it controls the parameters, not the feature distribution,
-and has not matched the batch-based layer's accuracy on visual recognition.
+than the features, reparameterizing each weight vector by its direction and a separate
+scale. Batch-independent; it controls the parameters rather than the feature distribution.
 
 **Constrained batch statistics (Ioffe 2017).** Computes correction factors between the
 current batch statistics and running population statistics, then clips those factors to
-limit how far the normalized activations can drift. This reduces small-batch error relative
-to the plain batch layer. **Gap:** it is still batch-dependent, and its accuracy still
-degrades as the batch shrinks.
+limit how far the normalized activations can drift.
 
 **Cross-device batch statistics (Peng et al. 2018).** Computes the batch statistics jointly
-across multiple devices to enlarge the effective batch. **Gap:** this does not remove the
-batch dependence; it pays for a larger batch with proportionally more hardware, and it
-blocks asynchronous training.
+across multiple devices to enlarge the effective batch.
 
 ## Evaluation settings
 
@@ -161,7 +128,7 @@ class FeatureNorm(nn.Module):
 
     Standardize x with a per-position mean/variance, then apply a learnable
     per-channel affine. The open question is which feature positions share one
-    mean/variance, and how to estimate it without depending on the batch.
+    mean/variance, and how to estimate it.
     """
 
     def __init__(self, num_channels, eps=1e-5, affine=True):

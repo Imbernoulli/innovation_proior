@@ -5,18 +5,16 @@
 Colour every point of the Euclidean plane so that no two points at distance exactly 1
 receive the same colour. The minimum number of colours that suffices is the *chromatic
 number of the plane* (CNP). The question, posed by Nelson in 1950 and now called the
-Hadwiger–Nelson problem, has stood with a frustratingly wide gap: at least 4, at most 7,
-and not a single point of movement for nearly seven decades.
+Hadwiger–Nelson problem, is known to satisfy 4 ≤ CNP ≤ 7.
 
 The lower bound is, by a compactness theorem, equivalent to a purely finite question: does
 there exist a *finite* unit-distance graph — a finite graph drawn with all listed edges
 realised by distance-1 segments in the plane — whose chromatic number exceeds 4? If one
 can exhibit a finite unit-distance graph that admits no proper 4-colouring, then no
 4-colouring of the whole plane can exist either (restrict it to those points), and CNP ≥ 5.
-So the goal is concrete: **engineer a finite unit-distance graph that is not 4-colourable.**
-What makes this hard is that the obstruction must be enforced purely by distances realisable
-in the plane — every edge has to be a genuine unit segment — while colourability is a global
-combinatorial property that local gadgets do not obviously control.
+So the goal is concrete: **construct a finite unit-distance graph that is not 4-colourable**,
+with the obstruction enforced purely by distances realisable in the plane (every edge a
+genuine unit segment).
 
 ## Background
 
@@ -49,9 +47,8 @@ edge.
 The upper bound comes from a colouring, not a graph: tile the plane with regular hexagons of
 diameter slightly under 1 and 7-colour the tiles so that any two tiles of the same colour are
 more than a diameter apart (Hadwiger 1945; Isbell 1950). No same-colour pair is ever at
-distance exactly 1, so 7 colours suffice and CNP ≤ 7. Between the spindle and the hexagons
-lies the open gap. The history of all this is documented at length in Soifer's *The
-Mathematical Coloring Book* (2008).
+distance exactly 1, so 7 colours suffice and CNP ≤ 7. The history of all this is documented
+at length in Soifer's *The Mathematical Coloring Book* (2008).
 
 On the computational side: deciding whether a graph is k-colourable is the canonical NP
 problem, but for a *fixed* small k it reduces cleanly to Boolean satisfiability. The standard
@@ -64,21 +61,15 @@ checker verifies mechanically, removing trust in any one program.
 
 ## Baselines
 
-- **Moser spindle (Moser & Moser 1961).** 7 vertices, 11 edges, χ = 4. Proves CNP ≥ 4. The
-  gap it leaves: it blocks 3-colourings, but in the 4-colour setting it supplies only a
-  negative constraint on √3-pairs — two specified pairs cannot both be monochromatic. That
-  is not yet a mechanism for forcing a whole finite graph to fail 4-colourability.
+- **Moser spindle (Moser & Moser 1961).** 7 vertices, 11 edges, χ = 4. Proves CNP ≥ 4. It
+  blocks 3-colourings, and in the 4-colour setting it supplies a constraint on √3-pairs: two
+  specified pairs sharing the glued acute vertex cannot both be monochromatic.
 
 - **Hexagonal 7-colouring (Hadwiger 1945 / Isbell 1950).** A colouring of the whole plane
-  giving CNP ≤ 7. The gap: it is far from tight, and offers no leverage on the lower bound at
-  all.
+  giving CNP ≤ 7.
 
-- **Blind search for a 5-chromatic unit-distance graph.** One could enumerate point sets and
-  test 4-colourability. The gap: the search space of planar point configurations with many
-  exact unit distances is astronomically structured-yet-sparse; without a principle telling
-  you *which* configurations could possibly be non-4-colourable, brute enumeration over
-  graphs with hundreds or thousands of vertices is hopeless. A method needs to *engineer* the
-  obstruction, not stumble onto it.
+- **Blind search for a 5-chromatic unit-distance graph.** Enumerate planar point sets with
+  many exact unit distances and test each for 4-colourability.
 
 ## Evaluation settings
 

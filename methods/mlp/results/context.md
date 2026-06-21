@@ -9,18 +9,11 @@ of the values arriving on its incoming connections and emits some function of th
 only adjustable quantities are the connection weights. When the units are wired straight from
 input to output, the existing learning rules are reliable but the class of input-output
 mappings they can represent is sharply bounded — there are simple, clearly desirable mappings
-they provably cannot produce. The precise problem is to handle mappings whose input and output
-*similarity structure* disagree: cases where two inputs that are nearly identical must produce
-opposite outputs, and two inputs that are far apart must produce the same output. To do that, a
-network needs units between the input and the output whose values are not dictated by the data —
-units that are free to come to *represent* whatever intermediate features make the mapping easy.
-The difficulty is that there is no target value for such an interior unit. Nothing in the
-training data says what it should compute. A learning rule for the directly-wired case adjusts a
-weight by comparing the unit's output to a supplied target; an interior unit has no supplied
-target, so that rule has nothing to work with. The open problem is to discover, from the final
-output error alone, how every weight in a network *with interior units* should change so that
-the error goes down — efficiently enough to run on a large network, and with each weight's update
-computable from quantities available locally to its two endpoints.
+they provably cannot produce. To represent a broader class of mappings, a network can include
+units between the input and the output whose values are not dictated by the data — units that
+are free to represent whatever intermediate features make the mapping easy. The question is
+how to adjust the weights of such interior units from output error alone, so that the network
+learns to produce the desired outputs.
 
 ## Background
 
@@ -53,23 +46,18 @@ right interior units — for XOR, a unit that fires only when both inputs are on
 representation *is* linearly separable, and then a single output unit suffices. The interior units
 change the similarity structure: they re-code the inputs into a space where the required mapping
 becomes easy. Minsky and Papert observe that with enough such interior units there always exists a
-re-coding that supports any required mapping. What was missing was not the existence of good
-interior representations but a *learning rule that finds them* from the output error.
+re-coding that supports any required mapping.
 
 A second pre-existing fact constrains the choice of unit. The reliable single-layer rules come in
-two flavors, and they pull in opposite directions on the activation function. The threshold unit
-makes a clean binary decision but its output is a step: its derivative is zero almost everywhere
-and undefined at the threshold, so there is no slope to follow. A continuous unit has a slope to
-follow but does not make a crisp decision. The interior-unit problem is fundamentally a
-credit-assignment problem — to nudge an interior weight you must know how the final error responds
-to it — and responding-to requires a derivative.
+two flavors. The threshold unit makes a clean binary decision but its output is a step: its
+derivative is zero almost everywhere and undefined at the threshold. A continuous unit has a slope
+but does not make a crisp decision.
 
 A third fact: a layer of units whose activation is *linear* buys nothing. With row-vector
 activations, one linear layer with bias gives `y_1 = y_0 W_1 + b_1`; a second gives
 `y_2 = y_1 W_2 + b_2 = y_0 (W_1 W_2) + (b_1 W_2 + b_2)`. The composition is just one affine
 map with a new weight matrix and a new bias, so any number of linear interior layers collapses to
-a single equivalent direct connection, with exactly the single-layer representational ceiling.
-Whatever the interior units do, they cannot be merely linear.
+a single equivalent direct connection. Whatever the interior units do, they cannot be merely linear.
 
 ## Baselines
 
@@ -84,11 +72,7 @@ w(t+1) = w(t) + r * (d - y) * x,
 where `d` is the desired output, `y` the produced output, `r` a rate. The perceptron convergence
 theorem makes this a *guaranteed* rule: if the input patterns are linearly separable with margin
 `gamma` and lie within radius `R`, the procedure stops after at most `(R/gamma)^2` mistakes with a
-weight vector that classifies every pattern correctly. The strength is the guarantee; the
-limitation is twofold and structural. The decision surface is a single hyperplane, so it cannot
-represent any non-linearly-separable mapping — XOR and parity are out of reach. And because the
-unit is a hard threshold, there is no usable derivative, so the rule cannot be extended by
-gradient descent to interior units that have no supplied target.
+weight vector that classifies every pattern correctly.
 
 **The delta rule / least-mean-squares (Widrow and Hoff, 1960).** Replace the perceptron's
 thresholded mistake with the *continuous* error of a differentiable unit and descend the squared
@@ -100,35 +84,27 @@ Delta w_ji = alpha * (t_j - y_j) * f'(x_j) * y_i,
 
 a step proportional to the output error, the unit's slope, and the incoming signal. For a single
 layer this is honest gradient descent on a *convex* bowl: one global minimum, and a small enough
-rate reaches it. This is the rule that makes "compare output to target, scale the weight change by
-the slope and the input" precise. Its limitation: it is still a single layer, so the decision
-surface is still one hyperplane and XOR is still impossible; and the derivation supplies a target
-`t_j` for every trainable unit, which exists only for output units. It gives no account of an
-interior unit.
+rate reaches it. This rule makes "compare output to target, scale the weight change by the slope
+and the input" precise.
 
 **Unsupervised / competitive recoding.** One way to obtain interior units is to let them
-self-organize by an unsupervised rule, so useful intermediate features develop on their own. The
-limitation is that nothing ties the features that develop to the *particular* mapping being asked
-for: there is no force pushing the interior representation toward what *this* output requires.
+self-organize by an unsupervised rule, so useful intermediate features develop on their own.
 
 **Fixed, hand-chosen interior representation.** Alternatively, decide on a priori grounds what the
 interior units should compute and freeze them, training only the readout. This sidesteps the
-credit-assignment problem entirely, at the cost of needing a person to guess the right features
-for each task and giving up any ability of the network to discover representations the designer did
-not anticipate.
+credit-assignment problem entirely.
 
 **Stochastic-unit learning with an equilibrium criterion (the Boltzmann-machine line).** Interior
-units *can* be trained when the units are stochastic and learning is driven by the difference
+units can be trained when the units are stochastic and learning is driven by the difference
 between two phases in which the network is allowed to reach thermal equilibrium. This does learn
-interior representations, but it requires stochastic units, two separate relaxation-to-equilibrium
-phases per update, and a symmetric connection structure — heavy machinery that a layered
-feedforward net with deterministic units would like to avoid.
+interior representations, and requires stochastic units, two separate relaxation-to-equilibrium
+phases per update, and a symmetric connection structure.
 
 ## Evaluation settings
 
 The natural yardsticks are small mappings whose difficulty is exactly the non-linear-separability
-the single-layer rules choke on, plus storage/recoding tasks where the point is that the interior
-units must invent structure:
+the single-layer rules cannot handle, plus storage/recoding tasks where the interior units must
+invent structure:
 
 - **Exclusive-or** of two binary inputs, and **parity** of `n` binary inputs (`n` from 2 up to a
   handful): the output is 1 when an odd number of inputs are on. The most similar inputs require
@@ -148,13 +124,10 @@ units must invent structure:
 ## Code framework
 
 The machinery that already exists is a layered feedforward network with a forward sweep, a
-squared-error objective, and a generic gradient-style weight-update loop. What is *not* settled is
-how an interior unit's weights should change — the single-layer rules adjust a weight from a
-supplied target, and an interior unit has none. So the substrate below is only the generic
-supervised-network harness: a `Network` that holds layers and runs a forward pass, a squared-error
-loss, and a training loop that sweeps the data and applies whatever per-weight update rule is
-filled in. The choice of interior activation and the per-weight update rule for interior units are
-the empty slots.
+squared-error objective, and a generic gradient-style weight-update loop. The substrate is a
+generic supervised-network harness: a `Network` that holds layers and runs a forward pass, a
+squared-error loss, and a training loop that sweeps the data and applies whatever per-weight
+update rule is filled in.
 
 ```python
 import numpy as np

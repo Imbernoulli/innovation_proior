@@ -20,7 +20,7 @@ This is wanted as a *tool* — a fact about finite and infinite classes, of inde
 - *Behmann* (Math. Ann. 86, 1922): the case of *monadic* predicates (functions of one variable).
 - *Bernays and Schönfinkel* (Math. Ann. 99, 1928): two individual apparent variables, and the prefix class ∃*∀*; they exclude the identity relation.
 
-These advances all restrict the syntactic form. None reaches the general universal-prefix case with arbitrary arity, and the obstacle there is not logical manipulation but a missing combinatorial fact about *r*-subset colourings.
+These advances all restrict the syntactic form.
 
 **The infinite vs. finite contrast.** Reasoning about an infinite domain is often cleaner: "infinitely many of these are red" is a usable statement that never runs out, whereas in a finite set one must track exact counts. A regularity result is therefore often easiest to see first in the infinite, then transported to the finite — but the transport may or may not preserve quantitative information.
 
@@ -32,13 +32,13 @@ These advances all restrict the syntactic form. None reaches the general univers
 
 The prior art a regularity theorem for *r*-subset colourings would be measured against or reuse:
 
-**Pigeonhole (the *r* = 1 case).** Stated above. *Limitation:* it speaks only about colouring *points*. The moment the objects coloured are pairs or larger, a large colour class is just a large set of *pairs* — it carries no guarantee that the *points* it touches form a set whose *every* pair is that colour. Applied once, globally, to all the *r*-subsets at once, pigeonhole controls one count and is silent about internal homogeneity. That is where it stalls.
+**Pigeonhole (the *r* = 1 case).** Stated above.
 
-**The six-person folklore for pairs.** For two-colouring the pairs of a set, it is known by hand that six people always contain three who pairwise match: focus on one person *P*; of the other five, *P* relates the same way to at least three; among those three, either some pair matches *P*'s relation (a monochromatic triple with *P*) or all three pairwise take the other relation. *Limitation:* one small instance — *r* = 2, two colours, target three. It says nothing about larger targets, how the starting size must grow, larger *r*, or more colours. A hint that the phenomenon exists, not a theorem about it.
+**The six-person folklore for pairs.** For two-colouring the pairs of a set, it is known by hand that six people always contain three who pairwise match: focus on one person *P*; of the other five, *P* relates the same way to at least three; among those three, either some pair matches *P*'s relation (a monochromatic triple with *P*) or all three pairwise take the other relation.
 
-**Behmann; Bernays–Schönfinkel decision procedures.** Substantive procedures for their syntactic classes (monadic; two variables; ∃*∀*). *Limitation:* each is confined to its restricted prefix/arity class; the universal-prefix case with arbitrary arity lies outside all of them, and what is missing to reach it is the *r*-subset homogeneity fact, not another syntactic device. The prior procedures end where that fact would begin.
+**Behmann; Bernays–Schönfinkel decision procedures.** Substantive procedures for their syntactic classes (monadic; two variables; ∃*∀*).
 
-**Compactness-style transfer from infinite to finite (the König-lemma idea).** It is a standard pattern that a statement about all finite initial segments follows from a statement about the infinite object: organize finite counterexamples into a finitely-branching tree and extract an infinite branch (König, 1927), or nest infinitely-agreeing sub-families of finite colourings into one infinite colouring. *Limitation, the load-bearing one:* such a transfer is purely existential. Used to deduce a finite homogeneity statement from an infinite one, it proves *that* a sufficient finite size exists but yields *no value* for it. Any route needing a numerical bound cannot go through this argument.
+**Compactness-style transfer from infinite to finite (the König-lemma idea).** It is a standard pattern that a statement about all finite initial segments follows from a statement about the infinite object: organize finite counterexamples into a finitely-branching tree and extract an infinite branch (König, 1927), or nest infinitely-agreeing sub-families of finite colourings into one infinite colouring.
 
 ## Evaluation settings
 

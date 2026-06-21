@@ -6,16 +6,14 @@ The targets are adversarially-robust `L2` models from the RobustBench zoo. On an
 
 ## Prior art / Background / Baselines
 
-These methods establish the background; each leaves a concrete gap.
-
-- **Box-constrained `L-BFGS` (Szegedy et al. 2014).** Minimizes `||r||_2` subject to misclassification and box constraints. Gap: the `L2` penalty has no incentive to zero coordinates, so the perturbation is dense — the wrong shape for an `L0` budget — and it runs a heavy per-example optimization.
-- **Fast gradient sign method (Goodfellow et al. 2015).** Takes one step `eps*sign(grad_x J)`. Gap: the sign step writes a nonzero into every coordinate, producing the densest possible perturbation, and it targets the loss rather than a chosen support.
-- **Class saliency maps (Simonyan et al. 2014).** Backprops a class score to the input to highlight which pixels matter. Gap: it is a visualization — single class, magnitude-only, no notion of converting one class to another — not an attack procedure.
-- **DeepFool (Moosavi-Dezfooli et al. 2016).** Iteratively walks to the nearest linearized decision boundary with a minimal `L2` step. Gap: dense `L2` again.
-- **JSMA.** Greedy forward-derivative saliency map that picks pixels to increase the target-class score. Gap: requires gradients and uses a fixed forward-selection heuristic.
-- **One-pixel attack.** Uses differential evolution to change a small number of individual pixels. Gap: the search scales poorly with image size and budget.
-- **SparseFool.** Finds a minimal `L0` perturbation via local linearization of the decision boundary. Gap: requires gradients and can fail when the linear approximation is poor.
-- **Pixle.** Randomly perturbs pixel locations and keeps changes that improve success. Gap: purely randomized, with low sample efficiency.
+- **Box-constrained `L-BFGS` (Szegedy et al. 2014).** Minimizes `||r||_2` subject to misclassification and box constraints.
+- **Fast gradient sign method (Goodfellow et al. 2015).** Takes one step `eps*sign(grad_x J)`.
+- **Class saliency maps (Simonyan et al. 2014).** Backprops a class score to the input to highlight which pixels matter.
+- **DeepFool (Moosavi-Dezfooli et al. 2016).** Iteratively walks to the nearest linearized decision boundary with a minimal `L2` step.
+- **JSMA.** Greedy forward-derivative saliency map that picks pixels to increase the target-class score.
+- **One-pixel attack.** Uses differential evolution to change a small number of individual pixels.
+- **SparseFool.** Finds a minimal `L0` perturbation via local linearization of the decision boundary.
+- **Pixle.** Randomly perturbs pixel locations and keeps changes that improve success.
 
 ## Fixed substrate / Code framework
 

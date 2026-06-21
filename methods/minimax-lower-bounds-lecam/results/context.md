@@ -4,39 +4,31 @@ Minimax lower bounds ask what error is unavoidable before choosing any particula
 
 `inf_{hat theta} sup_{P in mathcal P} E_P[Phi(rho(hat theta, theta(P)))]`.
 
-The Le Cam question is: how can one prove such a universal lower bound without analyzing every possible decision rule directly? The distinctive answer is to reduce the whole estimation problem to a binary testing problem between two carefully chosen distributions.
+The question is: how can one prove such a universal lower bound without analyzing every possible decision rule directly?
 
 ## Statistical setup
 
-Choose two worlds `P_0` and `P_1` in the model class. They should be far apart in the target quantity, for example
+The minimax risk is defined over a model class and a loss geometry. Proving a lower bound means ruling out the possibility that any measurable estimator achieves small risk uniformly over the class. The separation between different parameter values is measured in the loss geometry of the functional. Whether two probability distributions can be told apart is measured in the experiment geometry: total variation directly controls the best binary test; KL divergence relates to total variation through Pinsker-type inequalities; Hellinger distance is convenient because it behaves well under products and mixtures.
 
-`rho(theta(P_0), theta(P_1)) >= 2s`,
-
-but close as probability laws on the observed data, for example in total variation distance between `P_0^n` and `P_1^n`. If an estimator is accurate to radius `s` in both worlds, it implicitly tells us which world generated the data: output closer to `theta(P_0)` means choose `P_0`, output closer to `theta(P_1)` means choose `P_1`.
-
-Thus estimation accuracy implies testing accuracy. Le Cam's method reverses that implication. If no test can reliably distinguish `P_0^n` from `P_1^n`, then no estimator can be uniformly accurate over the class.
+The typical settings include normal mean estimation, nonparametric smoothness lower bounds, density estimation, functional estimation, and privacy-constrained estimation.
 
 ## Baselines
 
-- **Analyze a concrete estimator.** This can show that a procedure fails or succeeds, but it cannot by itself prove that every possible estimator must fail.
+- **Analyze a concrete estimator.** Studying a specific procedure can show how that procedure performs in the model class.
 
-- **Local asymptotic calculations.** They often reveal rates around a fixed parameter, but they may hide the finite-sample adversarial choice that makes minimax risk hard.
+- **Local asymptotic calculations.** These reveal rates around a fixed parameter value, characterizing estimation difficulty in a neighborhood.
 
-- **Bias-variance decompositions.** These are useful for upper bounds and for diagnosing algorithms. They depend on an estimator's structure, so they are not an intrinsic obstruction.
+- **Bias-variance decompositions.** These are useful for upper bounds and for understanding an estimator's error structure. They depend on the specific estimator's form.
 
-- **Large packing arguments such as Fano or Assouad.** These handle many-way ambiguity and often capture dimension dependence. Le Cam is the minimal two-world version: it isolates the irreducible testing obstruction in its simplest form.
+- **Large packing arguments such as Fano or Assouad.** These handle many-way ambiguity and often capture dimension dependence of minimax rates. Fano's inequality relates the minimax risk to the average KL divergence in a packing set. Assouad's lemma reduces to coordinate-wise testing and is especially useful for product-structured model classes.
 
 ## Evaluation settings
 
-The method is natural when the hardest part of the model class can be witnessed by two nearby distributions with well-separated parameters. Typical examples include normal mean estimation, nonparametric smoothness lower bounds, density estimation, functional estimation, and privacy-constrained estimation.
+The difficulty of a minimax problem is jointly governed by two quantities: how separated the hardest instances are in the parameter space, and how indistinguishable the corresponding observations are in probability space. Typical examples span parametric and nonparametric settings:
 
-The separation is measured in the loss geometry of the parameter or functional. The indistinguishability is measured in the experiment geometry: total variation directly controls the best binary test; KL divergence controls total variation through Pinsker-type inequalities; Hellinger distance is often convenient because it behaves well under products and mixtures.
+- **Normal mean:** estimating `mu` from `X_1, ..., X_n ~ N(mu, sigma^2)` with squared loss.
+- **Nonparametric regression:** estimating `f` from a Sobolev or Hölder smoothness class.
+- **Density estimation:** total variation or L2 risk over a smoothness class.
+- **Functional estimation:** estimating a scalar feature such as the entropy or a linear functional of an unknown density.
 
-Success means constructing `P_0` and `P_1` so that the parameter gap is large enough to force loss, while the statistical divergence of the observed distributions remains bounded away from perfect distinguishability.
-
-## Core insight
-
-Le Cam lower bounds are constructive counterexamples to uniform accuracy. They do not say an estimator makes a technical mistake; they say the data-generating experiment itself cannot contain enough information to decide between two worlds that demand different answers.
-
-This is more fundamental than analyzing a specific algorithm. If a hypothetical estimator achieved too small a minimax risk, it would yield a binary test with too small an error probability. But the optimal testing error between two close distributions is already bounded from below by their total variation distance. The contradiction applies to every measurable decision rule, including algorithms that have not been invented.
-
+Success in proving a lower bound means finding distributions within the model class where the target values are well-separated while the observed data distributions remain statistically close.

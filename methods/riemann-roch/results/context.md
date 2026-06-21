@@ -8,12 +8,12 @@ If the curve were a sphere, a pole budget of total size `d` would almost determi
 
 ## Global Conditions
 
-On a higher-genus curve, local principal parts do not automatically glue into a single-valued global function. The surface has cycles, and integrals around those cycles produce period conditions. The naive local count has to pass these global linear tests before it becomes an actual function count.
+On a higher-genus curve, local principal parts do not automatically glue into a single-valued global function. The surface has cycles, and integrals around those cycles produce period conditions. A candidate built from the local data becomes an actual function only after it satisfies these global linear conditions.
 
 ## Existing Framework
 
-The analytic theory of algebraic functions already supplies the surface model: represent the curve as a branched covering, cut it open by pairs of crosscuts, and track how candidate functions or integrals change across the cuts. In the generic case, forcing all periods to vanish subtracts exactly the genus-sized set of conditions from the pole budget.
+The analytic theory of algebraic functions supplies the surface model: represent the curve as a branched covering, cut it open by pairs of crosscuts, and track how candidate functions or integrals change across the cuts. In the generic case, forcing all periods to vanish imposes a genus-sized set of conditions on the pole budget.
 
-## Missing Correction
+## Counting Question
 
-The remaining difficulty is that those global conditions need not be independent. When the period equations lose rank, the expected count is too small. A complete formula must therefore count both the local pole budget and the dimension of the dual obstruction that makes some global conditions redundant.
+The setting asks for the number of independent meromorphic functions allowed by a prescribed divisor: combine the local pole budget recorded by the divisor's degree with the global period conditions coming from the genus of the curve, and determine the dimension of the resulting space of functions.

@@ -2,23 +2,17 @@
 
 ## Research question
 
-Offline reinforcement learning asks for an effective policy learned **entirely from a fixed dataset**
+Offline reinforcement learning asks for a policy learned **entirely from a fixed dataset**
 `D` of transitions collected by some behavior policy `π_β`, with no further environment interaction.
 This is exactly what one wants in robotics, logistics, or healthcare, where running an untrained
 policy is costly or dangerous but logged data is plentiful.
 
-The central difficulty is a tension that has no analogue in online RL. To do better than `π_β`, the
-agent must estimate the value of actions *other* than those it has seen — but a value function is
-only trustworthy on the state-action distribution it was trained on. The moment the agent queries
-`Q(s, a)` at an action `a` far from the data, the estimate can be wildly wrong, and standard
-Q-learning makes this catastrophic: its bootstrap target `max_{a'} Q(s', a')` deliberately searches
-over *all* actions, finds whichever one the function approximator happens to over-value, and backs
-that error up — so the value function inflates without bound and the policy chases the inflation.
-Every prior remedy buys safety with a knob that trades policy improvement against robustness to this
-distributional shift. The precise question: **can we build an offline RL method that never queries the
-value of an unseen action during value training at all, yet still performs genuine multi-step dynamic
-programming** — so it can chain together pieces of suboptimal trajectories ("stitching") and improve
-substantially over the best behavior in the data?
+The central challenge is that to outperform `π_β`, an agent must estimate the value of actions
+*other* than those it has seen — yet a value function is only trustworthy on the state-action
+distribution it was trained on. Standard Q-learning's bootstrap target `max_{a'} Q(s', a')`
+searches over all actions, including those the dataset may not contain. How to learn from such a
+fixed dataset, performing multi-step dynamic programming, while keeping value estimates grounded
+in the data distribution?
 
 ## Background
 
@@ -26,14 +20,12 @@ substantially over the best behavior in the data?
 loss `L_TD(θ) = E_{(s,a,s')~D}[(r(s,a) + γ max_{a'} Q_θ̂(s',a') − Q_θ(s,a))²]`, with a slowly-tracked
 target network `θ̂` (Polyak averaging), and defines the policy as `π(s) = argmax_a Q_θ(s,a)`. The
 `max_{a'}` queries actions the dataset may never contain; on those out-of-distribution (OOD) actions
-`Q_θ̂` extrapolates, typically *upward*, and because the policy maximizes the estimate the error is
-self-reinforcing.
+`Q_θ̂` extrapolates, and because the policy maximizes the estimate, OOD errors feed back into training.
 
 **SARSA-style fitted policy evaluation.** If instead the bootstrap action `a'` is taken from the
 dataset — `L(θ) = E_{(s,a,s',a')~D}[(r + γ Q_θ̂(s',a') − Q_θ(s,a))²]` — no OOD action is ever queried.
 Because this is a mean-squared error, the optimum fits `Q_θ(s,a)` to the *mean* of the TD targets, so
-it learns `Q^{π_β}`, the value of the behavior policy. Safe, but it only *evaluates* `π_β`; it does no
-improvement.
+it learns `Q^{π_β}`, the value of the behavior policy.
 
 **Expectile regression.** A τ-expectile (Newey & Powell 1987) of a random variable `X`, for
 `τ ∈ (0,1)`, is the minimizer `m_τ = argmin_m E[L_2^τ(x − m)]` of the asymmetric squared loss
@@ -51,9 +43,9 @@ AWAC, Nair et al. 2020) extracts an improved policy from a value function by sol
 KL-constrained improvement problem `max_π E_{a~π}[A(s,a)]` s.t. `KL(π‖π_β) ≤ ε`. Its closed-form
 solution is `π*(a|s) ∝ π_β(a|s)·exp(A(s,a)/λ)`, and projecting that onto a parametric policy by
 weighted maximum likelihood gives `L_π(φ) = E_{(s,a)~D}[exp(β·A(s,a))·log π_φ(a|s)]` with `A = Q − V`
-and an inverse temperature `β`. Crucially this objective only ever evaluates *dataset* actions — it
+and an inverse temperature `β`. This objective only ever evaluates *dataset* actions — it
 reweights observed `(s,a)` pairs — so it queries no OOD action. Small `β` makes it behavioral cloning;
-large `β` makes it greedy. It also implicitly enforces a stay-close-to-`π_β` constraint.
+large `β` makes it greedy.
 
 **Overestimation control and targets.** Clipped double Q-learning (Fujimoto et al. 2018) maintains two
 Q-networks and uses their minimum to counter the upward bias of bootstrapping; a Polyak-averaged
@@ -63,25 +55,19 @@ target network stabilizes the bootstrap.
 
 **Policy-constraint methods — BCQ, BEAR, BRAC, TD3+BC, AWAC.** These keep the learned policy close to
 `π_β`. BCQ (Fujimoto et al. 2019) fits a generative model `μ(·|s)` of dataset actions, samples `N`
-candidates from it, and takes `argmax` of `Q` over those candidates — a soft support constraint, but
-the generative model can still emit OOD actions, and `N` plays a role analogous to a tail parameter.
+candidates from it, and takes `argmax` of `Q` over those candidates — a soft support constraint.
 TD3+BC (Fujimoto et al. 2021) adds a behavioral-cloning term to the actor loss; AWAC (Nair et al.
-2020) enforces an implicit KL constraint via advantage weighting. Gap: all still bootstrap or query a
-*learned* Q at policy actions during improvement, so they retain the improvement-vs-shift tradeoff.
+2020) enforces an implicit KL constraint via advantage weighting.
 
 **Value-regularization methods — CQL, Fisher-BRC.** CQL (Kumar et al. 2020) adds a regularizer that
-pushes `Q` down on OOD actions and up on dataset actions, yielding a conservative lower bound. Strong
-on the benchmark, but it still evaluates `Q` on OOD actions (to push them down), needs a tuned
-regularization weight, and is comparatively slow.
+pushes `Q` down on OOD actions and up on dataset actions, yielding a conservative lower bound, and is
+strong on the benchmark.
 
 **One-step / single-step methods — Onestep RL, AWR, Decision Transformer.** Onestep RL
 (Brandfonbrener et al. 2021) and AWR (Peng et al. 2019) fit the value function of `π_β` with a
-SARSA-style objective (no OOD actions) and then do a *single* step of policy improvement (greedy or
-advantage-weighted); Decision Transformer (Chen et al. 2021) drops value functions entirely for a
-return-conditioned BC sequence model. All are safe and simple and do well on near-optimal locomotion
-datasets. Gap: they perform no iterated dynamic programming, so they cannot propagate value across a
-path that no single dataset trajectory traverses — they fail badly on datasets that require stitching
-suboptimal trajectories (e.g. medium/large ant mazes).
+SARSA-style objective and then do a *single* step of policy improvement (greedy or advantage-weighted);
+Decision Transformer (Chen et al. 2021) drops value functions entirely for a return-conditioned BC
+sequence model. All perform well on near-optimal locomotion datasets.
 
 ## Evaluation settings
 
@@ -101,9 +87,7 @@ random ones, where the learned value function can be compared against the exact 
 
 The primitives that already exist: an MLP builder, a state-action critic and a state-value network, a
 Gaussian policy, Adam, a Polyak target-update, clipped double-Q, and an offline loop that samples
-minibatches from a static dataset. What does not yet exist is any value-training objective that does
-multi-step backups *without* a `max` over actions, nor a policy-extraction step that avoids querying
-unseen actions. Those are the stubs.
+minibatches from a static dataset.
 
 ```python
 import torch

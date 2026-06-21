@@ -4,26 +4,14 @@
 
 We have an agent moving through a sequence of states under a fixed policy π, receiving
 rewards along the way, and we want to learn the value function v_π(s) — the expected
-discounted return from each state. The two ways to do this that we already have sit at
-opposite extremes, and each is unsatisfying.
+discounted return from each state. Two families of methods exist. One-step temporal-difference
+learning updates a state's value from the very next reward plus the discounted estimated value
+of the next state. Monte Carlo learning waits for the whole episode, then updates each visited
+state toward the actual return.
 
-One-step temporal-difference learning updates a state's value from the very next reward
-plus the (discounted) estimated value of the next state. It is online and cheap, but it
-only ever moves information one step at a time: a reward observed far down a trajectory
-takes many episodes to seep back to the states that led to it.
-
-Monte Carlo learning waits for the whole episode, then updates each visited state toward
-the actual return. It propagates credit all the way back in one shot and makes no
-bootstrapping error, but it cannot update until the episode ends, has high variance, and
-is usable as stated only when episodes terminate.
-
-The precise problem: find a single mechanism, controlled by one knob, that interpolates
-smoothly between these extremes — so we can pick how far into the future an update reaches
-— and that does so **online, causally, and with memory and per-step compute that do not
-grow with how far back credit must travel**. The pain is concrete: any scheme that updates
-a state from the next n rewards must wait n steps and store the last n feature vectors, and
-choosing the single right n is a task-specific guess. We want the interpolation without the
-storage, the delay, or the brittle choice of horizon.
+The question is: how to construct a single, online mechanism that smoothly interpolates between
+these two families, controlled by one parameter, and that runs causally with memory and
+per-step compute that remain fixed regardless of how far into the future the update reaches.
 
 ## Background
 
@@ -36,14 +24,12 @@ parameterized v̂(s,w); the linear case v̂(s,w) = w^T x(s), with feature vector
 
 **One-step TD (TD(0)).** Given a transition S_t → R_{t+1}, S_{t+1}, form the TD error
 δ_t = R_{t+1} + γv̂(S_{t+1},w) − v̂(S_t,w) and step w ← w + αδ_t ∇v̂(S_t,w). The next
-estimate stands in for the unseen rest of the return (bootstrapping). Cheap and online;
-low variance; but biased by the current estimate, and information crawls back one step
-per visit.
+estimate stands in for the unseen rest of the return (bootstrapping). Online and cheap,
+with low variance.
 
 **Monte Carlo / Widrow-Hoff (LMS).** Wait for G_t, then w ← w + α[G_t − v̂(S_t,w)]∇v̂.
 For the linear case with a single terminal reward this is exactly the Least-Mean-Square /
-Widrow-Hoff delta rule. Unbiased target, but available only at episode end, high variance,
-usable as stated only when episodes terminate.
+Widrow-Hoff delta rule. Unbiased target; available at episode end.
 
 **n-step returns and their error-reduction property.** Between these lies the n-step
 return, which bootstraps after n real rewards instead of one:
@@ -59,10 +45,7 @@ Because the bound shrinks by γ^n, every n-step return is a sound (contraction) 
 n-step TD methods converge under the usual conditions. This is the load-bearing fact that
 licenses combining returns: any weighted average of n-step returns, with non-negative
 weights summing to one, is again a valid contraction target — a "compound" target. That
-opens a whole design space of mixtures between one-step TD and Monte Carlo. The cost of the
-n-step method is structural: no update can be made for the first n−1 steps, an update for
-S_t is delayed until time t+n, and the implementation must hold the last n feature vectors
-in memory. And there is no principled way to pick n.
+opens a whole design space of mixtures between one-step TD and Monte Carlo.
 
 **The eligibility idea (Klopf).** A separate thread, biological in origin, exists in the
 literature. Klopf's heterostatic theory
@@ -79,9 +62,7 @@ connected to the prediction-error methods above.
 by the Methods of Temporal Differences* (1988) studied a parameterized family of prediction
 rules spanning the range between one-step bootstrapping and the Widrow-Hoff/Monte-Carlo
 rule, controlled by a single recency parameter, and analyzed it in the undiscounted
-prediction setting. What remained open is the discounted formulation with γ, a precise
-characterization of the forward-view target such a family is implementing, and whether an
-online incremental mechanism can reproduce that target.
+prediction setting.
 
 **Empirical lay of the land.** On the standard random-walk prediction tasks it is well
 observed that intermediate amounts of bootstrapping — neither pure one-step TD nor pure
@@ -93,22 +74,17 @@ interpolation knob.
 ## Baselines
 
 - **One-step TD(0)** — w ← w + α[R_{t+1} + γv̂(S_{t+1}) − v̂(S_t)]∇v̂(S_t). Online, O(d),
-  low variance. Gap: propagates credit one step per visit; slow when reward is delayed.
+  low variance.
 
 - **Constant-α Monte Carlo / Widrow-Hoff (LMS)** — w ← w + α[G_t − v̂(S_t)]∇v̂(S_t). No
-  bootstrap bias, full back-propagation of credit in one episode. Gap: end-of-episode only,
-  high variance, only usable as stated when episodes terminate, must retain per-step data
-  for the end-of-episode sweep.
+  bootstrap bias, full back-propagation of credit in one episode. Available at episode end.
 
 - **n-step TD** — target G_{t:t+n}; update w ← w + α[G_{t:t+n} − v̂(S_t)]∇v̂(S_t). Spans
-  the continuum by choosing n; backed by the error-reduction property (γ^n bound). Gap:
-  updates delayed n steps, last n feature vectors must be stored, and n is a single
-  brittle horizon choice rather than a smooth mixture.
+  the continuum by choosing n; backed by the error-reduction property (γ^n bound).
 
 - **Compound / averaged-return targets** — any convex combination of n-step returns; valid
-  by error-reduction. Gap: a generic average can only be formed once its longest component
-  return is available (still acausal), and there is no obvious incremental implementation —
-  these are a design space, not yet an algorithm.
+  by error-reduction. These constitute a design space for choosing how to weight multi-step
+  returns.
 
 ## Evaluation settings
 
@@ -143,25 +119,17 @@ def td0_update(w, x_t, r, x_next, gamma, alpha):
 def mc_update(w, x_t, G, alpha):                 # Widrow-Hoff / constant-alpha MC
     return w + alpha * (G - v_hat(w, x_t)) * grad_v(w, x_t)
 
-# The missing online interpolation slot.
-# We want ONE mechanism, with one knob in [0,1], that:
-#   (a) interpolates between td0_update (knob=0) and mc_update (knob=1),
-#   (b) runs online and causally (update at step t using only data through t),
-#   (c) uses memory and per-step compute that do NOT grow with the lookahead.
+# Online interpolation between td0_update and mc_update.
 class IncrementalPredictor:
     def __init__(self, d, gamma, alpha, knob):
         self.w = np.zeros(d)
         self.gamma, self.alpha, self.knob = gamma, alpha, knob
-        # TODO: any per-step auxiliary state the mechanism needs (must be O(d))
         self.reset_episode()
 
     def reset_episode(self):
-        # TODO: re-initialize any per-episode auxiliary state
         pass
 
     def step(self, x_t, r, x_next):
-        # TODO: the online credit-assignment update satisfying (a)-(c) above.
-        #       Returns nothing; mutates self.w.
         raise NotImplementedError
 
 # Training loop is the usual on-policy sweep; only step() is unknown.

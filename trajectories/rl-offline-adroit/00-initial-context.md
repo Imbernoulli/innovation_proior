@@ -1,15 +1,15 @@
 ## Research question
 
-Offline RL for high-dimensional dexterous manipulation from narrow human demonstrations. The domain is the Adroit family — a 24-DoF simulated hand on Pen (rotation), Door (opening), and Hammer (nailing) — using the D4RL `human-v1` datasets, which hold roughly 25 human teleoperation trajectories per task. The design target is the offline learning algorithm itself: the loss, target construction, policy-extraction rule, and regularization. The surrounding harness — preprocessing, replay buffer, evaluation loop, network widths — is fixed. The core difficulty is that the data forms a thin, expert-but-narrow tube in a 24-to-30-dimensional action space, so value-based methods extrapolate badly once the policy leaves that tube, while pure imitation is starved by the tiny dataset.
+Offline RL for high-dimensional dexterous manipulation from narrow human demonstrations. The domain is the Adroit family — a 24-DoF simulated hand on Pen (rotation), Door (opening), and Hammer (nailing) — using the D4RL `human-v1` datasets, which hold roughly 25 human teleoperation trajectories per task. The design target is the offline learning algorithm itself: the loss, target construction, policy-extraction rule, and regularization. The surrounding harness — preprocessing, replay buffer, evaluation loop, network widths — is fixed. The data forms a thin, expert-but-narrow tube in a 24-to-30-dimensional action space.
 
 ## Prior art / Background / Baselines
 
 These are the methods in circulation; the fixed substrate below is the harness they all share.
 
-- **DDPG / TD3.** Deterministic actor-critic with a bootstrapped target, plus clipped double-Q, target-policy smoothing, and delayed actor updates to fight overestimation. Gap: offline, the actor leaves the data tube and the critic's unconstrained off-support estimates drive divergent backups.
-- **SAC.** Maximum-entropy off-policy actor-critic with a stochastic Tanh-Gaussian policy and twin critics. Gap: the entropy term and the bootstrap over next actions both query out-of-distribution actions that the static dataset cannot correct.
-- **BCQ / BEAR / BRAC.** Offline fixes that constrain the learned policy toward the behavior policy, either by sampling from a learned action generative model (BCQ), an MMD/KL penalty against a fitted behavior model (BEAR), or behavior-regularized actor and critic penalties (BRAC). Gap: they rely on an explicit behavior model that is hard to fit on ~25 narrow human trajectories, and still evaluate Q at sampled actions that may lie off the data support.
-- **Behavior cloning.** Regress the policy onto the logged action. It cannot exceed the demonstrations and gives up stitching, but on `human-v1` it is a serious competitor because the data is near-expert.
+- **DDPG / TD3.** Deterministic actor-critic with a bootstrapped target, plus clipped double-Q, target-policy smoothing, and delayed actor updates to fight overestimation.
+- **SAC.** Maximum-entropy off-policy actor-critic with a stochastic Tanh-Gaussian policy and twin critics.
+- **BCQ / BEAR / BRAC.** Offline methods that constrain the learned policy toward the behavior policy, either by sampling from a learned action generative model (BCQ), an MMD/KL penalty against a fitted behavior model (BEAR), or behavior-regularized actor and critic penalties (BRAC).
+- **Behavior cloning.** Regress the policy onto the logged action. On `human-v1` it is a serious competitor because the data is near-expert.
 
 ## Fixed substrate / Code framework
 

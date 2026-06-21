@@ -8,19 +8,19 @@ The central design problem is selection among many possible separating rules. If
 
 Vapnik-Chervonenkis theory gives distribution-free bounds connecting true risk, empirical risk, sample size, and the VC dimension of the candidate family. Structural risk minimization turns this into a design program: arrange candidate families by increasing capacity and choose a rule that balances training error against the confidence term.
 
-For ordinary hyperplanes in `R^n`, the classical VC dimension is tied to `n`, which is a poor guide when the representation is deliberately high-dimensional. More refined results already show that, for bounded data, restricting attention to separators with a prescribed geometric clearance from the training points can produce capacity estimates controlled by a squared radius-to-clearance ratio, capped by the ambient dimension, rather than by the raw coordinate dimension alone.
+For ordinary hyperplanes in `R^n`, the classical VC dimension is tied to `n`, which is a poor guide when the representation is deliberately high-dimensional.
 
 ## Existing Tools
 
-Linear threshold rules, perceptron-style updates, and least-squares classifiers are established baselines. They provide computable separating surfaces or regression-like decision functions, but they do not by themselves choose a distinguished separator with a distribution-free capacity guarantee. Their result can depend on update order, averaging behavior, or the conditioning of the chosen representation.
+Linear threshold rules, perceptron-style updates, and least-squares classifiers are established baselines. They provide computable separating surfaces or regression-like decision functions. Their result can depend on update order, averaging behavior, or the conditioning of the chosen representation.
 
-Earlier generalized-portrait and optimal-separating-hyperplane work also supplies a geometric optimization view. It uses scalar products between examples and identifies boundary-determining training points through constrained optimization. Separately, potential-function methods and Hilbert-Schmidt/Mercer theory show when a symmetric similarity function can be interpreted as an inner product in an implicit feature space.
+Earlier generalized-portrait work also supplies a geometric optimization view over separating hyperplanes, formulated as a constrained optimization problem. Separately, Hilbert-Schmidt and Mercer theory characterize when a symmetric similarity function can be interpreted as an inner product in some feature space.
 
 ## Practical Pressure
 
 Nonlinear recognition tasks, especially handwritten-digit recognition, require boundaries much richer than a single raw-pixel hyperplane. Explicit polynomial feature spaces can have enormous dimension, and radial or potential-function representations can be infinite-dimensional. A useful algorithm therefore cannot require explicitly constructing every coordinate of the representation.
 
-Real data are also not perfectly clean. Some examples overlap, are mislabeled, or are atypical. A method that demands perfect separability can become infeasible; a method that simply averages errors can hide these points rather than controlling how strongly they affect the boundary.
+Real data are also not perfectly clean. Some examples overlap, are mislabeled, or are atypical.
 
 ## Starting Interface
 

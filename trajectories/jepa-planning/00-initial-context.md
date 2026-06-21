@@ -18,20 +18,16 @@ loop: sample candidate action sequences, roll each through the model, score it, 
 and re-plan.
 
 - **Random shooting.** Sample action sequences from a fixed distribution, evaluate them all, and
-  return the lowest-cost one. Gap: the sampling distribution never changes, so the same bad regions
-  are re-sampled every iteration and the budget never concentrates on the promising ones.
+  return the lowest-cost one.
 - **Cross-Entropy Method (CEM).** Refit a Gaussian over action sequences to the top-`k` lowest-cost
   "elites" each iteration, so the search distribution shifts toward better regions and auto-sizes
-  its spread. Gap: the elite quantile needs many samples to estimate accurately, and the hard top-`k`
-  cut discards information about *how much* better one elite is than another.
+  its spread.
 - **Model Predictive Path Integral (MPPI).** Refit the Gaussian to an exponentially cost-weighted
   average of the samples, so a markedly better rollout pulls the mean and tightens the variance more
-  than a marginal one. Gap: the weighted average remains high-variance unless the sample count is
-  large, and every evaluated rollout is discarded at the end of the planning step.
+  than a marginal one.
 - **iCEM.** CEM augmented with temporally-correlated colored action noise, elite reuse across
   iterations and across env steps, and population decay to squeeze more refinement from a fixed
-  budget. Gap: it is still a purely sample-and-rank method; colored noise and reuse reduce overhead
-  but do not remove the need for many samples around sharp cost features.
+  budget.
 
 ## Fixed substrate / Code framework
 

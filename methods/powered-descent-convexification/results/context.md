@@ -4,7 +4,7 @@
 
 A spacecraft in final powered descent must fly from a known position and velocity to a soft landing at, or as close as possible to, a surface target. The engine thrust both changes the trajectory and consumes the mass margin available for payload, so the central objective is fuel: among all trajectories that satisfy the vehicle and safety constraints, choose the one that lands with maximum remaining mass.
 
-The problem is hard because the engine cannot be treated as an ideal acceleration source. Once lit, a throttleable rocket has a lower usable thrust, set by combustion stability, and an upper thrust, set by performance. The vehicle must also stay inside a glide-slope cone above the terrain, respect a thrust pointing or tilt limit, avoid excessive speed, and end at rest with zero altitude. A useful guidance law must compute onboard in seconds, return a global optimum or a reliable infeasibility certificate, and avoid dependence on a carefully guessed initial trajectory.
+The engine cannot be treated as an ideal acceleration source. Once lit, a throttleable rocket has a lower usable thrust set by combustion stability and an upper thrust set by performance. The vehicle must also stay inside a glide-slope cone above the terrain, respect a thrust pointing or tilt limit, avoid excessive speed, and end at rest with zero altitude. The question is how to compute a guidance law for this constrained minimum-fuel problem.
 
 ## Background
 
@@ -20,27 +20,27 @@ so minimizing fuel is equivalent to maximizing final mass.
 
 Pontryagin's maximum principle gives the first structural clue. The Hamiltonian is affine in the thrust direction through the velocity costate and affine in the thrust magnitude through the running fuel cost and mass costate. The optimal thrust direction follows the primer vector, and the optimal magnitude is pushed to an endpoint of the admissible interval. This is the bang-bang soft-landing structure studied in the older rocket-control literature: maximum thrust, minimum thrust, maximum thrust, with switch times determined by a scalar switching function.
 
-The lower thrust bound is the obstacle. The admissible set
+The admissible thrust set is an annulus in thrust space:
 
-  ρ_min ≤ ‖T_c(t)‖ ≤ ρ_max,  with 0 < ρ_min < ρ_max,
+  ρ_min ≤ ‖T_c(t)‖ ≤ ρ_max,  with 0 < ρ_min < ρ_max.
 
-is an annulus in thrust space. The upper bound is a convex ball, but the lower bound is the complement of a ball, so a convex solver cannot accept the true control set directly. Removing the lower bound is not a faithful workaround, because the resulting optimizer can command coasting or arbitrarily small thrust during phases where the physical engine cannot operate.
+The upper bound is a convex ball. The lower bound is the complement of a ball.
 
 The mass coupling adds another nonlinearity: acceleration is T_c/m, and m is a state. A pointing constraint of the form n^T T_c ≥ ‖T_c‖ cos θ_p can also be nonconvex when θ_p is obtuse, because the admissible directions cover more than a half-space but exclude a cone around the opposite direction.
 
-Second-order cone programming is the natural computational target. Norm bounds, glide-slope cones, velocity caps, and many thrust constraints are second-order cone or affine constraints once the right variables are chosen. Interior-point SOCP solvers provide deterministic convergence behavior to a requested accuracy, which is why a convex transcription is attractive for autonomous descent.
+Second-order cone programming is the natural computational target. Norm bounds, glide-slope cones, velocity caps, and many thrust constraints are second-order cone or affine constraints once the right variables are chosen. Interior-point SOCP solvers provide deterministic convergence behavior to a requested accuracy.
 
 Several empirical and structural facts shape the formulation. Minimum-fuel soft-landing profiles have the bang-bang max-min-max structure. For Mars-style powered descent, the fuel consumed as a function of fixed flight time has a single useful minimum in the feasible interval. For the glide-slope state constraint, planetary landing geometries normally exhibit isolated-contact behavior: the trajectory touches the cone only at isolated times rather than sliding along it over a finite interval.
 
 ## Baselines
 
-**Direct nonlinear optimal-control transcription.** A collocation, pseudospectral, SQP, or shooting method can discretize the original dynamics and constraints, then solve the resulting nonlinear program. This keeps the physical model close to the original problem, but the annulus constraint and mass coupling make the NLP nonconvex. The solver may converge to a local minimum, may depend strongly on the initial guess, and does not provide the bounded global certificate needed for onboard firing decisions.
+**Direct nonlinear optimal-control transcription.** A collocation, pseudospectral, SQP, or shooting method can discretize the original dynamics and constraints, then solve the resulting nonlinear program. This keeps the physical model close to the original problem, and the solver navigates the annulus constraint and mass coupling as part of the NLP.
 
-**Apollo-style explicit or polynomial guidance.** Earlier powered-descent guidance laws choose an analytic acceleration or polynomial position profile and solve for coefficients that satisfy terminal conditions. These laws are simple and fast, but they do not optimize fuel under the full annular thrust band, glide slope, velocity, pointing, and large-divert constraints.
+**Apollo-style explicit or polynomial guidance.** Earlier powered-descent guidance laws choose an analytic acceleration or polynomial position profile and solve for coefficients that satisfy terminal conditions. These laws are simple and fast.
 
-**One-dimensional soft-landing structure.** Meditch-style vertical soft-landing analysis gives useful insight into minimum-time and minimum-fuel feasibility along the vertical channel. It helps bracket feasible flight times, but it does not solve the full three-dimensional divert problem with lateral constraints and thrust-vector pointing.
+**One-dimensional soft-landing structure.** Meditch-style vertical soft-landing analysis gives useful insight into minimum-time and minimum-fuel feasibility along the vertical channel. It helps bracket feasible flight times.
 
-**Dropping the lower thrust bound.** Replacing ρ_min ≤ ‖T_c‖ ≤ ρ_max with only ‖T_c‖ ≤ ρ_max makes the thrust set convex. The gap is physical fidelity: the solution can live inside the forbidden hole of the annulus, so the computed trajectory can be impossible for the engine to fly.
+**Dropping the lower thrust bound.** Replacing ρ_min ≤ ‖T_c‖ ≤ ρ_max with only ‖T_c‖ ≤ ρ_max makes the thrust set convex, enabling a direct SOCP transcription.
 
 ## Evaluation settings
 

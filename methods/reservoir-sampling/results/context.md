@@ -5,21 +5,16 @@
 We are handed a sequence of records that arrives strictly in order and can be read only
 once — records on a magnetic tape of indeterminate length, rows streaming off a sequential
 scan, events on a wire. We want a *simple random sample* of exactly `k` of them, without
-replacement, with every size-`k` subset equally likely. Two facts make this hard. First, the
-total length `N` is **not known in advance**, and determining it would cost an extra pass we
-cannot afford (rewinding the tape, re-scanning the file). Second, `N` may be astronomically
-larger than `k`, so we cannot buffer the records and sample at the end: the working memory
-must stay `O(k)`, independent of `N`. So the precise goal is an algorithm that, reading the
-stream once and front to back, holds at most `O(k)` records in memory at any instant, never
-needs to know or count `N`, and at the moment the stream ends emits `k` records that form a
-uniform sample of *whatever* the stream turned out to be. A secondary goal, once a correct
-method exists, is to make it *fast* — in particular to minimize the number of expensive
-random-number draws, which on real machines can dominate the cost.
+replacement, with every size-`k` subset equally likely. The total length `N` is not known
+in advance, and determining it would cost an extra pass. `N` may also be astronomically
+larger than `k`, so working memory must stay `O(k)`, independent of `N`. The question is
+how to select such a sample reading the stream once, front to back, while holding at most
+`O(k)` records in memory at any instant.
 
 ## Background
 
-The classical sampling problem assumes `N` is known. With `N` in hand the problem is easy and
-well studied (Knuth, *The Art of Computer Programming*, vol. 2, 1981; Vitter, "Faster methods
+The classical sampling problem assumes `N` is known. With `N` in hand the problem is well
+studied (Knuth, *The Art of Computer Programming*, vol. 2, 1981; Vitter, "Faster methods
 for random sampling", *CACM* 27, 1984): one can draw `k` distinct indices from `{1,...,N}` —
 by a partial Fisher–Yates shuffle, by sequential selection where the `i`-th record is taken
 with probability `(k - chosen)/(N - i + 1)`, or by generating skip gaps from the known
@@ -39,34 +34,24 @@ Some standard facts about uniform variates that are available off the shelf:
 - **The harmonic numbers.** `H_m = sum_{i<=m} 1/i`, and `H_N - H_k = ln(N/k) + O(1/k)`. Sums
   of terms of the form `1/i` over a range therefore grow only logarithmically in the range.
 
-The pain point that frames everything: any method that does a constant amount of work *per
-record* must do `Theta(N)` work and draw `Theta(N)` random numbers across the whole stream.
-On the hardware of the time, generating a high-quality uniform variate is expensive enough
-that this `Theta(N)` draw count is the real bottleneck, not the I/O — so if only a small
-fraction of records ever influence the final sample, most of those draws are wasted.
-
 ## Baselines
 
 - **Two-pass / known-`N` sampling (Knuth 1981; Vitter 1984).** First pass counts `N`; second
   pass runs a standard known-`N` selection (sequential or skip-based). Correct and even fast
-  per pass, but it needs *two* passes and a stored or recomputable `N`. The gap it leaves: on
-  a one-pass medium of unknown length the first pass is exactly the thing we are forbidden to
-  do.
+  per pass, requiring `N` as a stored or recomputable value.
 
 - **Fixed-probability Bernoulli sampling.** Keep each record independently with some
-  probability `p`. One pass, `O(1)` decision per record. But the sample size is
-  `Binomial(N, p)` — random, not exactly `k`, and its mean `Np` cannot even be set without
-  knowing `N`. The gap: it cannot deliver *exactly* `k`, and it cannot be tuned without `N`.
+  probability `p`. One pass, `O(1)` decision per record. The sample size is
+  `Binomial(N, p)` — random, not exactly `k`, and its mean `Np` depends on `N`.
 
-- **Buffer-everything-then-sample.** Read the whole stream into memory, then draw `k`. Trivially
-  one pass and exactly `k`, but `O(N)` memory — the disqualifying flaw when `N >> k`.
+- **Buffer-everything-then-sample.** Read the whole stream into memory, then draw `k`. One
+  pass and exactly `k`, using `O(N)` memory.
 
 - **Weighted sampling with known weights (Olken 1993; the Alias method, partial-sum trees,
   acceptance/rejection — see Efraimidis & Spirakis's survey).** When items carry weights `w_i`
   and we want a draw with probability proportional to weight, these classical methods build a
   global data structure (an alias table, a Fenwick tree of cumulative weights) over the *whole*
-  population first. The gap: they need the full weight set up front and `O(N)` structure, so
-  they are not one-pass and not streaming.
+  population first, requiring the full weight set and `O(N)` structure up front.
 
 ## Evaluation settings
 
@@ -85,8 +70,7 @@ enough that `N >> k`.
 
 A streaming harness already exists: items arrive one at a time, we hold a small buffer, and we
 emit the buffer at end-of-stream. The uniform RNG, arrays, iterators, and binary heaps are all
-standard primitives. What is missing is the rule for deciding when an item should enter
-without knowing `N`, a faster variant of that rule, and the weighted analogue.
+standard primitives.
 
 ```python
 import math, random, heapq

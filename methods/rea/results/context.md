@@ -5,29 +5,14 @@ years of focused investigation — AlexNet (Krizhevsky et al. 2012), Inception
 (Szegedy et al. 2015), ResNet (He et al. 2016), DenseNet (Huang et al. 2017). The
 goal is to remove the human from this loop: to *automatically* discover a
 convolutional architecture that classifies images as well as, or better than,
-the best hand-crafted designs. The pain point is sharp and quantifiable. Many
-families of automated search exist, but they split into two camps with
-complementary defects. The reinforcement-learning camp is the strongest in raw
-result quality — today's most accurate ImageNet classifiers come from RL search —
-but it is *complex*: it trains a controller network (typically an LSTM) by
-policy-gradient, needs backpropagation through the controller, a learning-rate
-schedule, a greediness/entropy knob, batching and a replay buffer; it is awkward
-to parallelize, and even different implementations of the same RL algorithm have
-been shown to give different results. The evolutionary camp is *simple* — random
-mutation plus selection, trivially parallel — but the image classifiers it has
-produced have consistently remained *inferior* to hand-designs; no evolved model
-had ever surpassed a human-crafted one on a realistic image benchmark.
-
-So the precise problem is this. Find a search method that simultaneously: (1)
-produces classifiers that match or beat both hand-designs and the RL state of the
-art; (2) is *simple* — few moving parts, few meta-parameters, easy to implement
-and reproduce; (3) is *efficient at scale* — parallelizes cleanly across hundreds
-of accelerators with high utilization, since every candidate must be trained from
-scratch (the rate-limiting step) before its quality is known; and (4) does well
-*early*, in the resource-constrained regime where a run may have to be stopped
-long before convergence, because training thousands of candidate networks is
-enormously expensive. The existing methods each give a subset of these; none gives
-all four at once. Closing that gap is the problem.
+the best hand-crafted designs. Two broad camps of automated search exist.
+The reinforcement-learning camp — today's most accurate ImageNet classifiers come
+from RL search — trains a controller network (typically an LSTM) by policy-gradient.
+The evolutionary camp uses random mutation plus selection, is trivially parallel,
+and reached the published CIFAR-10 accuracy range with large-compute recent studies.
+The question is how to design a population-based search method over neural
+architectures that is accurate, simple to implement, and scales cleanly across
+many accelerators.
 
 ## Background
 
@@ -40,12 +25,8 @@ which simultaneously evolves weights and structure through three mutation kinds
 (perturb a weight, add a connection, insert a node), recombines two genomes, and
 maintains diversity by *fitness sharing*. The encoding question — *direct* (every
 node and edge stored in the genome, as in NEAT) versus *indirect* (a compact
-generative description, e.g. CPPNs) — has been a major theme. The field's hard-won
-prior: evolution is intuitive and simple, but the deep-learning community largely
-*believes* evolutionary methods cannot reach hand-designed accuracy on realistic
-images. Recent large-compute studies began to challenge that belief, evolving
-CIFAR-10 classifiers into the published accuracy range — but still not past the
-best hand-designs.
+generative description, e.g. CPPNs) — has been a major theme. Recent large-compute
+studies evolved CIFAR-10 classifiers into the published accuracy range.
 
 **A standard fact about selection pressure.** In a genetic algorithm, a
 *selection scheme* decides which individuals reproduce. Goldberg & Deb (1991)
@@ -77,16 +58,14 @@ so a model can stay in the population for a very long time, even the whole run.
 involves random initialization, data ordering, and stochastic regularization, so
 the validation accuracy of a *fixed* architecture varies run to run — a spread on
 the order of a percent has been observed for these neuro-evolution experiments.
-The same architecture, re-trained, will not reproduce its score exactly; a model
-can land a high accuracy partly by luck.
+The same architecture, re-trained, will not reproduce its score exactly.
 
 **The aging idea exists, but heavyweight.** Hornby's ALPS (2006) introduces a
 notion of *age*, assigned to *genes*, to split a population into "age-layers" so
 that freshly introduced genes are protected from being immediately out-competed by
 highly-selected older ones. It restricts competition to fight premature
-convergence — but at the cost of two extra meta-parameters (the age-gap and the
-number of layers), and the age attaches to genes within a structured,
-multi-layer population.
+convergence, and the age attaches to genes within a structured, multi-layer
+population.
 
 **The cell-based search space.** The dominant search space (Zoph et al. 2018)
 fixes the network's *outer* skeleton and searches only a small repeated module.
@@ -116,14 +95,8 @@ cell space: for each of the five blocks, pick two input hidden states and two op
 and how to combine them). The architecture is trained and evaluated, and its
 validation accuracy is the reward used to update the controller by policy gradient
 (REINFORCE, later PPO). Core idea: learn a parameterized *distribution* over
-architectures that drifts toward high-reward regions. This is the camp that holds
-the accuracy records. *Limitations:* the controller is itself a neural network
-with many weights that must be trained by backpropagation; the method carries a
-stack of additional hyperparameters (controller learning-rate schedule,
-greediness, batching, replay) on top of the classifier-training ones; it is
-sensitive enough that different implementations of the same algorithm give
-different outcomes; and the controller update couples the workers, complicating
-clean asynchronous parallelism.
+architectures that drifts toward high-reward regions. This camp holds the current
+accuracy records.
 
 **Large-scale neuro-evolution with tournament selection (Real et al. 2017).** Keep
 a population of P trained models; repeatedly run a tournament — sample s models,
@@ -132,21 +105,12 @@ recombination, no fitness sharing), train and evaluate the child, and add it bac
 To hold the population at size P, *each tournament also removes the worst of its
 sampled models.* Weights can be inherited across mutations; the search starts from
 trivial models and grows complexity. This reached the published CIFAR-10 accuracy
-range with a simple, asynchronous method. *Limitation:* because the retained
-individuals are the *high-accuracy* ones and the discarded ones are the
-*low-accuracy* ones, a model that scores well can persist in the population for a
-very long time — potentially the whole run — and keep being chosen as a parent.
-When candidate evaluation is noisy, a model that scored high partly by luck can
-linger and dominate parent selection, so the search tends to *zoom in* on it early
-and stop broadly exploring; the discovered classifiers still trailed hand-designs.
+range with a simple, asynchronous method.
 
 **Random search.** Construct each model independently and uniformly at random over
 the search space (no mutation of existing models, no selection), train, evaluate,
-keep the best seen. The honest floor. On a well-constructed cell space it is
-surprisingly strong and a difficult baseline to beat, which is exactly why it must
-be included. *Limitation:* with no selection, it gains nothing from what it has
-already learned — every draw is independent, so it converges slowly and wastes the
-information in the population of already-evaluated good models.
+keep the best seen. On a well-constructed cell space it is surprisingly strong and
+a difficult baseline to beat, which is exactly why it must be included.
 
 ## Evaluation settings
 
@@ -182,10 +146,9 @@ the normal cell and the five of the reduction cell, each block a pair of (input
 hidden state, op); a `random_architecture()` that samples a valid genome
 uniformly; a black-box `train_and_eval(arch)` that builds the network, trains it,
 and returns a (noisy) validation accuracy — the expensive, rate-limiting step; and
-a population data structure of evaluated models. What is *not* settled — and is
-exactly what must be designed — is the per-cycle search rule: how to turn an
-existing population into the next candidate, and how to decide what the population
-carries forward. The single empty slot is that rule.
+a population data structure of evaluated models. The per-cycle search rule — how to
+turn an existing population into the next candidate, and how to decide what the
+population carries forward — is what must be designed.
 
 ```python
 import random

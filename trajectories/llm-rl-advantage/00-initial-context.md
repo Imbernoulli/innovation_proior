@@ -6,11 +6,11 @@ Online RL fine-tuning of a small LLM on math with a *verifiable* outcome reward:
 
 These are the standard policy-gradient estimators already in use.
 
-- **REINFORCE / vanilla policy gradients.** Ascend the expected return using the raw trajectory reward as a log-probability multiplier. The raw return has high variance and is usually positive, so every response gets pushed upward and the selection signal is weak. Gap: noisy, all-positive gradient with little discriminative power.
+- **REINFORCE / vanilla policy gradients.** Ascend the expected return using the raw trajectory reward as a log-probability multiplier.
 
-- **PPO with GAE.** Subtract a learned state-value estimate and build per-token advantages with generalized advantage estimation, then update with the clipped surrogate objective. It is reliable in many domains, but the critic is a full-size network and the sparse end-of-response reward makes accurate per-token values hard to fit. Gap: the critic is costly and the least reliable part of the pipeline here.
+- **PPO with GAE.** Subtract a learned state-value estimate and build per-token advantages with generalized advantage estimation, then update with the clipped surrogate objective. It is reliable in many domains; the critic is a full-size network and the sparse end-of-response reward is concentrated at EOS.
 
-- **RLOO.** Drop the critic and use the mean reward of the other responses in the same group as a leave-one-out baseline for each sample. Because the baseline does not depend on the sampled action it is unbiased, but with only a handful of samples per group the baseline is noisy and the advantage scale differs from one prompt to another. Gap: noisy small-group baseline and no shared advantage scale across prompts.
+- **RLOO.** Drop the critic and use the mean reward of the other responses in the same group as a leave-one-out baseline for each sample. Because the baseline does not depend on the sampled action it is unbiased.
 
 ## Fixed substrate / Code framework
 

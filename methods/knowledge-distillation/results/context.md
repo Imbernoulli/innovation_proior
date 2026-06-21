@@ -2,7 +2,7 @@
 
 The setting is large-scale supervised classification with deep neural networks. The best accuracy on hard recognition problems (ImageNet-scale object recognition, large-vocabulary speech recognition, MNIST) is obtained either by a single very large, heavily regularized network, or by an *ensemble* of many separately trained networks whose predictions are averaged. Both are expensive to deploy: an ensemble multiplies the inference cost by the number of members, and a single huge net carries millions of parameters and a large memory/latency footprint. The training stage and the deployment stage have very different requirements — training can afford huge compute and offline batch processing, deployment is latency- and resource-constrained — yet the same model is typically used for both.
 
-A model that achieves the best accuracy (an ensemble, or one giant regularized net) is too cumbersome to deploy. Can we transfer the *function* that this cumbersome model has learned into a single, much smaller and faster model, with most of the accuracy preserved? The crux is what "the knowledge" of a trained model even *is*. If we identify knowledge with the specific learned parameter values, then changing the architecture seems to destroy it. A more useful abstraction is that the knowledge is the *learned mapping from inputs to a distribution over outputs* — which frees it from any particular parameterization and suggests it could, in principle, be reproduced by a model of a different shape. A solution must (i) not require the small model to match the big one's weights, (ii) work from the big model's *outputs* on some transfer set, and (iii) recover the big model's generalization behavior, not just its hard predictions.
+Can we transfer the *function* that a cumbersome model has learned into a single, much smaller and faster model, with most of the accuracy preserved? The crux is what "the knowledge" of a trained model even *is* — if we identify it with the specific learned parameter values, changing the architecture seems to destroy it, but a more useful abstraction is that the knowledge is the *learned mapping from inputs to a distribution over outputs*, which is independent of any particular parameterization.
 
 ## Background
 
@@ -12,9 +12,9 @@ A model that achieves the best accuracy (an ensemble, or one giant regularized n
 
 ## Baselines
 
-- **Training the small model directly on hard labels.** Fit the small net to one-hot targets with ordinary cross-entropy. Gap: the small net has limited capacity and only sees the single correct answer per example; it never learns the rich inter-class similarity structure the big model discovered, so it generalizes worse.
-- **Caruana-style logit matching.** Train the small net to minimize the squared difference between its logits and the cumbersome model's logits. This fixes the near-zero-probability problem (logits are unbounded, so small-probability information survives) and works, but it is a somewhat ad-hoc target: it treats all logits equally, including very negative logits that are almost unconstrained by the cumbersome model's training objective and may simply be noise. It is not obviously connected to a probabilistic transfer objective, and is rigid: every logit is fitted with equal weight, with no way to vary how much the near-unconstrained ones count.
-- **Strong regularization of the small model alone** (dropout, weight constraints, input jitter / data augmentation). Improves the small model but cannot inject the big model's learned generalization (e.g. invariance learned from augmentations the small model never sees).
+- **Training the small model directly on hard labels.** Fit the small net to one-hot targets with ordinary cross-entropy.
+- **Caruana-style logit matching.** Train the small net to minimize the squared difference between its logits and the cumbersome model's logits. Logits are unbounded, so small-probability information survives across the full class distribution.
+- **Strong regularization of the small model alone** (dropout, weight constraints, input jitter / data augmentation). Improves the small model's own training without a cumbersome teacher.
 
 ## Evaluation settings
 

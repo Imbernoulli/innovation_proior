@@ -24,17 +24,14 @@ cardinality statement.
 ## Background
 
 **Directional richness.** A Kakeya set may reuse points heavily by choosing
-different offsets for different directions, but it cannot avoid representing all
-directions. The central obstruction has to come from that directional spread,
-not from a naive line count: many different lines can share points, and a lower
-bound must survive that overlap.
+different offsets for different directions, but it represents all directions.
+Many different lines can share points.
 
 **Small constructions.** In `F_q^2` for odd `q`, a standard quadratic
 construction takes, for each slope `m`, the line in direction `(1,m)` through
 `(0, -m^2/4)`, together with one vertical line. For `q = 5, 7, 11` this produces
 sets of sizes `17, 31, 71`, with ratios to `q^2` moving toward `1/2`. Products of
-such examples show that constants near `2^{-n}` are the natural scale; a proof
-cannot hope for a lower bound close to the full `q^n` points.
+such examples show that constants near `2^{-n}` are the natural scale.
 
 **Polynomial dimension counts.** The vector space of polynomials in `n`
 variables of total degree at most `d` has the monomial basis
@@ -72,29 +69,20 @@ through `y`.
 
 - **Wolff incidence bound, `|K| ≥ C_n q^{(n+2)/2}`.** This counts incidences
   between points and lines and uses the limited overlap of lines in different
-  directions. It gives the first nontrivial finite-field lower bound, but for
-  large `n` its exponent is far below the desired `n`.
+  directions. It gives the first nontrivial finite-field lower bound.
 
 - **Additive-combinatorial bounds, about `C_n q^{4n/7}` in general dimension.**
   Bourgain, Katz-Tao, Mockenhaupt-Tao, Rogers, and related arguments connect a
-  small Kakeya set to unexpectedly small sumsets such as `A + r B` for many
-  field elements `r`. Sum-product growth then rules this out. These methods are
-  powerful but lose a fixed fraction of the exponent, leaving an exponent gap
-  rather than only a constant-factor gap.
+  small Kakeya set to small sumsets such as `A + r B` for many field elements
+  `r`, and sum-product growth then rules this out.
 
 - **Low-dimensional incidence refinements.** Special arguments in dimensions
-  such as `3` and `4` improve the exponent in those cases, but the mechanisms do
-  not scale into a uniform `q^n` theorem for every fixed `n`.
+  such as `3` and `4` improve the exponent in those cases.
 
-- **Homogeneous polynomial counting.** Counting only homogeneous degree-`d`
-  forms gives `C(d+n-1,n-1)` coefficients. With `d = q-2` this reaches
+- **Homogeneous polynomial counting.** Counting homogeneous degree-`d` forms
+  gives `C(d+n-1,n-1)` coefficients. With `d = q-2` this reaches
   `≈ q^{n-1}/(n-1)!`, and the product trick converts it to `q^{n-epsilon}` for
-  any fixed `epsilon > 0`. It stalls just short of the `q^n` scale: this route
-  has reached `q^{n-epsilon}` but not the clean `q^n` form.
-
-The common gap is that the earlier approaches either translate directionality
-through lossy incidence/additive estimates or count too few polynomial
-coefficients.
+  any fixed `epsilon > 0`.
 
 ## Evaluation settings
 

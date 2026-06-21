@@ -10,20 +10,20 @@ Directed reachability asks whether a path leads from a source vertex to a target
 
 The same problem captures all nondeterministic logspace computations. Given a logspace machine and an input, form the graph whose vertices are configurations and whose edges are legal one-step moves. Acceptance becomes reachability from the start configuration to an accepting configuration.
 
-## Complements Look Different
+## Complements
 
-The complement asks for absence of a path. The usual existential witness has disappeared: a path proves reachability, but a missing path seems to demand checking every possible path, every branch, or every reachable configuration.
+The complement asks for absence of a path. A path proves reachability by exhibiting an existential witness. The complement instead concerns the entire finite search space of branches and reachable configurations.
 
-This is the core asymmetry. Nondeterminism naturally supplies a local positive witness. It does not naturally supply a local witness that an entire finite search space has been exhausted.
+Nondeterminism naturally supplies a local positive witness: a single guessed-and-verified path. The complement question is about the structure of the whole reachable set.
 
 ## The Deterministic Detour
 
 There is a deterministic way to simulate space-bounded nondeterminism by recursive reachability. To decide whether one configuration reaches another within a bounded number of steps, try every possible midpoint and recurse on the two halves.
 
-This midpoint recursion is powerful, but it spends a squared space bound. It shows that nondeterministic space is not wildly stronger than deterministic space, yet it does not answer whether complementation can be done in the original nondeterministic space.
+This midpoint recursion (Savitch) uses a squared space bound. It places nondeterministic space within deterministic space of squared size, and is stated for the simulation question rather than for complementation.
 
-## The Same-Space Demand
+## The Same-Space Setting
 
-A same-space complement procedure cannot store the reachable set. In a graph with `n` vertices, even the set of vertices reachable from a source can require `n` bits, far beyond logarithmic space.
+A complement procedure that stays within the original space bound works with small objects only: vertex names, counters, step bounds, and one local certificate at a time. In a graph with `n` vertices, the set of vertices reachable from a source can require `n` bits, while a logarithmic-space procedure has only `O(log n)` cells.
 
-Any proof at this scale must keep only small objects: vertex names, counters, step bounds, and one local certificate at a time. The open pressure is how such small objects could certify that no reachable accepting configuration has been missed.
+The question is how to characterize non-reachability for a directed graph, and more generally for the configuration graph of an `s(n)`-space nondeterministic machine, using objects of size `O(s(n))`.

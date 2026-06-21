@@ -13,12 +13,8 @@ regression on top of `z`.
 
 The latent representation's *geometry* is therefore load-bearing: every learning signal flows
 through `z`, and `z` is defined only by these self-referential objectives. The concrete problem:
-**how should `z` be constrained so that training is stable across many tasks with a single set
-of hyperparameters?** A solution must (a) prevent the latent from drifting to pathological
-scales under a self-predictive loss, (b) keep gradients well-behaved without per-task tuning of
-a normalization constant, and (c) preserve enough representational capacity that planning and
-value learning still work. Getting this wrong is not a minor accuracy hit — it is the
-difference between a model that trains and one whose gradients diverge.
+**how should `z` be constrained or shaped so that training is stable across many tasks with a
+single set of hyperparameters?**
 
 ## Background
 
@@ -26,27 +22,22 @@ difference between a model that trains and one whose gradients diverge.
 trained by reconstruction, the decoder ties the latent to pixels and pins down its meaning. A
 decoder-free model trained by a consistency loss of the form `||z'_t − sg(h(s'_t))||²` (BYOL-
 style joint-embedding prediction, Grill et al. 2020) has no such anchor: the loss only asks the
-predicted latent to match a *moving, self-generated* target. This is exactly the regime where
-representation collapse and magnitude drift are documented failure modes — the network can make
-two embeddings "agree" by shrinking the representation, while bootstrapped readouts can create
-pressure in the opposite direction, all without encoding useful structure. BYOL and its
-relatives guard against the collapse-to-constant mode with architectural asymmetry (a predictor
-and a stop-gradient EMA target), but they do not, by themselves, bound the *magnitude* of the
+predicted latent to match a *moving, self-generated* target. BYOL and its relatives guard
+against the collapse-to-constant mode with architectural asymmetry (a predictor and a
+stop-gradient EMA target), but they do not, by themselves, bound the *magnitude* of the
 embedding.
 
-**In an RL world model the instability is amplified by bootstrapping.** The value head is
+**In an RL world model the dynamics are amplified by bootstrapping.** The value head is
 trained toward a target `q = r + γ Q̄(z', p(z'))` that is itself a function of latent states the
 same network produces. So there is a closed loop: latents feed value targets, value gradients
-feed back into the encoder and dynamics, which reshape the latents. If the latent magnitude is
-free to grow, this loop has a positive-feedback direction.
+feed back into the encoder and dynamics, which reshape the latents.
 
 **The observed pathology.** A prior latent-MPC world model in this family was implemented as
 plain MLPs (ELU activations, no per-layer normalization) and placed **no constraint on the
-latent state at all**. On harder continuous-control tasks this model is prone to **exploding
+latent state at all**. On harder continuous-control tasks this model exhibits **exploding
 gradients** — the gradient norm climbs over training and learning diverges on some tasks (for
 example a walker task that simply destabilizes). This is a measured, pre-existing phenomenon
-about an existing system: an unconstrained latent under a self-predictive + bootstrapped loop
-does not reliably stay in a usable range.
+about an existing system.
 
 **What "constrain the latent" could draw on.** Several mature ideas bear on bounding or shaping
 a representation:
@@ -56,62 +47,43 @@ a representation:
   statistics but does not impose a fixed geometry on the network's *output* latent.
 - *Discrete / categorical latent codes* (VQ-VAE, van den Oord et al. 2017) replace a continuous
   latent with a set of `L` one-hot codes drawn from a learned codebook — a "vector of
-  categoricals." This bounds the representation and gives it discrete structure, at the cost of
-  a non-differentiable lookup.
+  categoricals." This bounds the representation and gives it discrete structure.
 - *Sparse, overcomplete representations* from the sparse-coding tradition: representing an input
   with more basis components than its dimensionality, most of them inactive, which has long been
   associated with stability under noise and with interpretable features.
 - *Self-supervised representation shaping*: recent SSL work projects an encoder's output through
   a softmax to impart an inductive bias toward group sparsity (Lavoie et al. 2022; see
-  Baselines). This was developed for downstream *classification* accuracy and interpretability,
-  in a single-shot image-encoding setting — not as a stability mechanism inside a recurrent,
-  bootstrapped RL world model.
+  Baselines).
 
 ## Baselines
 
-These are the constraint/normalization strategies on the table, each with its core mechanism
-and the specific gap it leaves for our setting.
+These are the constraint/normalization strategies on the table, each with its core mechanism.
 
 - **Unconstrained continuous latent (prior latent-MPC world model; Hansen et al. 2022).** The
   encoder and dynamics output a raw real-valued vector `z ∈ R^d`; MLPs with ELU activations, no
   per-layer normalization, no constraint on `z`. *Core idea:* let the consistency, reward, and
-  value losses freely shape `z`. *Gap:* with nothing bounding `z`, on harder tasks the latent
-  magnitude drifts and gradient norms explode, diverging training; it also needs per-task
-  hyperparameter tuning (latent dimension, learning rate, planning iterations) to stay usable.
+  value losses freely shape `z`.
 
 - **LayerNorm on intermediate activations (Ba et al. 2016).** Recenter and rescale each layer's
   pre-activations by their own mean and variance: `(x − μ)/σ · γ + β`. *Core idea:* stabilize
-  the statistics flowing *through* the network. *Gap:* it normalizes *intermediate* features,
-  not the geometry of the final latent the dynamics and value heads consume; an MLP can still
-  emit a final `z` of arbitrary magnitude and structure after its last LayerNorm + linear map.
+  the statistics flowing *through* the network.
 
 - **L2 normalization / hypersphere projection.** Divide `z` by its Euclidean norm so it lies on
   the unit sphere. *Core idea:* fix `||z||₂ = 1`, removing the magnitude degree of freedom.
-  *Gap:* it bounds magnitude but imposes no *structure* on the representation — no sparsity
-  pressure, no discrete-code bias; all of the unit sphere is equally available, and a single
-  global constraint couples all coordinates.
 
 - **Squashing nonlinearities (tanh / sigmoid).** Pass each coordinate through a bounded
-  nonlinearity. *Core idea:* clamp each coordinate into a fixed interval. *Gap:* it bounds
-  per-coordinate range but creates no competition *between* coordinates and no sparsity bias;
-  saturated units also pass near-zero gradient, and the representation stays dense.
+  nonlinearity. *Core idea:* clamp each coordinate into a fixed interval.
 
 - **Discrete categorical codes / VQ-VAE (van den Oord et al. 2017).** Quantize the latent into
   `L` one-hot codes from a learned codebook. *Core idea:* a bounded, discrete, vector-of-
-  categoricals representation. *Gap:* the codebook lookup is a hard `argmax` — non-
-  differentiable — so it requires a straight-through gradient estimator and an auxiliary
-  commitment loss, and it pays codebook-collapse and dead-code pathologies; the hard
-  discretization is a strong constraint that can choke information flow.
+  categoricals representation; a straight-through gradient estimator and an auxiliary commitment
+  loss enable training through the hard `argmax`.
 
 - **Softmax-projected simplicial embeddings for SSL (Lavoie et al. 2022).** Split an encoder's
-  output into `L` groups of size `V` and softmax each group, giving `L` simplex-valued vectors
-  concatenated together; temperature controls a group-sparsity inductive bias. *Core idea:* a
-  *soft* overcomplete code that biases toward group sparsity without hard discretization, shown
-  to improve downstream-classification generalization. *Gap:* it was designed and validated as a
-  one-shot image-encoder add-on optimized for classification accuracy/interpretability; whether
-  such a projection is the right way to *stabilize a recurrent, bootstrapped latent world model*
-  — and how it interacts with a self-predictive consistency loss and TD targets — is not what
-  that line establishes.
+  output into `L` groups and apply a softmax to each group; temperature controls a group-sparsity
+  inductive bias. *Core idea:* a *soft* overcomplete code that biases toward group sparsity
+  without hard discretization, shown to improve downstream-classification generalization in a
+  single-shot image-encoding setting.
 
 ## Evaluation settings
 

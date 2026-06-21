@@ -6,16 +6,11 @@ random augmentation pipeline, push both through a network, and train so that the
 similar representations. The hope is that whatever survives the distortions is the semantic content,
 so the learned features transfer well to downstream tasks (classification, detection).
 
-The central obstacle is **collapse**. "Make the two views agree" is satisfied perfectly by a network
-that ignores its input and emits a constant vector: every pair of views agrees trivially, the
-representation carries zero information, and the loss is minimized. So the bare objective
-"maximize similarity between views" is degenerate. Every working method bolts on some extra
-mechanism whose job is to make collapse unattractive. The open question is whether
-there is a *single, symmetric objective whose optimum is non-trivial by construction* — one that
-does not need negative samples, a special predictor branch, a momentum/target network, a
-stop-gradient, or a clustering step to stay away from the constant solution. A solution would have
-to (a) define a clear quantity to optimize, (b) provably exclude the constant solution at that
-optimum, and (c) scale to ImageNet-sized training.
+A network that ignores its input and emits a constant vector makes every pair of views agree
+trivially; this constant solution minimizes the bare "maximize similarity between views" loss. Each
+existing joint-embedding method pairs the agreement term with an additional mechanism that keeps
+training away from the constant solution. The question is what objective to compute from the two
+projected views, at ImageNet scale.
 
 ## Background
 
@@ -26,17 +21,16 @@ agreement between the views. The augmentation distribution encodes the invarianc
 color jitter, grayscale, blur, solarization, flips); the standard pipeline became the one used by
 BYOL (Grill et al. 2020), with asymmetric blur/solarize probabilities for the two views.
 
-**The collapse phenomenon and the diagnostics around it.** Because "agree" is trivially solvable by a
-constant, the field has accumulated evidence about *what* keeps a method off the constant: contrastive
-methods repel negatives; SimSiam's ablation (Chen & He 2020) isolates the stop-gradient as the
-critical ingredient (removing it collapses immediately); analyses of BYOL implicate batch
-normalization (Tian et al. 2020; Fetterman & Albrecht 2020) or group normalization (Richemond et al.
-2020). Two empirical regularities about *existing* systems are especially relevant. First, contrastive
-methods that draw negatives from the minibatch degrade as the batch shrinks — SimCLR loses several
-points of ImageNet linear-probe accuracy going from large batches down to 256 — whereas the
-asymmetric no-negative methods are batch-size robust because their loss has no cross-sample term.
-Second, increasing the dimensionality of the projector output *saturates* performance for contrastive
-and asymmetric methods alike: bigger embeddings buy nothing past a point.
+**The collapse phenomenon and the diagnostics around it.** The field has accumulated evidence about
+*what* keeps a method off the constant: contrastive methods repel negatives; SimSiam's ablation (Chen
+& He 2020) isolates the stop-gradient as a critical ingredient (removing it collapses immediately);
+analyses of BYOL implicate batch normalization (Tian et al. 2020; Fetterman & Albrecht 2020) or group
+normalization (Richemond et al. 2020). Two empirical regularities about *existing* systems are
+relevant. First, contrastive methods that draw negatives from the minibatch change with batch size —
+SimCLR loses several points of ImageNet linear-probe accuracy going from large batches down to 256 —
+whereas the asymmetric no-negative methods are batch-size robust because their loss has no cross-sample
+term. Second, increasing the dimensionality of the projector output *saturates* performance for
+contrastive and asymmetric methods alike.
 
 **Redundancy reduction (Barlow 1961).** A separate, much older idea comes from neuroscience. H. Barlow
 hypothesized that the purpose of early sensory processing is to recode highly redundant sensory input
@@ -44,8 +38,7 @@ into a *factorial code* — a representation whose components are statistically 
 "redundancy-reduction" principle has been used to explain organization in the visual pathway (Barlow
 2001) and has seeded learning algorithms based on decorrelating units (Földiák 1990; Linsker 1988;
 Redlich 1993; Schmidhuber 1996; Deco & Parra 1997). The principle is a statement about single-signal
-coding — it concerns the internal statistics of one representation — and was not posed in the
-two-view joint-embedding setting.
+coding — it concerns the internal statistics of one representation.
 
 **Information-theoretic framing.** The Information Bottleneck (Tishby, Pereira & Bialek 2000; Tishby &
 Zaslavsky 2015) formalizes "keep what matters, drop the nuisance" as a trade-off between mutual
@@ -75,10 +68,8 @@ a *similarity term* pulling positives together and a *contrastive term* pushing 
 the other samples in the batch (interpretable as a non-parametric entropy / uniformity estimate over
 the embedding distribution, Wang & Isola 2020). Collapse is avoided because the constant solution
 cannot make a positive pair more similar than the negatives: all logits are equal, so the loss stays
-at the uniform-classification value rather than approaching its minimum. **Gaps:** the entropy
-estimate is non-parametric, so it needs many negatives — large batches (SimCLR) or a momentum encoder
-with a ~65k-entry queue (MoCo) — and it gains nothing from high-dimensional embeddings (curse of
-dimensionality). Temperature `tau` is an extra knob weighting the hardest negatives.
+at the uniform-classification value. Negatives are drawn from large batches (SimCLR) or a momentum
+encoder with a ~65k-entry queue (MoCo). Temperature `tau` weights the hardest negatives.
 
 **BYOL / SimSiam (Grill et al. 2020; Chen & He 2020).** No negatives, no contrastive term — just a
 cosine similarity between the two views:
@@ -87,29 +78,21 @@ cosine similarity between the two views:
 L_cosine = - sum_b  <z^A_b, z^B_b> / (||z^A_b|| ||z^B_b||)
 ```
 
-By itself this collapses. They avoid it with *asymmetry*: an extra "predictor" MLP on one branch
-breaks the symmetry, and the other branch is a detached/fixed target (BYOL additionally maintains it
-as an exponential moving average of the online weights). **Gaps:** these methods are batch-size robust
-(no cross-sample term) but they are *not* the minimization of any single objective — there exist
-trivial solutions that the procedure avoids only through implementation choices and learning dynamics;
-why exactly stop-gradient + predictor prevents collapse is the subject of ongoing study. Conceptually
-unprincipled, even if empirically strong.
+They use *asymmetry*: an extra "predictor" MLP on one branch breaks the symmetry, and the other branch
+is a detached/fixed target (BYOL additionally maintains it as an exponential moving average of the
+online weights). These methods are batch-size robust (no cross-sample term).
 
 **Clustering — DeepCluster / SwAV / SeLa (Caron et al. 2018, 2020; Asano et al. 2019).** Assign views
 to clusters/codes and enforce that two views of an image get consistent assignments, alternating with
-a (often non-differentiable) clustering step. **Gaps:** prone to collapse via empty clusters, avoided
-only by balance constraints / careful engineering; needs to store features when #clusters >> batch.
+a (often non-differentiable) clustering step, using balance constraints across clusters.
 
 **Hard whitening — W-MSE (Ermolov et al. 2020, concurrent).** Differentiably whiten each batch of
 embeddings (Cholesky) so their covariance is the identity, then take cosine similarity between the
-whitened views. **Gap:** the whitening constraint is enforced as an explicit matrix operation on every
-batch rather than as a soft penalty inside a simple scalar objective.
+whitened views.
 
 **IMAX (Becker & Hinton 1992; Zemel & Hinton 1990).** An early twin-network objective
 `log|Cov(Z^A - Z^B)| - log|Cov(Z^A + Z^B)|` that maximizes information between the two
-representations under an additive-independent-Gaussian-noise-on-a-shared-signal model. **Gaps:** it is
-*directly* an information quantity with no trade-off knob, and it was not shown to scale to
-large-scale vision.
+representations under an additive-independent-Gaussian-noise-on-a-shared-signal model.
 
 ## Evaluation settings
 

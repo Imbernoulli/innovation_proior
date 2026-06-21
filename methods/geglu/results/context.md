@@ -6,21 +6,19 @@ A Transformer alternates two kinds of sublayer: multi-head self-attention, which
 information *across* sequence positions, and a position-wise feed-forward network (FFN),
 which transforms each position's hidden vector *independently* of the others. The FFN is
 where roughly two-thirds of a Transformer's parameters and a large share of its compute
-live, yet it has the simplest possible form — one linear projection up to a wider hidden
-dimension, one pointwise nonlinearity, one linear projection back down:
+live; its form is one linear projection up to a wider hidden dimension, one pointwise
+nonlinearity, one linear projection back down:
 
 ```
 FFN(x) = f(x W1 + b1) W2 + b2,        d_ff = expansion-factor x d_model  (typically 4x)
 ```
 
-The pointwise function `f` is the only nonlinearity in the whole sublayer, and the hidden
-activation at every unit is just `f` applied to a *single* learned linear view of the input.
-The question is whether this layer — the model's main per-position transformer — can be made
-to fit the language-modeling objective better, *without spending more parameters or compute*,
-by changing how the hidden representation is formed rather than by making it wider. Any
-candidate must (1) be a drop-in replacement confined to this sublayer (no changes to
+The pointwise function `f` is the nonlinearity in this sublayer. The question is whether
+this layer — the model's main per-position transformer — can be made to fit the
+language-modeling objective better, *without spending more parameters or compute*. A
+candidate of this kind is (1) a drop-in replacement confined to this sublayer (no changes to
 attention, normalization, the data pipeline, the optimizer schedule, or evaluation),
-(2) keep the input and output shape `(batch, length, d_model)`, and (3) be matched to the
+(2) keeps the input and output shape `(batch, length, d_model)`, and (3) is matched to the
 baseline FFN in both parameter count and FLOPs so that any quality change is attributable to
 the *form* of the layer, not to a larger budget.
 
@@ -64,49 +62,36 @@ A second, separate line of work is about combining two linear views of an input
   single projection-then-nonlinearity cannot.
 - **Gating in sequence models.** LSTMs (Hochreiter & Schmidhuber 1997) multiply a content
   signal by learned sigmoid gates to control what information survives across many steps; the
-  gate is the canonical device for *data-dependent multiplicative modulation*. The diagnostic
-  finding that matters here — established on existing gated convolutional language models — is
-  about how the *choice of what to put on the content path* affects gradient flow when many
-  such layers are stacked. Concretely, for an LSTM-style "gated tanh unit"
-  `tanh(X) ⊗ σ(X)`, the gradient is
+  gate is the canonical device for *data-dependent multiplicative modulation*. On gated
+  convolutional language models, one analyzed unit is the LSTM-style "gated tanh unit"
+  `tanh(X) ⊗ σ(X)`, whose gradient is
 
   ```
   ∇[tanh(X) ⊗ σ(X)] = tanh'(X)∇X ⊗ σ(X) + σ'(X)∇X ⊗ tanh(X),
   ```
 
   in which both paths carry saturating activation-derivative factors (`0 ≤ tanh' ≤ 1`,
-  `0 ≤ σ' ≤ ¼`), with no derivative-free path through the content. The corresponding signal is
-  observed to attenuate as layers are stacked.
+  `0 ≤ σ' ≤ ¼`).
 
 By 2019, the Transformer is the dominant sequence-modeling architecture and the transfer-
 learning recipe of pretraining on a large denoising/span-corruption objective and fine-tuning
-on downstream tasks is standard practice; the FFN's pointwise function (ReLU, sometimes GELU
-or Swish) is treated as a minor knob and the layer's *shape* — two matrices, one pointwise
-map — is taken for granted.
+on downstream tasks is standard practice; the FFN's pointwise function is commonly ReLU,
+sometimes GELU or Swish, with the layer's shape being two matrices and one pointwise map.
 
 ## Baselines
 
-The prior art a new FFN would be measured against and reacts to:
+The prior art a new FFN is measured against:
 
 - **ReLU FFN** (Vaswani et al. 2017; bias-free T5 form, Raffel et al. 2019).
   `FFN_ReLU(x) = max(0, xW1)W2`. Two weight matrices `W1 ∈ R^{d×d_ff}`, `W2 ∈ R^{d_ff×d}`,
   `d_ff ≈ 4d`. The hidden vector is one linear projection passed through a hard sign gate.
-  **Gap:** the only input-dependence in the hidden activation is the single projection `xW1`;
-  the nonlinearity is fixed and hard, with zero output and zero gradient on the entire
-  negative half-line, and all hidden-unit modulation is locked to that one scalar
-  preactivation.
-- **GELU FFN.** `FFN_GELU(x) = GELU(xW1)W2`. Same two-matrix shape; the hard ReLU gate is
-  replaced by GELU's smooth value-weighting. **Gap:** smoother and better-behaved at the
-  origin, but structurally identical to the ReLU FFN — one projection, one pointwise map; the
-  smooth factor `Φ(xW1)` is tied to the same scalar preactivation whose magnitude it weights.
+- **GELU FFN.** `FFN_GELU(x) = GELU(xW1)W2`. Same two-matrix shape; the ReLU gate is
+  replaced by GELU's smooth value-weighting `Φ(xW1)`.
 - **Swish FFN.** `FFN_Swish(x) = Swish_1(xW1)W2`. Same shape again; the pointwise map is the
-  non-monotonic `x·σ(x)`. **Gap:** identical to the above — a single projection through a
-  single fixed (if smoother and non-monotonic) pointwise function, with one learned scalar per
-  hidden unit determining both content and modulation.
+  non-monotonic `x·σ(x)`.
 
-Across all three baselines, the hidden representation at each unit is `f(one linear map of x)`.
-The value-weighting that does exist (GELU's `Φ`, Swish's `σ`) is a fixed function of the same
-projection whose output it scales, and the layer has exactly two weight matrices.
+Across all three baselines, the hidden representation at each unit is `f(xW1)` and the layer
+has two weight matrices.
 
 ## Evaluation settings
 

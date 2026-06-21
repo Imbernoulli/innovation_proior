@@ -26,8 +26,6 @@ OpenVLA makes that VLA recipe open around a Prismatic-7B backbone. Its action pr
 
 The fixed benchmark is a LIBERO-Goal fine-tuning setup with a single seed and a limited training budget. Policies are evaluated on three disjoint task subsets, and the reported score is based on success rates across those subsets. The method must fit the same training loop, same LoRA-adapted trunk, same image/state inputs, same chunk length, and same normalized-action output contract as the other action-method fills.
 
-The budget makes inference shape and training signal important. Autoregressive generation has a sequential cost in the number of action coordinates, while the PD&AC scaffold is built to remove that cost. Diffusion-style action heads can model rich continuous distributions but introduce a denoising loop and a separate objective. Direct continuous heads change the output interface and add learned decoder parameters. A token-based fill can instead reuse the trunk's logits and cross-entropy machinery, provided the token arithmetic is exact.
-
 ## Editable Interface
 
 The editable surface is a `CustomActionMethod` class plus narrow configuration overrides. The class may define helper methods, but it must preserve the runtime contract:

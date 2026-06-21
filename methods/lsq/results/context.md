@@ -2,9 +2,7 @@
 
 ## Research question
 
-To run deep networks cheaply at inference, we want convolution and fully-connected layers to operate on low-precision integers — 2, 3, or 4 bits for both weights and activations — so the heavy matrix multiplies become low-precision integer operations. The catch is the quantizer: it maps a continuous value v to a small set of integer levels by dividing by a **step size** s, clipping, and rounding. At 2–4 bits there are only a handful of levels, so the *placement* of those levels — equivalently, the value of s for each layer — strongly determines how much accuracy is lost. The question: how do we set the step size for every weight and activation layer so that a network quantized this aggressively retains its full-precision accuracy?
-
-The deeper difficulty is that rounding has zero gradient almost everywhere, so ordinary backprop misses how a change in step size moves values across quantization transitions. We need a way to make each layer's step size a *trainable parameter*, learned jointly with the weights against the task loss, with a sensible gradient flowing back through the quantizer.
+To run deep networks cheaply at inference, we want convolution and fully-connected layers to operate on low-precision integers — 2, 3, or 4 bits for both weights and activations — so the heavy matrix multiplies become low-precision integer operations. The quantizer maps a continuous value v to a small set of integer levels by dividing by a **step size** s, clipping, and rounding. At 2–4 bits there are only a handful of levels, so the *placement* of those levels — equivalently, the value of s for each layer — strongly determines how much accuracy is lost. The question: how do we set the step size for every weight and activation layer so that a network quantized this aggressively retains its full-precision accuracy?
 
 ## Background
 
@@ -22,14 +20,12 @@ Load-bearing prior concepts:
 - **Fine-tuning from a pretrained fp model** (Sung et al.; Zhou et al., DoReFa; Mishra et al., Apprentice; McKinstry et al.) improves quantized accuracy over training from scratch.
 - **Update/parameter-magnitude balance (You et al., 2017, LARS).** Good convergence occurs when, across layers, the ratio of average update magnitude to average parameter magnitude is roughly equal. If a parameter's updates are disproportionately large or small relative to its magnitude, training overshoots or stalls.
 
-A diagnostic observation about prior step-size/clip learning methods, which sets up the problem: PACT learns a clipping value but, by removing the round from the forward equation and cancelling terms, ends up with **zero gradient to its clip parameter inside the quantized domain** — the gradient ignores how close a value sits to a quantization transition. QIL learns a transformation that happens entirely *before* discretization, so its gradient is sensitive only to distance from the clip points, not to the transitions between interior levels. In both, the relative proximity of v to the nearest transition point does *not* affect the gradient to the quantization parameters.
-
 ## Baselines
 
-- **PACT (Choi et al., 2018).** Learns a clipping/domain-width parameter. Its forward approximation removes the round and algebraically cancels terms, giving ∂v̂/∂(param) = 0 for v strictly inside the quantized range. Gap: no gradient signal from interior transitions; clip-only sensitivity.
-- **QIL (Jung et al., 2018).** Learns a transformation of the data applied *prior* to discretization. Gap: its gradient depends only on distance to the clip points, not on proximity to interior quantization transitions.
-- **DoReFa (Zhou et al., 2016).** Fixed (non-learned) quantization with STE, weights/activations to low bits. Gap: no learned step size; level placement is not optimized against the loss.
-- **Fixed-step quantization-aware training** generally: STE through a quantizer with a hand-set or statistically-derived step size. Gap: the step size is not adapted by the task loss, so level placement is suboptimal especially at very low bit-widths.
+- **PACT (Choi et al., 2018).** Learns a clipping/domain-width parameter. Its forward approximation removes the round and algebraically cancels terms.
+- **QIL (Jung et al., 2018).** Learns a transformation of the data applied *prior* to discretization.
+- **DoReFa (Zhou et al., 2016).** Fixed (non-learned) quantization with STE, weights/activations to low bits.
+- **Fixed-step quantization-aware training** generally: STE through a quantizer with a hand-set or statistically-derived step size.
 
 ## Evaluation settings
 

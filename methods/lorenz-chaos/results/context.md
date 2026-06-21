@@ -108,38 +108,27 @@ scheme built on repeating patterns should struggle most where the data never rep
 
 ## Baselines
 
-**Steady-state and periodic dynamics (the expected outcomes).** Core idea: a deterministic system left
+**Steady-state and periodic dynamics (the expected outcomes).** A deterministic system left
 alone approaches a point (steady state), a closed loop (periodic), or a torus (quasi-periodic). For a
 linear dissipative system with constant forcing the response is provably a constant; for a conservative
-system trajectories lie on invariant surfaces `Q = const`. Gap: none of these can be reconciled with a
-*bounded, dissipative, deterministic* system whose trajectories never repeat — and the atmosphere, and
-Saltzman's reduced convection, both look nonperiodic. The standard catalogue of long-term behaviors has
-no slot for sustained aperiodicity, so either the catalogue is incomplete or the observed
-nonperiodicity is an artifact of forcing or noise.
+system trajectories lie on invariant surfaces `Q = const`.
 
-**Nonperiodicity blamed on external causes.** Core idea: since linear dissipative systems with constant
-forcing cannot be nonperiodic, irregular flow is attributed to nonperiodic or random forcing. Gap: the
+**Nonperiodicity attributed to external causes.** Since linear dissipative systems with constant
+forcing cannot be nonperiodic, irregular flow is attributed to nonperiodic or random forcing. The
 rotating-basin convection experiments of Fultz et al. (1959) and Hide (1958) produce irregular
-nonperiodic flow under *constant* thermal forcing, within experimental control. So the irregularity is
-generated internally; the external-forcing explanation fails for the very systems of interest, and the
-internal origin of the irregularity is left unexplained.
+nonperiodic flow under *constant* thermal forcing, within experimental control, suggesting the
+irregularity can be generated internally.
 
-**Linear stability theory around a steady state.** Core idea: linearize the equations about a steady
-solution and examine whether small perturbations grow; the onset of convection is exactly the parameter
-value at which the rest state's perturbations first grow (Rayleigh's `Ra = Rc`). Algorithm: form the
-Jacobian at the fixed point, read off the eigenvalues, find where one crosses into the right half-plane.
-Gap: linear theory predicts only the *onset* of instability and the immediate growth of infinitesimal
-perturbations; it says nothing about what the motion does once the perturbations become finite — whether
-it saturates into steady convection, oscillates periodically, or does something else. The finite-
-amplitude regime is exactly where the interesting question lives, and it is inaccessible to linearization.
+**Linear stability theory around a steady state.** Linearize the equations about a steady solution
+and examine whether small perturbations grow; the onset of convection is exactly the parameter value at
+which the rest state's perturbations first grow (Rayleigh's `Ra = Rc`). Algorithm: form the Jacobian
+at the fixed point, read off the eigenvalues, find where one crosses into the right half-plane.
 
-**Spectral truncation + numerical integration (Saltzman's approach).** Core idea: expand the fields in
-orthogonal functions, truncate to finitely many time-dependent coefficients, integrate the resulting
-ODEs numerically. Algorithm: project the PDEs onto a chosen mode set; advance the coefficient vector
-with a finite-difference time scheme. Gap: Saltzman observed irregular nonperiodic coefficient behavior
-but the system was still relatively large and the nonperiodicity was a reported observation, not a
-property pinned down or explained; whether it was genuine, what minimal system would exhibit it, and
-what it implied for predictability were all open.
+**Spectral truncation + numerical integration (Saltzman's approach).** Expand the fields in orthogonal
+functions, truncate to finitely many time-dependent coefficients, integrate the resulting ODEs
+numerically. Algorithm: project the PDEs onto a chosen mode set; advance the coefficient vector with a
+finite-difference time scheme. Saltzman observed irregular nonperiodic coefficient behavior in certain
+numerical cases.
 
 ## Evaluation settings
 
@@ -155,7 +144,7 @@ printed output truncated to a few decimal places to save space). A convection mo
 carries dimensionless parameters such as a Prandtl number `σ = ν/κ`, a Rayleigh number relative to its
 critical value `r = Ra/Rc`, and a geometric constant set by the cell aspect ratio `a`. The yardstick
 for "nonperiodic" is the failure of the trajectory, or of some sequence derived from it, to repeat; the
-yardstick for "sensitive dependence" is the growth of the separation between neighboring trajectories.
+yardstick for initial-error amplification is the growth of the separation between neighboring trajectories.
 
 ## Code framework
 

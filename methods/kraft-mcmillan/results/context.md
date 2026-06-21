@@ -8,8 +8,6 @@ Two hard requirements collide with that wish. First, we do not send one symbol; 
 
 So the precise problem is: **which length profiles `(ℓ_1,…,ℓ_m)` are actually realizable** by a code that can be decoded? If we make all the `ℓ_i` tiny we will surely create ambiguity; there must be a budget. What is that budget, exactly, and does it depend on *how strong* a decodability requirement we impose — instant decoding versus mere eventual unique decoding? And once we know the budget, **how short can `L` be made**, and how close can we get to that floor in practice?
 
-A solution has to (a) state the exact constraint relating the lengths `ℓ_i`, (b) say whether demanding instant decodability throws away length profiles that mere unique decodability would have allowed, and (c) connect the achievable `L` to the statistics `p_i` of the source.
-
 ## Background
 
 **Codes and their extension.** A source code `C` assigns to each symbol `x ∈ X` a nonempty finite string over the `D`-ary channel alphabet; `ℓ(x) = |C(x)|`. The expected length is `L(C) = Σ_x p(x) ℓ(x)`. To encode a sequence we use the *extension* `C*`, the concatenation `C*(x_1 x_2 ⋯ x_n) = C(x_1)C(x_2)⋯C(x_n)`.
@@ -31,15 +29,13 @@ These form strict containments `prefix ⊂ uniquely decodable ⊂ nonsingular �
 
 The prior art is the set of constructions and partial answers available for variable-length lossless codes.
 
-- **Morse code (telegraphy).** Frequency-sensitive variable-length code over a 4-symbol alphabet (dot, dash, letter-space, word-space). Core idea: short codes for frequent letters. Gap: it is *not* self-punctuating among the dot/dash symbols — it needs explicit spaces between letters, wasting alphabet capacity; and many `D`-ary strings are unused, so it is neither prefix-optimal nor analyzed for an exact length budget.
+- **Morse code (telegraphy).** Frequency-sensitive variable-length code over a 4-symbol alphabet (dot, dash, letter-space, word-space). Core idea: short codes for frequent letters. It is not self-punctuating among the dot/dash symbols — it needs explicit spaces between letters.
 
-- **Shannon–Fano coding (Shannon 1948; Fano).** Order the symbols by probability; recursively split the ordered list into two (or `D`) groups of nearly equal probability and assign the next channel digit by group. Produces a prefix code with an expected-length guarantee on the order of `H_D(X)+1`. Core idea: top-down balanced splitting approximates `ℓ_i ≈ log_D(1/p_i)`. Gap: it is a *suboptimal* heuristic — the greedy split need not minimize `Σ p_i ℓ_i`, and crucially it gives a construction, not a *characterization* of which length profiles are even possible or a matching lower bound on `L`.
+- **Shannon–Fano coding (Shannon 1948; Fano).** Order the symbols by probability; recursively split the ordered list into two (or `D`) groups of nearly equal probability and assign the next channel digit by group. Produces a prefix code with an expected-length guarantee on the order of `H_D(X)+1`. Core idea: top-down balanced splitting approximates `ℓ_i ≈ log_D(1/p_i)`.
 
-- **Sardinas–Patterson test (1953).** A finite algorithm that *decides whether a given code is uniquely decodable* by iteratively forming the set of "dangling suffixes" and checking whether any codeword reappears among them. Core idea: unique decodability is a decidable structural property of the codeword set. Gap: it tests a *given* code; it says nothing about which *length profiles* `(ℓ_i)` admit a UD code, nor whether instant-decodability shrinks the realizable set, nor about expected length.
+- **Sardinas–Patterson test (1953).** A finite algorithm that *decides whether a given code is uniquely decodable* by iteratively forming the set of "dangling suffixes" and checking whether any codeword reappears among them. Core idea: unique decodability is a decidable structural property of the codeword set.
 
-- **Fixed-length / block codes and Shannon's source-coding results (1948).** For an i.i.d. source one can block `n` symbols and use roughly `nH_D(X)` channel digits asymptotically (the basis of the noiseless coding theorem). Core idea: typical-set counting gives an asymptotic rate of `H_D(X)`. Gap: it is asymptotic and combinatorial (about counting typical sequences), not a *per-symbol, finite, exact* statement about variable-length codeword lengths and the budget they must obey; it does not isolate the clean inequality on the `ℓ_i`.
-
-The open gap across all of these: nobody has a *tight, exact* condition `Φ(ℓ_1,…,ℓ_m)` that is **necessary and sufficient** for a decodable code with those lengths to exist, nor is it settled whether the realizable length profiles shrink when one demands instant decodability rather than mere unique decodability.
+- **Fixed-length / block codes and Shannon's source-coding results (1948).** For an i.i.d. source one can block `n` symbols and use roughly `nH_D(X)` channel digits asymptotically (the basis of the noiseless coding theorem). Core idea: typical-set counting gives an asymptotic rate of `H_D(X)`.
 
 ## Evaluation settings
 

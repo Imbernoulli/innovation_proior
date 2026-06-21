@@ -6,24 +6,24 @@ The organizing conjectural picture says that the manifold should split into geom
 
 ## Dynamic Route
 
-One available route is to stop searching directly for the splitting surfaces and instead place an arbitrary smooth Riemannian metric on the manifold. The metric can then be evolved by the intrinsic equation `partial_t g_ij = -2 R_ij`.
+One available route places an arbitrary smooth Riemannian metric on the manifold and evolves it by the intrinsic equation `partial_t g_ij = -2 R_ij`.
 
-This equation behaves like a nonlinear heat equation for geometry. In favorable curvature settings it smooths and rounds the metric, and in some special cases convergence already identifies the underlying topology. The attraction of the route is that it turns a discrete topological classification problem into a continuous geometric process.
+This equation behaves like a nonlinear heat equation for geometry. In favorable curvature settings it smooths and rounds the metric, and in some special cases convergence already identifies the underlying topology. The route turns a discrete topological classification problem into a continuous geometric process.
 
-## Singular Obstruction
+## Singular Behavior
 
-The same evolution that smooths favorable metrics can form finite-time singularities. Curvature may become unbounded in a small region while staying controlled elsewhere. At such a time the differential equation cannot simply be continued as a smooth flow.
+The same evolution that smooths favorable metrics can form finite-time singularities. Curvature may become unbounded in a small region while staying controlled elsewhere. At such a time the differential equation is not continued as a smooth flow.
 
-The hopeful picture is that the singular region is topologically meaningful. A shrinking cylindrical neck has cross-sections that are 2-spheres, and cutting through such a neck is exactly the kind of operation used in topological decomposition. The difficulty is that the flow must prove the neck picture rather than assume it.
+One picture is that the singular region is topologically meaningful: a shrinking cylindrical neck has cross-sections that are 2-spheres, and cutting through such a neck is the kind of operation used in topological decomposition.
 
-## Missing Control
+## Local Models
 
-A direct singularity strategy needs compactness after rescaling around high-curvature points. That requires more than curvature bounds. It also needs a lower volume scale, otherwise the rescaled pictures can collapse and fail to produce usable local models.
+To analyze a high-curvature point one rescales the metric around it and looks for a limiting model geometry. Taking such a limit uses compactness for sequences of solutions with bounded curvature, together with a lower volume scale on the relevant balls.
 
-The strategy must also decide when a high-curvature region is standard enough to justify a cut, when it is instead a terminal positive-curvature component, and how the estimates survive after the cut. Without these controls, surgery is only a plausible heuristic.
+Once a model is in hand, the high-curvature region may be of several kinds: a region modeled on a standard neck, a terminal positive-curvature component, or another configuration, and the geometric estimates are tracked through any cut that is made.
 
-## Required Artifact
+## Setting
 
-The final artifact should be an evolution-and-surgery protocol with a proof pipeline: start from any smooth metric, run the geometric heat equation, prove enough compactness and model control near singular regions, continue past legitimate singular times, and read off the resulting geometric decomposition.
+The setting is an evolution-and-surgery process: start from any smooth metric, run the geometric heat equation, analyze the geometry near singular regions, continue past singular times, and read off a resulting geometric decomposition.
 
-It should also distinguish the case where all components disappear in finite time from the case where a long-time geometric decomposition remains to be analyzed.
+It includes both the case where all components disappear in finite time and the case where a long-time geometric decomposition remains to be analyzed.

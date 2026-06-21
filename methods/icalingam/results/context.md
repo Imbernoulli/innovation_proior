@@ -2,21 +2,20 @@
 
 We observe a sample of continuous-valued vectors `x = (x_1, ..., x_m)` and we want the *causal*
 structure that generated them — not just the joint distribution, but a directed graph that says
-which variable is a cause of which, together with the strengths of those causal links. The
-practical stakes are high: a causal model is what lets you predict the effect of an
-*intervention* (forcing `x_j` to a value), whereas a purely associational model cannot.
-Controlled experiments would settle causality directly, but in many domains they are impossible
-or prohibitively expensive, so we are stuck with purely *observational* data and must ask: under
-what assumptions, and by what procedure, can the full causal structure — direction *and*
-coefficients — be recovered from observation alone?
+which variable is a cause of which, together with the strengths of those causal links. A causal
+model is what lets you predict the effect of an *intervention* (forcing `x_j` to a value), whereas
+a purely associational model cannot. Controlled experiments would settle causality directly, but
+in many domains they are impossible or prohibitively expensive, so we are working with purely
+*observational* data and must ask: under what assumptions, and by what procedure, can the full
+causal structure — direction *and* coefficients — be recovered from observation alone?
 
-The hard part is direction. The data-generating process is taken to be linear, recursive (it can
-be written so that no later variable causes an earlier one, i.e. it is a directed acyclic graph),
-with each variable a weighted sum of its causal parents plus its own independent noise, and with
-no hidden common causes. The goal is a procedure that, given enough samples, returns the entire
-weighted DAG with no undetermined parameters and *without* being told a time order or any other
-ordering of the variables in advance, and that remains usable when the number of variables is in
-the tens or hundreds rather than a handful.
+The data-generating process is taken to be linear, recursive (it can be written so that no later
+variable causes an earlier one, i.e. it is a directed acyclic graph), with each variable a
+weighted sum of its causal parents plus its own independent noise, and with no hidden common
+causes. The goal is a procedure that, given enough samples, returns the entire weighted DAG —
+direction and all coefficients — *without* being told a time order or any other ordering of the
+variables in advance, and that remains usable when the number of variables is in the tens or
+hundreds rather than a handful.
 
 ## Background
 
@@ -38,27 +37,25 @@ form is exactly the algebraic signature of acyclicity. Solving, `x = (I - B)^{-1
 tradition the disturbances `e_i` are taken (explicitly or implicitly) to be Gaussian, and
 estimation rests on second-order statistics — the data covariance matrix.
 
-The load-bearing diagnostic fact about this landscape is what Gaussianity costs you. If the `e_i`
-are Gaussian, the joint distribution of `x` is multivariate Gaussian, and *everything* observable
-about it is in its mean and covariance matrix. But many distinct causal graphs produce the same
-covariance. The cleanest case is two variables. Model 1: `x_1 = e_1`, `x_2 = 0.8 x_1 + e_2`,
-with `var(e_1)=1`, `var(e_2)=0.36`, so `var(x_1)=var(x_2)=1` and `cov(x_1,x_2)=0.8`. Model 2:
-`x_1 = 0.8 x_2 + e_1`, `x_2 = e_2`, with `var(e_1)=0.36`, `var(e_2)=1`, giving the *identical*
-means (0), variances (1), and covariance (0.8). The two `B` matrices — one with `b_21=0.8`, the
-other with `b_12=0.8` — are completely different causal stories, yet under Gaussian noise they
-yield the same distribution. No method that reads only the covariance can prefer `x_1 -> x_2`
-over `x_1 <- x_2`. More generally, with Gaussian noise the search returns only a *Markov
-equivalence class* of graphs (summarized as a partially directed graph): some edges stay
-undirected because their orientation cannot be determined, and the connection strengths are not
-uniquely identified. Constraint-based discovery on Gaussian data hits this wall by construction.
+Consider what Gaussianity implies. If the `e_i` are Gaussian, the joint distribution of `x` is
+multivariate Gaussian, and everything observable about it is in its mean and covariance matrix.
+Many distinct causal graphs produce the same covariance. The cleanest case is two variables.
+Model 1: `x_1 = e_1`, `x_2 = 0.8 x_1 + e_2`, with `var(e_1)=1`, `var(e_2)=0.36`, so
+`var(x_1)=var(x_2)=1` and `cov(x_1,x_2)=0.8`. Model 2: `x_1 = 0.8 x_2 + e_1`, `x_2 = e_2`, with
+`var(e_1)=0.36`, `var(e_2)=1`, giving the *identical* means (0), variances (1), and covariance
+(0.8). The two `B` matrices — one with `b_21=0.8`, the other with `b_12=0.8` — describe different
+causal stories, yet under Gaussian noise they yield the same distribution. A method that reads
+only the covariance cannot prefer `x_1 -> x_2` over `x_1 <- x_2`. More generally, with Gaussian
+noise the search returns a *Markov equivalence class* of graphs (summarized as a partially
+directed graph): some edges are undirected, and the connection strengths are not uniquely
+identified.
 
-Two further pieces of the landscape matter. First, there is evidence that the symmetry can be
-broken if one looks past the covariance: with *non-Gaussian* noise, the two-variable cause/effect
-direction becomes distinguishable using higher-order statistics (Dodge & Rousson 2001 relate the
-asymmetry to the third moment in a regression; Shimizu & Kano 2006 use non-normality in SEM to
-recover the direction of causation). Second, there is a well-developed body of statistical theory
-about recovering a *linear mixture of independent non-Gaussian sources* — independent component
-analysis — summarized next as a baseline technique.
+Two further pieces of the landscape matter. First, with *non-Gaussian* noise, the two-variable
+cause/effect direction becomes distinguishable using higher-order statistics (Dodge & Rousson
+2001 relate the asymmetry to the third moment in a regression; Shimizu & Kano 2006 use
+non-normality in SEM to recover the direction of causation). Second, there is a well-developed
+body of statistical theory about recovering a *linear mixture of independent non-Gaussian
+sources* — independent component analysis — summarized next as a baseline technique.
 
 ## Baselines
 
@@ -70,19 +67,14 @@ Pearl 2000; Chickering 2002).** PC estimates the set of conditional independenci
 variables (by repeated independence tests), recovers the undirected skeleton, then orients edges
 where the independence pattern forces an orientation (colliders, then Meek-style propagation).
 GES greedily adds/removes edges to optimize a penalized likelihood score. Both are principled and
-scale to many variables. **Gap:** on continuous linear-Gaussian data they recover only the Markov
-equivalence class. Where two graphs imply the same conditional-independence set (the
-two-variable example above, and in general any pair of orientations not pinned by a collider),
-they return an undirected or ambiguous edge; the connection strengths are not identified. Their
-information source — conditional independence, equivalently the covariance in the Gaussian case —
-simply does not contain the direction in those cases.
+scale to many variables. Their information source is conditional independence — equivalently the
+covariance in the Gaussian case — and on continuous linear-Gaussian data they recover the Markov
+equivalence class.
 
 **Gaussian SEM / covariance-structure analysis (Bollen 1989).** Fit `x = Bx + e` by matching the
 model-implied covariance `(I-B)^{-1} D (I-B)^{-T}` (with `D = cov(e)` diagonal) to the sample
-covariance, typically by maximum likelihood under joint Gaussianity. **Gap:** the fit depends on
-`B` only through the implied covariance, and many `B` (with different orientations) imply the same
-covariance, so the model is fit-equivalent across causal directions; a pre-specified ordering or
-other external knowledge is needed to pick one.
+covariance, typically by maximum likelihood under joint Gaussianity. The fit depends on `B` only
+through the implied covariance.
 
 **Independent component analysis (ICA) (Comon 1994; Hyvärinen 1999; Hyvärinen, Karhunen & Oja
 2001).** ICA models an observed vector as `x = A s` where the latent sources `s_j` are mutually
@@ -99,20 +91,15 @@ choice `G(u) = (1/a) log cosh(a u)`, derivative `g(u) = tanh(a u)`); maximize it
 fixed-point Newton iteration `w+ = E{z g(w^T z)} - E{g'(w^T z)} w`, renormalize `w <- w+/||w+||`,
 and estimate all components together with a symmetric decorrelation `W <- (W W^T)^{-1/2} W`.
 FastICA estimates super- and sub-Gaussian components without knowing the source densities, and
-converges fast (quadratically, even cubically for symmetric densities). **Gap as a causal tool:**
-ICA alone does not solve a causal problem — it returns `W` with the rows in an arbitrary order and
-each row arbitrarily scaled and signed, so on its own it gives no correspondence between recovered
-components and observed variables, and no notion of acyclic ordering. And the non-Gaussianity
-contrast is non-convex: a fixed-point run from a poor initialization can settle in a local
-optimum. A standard combinatorial primitive is also available: the **linear assignment problem**,
-which minimizes a sum of one-to-one matching costs and is solved in `O(m^3)` by the Hungarian
-algorithm (Kuhn 1955; Burkard & Cela 1999).
+converges fast (quadratically, even cubically for symmetric densities). It returns `W` with the
+rows in an arbitrary order and each row arbitrarily scaled and signed. A standard combinatorial
+primitive is also available: the **linear assignment problem**, which minimizes a sum of
+one-to-one matching costs and is solved in `O(m^3)` by the Hungarian algorithm (Kuhn 1955;
+Burkard & Cela 1999).
 
 **Two-variable non-Gaussian direction results (Dodge & Rousson 2001; Shimizu & Kano 2006).** For
 *two* variables these works show the cause/effect direction is recoverable from non-Gaussianity
-(via third-moment / non-normality asymmetries in the regression). **Gap:** they settle the
-two-variable case but do not give a general procedure that returns the entire weighted DAG, with
-ordering and all coefficients, for `m` variables at once.
+(via third-moment / non-normality asymmetries in the regression).
 
 ## Evaluation settings
 
@@ -140,9 +127,8 @@ regression (`sklearn.linear_model`) for fitting coefficients. The benchmark harn
 method an `n x m` data matrix and expects back an `m x m` adjacency matrix `B` with `B[i, j] != 0`
 read as the directed edge `j -> i`.
 
-What is *not* settled is the procedure that turns the raw data into that adjacency matrix — that
-is the one empty slot. The scaffold is a single function with the I/O fixed and the body left to
-design:
+The procedure that turns the raw data into that adjacency matrix is the one empty slot. The
+scaffold is a single function with the I/O fixed and the body left to design:
 
 ```python
 import numpy as np

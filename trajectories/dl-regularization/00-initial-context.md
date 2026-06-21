@@ -1,15 +1,15 @@
 ## Research question
 
-A deep convolutional image classifier has far more parameters than the data can constrain, so it overfits: training accuracy approaches perfect while held-out accuracy stalls. The design target is one **additional regularization term** — a differentiable scalar computed every training step from the model, the batch, and the current logits, and *added* to the cross-entropy loss before backpropagation. Everything else is frozen: architectures, Kaiming initialization, data and augmentation, the optimizer (`SGD`, `lr=0.1`, `momentum=0.9`, `weight_decay=5e-4` — plain L2 weight decay is already on), the cosine schedule, and the evaluation procedure. The term must generalize across three architecture/dataset pairs, stay differentiable, and be cheap enough to run on every step.
+A deep convolutional image classifier has far more parameters than the data can constrain. The design target is one **additional regularization term** — a differentiable scalar computed every training step from the model, the batch, and the current logits, and *added* to the cross-entropy loss before backpropagation. Everything else is frozen: architectures, Kaiming initialization, data and augmentation, the optimizer (`SGD`, `lr=0.1`, `momentum=0.9`, `weight_decay=5e-4` — plain L2 weight decay is already on), the cosine schedule, and the evaluation procedure. The term must generalize across three architecture/dataset pairs, stay differentiable, and be cheap enough to run on every step.
 
 ## Prior art / Background / Baselines
 
-- **Weight decay / L2 (Krogh & Hertz 1991).** Penalize `||W||^2`, shrinking every weight toward zero. *Gap:* it controls the overall scale of the weight spectrum, not its shape, and it is already applied through the optimizer (`weight_decay=5e-4`), so any new term must do something L2 does not.
-- **Dropout (Srivastava et al. 2014).** Zero each hidden unit independently with probability `1-p` and rescale survivors, so each forward pass samples a thinned sub-network. *Gap:* on a convolutional feature map the activations are spatially correlated, so zeroing one scalar removes little information because neighboring units carry the same signal; dropout is largely absent from convolutional layers.
-- **Batch normalization (Ioffe & Szegedy 2015).** Normalize activations per channel, acting as a strong implicit regularizer. *Gap:* it operates on activations and leaves the weight spectrum and the output distribution untouched.
-- **Label smoothing (Szegedy et al. 2016).** Soften the one-hot target toward uniform to curb over-confident outputs. *Gap:* it acts by modifying the target and therefore the base loss, whereas this edit surface forbids changing the cross-entropy itself — a regularizer here can only *add* a scalar term.
+- **Weight decay / L2 (Krogh & Hertz 1991).** Penalize `||W||^2`, shrinking every weight toward zero. Already applied through the optimizer (`weight_decay=5e-4`).
+- **Dropout (Srivastava et al. 2014).** Zero each hidden unit independently with probability `1-p` and rescale survivors, so each forward pass samples a thinned sub-network.
+- **Batch normalization (Ioffe & Szegedy 2015).** Normalize activations per channel, acting as a strong implicit regularizer.
+- **Label smoothing (Szegedy et al. 2016).** Soften the one-hot target toward uniform to curb over-confident outputs.
 
-These act on weights, hidden units, activations, or the loss target; none is an additional, adaptive, loss-side penalty layered on a pipeline that already has L2 and batch normalization.
+These methods act on weights, hidden units, activations, or the loss target respectively.
 
 ## Fixed substrate / Code framework
 

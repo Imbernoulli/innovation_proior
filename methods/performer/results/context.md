@@ -2,9 +2,9 @@
 
 ## Research question
 
-Self-attention is the engine of the modern sequence model, but it carries a cost that scales with the square of the sequence length. For an input of `L` tokens with hidden dimension `d`, the attention operation forms an `L × L` matrix of pairwise interaction scores, normalizes it, and uses it to mix value vectors. Building and storing that matrix costs `O(L²d)` time and `O(L² + Ld)` memory. For `L` in the hundreds this is fine; for `L` in the thousands to tens of thousands — protein chains of length 8192, images flattened to 12288 pixels, book-length text — the quadratic term dominates and the model simply runs out of memory or time.
+Self-attention is the engine of the modern sequence model, but it carries a cost that scales with the square of the sequence length. For an input of `L` tokens with hidden dimension `d`, the attention operation forms an `L × L` matrix of pairwise interaction scores, normalizes it, and uses it to mix value vectors. Building and storing that matrix costs `O(L²d)` time and `O(L² + Ld)` memory. For `L` in the hundreds this is fine; for `L` in the thousands to tens of thousands — protein chains of length 8192, images flattened to 12288 pixels, book-length text — the quadratic term dominates.
 
-The question is whether attention can be made to scale **linearly** in `L`, in both time and memory, while keeping full dense softmax attention as the approximation target rather than imposing a sparse or low-rank pattern. A solution would have to: (a) avoid ever materializing the `L × L` score matrix; (b) come with a guarantee that the cheap computation is close to the exact one; (c) be numerically stable enough to train end-to-end; and (d) drop into an existing architecture without specialized kernels or full retraining.
+The question is whether attention can be made to scale **linearly** in `L`, in both time and memory, while keeping full dense softmax attention as the approximation target rather than imposing a sparse or low-rank pattern.
 
 ## Background
 
@@ -20,17 +20,15 @@ where `exp` is elementwise and `1_L` is the all-ones vector. Row `i` of the outp
 
 **Orthogonal random features.** Yu et al. (2016) observed that if the sampling distribution is isotropic, one can entangle random vectors `ω_i` to be **exactly orthogonal** within a block (e.g. by Gram-Schmidt on a Gaussian matrix) while leaving each marginal distribution unchanged. This keeps the estimator unbiased but reduces its variance versus independent sampling. Prior guarantees for this variance reduction were asymptotic — they held only for large enough dimension `d`.
 
-**Diagnostic facts about cheap-attention attempts.** One observation about existing approximations sets up the problem: methods that swap softmax for an arbitrary feature map `φ(q)ᵀφ(k)` (e.g. `φ = elu(·)+1`) to get linear cost are observed to train unstably — exploding gradients and `NaN` losses — even when the underlying associativity that buys the linear cost is implemented correctly.
-
 ## Baselines
 
-**Sparse / local attention** (Sparse Transformer, Child et al. 2019; Image Transformer, Parmar et al. 2018; Longformer; Routing Transformer with `k`-means clustering). Idea: restrict each query to attend to a fixed or learned subset of keys (a local window, strided pattern, or cluster), so the score matrix has `O(L)` nonzeros. Cost drops toward `O(L√L)` or `O(L)`. Gaps: these do not approximate full softmax — they replace it with a structurally different, sparser mechanism; the sparsity pattern is a prior that may not match the data; there is no rigorous bound on lost representation power; and the patterns often require hand-written CUDA or TVM kernels to realize the speedup.
+**Sparse / local attention** (Sparse Transformer, Child et al. 2019; Image Transformer, Parmar et al. 2018; Longformer; Routing Transformer with `k`-means clustering). Idea: restrict each query to attend to a fixed or learned subset of keys (a local window, strided pattern, or cluster), so the score matrix has `O(L)` nonzeros. Cost drops toward `O(L√L)` or `O(L)`.
 
-**Reformer** (Kitaev et al. 2020). Idea: use locality-sensitive hashing to bucket queries and keys with high dot product into the same bin, computing attention only within bins → `O(L log L)`. Also uses reversible layers to save activation memory. Gaps: requires tying queries and keys (`Q=K`); it is an approximation with no unbiasedness guarantee; it bakes in the assumption that only a few large scores matter (sparsity prior).
+**Reformer** (Kitaev et al. 2020). Idea: use locality-sensitive hashing to bucket queries and keys with high dot product into the same bin, computing attention only within bins → `O(L log L)`. Also uses reversible layers to save activation memory.
 
-**Linformer** (Wang et al. 2020). Idea: project the `L` keys and values down to `k ≪ L` rows with learned linear maps, assuming the attention matrix is approximately low-rank → `O(Lk)`. Gaps: it is a **biased** estimator with large mean-squared error; it is defined only for the non-causal (bidirectional) case because the projection mixes across all positions; and it assumes low rank, which need not hold.
+**Linformer** (Wang et al. 2020). Idea: project the `L` keys and values down to `k ≪ L` rows with learned linear maps, assuming the attention matrix is approximately low-rank → `O(Lk)`.
 
-**Linear Transformer / "Transformers are RNNs"** (Katharopoulos et al. 2020). Idea: replace `exp(qᵀk)` outright with `φ(q)ᵀφ(k)` for a fixed positive feature map `φ(x)=elu(x)+1`, then exploit that `Σ_j φ(q_i)ᵀφ(k_j) v_jᵀ = φ(q_i)ᵀ(Σ_j φ(k_j) v_jᵀ)` — the key-value sum is shared across queries, giving `O(Lrd)` cost and an `O(1)`-state recurrence in the causal case. Gap: `φ` is chosen by hand and does **not** approximate the softmax kernel — it changes the attention function — and the resulting models are observed to be numerically unstable, producing exploding gradients.
+**Linear Transformer / "Transformers are RNNs"** (Katharopoulos et al. 2020). Idea: replace `exp(qᵀk)` outright with `φ(q)ᵀφ(k)` for a fixed positive feature map `φ(x)=elu(x)+1`, then exploit that `Σ_j φ(q_i)ᵀφ(k_j) v_jᵀ = φ(q_i)ᵀ(Σ_j φ(k_j) v_jᵀ)` — the key-value sum is shared across queries, giving `O(Lrd)` cost and an `O(1)`-state recurrence in the causal case.
 
 ## Evaluation settings
 

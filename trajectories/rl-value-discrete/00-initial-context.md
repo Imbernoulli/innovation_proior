@@ -4,13 +4,11 @@ Design a value-based reinforcement-learning algorithm for **discrete** action sp
 
 ## Prior art / Background / Baselines
 
-The substrate is plain DQN, the current baseline for value-based discrete control. Each prior method below is summarized by its core idea and the concrete limitation it leaves.
+The substrate is plain DQN, the current baseline for value-based discrete control.
 
-- **Tabular Q-learning (Watkins 1989).** It learns `Q(s,a)` by stochastic fixed-point iteration toward `r + γ max_{a'} Q(s',a')`. **Gap:** it stores one entry per state-action pair, so it cannot generalize across continuous state vectors.
-- **Neural fitted Q / function approximation (Riedmiller 2005).** It replaces the table with a neural-network regressor `Q(s,a;θ)`. **Gap:** bootstrapping a network off its own moving predictions on correlated online samples is unstable; the target drifts as θ changes and consecutive transitions are highly correlated.
-- **DQN (Mnih et al. 2015).** It stabilizes neural fitted Q with an experience-replay buffer and a periodically frozen target network that supplies the bootstrap target, with epsilon-greedy action selection from a single linear head. **Gap:** its greedy policy is sensitive to approximation errors in the Q-values, and its evaluation returns on the harder tasks plateau below the apparent ceiling for the fixed budget.
-
-This is the default fill below.
+- **Tabular Q-learning (Watkins 1989).** It learns `Q(s,a)` by stochastic fixed-point iteration toward `r + γ max_{a'} Q(s',a')`, storing one entry per state-action pair.
+- **Neural fitted Q / function approximation (Riedmiller 2005).** It replaces the table with a neural-network regressor `Q(s,a;θ)` trained by regression on bootstrapped targets.
+- **DQN (Mnih et al. 2015).** It stabilizes neural fitted Q with an experience-replay buffer and a periodically frozen target network that supplies the bootstrap target, with epsilon-greedy action selection from a single linear head.
 
 ## Fixed substrate / Code framework
 

@@ -5,39 +5,33 @@
 A learner is shown a sequence of supervised tasks one after another — task 1, then task 2, and
 so on — and must keep performing *all* of them. The hard fact about this setting is catastrophic
 forgetting (McCloskey & Cohen 1989; Robins 1995): if you simply keep training the same network on
-each new task, gradient descent on task `t` overwrites exactly the weights that solved tasks
-`< t`, and accuracy on the old tasks collapses. So the problem is to learn each new task well
-while losing as little as possible of what was already learned.
+each new task, gradient descent on task `t` overwrites the weights that solved tasks `< t`, and
+accuracy on the old tasks drops. The problem is to learn each new task well while losing as little
+as possible of what was already learned.
 
-What makes this concrete (and hard) is the regime the field has converged on as realistic:
-**a single pass over each task's data**, full supervision, an integer task id available at train
-and test time to pick the right output head, and — critically — only a **small, fixed-size
-episodic memory** in which the learner may stash a handful of past examples. The single-pass
-constraint says learning must be fast and online; the small-memory constraint is what separates
-continual learning from ordinary multi-task learning, where the complete dataset of every task is
-sitting around at every step. A solution would have to (1) substantially reduce forgetting,
-(2) cost almost nothing on top of plain fine-tuning, both in compute and in memory, and (3) work
-even when the memory is genuinely tiny — a few examples per class. The existing methods below each
-hit one of these and pay on another.
+The regime the field treats as realistic: **a single pass over each task's data**, full
+supervision, an integer task id available at train and test time to pick the right output head,
+and only a **small, fixed-size episodic memory** in which the learner may stash a handful of past
+examples. The single-pass constraint says learning is online; the small-memory constraint is what
+separates continual learning from ordinary multi-task learning, where the complete dataset of every
+task is available at every step. The question is how to update the network from each new minibatch
+in a way that keeps old-task accuracy high, given only that tiny buffer of past examples.
 
 ## Background
 
 The field state. The dominant framings split into two families. **Regularization-based** methods
-try to protect the weights that mattered for old tasks: after finishing a task they store a
-per-parameter importance measure and, on later tasks, add a penalty that pulls each weight back
-toward its old value in proportion to that importance. **Memory-based** (rehearsal) methods keep a
-small set of past examples and use them, in one way or another, to stop the loss on old tasks from
-climbing. The prevailing wisdom in 2018-2019, established by the single-pass studies, was that
-memory-based methods beat regularization-based ones in this online regime, and that the *right*
-way to use the memory is as a **constraint on the optimization** — let the memory veto or rotate a
-gradient step that would damage old tasks, rather than train on the memory directly.
+protect the weights that mattered for old tasks: after finishing a task they store a per-parameter
+importance measure and, on later tasks, add a penalty that pulls each weight back toward its old
+value in proportion to that importance. **Memory-based** (rehearsal) methods keep a small set of
+past examples and use them to stop the loss on old tasks from climbing. In the single-pass studies
+of 2018-2019, memory-based methods were reported to do better than regularization-based ones in this
+online regime, and the prominent memory-based methods used the memory as a **constraint on the
+optimization** — letting the memory veto or rotate a gradient step that would damage old tasks.
 
-That last point was not just a preference; it was an explicit warning. The gradient-constraint
-line stated outright that minimizing the current-example loss *together with* the loss on the
-episodic memory "results in overfitting to the examples stored in [the memory]" (Lopez-Paz &
-Ranzato 2017). With only a few stored examples per class, repeatedly taking gradient steps on them
-looks like a textbook recipe for memorizing that handful and generalizing to nothing. So the
-design space was shaped by an assumed failure mode: *do not train on the tiny memory.*
+The gradient-constraint line noted that minimizing the current-example loss *together with* the loss
+on the episodic memory "results in overfitting to the examples stored in [the memory]" (Lopez-Paz &
+Ranzato 2017), since with only a few stored examples per class repeated gradient steps on them risk
+memorizing that handful.
 
 The load-bearing concepts. **Catastrophic forgetting** as the core obstacle. The **single-pass /
 fixed-memory protocol** (Chaudhry et al. 2019) as the evaluation contract: a small cross-validation
@@ -51,27 +45,17 @@ slot. And from reinforcement learning, the long-standing observation (Lin 1992; 
 2013, 2015) that replaying stored transitions from a large buffer over many passes stabilizes
 learning — though in supervised continual learning the buffer is tiny and the stream is seen once.
 
-A diagnostic worth holding onto, established about the prior memory-based methods: a method that
-uses the memory only as a *constraint* tends to **underfit** — even after many steps its accuracy
-on the stored memory examples does not reach 100%, and its accuracy on the current task's own
-training set remains short of full fit. The constrained update is cautious; it does not fully fit
-either the memory or the new task.
-
 ## Baselines
 
 **Fine-tune (Vanilla).** Initialize task `t` from the parameters left by task `t-1` and train with
-ordinary SGD and cross-entropy, no memory, no penalty. Cheapest possible; the reference point. Its
-gap is the whole problem: it forgets heavily in the single-pass regime because nothing resists the
-overwriting of old weights.
+ordinary SGD and cross-entropy, no memory, no penalty. The cheapest possible method and the
+reference point.
 
 **EWC** (Kirkpatrick et al. 2017). A regularization method. After learning a task it estimates,
 for each weight, how important that weight was, via the diagonal of the Fisher information matrix
 `F_i` (the expected squared gradient of the log-likelihood). On the next task it minimizes
 `L_t(θ) + Σ_i (λ/2) F_i (θ_i − θ*_i)^2`, anchoring important weights near their old values `θ*`.
 Memory cost in the worst case equals the number of parameters (one importance scalar per weight).
-Gap: under a single pass it barely improves on fine-tune; it is sensitive to the strength `λ`, and
-the quadratic anchor is a rigid, isotropic-in-importance pull in parameter space that does not
-know which *directions* actually preserve old-task function.
 
 **GEM** (Lopez-Paz & Ranzato 2017). A memory method that treats the loss on each past task's
 memory as an **inequality constraint**: minimize the current-task loss subject to
@@ -79,15 +63,13 @@ memory as an **inequality constraint**: minimize the current-task loss subject t
 Operationally, at each step it computes a gradient `g_k` on each past task's memory and, if the
 proposed update `g` makes a negative-inner-product violation with some `g_k`
 (`⟨g, g_k⟩ < 0`), projects `g` to the nearest vector `g̃` (in L2) satisfying
-`⟨g̃, g_k⟩ ≥ 0 ∀k < t`. That projection is a
-quadratic program; solved in the dual it has `t-1` variables, and it requires assembling the
-matrix `G = (g_1, …, g_{t-1}) ∈ R^{(t-1)×P}` every step. GEM even allows *positive backward
-transfer* (old-task loss may decrease). Gap: the per-step QP plus the storage and computation of
-`G` make it expensive and scale poorly as the number of tasks grows.
+`⟨g̃, g_k⟩ ≥ 0 ∀k < t`. That projection is a quadratic program; solved in the dual it has `t-1`
+variables, and it requires assembling the matrix `G = (g_1, …, g_{t-1}) ∈ R^{(t-1)×P}` every step.
+GEM also allows *positive backward transfer* (old-task loss may decrease).
 
-**A-GEM** (Chaudhry et al. 2019). GEM made cheap by replacing the `t-1` per-task constraints with
-a single *averaged* one: sample one random minibatch from the union of all memories, take its
-gradient `g_ref`, and require only `⟨g̃, g_ref⟩ ≥ 0`. Now the projection has a closed form — if
+**A-GEM** (Chaudhry et al. 2019). GEM with the `t-1` per-task constraints replaced by a single
+*averaged* one: sample one random minibatch from the union of all memories, take its gradient
+`g_ref`, and require only `⟨g̃, g_ref⟩ ≥ 0`. The projection then has a closed form — if
 `g^T g_ref ≥ 0`, keep `g`; otherwise
 
 ```
@@ -95,20 +77,14 @@ g̃ = g − (g^T g_ref / g_ref^T g_ref) g_ref
 ```
 
 i.e. subtract off the component of `g` that points against the memory gradient. No QP, no stored
-`G` — just one extra gradient and one inner product per step, orders of magnitude faster than GEM
-with comparable single-pass accuracy. Gap: the memory still only ever acts as a *veto* — it is
-used *only when there is a violation*, and even then it just removes a component of the
-current-task gradient rather than driving the loss on past tasks down. These cautious, constrained
-updates are exactly what produce the underfitting noted above: A-GEM's memory accuracy can stay
-below 100% even after a thousand samples, and its current-task training fit remains short of what
-ordinary direct fitting of the available data would allow.
+`G` — one extra gradient and one inner product per step, much faster than GEM with comparable
+single-pass accuracy. The memory acts as a *veto*: it is used only when there is a violation, and
+then it removes a component of the current-task gradient.
 
 **MER** (Riemer et al. 2018). Also keeps an episodic memory, but combines current and memory
 examples through a Reptile-style meta-learning objective whose inner updates approximately maximize
 the dot products between gradients of current and past tasks (encouraging gradient alignment).
-Strong in the single-pass regime. Gap: the meta-update with its inner loop is computationally
-heavy — markedly slower per task than the constraint-based methods, which is costly in an online
-setting that prizes fast learning.
+Reported strong in the single-pass regime; the meta-update carries an inner loop per step.
 
 ## Evaluation settings
 
@@ -138,8 +114,7 @@ exposes four lifecycle hooks the outer loop calls: `__init__` once, `start_task`
 `observe` on every training minibatch (move to device, zero grads, compute the loss, backprop,
 optional grad-clip, step), and `end_task` after each task. The plain fine-tune baseline lives
 entirely in these hooks with empty `start_task`/`end_task` bodies and a bare single-batch
-`observe`. What a forgetting-mitigation strategy actually *does* inside these hooks is exactly the
-open slot.
+`observe`. What a forgetting-mitigation strategy actually *does* inside these hooks is the open slot.
 
 ```python
 import torch
@@ -191,3 +166,5 @@ class Sequential(nn.Module):
 
 The strategy is whatever fills `__init__`, `start_task`, `observe`, and `end_task` — the harness
 above is everything that exists before that choice is made.
+</content>
+</invoke>

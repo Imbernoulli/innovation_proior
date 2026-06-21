@@ -15,7 +15,7 @@ and molecule sizes) and *conformational* variation (the same molecule in many ge
 equilibrium), so that it can be used not only for property prediction on relaxed structures
 but for force-driven tasks like geometry optimization and molecular dynamics.
 
-A valid model is heavily constrained by physics, and these constraints are the hard part:
+A valid model is heavily constrained by physics:
 
 - **Invariance.** The energy is a scalar physical observable, so it must be invariant to
   rigid rotation, translation, and to the (arbitrary) indexing of atoms. The force on atom
@@ -23,18 +23,12 @@ A valid model is heavily constrained by physics, and these constraints are the h
 - **Energy conservation.** The force field must be curl-free, i.e. it must be the (negative)
   gradient of a scalar potential. If it were not, one could follow a closed loop of atom
   positions along which the energy strictly increases, manufacturing energy from nothing —
-  a violation of energy conservation. Any model that predicts forces as a free vector field,
-  decoupled from a scalar energy, can break this.
+  a violation of energy conservation.
 - **Smoothness.** The potential-energy surface and its derivatives must be smooth in the atom
   positions. Geometry optimization needs a continuous gradient `∂E/∂r`. Training a model on
   *forces* (not just energies) needs the energy model to be *twice* differentiable, because
   the force is already one derivative of the energy and a gradient-based loss on the force
-  takes one more. Any discontinuity in `E(R)` — a binning edge, a hard neighbor cutoff, a
-  one-hot bond-type flag that flips as a bond stretches — turns into a spike or a gap in the
-  force and makes force training ill-posed.
-
-The pain point is that the representations that scale and the representations that are smooth
-and physically valid were, at the time, two different camps; closing that gap is the problem.
+  takes one more.
 
 ## Background
 
@@ -47,10 +41,9 @@ operate on discretized signals — image pixels, video frames, audio samples —
 is a small tensor indexed by integer grid offsets `Δ`, and the layer computes
 `x_i' = Σ_Δ x_{i+Δ} · W[Δ]`. Atoms sit at arbitrary continuous positions in `R^3`. The
 obvious workaround — voxelize space and resample atoms onto a grid — forces a choice of
-interpolation scheme, needs many grid points for adequate resolution, and, fatally, makes the
-output change discontinuously as an atom crosses a voxel boundary. The same difficulty arises
-for other unevenly-spaced data (astronomical time series, climate records, finance), and has
-prompted extensions of convolution beyond Euclidean grids — to graphs (Bruna et al. 2014;
+interpolation scheme and needs many grid points for adequate resolution. The same difficulty
+arises for other unevenly-spaced data (astronomical time series, climate records, finance), and
+has prompted extensions of convolution beyond Euclidean grids — to graphs (Bruna et al. 2014;
 Henaff et al. 2015) and to 3D shapes / manifolds (Masci et al. 2015). A relevant building
 block is the **dynamic filter network** (Jia, De Brabandere, Tuytelaars & Van Gool, NIPS
 2016): instead of fixed filter weights, a small network *generates* the convolution filter
@@ -89,17 +82,13 @@ neighbors within `r_cut`.
 
 ## Baselines
 
-The prior methods a new architecture would be measured against, and the specific limitation
-each leaves open.
-
 **High-dimensional NN potentials with hand-crafted descriptors (Behler & Parrinello 2007;
 Behler 2011; Bartók et al. 2010, 2013).** Write `E = Σ_i E_i` and feed each atomic network a
 fixed vector of **atom-centered symmetry functions** — radial and angular functions of the
 neighbor distances/angles within `r_cut`, smoothed by a cosine cutoff. These are invariant,
-smooth, energy-conserving, and scale linearly. **Gap:** the descriptors are *hand-engineered
-and fixed*. The radial/angular symmetry functions, their parameters, and the cutoff must be
-chosen by the practitioner, and a good set for one class of systems is not automatically good
-for another; the representation is not learned from data.
+smooth, energy-conserving, and scale linearly. The descriptors are hand-engineered and fixed:
+the radial/angular symmetry functions, their parameters, and the cutoff are chosen by the
+practitioner.
 
 **Deep Tensor Neural Networks — DTNN (Schütt, Arbabzadah, Chmiela, Müller & Tkatchenko,
 Nature Communications 2017).** Learns the representation directly from `Z` and the distance
@@ -112,11 +101,7 @@ c_i^{t+1} = c_i^t + Σ_{j ≠ i} v_{ij},
 
 where the message `v_{ij}` couples the neighbor's features with the (Gaussian-expanded)
 interatomic distance through a **parameter tensor**, kept affordable by a low-rank
-factorization. It is invariant by construction and reaches high accuracy. **Gap:** the
-distance enters through a factorized bilinear tensor coupling rather than as a learned spatial
-filter, and the interaction has no convolution interpretation; its accuracy trails the best
-message-passing models, and it shares interaction parameters across passes, limiting
-expressiveness.
+factorization. It is invariant by construction and reaches high accuracy.
 
 **Message-passing / enn-s2s (Gilmer, Schoenholz, Riley, Vinyals & Dahl, ICML 2017).** Unifies
 graph networks as message passing: with node states `h_v` and edge features `e_{vw}`,
@@ -128,21 +113,16 @@ m_v^{t+1} = Σ_{w ∈ N(v)} M_t(h_v, h_w, e_{vw}),    h_v^{t+1} = U_t(h_v, m_v^{
 then a readout `R({h_v})`. Its strongest variant uses an **edge network** message
 `M(h_v, h_w, e_{vw}) = A(e_{vw}) · h_w`, where a small network maps the edge features to a
 full `F × F` matrix `A(e_{vw})`, a GRU update `U_t`, and a set2set readout; it reaches
-state-of-the-art on the QM9 property benchmark. **Gap:** its edge features include *one-hot
-bond types* (single/double/triple). Those discrete inputs make the predicted energy
-discontinuous as a bond changes character along a trajectory, so the model cannot produce a
-smooth potential-energy surface and **cannot be trained on forces or used for molecular
-dynamics**. The full `F × F` matrix per edge is also heavier than necessary.
+state-of-the-art on the QM9 property benchmark. Its edge features include *one-hot bond types*
+(single/double/triple).
 
 **Gradient-domain machine learning — GDML (Chmiela, Tkatchenko, Sauceda, Poltavsky, Schütt &
 Müller, Science Advances 2017).** A kernel method that fits the *force* field directly in the
 gradient domain, with the kernel constructed so that the predicted force is the gradient of a
 scalar — hence energy-conserving by construction; the energy is recovered by re-integration
 (energies only fix the integration constant). Remarkably accurate with as few as ~1,000
-training points. **Gap:** the kernel (Gram) matrix grows quadratically with both the number
-of atoms and the number of training examples, so it does not scale to large datasets (e.g.
-50,000 examples) and is not designed to span different atom-type compositions — one model per
-molecule.
+training points. The kernel (Gram) matrix grows quadratically with both the number of atoms
+and the number of training examples.
 
 A pair of architectural primitives also sit in the background as reusable pieces. **Residual
 learning (He et al. 2016)** writes a block as `x + F(x)` so very deep stacks stay trainable.

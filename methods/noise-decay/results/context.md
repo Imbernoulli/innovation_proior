@@ -10,14 +10,9 @@ clipped gradients are averaged, and zero-mean Gaussian noise calibrated to that 
 before the optimizer sees the gradient. A privacy accountant calibrates the noise level to the
 target budget and tracks how much budget each step consumes.
 
-The pain point is that training is not a stationary process, but the mechanism treats it as
-one. A single noise level is chosen up front and applied identically to every step from the
-first epoch to the last. Yet the total budget is fixed: we cannot simply add less noise
-everywhere. So the design problem is what clipping-and-noise policy to run over the course of
-training — one that respects the same total `(epsilon, delta)`, stays compatible with the
-accountant the harness already uses, and returns gradients to the optimizer in the ordinary
-DP-SGD shape — given that the gradient signal the noise has to compete with changes as the
-model converges.
+The design question is what clipping-and-noise policy to run over the course of training — one
+that respects a fixed total `(epsilon, delta)`, stays compatible with the accountant the harness
+already uses, and returns gradients to the optimizer in the ordinary DP-SGD shape.
 
 ## Background
 
@@ -58,17 +53,11 @@ spends no privacy beyond the Gaussian noise it adds at each step. Only the per-s
 budget; choosing *how* the per-step noise level varies over time is a public decision and is
 not itself a query on the data.
 
-**Motivating phenomenon: the gradient signal shrinks as training proceeds.** As a model approaches
-a low-loss region, the useful gradient signal is expected to get smaller, while a fixed Gaussian
-release keeps the same absolute noise scale. Diagnostic traces for fixed-noise DP-SGD-style
-mechanisms show the problem directly: the average per-sample gradient norm can fail to fall into
-the small-gradient regime, and the optimizer keeps receiving updates dominated by the same
-absolute perturbation. The noise added to the averaged gradient has standard deviation
-`sigma C / b`, an absolute quantity that does not know how large the true gradient is. Early,
-when the gradient is large, a noisy update still points in a useful direction; late, when the
-useful gradient is small, the same absolute noise can dominate it, so late updates carry little
-signal. It is also observed empirically that early iterations tolerate heavy noise with validation
-accuracy still rising, while later iterations are far more sensitive to it.
+**Gradient signal during training.** As a model trains, the average per-sample gradient norm
+tends to change over epochs. The noise added to the averaged gradient has standard deviation
+`sigma C / b`, an absolute quantity independent of the true gradient magnitude. It is observed
+empirically that early and late iterations can have different sensitivities to the noise level,
+with validation accuracy behaving differently across training phases.
 
 ## Baselines
 
@@ -77,22 +66,16 @@ accuracy still rising, while later iterations are far more sensitive to it.
 by a constant multiplier `sigma`, and step the optimizer on the noised average. One `sigma` and
 one `C` are calibrated to the budget before training via the moments accountant and reported to
 it identically for every step. Abadi et al. noted that clipping to roughly the median gradient
-norm tends to work well, hinting that the clip scale is a training-time quantity. *Observed
-limitation:* both the clip norm and the noise multiplier are held constant for the entire run,
-so when gradient magnitudes fall in late training the mechanism keeps injecting the same
-absolute noise, and that noise increasingly swamps the shrinking gradient.
+norm tends to work well, hinting that the clip scale is a training-time quantity.
 
-**Linearly decaying noise for private medical training (Zhang et al. 2021).** The direct
-ancestor lowers the noise *variance* geometrically by epoch, `sigma_{e}^2 = R sigma_{e-1}^2`
+**Linearly decaying noise for private medical training (Zhang et al. 2021).** This approach
+lowers the noise *variance* geometrically by epoch, `sigma_{e}^2 = R sigma_{e-1}^2`
 with `R in (0, 1)` — i.e. `sigma_e^2 = sigma_0^2 R^e` — so that less noise is added as training
 proceeds, and accounts for the now-varying Gaussian steps with tCDP rather than the moments
 accountant, because tCDP's additive composition handles a changing noise level cleanly. Using
 the four tCDP properties above (Gaussian step, subsampling, additive composition, conversion),
 it obtains a closed-form total privacy expression for the geometric schedule and calibrates
-`sigma_0` to a fixed budget. *Observed limitation:* a smooth, every-epoch geometric decay is
-just one particular way to lay a decreasing noise level over time; in practice this gradual
-shape is reported to give little or no accuracy advantage over a constant noise level, so the
-gradual schedule does not deliver the gain the shrinking-gradient picture seems to promise.
+`sigma_0` to a fixed budget.
 
 **Adaptive clipping and global-scaling methods (Andrew et al. 2021; Bu et al. 2021; Esipova
 et al. 2022).** Rather than a single hand-tuned `C`, these track or reshape the clipping rule.
@@ -101,11 +84,7 @@ less brittle. Global-scaling methods (DP-Global, DP-Global-Adapt) use a *lower* 
 `c_0` as the sensitivity and an *upper* threshold `z_e`: gradients below `z_e` are scaled by
 `c_0/z_e`, and DP-Global-Adapt additionally raises `z_e` with a geometric update rule so that
 all per-sample norms stay below it, keeping the global sensitivity at `c_0` while moving the
-upper threshold. *Observed limitation:* the geometric *increase* rule drives `z_e` up sharply
-toward the end of training; since the scaling factor is inversely proportional to `z_e`, an
-exploding `z_e` scales the gradients down toward zero exactly when they are already small, which
-can stall convergence and demand extra budget to adapt the threshold privately. And reshaping
-the clipping rule alone says nothing about how the noise level should move over time.
+upper threshold.
 
 ## Evaluation settings
 

@@ -9,15 +9,11 @@ arrive almost surely at `x_T`. The bridge is trained by score matching against a
 forward transition kernel, and at inference one generates `x_0` from `x_T` by running the
 reverse process from `t = T` down to `t = 0`.
 
-The pain is sampling cost. The reverse process is a (stochastic) differential equation, and the
-standard way these models are sampled is by numerically simulating that SDE/ODE with a generic
-solver. Each network evaluation is one forward pass of a large U-Net, so the wall-clock cost is
-roughly proportional to NFE. Ordinary diffusion models, by contrast, have dedicated fast samplers
-that take much larger steps. The precise goal is a sampler for a *pretrained* bridge model that
-needs no retraining, reuses the existing learned network as is, reduces the denoiser-call budget,
-keeps the marginal distributions the model was trained to reproduce, and does not collapse the
-conditional diversity induced by a fixed informative endpoint. Closing the speed gap *without
-touching training* is the problem.
+The reverse process is a (stochastic) differential equation, and the standard way these models
+are sampled is by numerically simulating that SDE/ODE with a generic solver. Each network
+evaluation is one forward pass of a large U-Net, so the wall-clock cost is roughly proportional
+to the number of function evaluations (NFE). The question is how to sample a *pretrained* bridge
+model — reusing the learned network as is — at a small NFE budget.
 
 ## Background
 
@@ -48,20 +44,16 @@ useful, equivalent view is the *data predictor* `x_θ(x_t, t, x_T)` — the netw
 the clean `x_0` from a noisy bridge state — related to the score by
 `s_θ = −(x_t − a_t x_T − b_t x_θ)/c_t²`.
 
-**The marginals-only property.** A foundational fact, established for ordinary diffusion: the
+**The marginals-only property.** A fact established for ordinary diffusion: the
 score-matching / denoising training loss depends on the model only through the per-timestep
 *marginals* `q(x_t | x_0)`, not through the full *joint* over the trajectory. Many different
 joint inference processes share the same marginals; the network trained under any one of them is
-optimal for all of them. This is the lever behind training-free fast sampling: one can swap the
-joint used for generation while keeping the trained network fixed.
+optimal for all of them. One can swap the joint used for generation while keeping the trained
+network fixed.
 
-**Two diagnostic facts about the existing bridge sampler.** First, the generic hybrid bridge
-sampler needs many more network calls than the dedicated fast samplers used for ordinary diffusion,
-which motivates a bridge-specific sampler. Second, the bridge's reverse process is genuinely
-stochastic near the starting point: under a *fixed* endpoint `x_T`, the state `x_t` for `t < T` is
-not deterministic (a masked image admits many completions), so the marginal `p(x_t | x_T)` is not
-a Dirac. Any fast sampler has to preserve this conditional spread rather than treating the endpoint
-as if it identified a single clean sample.
+**Conditional spread of the bridge.** The bridge's reverse process is stochastic near the
+starting point: under a *fixed* endpoint `x_T`, the state `x_t` for `t < T` is not deterministic
+(a masked image admits many completions), so the marginal `p(x_t | x_T)` is not a Dirac.
 
 ## Baselines
 
@@ -76,25 +68,18 @@ every `σ`. The generative step replaces `x_0` by the network's prediction and r
 `x_{t-1} = √α_{t-1} x̂_0 + √(1 − α_{t-1} − σ_t²) ε̂ + σ_t ε`, a "predicted-x_0 + direction-to-x_t
 + fresh noise" decomposition. `σ_t = 0` makes the process deterministic (an implicit model,
 DDIM), enabling few-step sampling, latent encoding, and interpolation; the DDPM choice of `σ_t`
-recovers the Markovian ancestral sampler. Crucially the family shares the DDPM training loss, so
-a pretrained DDPM is reused unchanged. DDIM also rewrites as an Euler step of an ODE on
-`x̄ = x/√α` with respect to `dσ`. **Gap:** the entire construction is tied to the Gaussian
-data-to-noise diffusion (mean `√α_t x_0`, no second endpoint). It does not cover a process
-pinned at an *informative* endpoint `x_T` with the bridge kernel `a_t x_T + b_t x_0 + c_t ε`,
-where the mean carries an `x_T` term and the variance is `c_t²` rather than `1 − α_t`; the DDIM
-algebra has no place for the endpoint and breaks where `c_t → 0` at the start of a bridge.
+recovers the Markovian ancestral sampler. The family shares the DDPM training loss, so a
+pretrained DDPM is reused unchanged. DDIM also rewrites as an Euler step of an ODE on
+`x̄ = x/√α` with respect to `dσ`. The construction is set in the Gaussian data-to-noise
+diffusion: mean `√α_t x_0`, variance `1 − α_t`, with no second endpoint.
 
 **DDBM — denoising diffusion bridge models (Zhou et al. 2023).** The bridge framework above:
 Doob h-transform, the analytic kernel `N(a_t x_T + b_t x_0, c_t² I)`, the learned bridge score,
-and a reverse SDE / probability-flow ODE for generation. To sample, DDBM proposes a *hybrid,
+and a reverse SDE / probability-flow ODE for generation. To sample, DDBM uses a *hybrid,
 high-order sampler* adapted from the EDM Heun method (Karras et al. 2022): EDM-spaced timesteps
 (`(t_max^{1/ρ} + (i/N)(t_min^{1/ρ} − t_max^{1/ρ}))^ρ`, `ρ = 7`), second-order Heun steps on the
-PF-ODE, and an interleaved fraction of stochastic Euler steps ("churn") to inject noise. **Gap:**
-this sampler is a *generic* ODE/SDE discretizer borrowed from diffusion models; it is not
-derived from the bridge's own structure and carries no theoretical guarantee tailored to
-bridges. It pays for that genericity in many network calls. There is no closed-form large-jump
-update and no principled way to decouple the linear part of the dynamics that fast diffusion
-solvers exploit.
+PF-ODE, and an interleaved fraction of stochastic Euler steps ("churn") to inject noise. It is a
+generic ODE/SDE discretizer applied to the bridge dynamics.
 
 **Exponential-integrator ODE solvers for diffusion (e.g. Lu et al. 2022).** For the *ordinary*
 diffusion ODE, recognize it as semi-linear, `dx = [a(t) x + b(t) F_θ] dt`, and apply
@@ -104,15 +89,12 @@ variation-of-constants to cancel the linear term exactly:
 `∫ e^{−λ} ε̂_θ dλ`. Taylor-expand the network output in `λ`; the scalar integrals
 `∫ (λ − λ_s)^n e^{−λ} dλ` are analytic, and the derivatives of the network output are estimated
 by finite differences of past evaluations — yielding high-order solvers that hit good quality in
-~10 NFE. **Gap:** this machinery is built for the diffusion ODE `dx = f x dt − ½ g² ∇log q dt`
-with its single Gaussian endpoint. The bridge PF-ODE carries an extra `x_T` h-term, and its
-linear coefficient and integrating factor are different; the exponential-integrator recipe is
-not, as written, a solver for a process pinned at an informative endpoint.
+~10 NFE. This is built for the diffusion ODE `dx = f x dt − ½ g² ∇log q dt` with its single
+Gaussian endpoint.
 
 **Posterior-style bridge samplers (e.g. I²SB, Liu et al. 2023).** Variance-exploding bridges
 (`f = 0`) sampled by DDPM-like ancestral sampling from a shortened bridge between `x̂_0` and the
-current state. **Gap:** restricted to the VE schedule, Markovian, no deterministic mode, and no
-large-jump / high-order update — so it shares DDBM's step-count cost in the regimes that matter.
+current state, on the VE schedule.
 
 ## Evaluation settings
 

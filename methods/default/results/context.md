@@ -10,19 +10,16 @@ This problem sits on a sharp computational/statistical divide. *Statistically* i
 to single out one of the `C(n,k)` candidate subsets needs only `log C(n,k) = Theta(k log n)`
 labelled examples. *Computationally* it is believed hard: a large class of algorithms provably
 needs `n^{Omega(k)}` work, far more than the handful of samples that information-theoretically
-determine the answer. The gap between these two is exactly what makes sparse parity a clean
-stress test for *optimization* rather than statistics.
+determine the answer. The gap between these two makes sparse parity a clean stress test for
+*optimization* rather than statistics.
 
-The pressing question is not a new algorithm hand-built for parity (Gaussian elimination already
-solves the noiseless case in `O(n^3)`). It is a *diagnostic* question about ordinary deep
-learning: when you train a generic neural network on this task with off-the-shelf initialization
-and an off-the-shelf optimizer — no sparsity prior baked into the architecture, no special
-trick — does it work, how fast, and *by what mechanism*? A satisfactory answer has to confront a
-specific puzzle: the training loss and accuracy curves on this task sit flat at chance for a long
-time and then jump discontinuously to a solved state. Is the long flat phase a blind search that
-happens to get lucky, or is something measurable improving underneath it the whole time? And how
-can either be true given a well-known argument that the gradient on such problems carries
-essentially no information about which parity is the target?
+A dedicated parity solver already exists (Gaussian elimination solves the noiseless case in
+`O(n^3)`). The question here is *diagnostic*, about ordinary deep learning: when you train a
+generic neural network on this task with off-the-shelf initialization and an off-the-shelf
+optimizer — no sparsity prior baked into the architecture, no special trick — does it work, how
+fast, and *by what mechanism*? On this task the training loss and accuracy curves sit flat at
+chance for a long time and then jump discontinuously to a solved state, so any account must
+describe what governs that long flat phase and the abrupt transition out of it.
 
 ## Background
 
@@ -31,11 +28,9 @@ correlation inner product: for any `S, S' subseteq [n]`,
 `E_{x~Unif}[ chi_S(x) chi_{S'}(x) ] = 1` if `S' = S` and `0` otherwise. Equivalently
 `E_{(x,y)~D_S}[ chi_{S'}(x) y ] = 1[S'=S]`. The `{chi_S}` therefore form an orthonormal basis of
 all functions `f: {±1}^n -> R`, with the Fourier expansion `f = sum_S fhat(S) chi_S`,
-`fhat(S) = E_x[ f(x) chi_S(x) ]`. The brutal consequence for a learner who guesses a subset `S'`:
-its correlation with the labels is exactly zero unless `S'` is *exactly* `S`. There is no partial
-credit — overlapping `k-1` of the right indices reads the same (zero correlation) as overlapping
-none. A learner that only ever sees correlations gets no "warmer/colder" signal and is forced
-into exhaustive search over the `C(n,k)` subsets.
+`fhat(S) = E_x[ f(x) chi_S(x) ]`. For a learner who guesses a subset `S'`, its correlation with
+the labels is exactly zero unless `S'` is *exactly* `S`: overlapping `k-1` of the right indices
+reads the same (zero correlation) as overlapping none.
 
 **The statistical-query (SQ) lower bound (Kearns 1998).** The SQ model formalizes "learning
 through aggregate statistics rather than individual examples": the learner submits a query
@@ -44,28 +39,23 @@ through aggregate statistics rather than individual examples": the learner submi
 orthogonality implies that any single query has non-trivial correlation (above `tau`) with only a
 `1/tau^2` fraction of the parities, so to single out the right one an SQ algorithm needs
 `T / tau^2 >= Omega(n^k)`: queries times precision-squared cannot beat exhaustive search. The
-noiseless problem escapes the SQ model via Gaussian elimination, but learning *noisy* sparse
+noiseless problem escapes the SQ model via Gaussian elimination, while learning *noisy* sparse
 parity even at vanishing noise is conjectured to need `n^{Omega(k)}` time (Alekhnovich 2003), a
 hardness that underwrites several cryptosystems. Gradient descent with a constant gradient-noise
-level is essentially an SQ algorithm (Abbe & Sandon 2020), so it inherits this floor: `n^{O(k)}`
-iterations is the *best one could hope for* from a gradient method, and matching it would be
-striking.
+level is essentially an SQ algorithm (Abbe & Sandon 2020), so `n^{O(k)}` iterations is the floor a
+gradient method would have to match.
 
-**Gradient concentration: "no signal" (Shalev-Shwartz, Shamir & Shammah 2017).** This line gives
-the pessimistic reading. For the objective `F_h(w) = E_x[ loss(p_w(x), h(x)) ]` of learning a
-target `h` drawn from a family `H`, define the gradient's *signal about the target* as the
-variance over the family,
+**Gradient concentration (Shalev-Shwartz, Shamir & Shammah 2017).** For the objective
+`F_h(w) = E_x[ loss(p_w(x), h(x)) ]` of learning a target `h` drawn from a family `H`, define the
+gradient's *signal about the target* as the variance over the family,
 `Var(H, F, w) = E_h || grad F_h(w) - E_{h'} grad F_{h'}(w) ||^2`. Their Theorem 1: if the
 members of `H` are pairwise orthogonal with `E[h^2] <= 1`, the predictor has
 `E||d p_w/dw||^2 <= G(w)^2`, and the loss is the square loss or a 1-Lipschitz classification loss,
 then `Var(H, F, w) <= G(w)^2 / |H|`, *independent of the network architecture or width*. Applied
-to the family of *all* `2^d` parities on `d` bits, this gives `Var <= G(w)^2 / 2^d` —
-exponentially small. By Chebyshev, the gradient at any fixed point is essentially the same no
-matter which parity is the target; the reported experiments confirm that learning a random
-length-`d` parity stalls around `d = 30`. The stated conclusion is that no gradient-based method
-should succeed on random parities. The bound's strength is its target family: it is taken over
-*all* parities, a family of every degree, so the gradient genuinely averages to a target-blind
-constant.
+to the family of *all* `2^d` parities on `d` bits, this gives `Var <= G(w)^2 / 2^d`. By Chebyshev,
+the gradient at any fixed point is essentially the same no matter which parity in this family is
+the target; the reported experiments show that learning a random length-`d` parity stalls around
+`d = 30`. The bound is taken over *all* parities, a family of every degree.
 
 **Fourier spectrum of majority (O'Donnell 2014; Titsworth 1962).** For random-sign or all-ones
 weights `w in {±1}^n` and `|b| < 1`, the threshold `1[w·x + b > 0]` equals
@@ -82,11 +72,11 @@ neighboring higher-degree one.
 **The lazy / neural-tangent-kernel regime (Jacot, Gabriel & Hongler 2018).** When a wide network's
 weights barely move from initialization, training is well approximated by a linear model in fixed
 features — kernel regression with the neural tangent kernel — and is convex. In this regime the
-features are frozen at init; nothing is "learned" beyond the readout layer. A counting/span
-argument bounds what such fixed features can represent with margin: for any `D`-dimensional
-embedding `Psi` with `sup_x ||Psi(x)|| <= 1` and a norm budget `R`, if `D R^2 < eps^2 C(n,k)` then
-some size-`k` subset `S` has `inf_{||w||<=R} E[loss(Psi(x)·w, y)] > 1 - eps`. To express all
-parities with margin a fixed-feature model needs `D = Omega(n^k)`.
+features are frozen at init and only the readout layer is fit. A counting/span argument bounds what
+such fixed features can represent with margin: for any `D`-dimensional embedding `Psi` with
+`sup_x ||Psi(x)|| <= 1` and a norm budget `R`, if `D R^2 < eps^2 C(n,k)` then some size-`k` subset
+`S` has `inf_{||w||<=R} E[loss(Psi(x)·w, y)] > 1 - eps`. To express all parities with margin a
+fixed-feature model needs `D = Omega(n^k)`.
 
 **Grokking on algorithmic data (Power et al. 2022).** On small modular-arithmetic datasets,
 training accuracy saturates early while validation accuracy stays at chance for a long time and
@@ -100,7 +90,7 @@ timing convergence:
 - Convergence-time histograms over very many random trials have a heavy upper tail but
   essentially *no* mass near `t = 0`. A memoryless random search over subsets would have
   convergence time distributed as `Geom(1/C(n,k))`, whose mass is *highest* at `t = 0` and
-  decreases monotonically — the opposite shape.
+  decreases monotonically.
 - Convergence time *adapts to* the sparsity `k`, scaling like `n^{O(k)}` on small instances,
   rather than the `2^{Omega(n)}` that a search over parameters or subsets would give.
 - Loss curves and convergence times are concentrated *conditioned on the random initialization*,
@@ -116,46 +106,30 @@ These are the prior positions a diagnostic account of parity learning sits again
 
 **Exhaustive / random search over subsets.** The brute-force baseline: enumerate (or randomly
 probe) the `C(n,k)` subsets and test each. Forced by orthogonality on any correlation-only
-learner; matches the SQ floor `n^{Omega(k)}` but with the *memoryless* signature above — earliest
-successes most likely, convergence time independent of the algorithm's state, perfect parallel
-speedup with more copies. **Limitation:** its predicted statistics (mode-at-zero histogram, no
-`k`-adaptivity beyond the subset count, linear parallel speedup) are flatly contradicted by the
-observed black-box dynamics; as a description of what a trained network is doing it does not fit.
+learner; matches the SQ floor `n^{Omega(k)}`, with a *memoryless* signature — earliest successes
+most likely, convergence time independent of the algorithm's state, perfect parallel speedup with
+more copies.
 
 **Stochastic gradient Langevin dynamics ("stumbling in the dark").** A refinement of the search
 reading: SGD with its noise behaves like a diffusion bouncing around the loss landscape until it
 falls into the basin of the solution, with no useful drift in between. It predicts a
-`2^{Omega(n)}`-ish convergence time and is consistent with the loss looking flat. **Limitation:**
-it predicts the same memoryless, init-insensitive, parallelizable behavior as exhaustive search,
-and likewise clashes with the measured concentration-conditioned-on-init and `n^{O(k)}` scaling.
-It also offers no quantity that improves during the plateau.
+`2^{Omega(n)}`-ish convergence time and is consistent with the loss looking flat, with the same
+memoryless, init-insensitive, parallelizable behavior as exhaustive search.
 
 **The gradient-concentration verdict (Shalev-Shwartz et al. 2017).** As above: over the family of
-all `2^d` parities the gradient variance is `<= G^2/2^d`, so "the gradient carries no signal" and
-gradient methods should fail. **Limitation / where it stalls:** the bound is taken over the dense
-family of *all* parities, of every degree. The sparse problem fixes `|S| = k`, so the relevant
-family has only `C(n,k) ≈ n^k` members; the very same theorem then reads `Var <~ G^2 / n^k`,
-which is small only *polynomially* in `n^k`, not exponentially. The pessimistic conclusion is an
-artifact of measuring against the wrong (much larger) family; what the bound actually leaves open
-is whether — and through what concrete scalar quantity — that polynomial-sized residual signal
-can be picked up by a gradient method, and what it would look like over the course of training.
+all `2^d` parities the gradient variance is `<= G^2/2^d`, taken over the dense family of *all*
+parities, of every degree.
 
 **Fixed-feature / NTK learning of parity (Jacot et al. 2018 and its parity analyses).** Treat the
 network as a fixed kernel and fit the readout convexly. Clean and convex; gives good *sample*
-complexity for `k = 2` parity. **Limitation:** by the counting bound above, fitting all size-`k`
-parities with margin in this regime requires `D = Omega(n^k)` features, i.e. an enormously wide
-network. It cannot account for success at modest or tiny width, where the weights demonstrably
-must move away from their initialization — so it describes a different regime than the one in
-question.
+complexity for `k = 2` parity. By the counting bound above, fitting all size-`k` parities with
+margin in this regime requires `D = Omega(n^k)` features, i.e. an enormously wide network.
 
 **Statistical-mechanics analyses of the parity machine.** A long line in the statistical physics
 of learning studies the "parity machine" — the sign of a product of `k` linear units — in the
 thermodynamic limit, characterizing equilibrium learning curves and, in some treatments, plateaus
-in the generalization error along the training trajectory. **Limitation:** these analyses
-typically target an idealized infinite-size limit or a Gibbs-equilibrium endpoint, and have not
-pinned down that `k`-sparse parity is learnable by gradient descent in a number of iterations
-near the known lower bound, nor isolated the trajectory-level quantity that drives the
-plateau-then-jump in this specific problem.
+in the generalization error along the training trajectory. These analyses typically target an
+idealized infinite-size limit or a Gibbs-equilibrium endpoint.
 
 ## Evaluation settings
 
@@ -188,8 +162,8 @@ The substrate is the standard supervised-training harness, already in place. A f
 MLP is built once; an initialization routine sets its parameters from a data-independent random
 scheme; a batch routine produces fresh `(x, y)` examples for the hidden secret; an
 optimizer-configuration routine returns the hyperparameters; and a fixed driver runs minibatch
-training and reports held-out accuracy. The open slots are exactly the data-independent choices a
-study would vary, plus one generic state-reporting hook.
+training and reports held-out accuracy. The open slots are the data-independent choices a study
+would vary, plus one generic state-reporting hook.
 
 ```python
 import torch

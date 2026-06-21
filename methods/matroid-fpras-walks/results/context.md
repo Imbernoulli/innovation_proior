@@ -14,8 +14,7 @@ of a graph (countable exactly by Kirchhoff's matrix-tree theorem), but for a gen
 matroid given by an oracle the exact count is $\#P$-hard, and even with oracle access there
 is a hard barrier: any *deterministic* algorithm making polynomially many independence
 queries cannot beat a $2^{\Omega(r/\log n)}$ approximation factor. So the question is
-sharply about *randomized* approximation, and about whether one can break the exponential-
-in-rank barrier that deterministic methods hit.
+sharply about *randomized* approximation.
 
 The standard route to an FPRAS for a counting problem is via sampling. The problem is
 *self-reducible*: deleting an element (restriction) and contracting an element ($M/i$) both
@@ -25,7 +24,7 @@ equivalent to a *fully polynomial almost-uniform sampler* (FPAUS) that draws a b
 distribution within total-variation $\varepsilon$ of uniform in polynomial time. So the
 real question becomes: **is there a polynomial-time almost-uniform sampler for a random
 basis of an arbitrary matroid?** The most natural candidate is a simple local Markov chain
-on bases; the open problem is whether that chain mixes rapidly for *every* matroid.
+on bases.
 
 A closely related structural question, open since 1989, is whether the *bases-exchange
 graph* of any matroid is a good expander — Mihail and Vazirani conjectured its edge
@@ -111,13 +110,10 @@ together with a spectral condition on the codimension-two links forces the whole
 be a local spectral expander. Garland's method (1973) is the classical precursor relating
 link Laplacians to global ones.
 
-**Diagnostic fact: negative correlation fails for general matroids.** Feder–Mihail (1992)
-isolated the *balanced* matroids — those for which $M$ and all minors satisfy pairwise
-negative correlation of the uniform basis measure, $\Pr[i, j \in B] \le \Pr[i]\Pr[j]$ — and
-showed the bases-exchange walk mixes rapidly for them. But it is a documented fact that many
-natural matroids are *not* balanced: the standard example is the matroid of acyclic edge
-subsets of size at most $k$ of a graph (for $k < |V| - 1$). Entrywise negative correlation is
-simply false there, so any argument that rests on it cannot reach all matroids.
+**Negative correlation and balanced matroids.** Feder–Mihail (1992) isolated the *balanced*
+matroids — those for which $M$ and all minors satisfy pairwise negative correlation of the
+uniform basis measure, $\Pr[i, j \in B] \le \Pr[i]\Pr[j]$ — and showed the bases-exchange
+walk mixes rapidly for them.
 
 ## Baselines
 
@@ -125,33 +121,24 @@ simply false there, so any argument that rests on it cannot reach all matroids.
 measure on bases and on all its minors' bases is negatively correlated. By an induction on
 $|E|$ exploiting negative association, the bases-exchange walk is shown to have good
 conductance, hence to mix in polynomial time, hence to sample and approximately count bases.
-*Gap:* the whole argument is conditioned on the negative-correlation hypothesis, which holds
-only for balanced matroids; for non-balanced matroids (e.g. the size-$\le k$ acyclic-subset
-matroid) the pairwise inequality breaks and the analysis gives nothing. The class of
-matroids reachable this way is a strict, well-known-to-be-incomplete fragment.
 
 **Deterministic $2^{O(r)}$-approximation via log-concavity (2018).** Using log-concavity of
 $g_M$ on the positive orthant (from Hodge theory) and an entropy/convex-optimization
 framework, one obtains a deterministic algorithm outputting $\beta$ with
 $\max\{2^{-O(r)}\beta, \sqrt\beta\} \le |\mathcal B| \le \beta$ — and, against the
 $2^{\Omega(r/\log n)}$ oracle lower bound for deterministic algorithms, this is essentially
-the best a deterministic method can do. *Gap:* the multiplicative error is $2^{O(r)}$,
-exponential in the rank — not a $(1\pm\varepsilon)$ scheme. It controls $g_M$ only through
-its top-level log-concavity, not through any finer local structure.
+the best a deterministic method can do.
 
 **Two-sided high-dimensional-expander mixing (Kaufman–Mass 2017, Dinur–Kaufman 2017).** If a
 weighted pure complex is a *two-sided* $\lambda$-local spectral expander — every link's
 $1$-skeleton walk has all nontrivial eigenvalues within $\pm\lambda$ — the top high-order
 walk has spectral gap $\ge \frac{1}{k+2} - O((k+1)\lambda)$, so it mixes once
-$\lambda \ll 1/k^2$. *Gap:* this demands the link walks be near-perfect *two-sided*
-expanders. The links arising from matroids carry many large *negative* eigenvalues, so the
-two-sided hypothesis fails and the bound is vacuous for them.
+$\lambda \ll 1/k^2$.
 
 **Other counting routes.** The popping method handles bicircular matroids; a randomized
 algorithm of Barvinok–Samorodnitsky gives roughly a $\log(n)^r$ approximation for general
 matroids; real-stable techniques handle the special class of real-stable (a subclass of
-balanced) matroids. *Gap:* each covers a special class, or a super-constant approximation
-factor, not an FPRAS for arbitrary matroids.
+balanced) matroids.
 
 ## Evaluation settings
 
@@ -165,16 +152,14 @@ the self-reducible sampling-to-counting reduction. (iii) *Structural*: the edge 
 $h(G_M)$ of the bases-exchange graph (the Mihail–Vazirani target value is $1$). Test
 matroids span graphic matroids (spanning trees, where exact counts via the matrix-tree
 theorem give a ground truth), linear/representable matroids, and abstract oracle matroids
-including the non-balanced acyclic-subset matroids that defeat the balanced-matroid route.
-Related partition functions provide further settings: the random-cluster / Tutte polynomial
-and $k$-determinantal point processes.
+including the non-balanced acyclic-subset matroids. Related partition functions provide
+further settings: the random-cluster / Tutte polynomial and $k$-determinantal point
+processes.
 
 ## Code framework
 
 Pre-method primitives that already exist: an independence oracle, a reversible-Markov-chain
-runner, and the self-reducible sampling-to-counting reduction. The contribution will be the
-analysis certifying that a particular local chain mixes; the *object* that certificate is
-built on is left as the empty slot below.
+runner, and the self-reducible sampling-to-counting reduction.
 
 ```python
 import numpy as np
@@ -222,9 +207,6 @@ def fpras_via_self_reducibility(M, eps, delta, sampler):
 
 # --- THE OBJECT TO BE DESIGNED ---
 def certify_rapid_mixing(M):
-    """Decide / prove that the local chain on bases mixes in poly(n, r, log(1/eps)).
-       The analytic object this certificate is built on, and the bound it yields,
-       are exactly what the derivation must discover."""
-    # TODO: the object we will define here, and the quantity it must control
+    """Decide / prove that the local chain on bases mixes in poly(n, r, log(1/eps))."""
     pass
 ```

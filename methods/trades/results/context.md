@@ -10,16 +10,13 @@ a wrong label by a perturbation so small a human cannot see it. Formally, for a 
 inputs but on the *worst* input inside every such ball — i.e. one with high accuracy under
 white-box attacks that can read the model's gradients.
 
-Two pressures pull against each other and both have to be respected at once. First, the
-worst-case (robust) objective is brutal: even *defining* the training loss requires a maximum
-over the perturbation ball, and the natural worst-case 0-1 loss `max_{x' in B(x,eps)} 1{c(x') != y}`
-is NP-hard to optimize and non-differentiable. Second — and this is the harder pressure — there
-is mounting evidence that pushing for robustness *costs* clean accuracy: a model tuned hard
-against perturbations can end up classifying clean data worse than a standardly-trained one.
-So the question is not only "how do we make a model robust at all," but "how do we make it
-robust *with an explicit, controllable trade-off against clean accuracy*," and do it through a
-loss that is differentiable, trainable at the scale of ResNets on CIFAR-10, and not just
-robust to one particular attack.
+The worst-case (robust) objective is demanding: even *defining* the training loss requires a
+maximum over the perturbation ball, and the natural worst-case 0-1 loss
+`max_{x' in B(x,eps)} 1{c(x') != y}` is NP-hard to optimize and non-differentiable. Separately,
+there is evidence that robustness and clean accuracy interact: a model tuned against
+perturbations may classify clean data differently from a standardly-trained one. The setting is
+therefore how to train a classifier on the worst-case objective at the scale of ResNets on
+CIFAR-10, while relating robustness to clean accuracy.
 
 ## Background
 
@@ -31,18 +28,16 @@ coordinate-wise changes into a large change in the logits, so the *steepest* per
 under an `l_inf` budget is the sign of the input gradient — the basis of the one-step
 Fast Gradient Sign Method.
 
-Two facts about the world frame the whole problem.
+Two facts about the world frame the problem.
 
 The first is geometric. An adversarial perturbation succeeds by moving an input across the
 classifier's decision surface, so the location of that surface relative to the data matters as
 much as the clean labels do. A classifier can have low clean error and still place complicated
-or nearby boundaries around many data points, making small `l_inf` moves dangerous.
+or nearby boundaries around many data points, so small `l_inf` moves can cross them.
 
-The second is that robustness and clean accuracy can genuinely conflict. Prior theoretical
-examples show distributions on which the classifier that minimizes standard error and the
-classifier that minimizes worst-case perturbation error are different. A defense that simply
-drives clean error down can therefore remain fragile, while a defense that simply minimizes a
-worst-case loss can give up clean accuracy without any explicit way to control the exchange.
+The second is that robustness and clean accuracy can conflict. Prior theoretical examples show
+distributions on which the classifier that minimizes standard error and the classifier that
+minimizes worst-case perturbation error are different.
 
 The standard relaxation used to make the intractable 0-1 problem trainable is a *surrogate
 loss*: replace the indicator with a margin loss `phi(f(x) y)` (hinge, logistic, exponential,
@@ -61,17 +56,14 @@ surrogate risk:
 R_nat(f) - R_nat^*  <=  psi^{-1}( R_phi(f) - R_phi^* ).
 ```
 
-For hinge loss `psi` is the identity. This machinery is exactly what makes surrogate
-minimization *principled* for the clean classification problem — but it is a statement about
-natural error only. It says nothing about what happens near the boundary under perturbation.
+For hinge loss `psi` is the identity. This machinery makes surrogate minimization principled
+for the clean classification problem; it is a statement about natural error.
 
 ## Baselines
 
 **FGSM adversarial training (Goodfellow, Shlens & Szegedy, 2015).** Augment training with
 one-step adversarial examples `x' = x + eps * sign(grad_x L(f(x), y))` and train on them.
-Cheap — one extra gradient per step. **Gap:** a single linear step is a weak adversary; models
-trained this way remain vulnerable to stronger, iterative attacks, and can learn to mask
-gradients rather than become genuinely robust.
+Cheap — one extra gradient per step.
 
 **PGD adversarial training / robust optimization (Madry et al., 2018).** Cast defense as a
 saddle-point (min-max) problem:
@@ -87,14 +79,9 @@ a random start inside the ball:
 x^{t+1} = Pi_{B(x,eps)} ( x^t + alpha * sign( grad_x L(f_theta(x^t), y) ) ).
 ```
 
-Train the parameters on these strong adversarial examples with SGD. This is the strongest and
-most widely-used empirical defense of its time, and PGD is treated as a near-"universal"
-first-order adversary. The objective `E max_{x'} phi(f(x') y)` is an upper bound on the robust
-error. **Gap:** that upper bound is loose in complex problems — it need not be a tight surrogate
-for the robust 0-1 error — and, decisively, the formulation collapses *everything* into a single
-worst-case-vs-label loss. It carries no separate knob that says how much clean accuracy one is
-willing to spend for robustness; the clean-accuracy drop it incurs is whatever falls out, not
-something the user can set.
+Train the parameters on these adversarial examples with SGD. This is the most widely-used
+empirical defense of its time, and PGD is treated as a near-"universal" first-order adversary.
+The objective `E max_{x'} phi(f(x') y)` is an upper bound on the robust error.
 
 **Regularization-based adversarial training (Kurakin et al. 2017; Ross & Doshi-Velez 2018;
 Zheng et al. 2016; Miyato et al., VAT).** Instead of (or in addition to) training on
@@ -103,24 +90,16 @@ adversarial prediction with the *label*; Ross & Doshi-Velez penalize the input-g
 Zheng et al. ("stability training") penalize the discrepancy between the clean prediction and
 the prediction on a *Gaussian-noised* copy of the input; Miyato et al.'s virtual adversarial
 training penalizes the divergence between the clean output distribution and the output on a
-perturbation found *without* labels. **Gaps:** none comes with a guarantee tying the regularizer
-to the robust error; Zheng et al. perturb with random Gaussian noise rather than a
-worst-case-found point; the Kurakin/Ross regularizers compare the perturbed prediction to the
-*label* or penalize a gradient norm rather than controlling worst-case prediction stability
-under the perturbation model.
+perturbation found *without* labels.
 
 **Adversarial Logit Pairing (Kannan et al., 2018).** Generate `x'` by an iterated FGSM attack
 on the label loss, then minimize
 `alpha phi(f(x') y) + (1-alpha) phi(f(x) y) + ||f(x) - f(x')||_2 / lambda` — i.e. an `l_2`
-penalty pulling the adversarial logits toward the clean logits. **Gap:** the logit-pairing term
-is heuristic, with no calibrated-loss justification, and the adversarial point is found by
-attacking the *label* loss.
+penalty pulling the adversarial logits toward the clean logits.
 
 **Relaxation / certified defenses (Wong & Kolter 2018; Raghunathan et al. 2018).** Optimize a
 provable upper bound on the robust loss via convex relaxation or semidefinite programming,
-yielding certificates. **Gap:** they target the worst-case bound and ignore performance on
-non-adversarial inputs, leaving the robustness/accuracy trade-off untreated, and they scale
-poorly to large networks.
+yielding certificates.
 
 ## Evaluation settings
 
@@ -141,7 +120,7 @@ The natural yardsticks already in use for `l_inf` robustness:
   weight decay, learning rate `eta_2` (e.g. `0.1` on CIFAR-10, `0.01` on MNIST), batch size
   `128`, a cosine or step learning-rate schedule, the inner-attack step size `eta_1` and step
   count `K`, and the perturbation budget `eps`.
-- **Sanity protocol:** because several published defenses were later shown to "work" only by
+- **Sanity protocol:** because several published defenses were shown to "work" only by
   obfuscating gradients (Athalye et al. 2018), a defense is checked under strong, many-step,
   multiple attacks rather than a single weak one.
 
@@ -149,9 +128,9 @@ The natural yardsticks already in use for `l_inf` robustness:
 
 The method plugs into a standard adversarial-training harness. The outer training loop, the
 SGD optimizer (with its learning-rate schedule, momentum, and weight decay), the model
-architecture, and the data pipeline already exist; what is *not* settled is the per-step
-adversarial-training procedure itself — how to construct the perturbed input and what objective
-to descend on. That single procedure is the empty slot.
+architecture, and the data pipeline already exist. The per-step adversarial-training procedure
+— how to construct the perturbed input and what objective to descend on — is the piece to fill
+in.
 
 ```python
 import torch

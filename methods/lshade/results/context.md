@@ -9,21 +9,10 @@ function evaluations, so every wasted evaluation is gone for good.
 
 The engine of choice for this regime is Differential Evolution (DE): a population-based search
 whose mutation reuses the population's own scatter as its step size. It is simple and often
-strong. But its behavior is governed by three control parameters — population size `N`, scaling
-factor `F`, crossover rate `CR` — and the single most-cited fact about DE is that the *optimal*
-settings of these are problem-dependent. The right `F`/`CR` for a smooth unimodal function are
-wrong for a rugged multimodal one; the right `N` for a 10-D problem is wrong for 100-D; and the
-three interact. In practice one re-tunes by hand for every new problem, which is exactly the cost
-a good method should remove.
-
-So the goal is a DE that *tunes itself during the run*: it should (1) need no per-problem
-hand-tuning of `F` and `CR`; (2) learn good parameter values online from what has actually been
-working on *this* problem so far; (3) be robust — a single unlucky generation that rewards a bad
-parameter value must not be able to derail the whole search; (4) manage exploration-versus-
-exploitation over the budget, broad early and focused late; and (5) add as few new meta-knobs as
-possible, since replacing one hard-to-set parameter with three more is no progress. Each of the
-methods below achieves part of this. None achieves all of it at once. Closing that gap is the
-problem.
+strong. Its behavior is governed by three control parameters — population size `N`, scaling
+factor `F`, crossover rate `CR` — whose optimal settings are problem-dependent. The goal is a
+DE variant that sets these parameters adaptively during the run rather than requiring per-problem
+hand-tuning.
 
 ## Background
 
@@ -59,16 +48,12 @@ automatic exploration-to-exploitation transition with no explicit step-size sche
 convention `DE/base/k/cx` records the base vector, the number of difference vectors, and the
 crossover type (e.g. `DE/rand/1/bin`).
 
-**The known pain points of fixed parameters.** Empirically, `F`, `CR`, `N` are problem-dependent
-in a way that is well documented across the DE literature. A higher `F` and larger `N` favor
-exploration and resist premature convergence on multimodal landscapes but converge slowly; a
-lower `F`, smaller `N`, and the right `CR` converge fast on unimodal or near-separable problems
-but risk collapsing into a local optimum on rugged ones. Crucially `N` is not a free lunch in
-either direction: small populations converge quickly but get trapped; large populations explore
-widely but burn the evaluation budget making slow per-generation progress. The optimal `N`
-depends on the problem, the dimensionality, and on `F`/`CR` themselves. This three-way coupling,
-all problem-dependent, is the diagnostic finding that motivated more than a decade of work on
-adaptive DE.
+**Parameter sensitivity in DE.** Empirically, `F`, `CR`, `N` are problem-dependent in a way that
+is well documented across the DE literature. A higher `F` and larger `N` produce broader sampling
+on multimodal landscapes; a lower `F`, smaller `N`, and appropriate `CR` converge faster on
+unimodal or near-separable problems. The optimal `N` depends on the problem, the dimensionality,
+and on `F`/`CR` themselves. This three-way coupling, all problem-dependent, motivated more than a
+decade of work on adaptive DE.
 
 **Distributions for sampling parameters.** When parameters are sampled rather than fixed, two
 distributions recur and matter. A Normal `randn(mu, sigma)` concentrates samples tightly around a
@@ -96,36 +81,25 @@ were found to be highly effective and far simpler to use than reactive resizing.
 These are the prior methods a new self-adaptive DE would be measured against and would react to.
 
 **Classical DE (Storn & Price, 1997).** The substrate above with *fixed* `N`, `F`, `CR`
-(common defaults `F = 0.5`, `CR = 0.9`, `N` a few times `D`). Strong and simple. **Gap:** the
-three parameters are static and problem-dependent; performance swings with the landscape and
-there is no mechanism to discover good settings during a run — the user must tune by hand for
-each new problem.
+(common defaults `F = 0.5`, `CR = 0.9`, `N` a few times `D`). Strong and simple.
 
 **jDE (Brest et al., 2006).** Encode the parameters *on the individuals*: each `x_i` carries its
 own `F_i, CR_i` (initialized `F_i = 0.5, CR_i = 0.9`), inherited by its offspring, and each is
 randomly re-rolled within a fixed range with a small probability; a re-rolled value is retained
 only if the resulting trial wins selection. So good parameter values propagate by survival.
-A variant (dynNP-jDE) additionally halves the population periodically. **Gap:** the "what worked"
-signal is diffuse — spread across the individuals and entangled with selection — with no explicit
-record of *which* parameter values caused success, so adaptation is indirect and slow to react.
+A variant (dynNP-jDE) additionally halves the population periodically.
 
 **SaDE (Qin et al., 2009).** Keep a small memory and a pool of mutation strategies; each
 generation pick a strategy per individual with probability biased by how often each strategy
 recently succeeded. For crossover, sample `CR_i ~ randn(CRm_k, 0.1)` where `CRm_k` is the
-*median* of recently successful `CR` values for strategy `k`; `F` is drawn from `randn(0.5, 0.3)`
-and not adapted. **Gap:** adaptation tracks a single central tendency (a median) per strategy and
-re-samples around it, so it represents the "good region" of parameter space by one point — it
-cannot hold several distinct good values at once, and it adapts only `CR`, not `F`.
+*median* of recently successful `CR` values for strategy `k`; `F` is drawn from `randn(0.5, 0.3)`.
 
 **EPSDE (Mallipeddi et al., 2011) and CoDE (Wang et al., 2011).** Pool-based ensembles. EPSDE
 keeps three pools (mutation strategy; `F` values `0.4..0.9` step `0.1`; `CR` values `0.1..0.9`
 step `0.1`), assigns a combination to each individual, lets successful combinations be inherited
 and reinitializes failed ones. CoDE does not adapt at all: it draws random combinations of three
 hand-chosen strategies with three hand-chosen `[F,CR]` pairs (`[1.0,0.1]`, `[1.0,0.9]`,
-`[0.8,0.2]`), generating three trials per individual. **Gap:** both restrict parameters to a
-coarse, hand-built discrete menu rather than learning continuous values from the run's own
-success history; the granularity and the menu contents are themselves design choices that may not
-fit a given problem.
+`[0.8,0.2]`), generating three trials per individual.
 
 **JADE (Zhang & Sanderson, 2009).** The most directly relevant ancestor; it contributes three
 pieces that self-adaptive DE variants can keep.
@@ -154,17 +128,7 @@ mu_F  <- (1 - c) * mu_F  + c * mean_L(S_F)         (Lehmer mean)
 ```
 
 The Lehmer mean for `F` deliberately upweights larger successful `F` values to keep the mutation
-magnitude from decaying; the Cauchy distribution for `F` keeps `F` diverse. **Gap:** all sampling
-is guided by a *single* pair `(mu_CR, mu_F)`. Because selection is probabilistic, a given
-generation's `S_CR, S_F` can contain poor values; when they do, the single centers drift toward
-those poor values and the *entire* population's sampling degrades the next generation. The
-adaptation carries only one piece of state, so a single misleading generation moves the only
-thing the whole population samples from.
-
-Across all of these adaptive variants, one control parameter remains untouched: the population
-size `N` is held fixed for the entire run. The exploration-versus-refinement compromise that `N`
-forces (broad early, fine-grained late) is therefore the same as in classical DE, regardless of
-how cleverly `F` and `CR` are adapted.
+magnitude from decaying; the Cauchy distribution for `F` keeps `F` diverse.
 
 ## Evaluation settings
 

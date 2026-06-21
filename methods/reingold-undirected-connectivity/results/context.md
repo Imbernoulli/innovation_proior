@@ -4,7 +4,7 @@ The input is an undirected graph together with two named vertices, and the quest
 
 ## Memory Barrier
 
-A deterministic recursive reachability method can trade time for space by asking whether a midpoint splits a bounded-length path. This gives a quadratic logarithmic-space upper bound and applies even to directed reachability, but each recursive level must remember logarithmic-size state.
+A deterministic recursive reachability method can trade time for space by asking whether a midpoint splits a bounded-length path. This gives a quadratic logarithmic-space upper bound and applies even to directed reachability.
 
 ## Random-Walk Baseline
 
@@ -12,7 +12,7 @@ In undirected graphs, a random walk from one vertex reaches every vertex in its 
 
 ## Expansion Background
 
-A sparse regular graph with strong spectral expansion has logarithmic diameter. In such a graph, bounded-degree enumeration of all logarithmically long edge-label sequences is only polynomially many trials and can be carried out with logarithmic working memory.
+A sparse regular graph with strong spectral expansion has logarithmic diameter. In such a graph, the number of distinct logarithmically long edge-label sequences is polynomial in the number of vertices.
 
 ## Local Graph Interfaces
 

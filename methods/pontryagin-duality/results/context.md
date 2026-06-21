@@ -8,7 +8,7 @@ chi : G -> T,
 
 where `T={z in C : |z|=1}`.
 
-The problem is to understand whether these characters are merely useful coordinates or whether they contain the whole locally compact abelian group. A satisfactory theorem should start from a locally compact abelian group `G`, form the group of continuous circle-valued characters, put the right topology on that character group, and recover `G` canonically from the characters of its character group. If this works, Fourier analysis is not just a transform formula; it is the expression of a structural duality between groups.
+The question is whether this pattern is a structural property of all locally compact abelian groups: starting from such a group `G`, one can form the group of continuous circle-valued characters and ask how `G` relates to the characters of those characters.
 
 ## Background
 
@@ -20,7 +20,7 @@ For a locally compact abelian group `G`, the dual group is
 G^ = Hom_cont(G, T),
 ```
 
-with pointwise multiplication. The topology on `G^` is the compact-open topology, equivalently uniform convergence on compact subsets of `G`. This topology is not decorative. If the dual were given only the algebraic group structure, it would forget how characters vary; if it were given the wrong topology, the second dual would not carry the right comparison topology back to `G`.
+with pointwise multiplication. The topology on `G^` is the compact-open topology, equivalently uniform convergence on compact subsets of `G`.
 
 The canonical comparison map is evaluation:
 
@@ -29,17 +29,17 @@ e_G : G -> G^^,
 e_G(x)(chi) = chi(x).
 ```
 
-Each `x in G` defines a character on `G^`; the question is whether every character on `G^` arises this way and whether the topology is exactly recovered. The expected answer must also explain the basic examples: `R` is dual to `R`, `Z` is dual to `T`, finite abelian groups are dual to finite abelian groups, and compact groups trade places with discrete groups.
+Each `x in G` defines a character on `G^`. The basic examples are: `R` is dual to `R`, `Z` is dual to `T`, finite abelian groups are dual to finite abelian groups, and compact groups trade places with discrete groups.
 
 ## Baselines
 
-- **Fourier series on compact abelian examples.** On `T`, the characters are `z |-> z^n`, indexed by `Z`. They diagonalize translation and give Fourier coefficients. This is powerful, but by itself it can look like a special orthogonal expansion tied to the circle rather than a theorem about all locally compact abelian groups.
+- **Fourier series on compact abelian examples.** On `T`, the characters are `z |-> z^n`, indexed by `Z`. They diagonalize translation and give Fourier coefficients.
 
-- **Fourier transform on Euclidean space.** On `R^n`, the characters are `x |-> exp(2 pi i <xi,x>)`, again indexed by `R^n`. The transform converts translation into multiplication by characters. The limitation is conceptual: the formula hides the fact that the frequency variable `xi` is a point of the dual group, not merely a parameter inserted into an integral.
+- **Fourier transform on Euclidean space.** On `R^n`, the characters are `x |-> exp(2 pi i <xi,x>)`, again indexed by `R^n`. The transform converts translation into multiplication by characters.
 
-- **Finite abelian character tables.** A finite abelian group has enough characters to separate points, and its dual has the same cardinality. This gives a clean algebraic model of recovery from characters. The limitation is that finite groups have no real topological difficulty; compactness, discreteness, and continuity collapse into simpler notions.
+- **Finite abelian character tables.** A finite abelian group has enough characters to separate points, and its dual has the same cardinality. This gives a clean algebraic model of recovery from characters.
 
-- **Algebraic homomorphisms into fields or into `C*`.** Algebraic characters can detect group structure in favorable settings, but they do not encode the local compact topology needed for Haar measure and Fourier analysis. Continuous circle-valued characters are the stable analytic object.
+- **Algebraic homomorphisms into fields or into `C*`.** Algebraic characters can detect group structure in favorable settings. Continuous circle-valued characters are the stable analytic object for Fourier analysis.
 
 ## Evaluation settings
 
@@ -56,7 +56,7 @@ G^ = Hom_cont(G,T),
 e_G(x)(chi)=chi(x).
 ```
 
-It should prove the Pontryagin duality theorem for locally compact abelian groups:
+It should prove that
 
 ```
 e_G : G -> G^^
@@ -64,4 +64,4 @@ e_G : G -> G^^
 
 is a topological group isomorphism.
 
-The proof should make clear why the circle group is the target of characters, why compact-open topology is the correct topology on the dual, how characters separate points strongly enough to make `e_G` injective, why every character of `G^` is evaluation at some point of `G`, and how compact subgroups and discrete quotients explain the reversal between compact and discrete groups. It should close by tying this structural duality to Fourier transform: the transform is analysis performed across the paired groups `G` and `G^`.
+The proof should make clear why the circle group is the target of characters, why compact-open topology is the correct topology on the dual, how the map `e_G` is injective and surjective, and how compact subgroups and discrete quotients explain the reversal between compact and discrete groups. It should close by tying this structural result to Fourier transform: the transform is analysis performed across the paired groups `G` and `G^`.

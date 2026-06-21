@@ -12,15 +12,10 @@ direction, and the learning rate of the inner loop.
 
 By early 2019 the dominant frame is gradient-based meta-learning (MAML and its variants): meta-learn
 a shared initialization and adapt to a new task by a few ordinary gradient steps on its support set,
-differentiating the post-adaptation *query* loss back into the initialization. This works and scales,
-but the inner update is plain SGD — the gradient direction is fixed by the support loss and the rate is
-usually a scalar or, at most, coordinate-wise. The precise open question is whether the inner update can
-be made better conditioned without leaving the MAML frame: standard gradient descent performs poorly
-on ill-conditioned loss surfaces, and the inner-loop optimizer's choice is known to matter, but a
-few-shot learner cannot afford a huge curvature matrix, matrix inversions, or a curvature estimate that
-simply overfits the support examples. A solution must provide a richer update direction than scalar SGD,
-remain cheap enough for convolutional networks, and be optimized for post-adaptation query
-generalization rather than support-set fitting alone.
+differentiating the post-adaptation *query* loss back into the initialization. The broad question
+is how the inner update rule — its direction and step size — can be improved beyond a scalar learning
+rate applied to the raw gradient, while remaining compatible with the MAML two-loop meta-training
+structure.
 
 ## Background
 
@@ -30,23 +25,21 @@ system sees tasks sampled from `p(T)`; at meta-test it adapts to held-out tasks 
 learner is a parametric differentiable map `f_θ`; the standard inner adaptation is iterated gradient
 descent on the support loss, `θ^t = θ^{t-1} − α ∇L_T(θ^{t-1})`, with `α` a scalar rate and `θ^0` a
 learned initialization. Three ingredients fully specify such an optimizer — initialization, update
-direction, learning rate — and the few-shot regime makes the defaults (follow the gradient, one
-hand-set rate) liabilities.
+direction, learning rate — and the few-shot regime typically uses simple defaults (follow the gradient,
+one hand-set rate).
 
-Two background threads make that open question concrete. First, **second-order optimization**: Newton's method
+Two background threads are relevant. First, **second-order optimization**: Newton's method
 preconditions the gradient with the inverse Hessian, `θ − α H^{-1} ∇L`, taking a local quadratic view
 of the loss; natural gradient descent preconditions with the inverse Fisher information matrix, `θ − α
 F^{-1} ∇L`, a steepest-descent direction in distribution space. Both accelerate gradient descent on
 ill-conditioned surfaces, and both are infeasible at full scale, which is why approximations exist —
 online updates, **Kronecker-factored approximations (K-FAC)** that approximate the Fisher as `F ≈ A ⊗
-G` (A from input-unit activations, G from output-unit gradients), and diagonal approximations. But all
-of these *compute* curvature from the current training loss and data, so with only `K` examples they
-estimate curvature from almost nothing and tend to converge fast to a poor local minimum — they do not
-consider *generalization*. Second, **tensor algebra**: a layer's weights and gradients are naturally
-multidimensional tensors (`C_out × C_in × d` for a conv layer with filter size `d = h·w`, `d = 1` for
-a linear layer), and an `n`-mode product `X ×_n M` multiplies a tensor along its `n`-th mode by a
-matrix M — which lets a structured transform of the gradient tensor be factored into small per-mode
-matrices instead of one giant matrix over all coordinates.
+G` (A from input-unit activations, G from output-unit gradients), and diagonal approximations. Second,
+**tensor algebra**: a layer's weights and gradients are naturally multidimensional tensors (`C_out ×
+C_in × d` for a conv layer with filter size `d = h·w`, `d = 1` for a linear layer), and an `n`-mode
+product `X ×_n M` multiplies a tensor along its `n`-th mode by a matrix M — which lets a structured
+transform of the gradient tensor be factored into small per-mode matrices instead of one giant matrix
+over all coordinates.
 
 ## Baselines
 
@@ -57,29 +50,16 @@ These are the prior gradient-based meta-learners a curvature method is measured 
 The meta-objective optimizes the query loss of the adapted parameters across tasks, `min_θ Σ_i
 L_{T_i}(f_{θ'_i})`, and the meta-update `θ ← θ − β ∇_θ Σ_i L_{T_i}(f_{θ'_i})` differentiates through
 the inner step (a Hessian-vector product; FOMAML drops it). Architecture-agnostic, no extra
-parameters. **Gap:** the inner update is plain SGD — one global learning rate, the direction locked to
-the raw gradient. The only thing meta-learned is *where to start*; *how* to move is a fixed rigid rule.
+parameters.
 
 **Meta-SGD (Li, Zhou, Chen & Li, 2017).** Meta-learn the initialization *and* a per-parameter
 learning-rate vector `α` of the same shape as `θ`; the inner step is the elementwise product `θ' = θ −
 α ∘ ∇L`, with `α` meta-trained jointly with `θ`. This is a *diagonal* preconditioner of the gradient:
-a distinct learnable rate per coordinate, and (when the entries differ) a step that tilts off the raw
-gradient. **Gap:** the preconditioner is diagonal — it scales each coordinate independently but cannot
-model *dependencies between* gradient coordinates (between input channels, output channels, or filter
-positions within a layer). The curvature of a real loss is not diagonal.
+a distinct learnable rate per coordinate.
 
-**K-FAC (Martens & Grosse 2015) as an inner optimizer.** The natural candidate for a structured
-preconditioner: approximate the Fisher by `A ⊗ G` and precondition with its inverse. **Gap:** A ∈
-`R^{C_in d × C_in d}` is expensive to maintain computationally and spatially even for small nets;
-computed from training-loss statistics it ignores generalization; and as a few-shot inner optimizer it
-would still estimate curvature from the tiny support set. It motivates a structured preconditioner but
-does not by itself solve the support/query generalization problem.
-
-The state of the field before the target work: MAML scales but its inner step is plain SGD; Meta-SGD
-adds a learned coordinate-wise preconditioner but does not model cross-coordinate dependencies; and
-second-order methods have the right geometric motivation but compute curvature from data statistics and
-do not scale cleanly as an inner-loop few-shot optimizer. The gap is a way to improve the update
-geometry while preserving the support/query meta-learning contract.
+**K-FAC (Martens & Grosse 2015) as an inner optimizer.** Approximate the Fisher by `A ⊗ G` and
+precondition with its inverse. A ∈ `R^{C_in d × C_in d}` is a Kronecker-factored curvature
+approximation that motivates a structured preconditioner for the inner loop.
 
 ## Evaluation settings
 

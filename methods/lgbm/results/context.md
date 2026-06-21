@@ -4,17 +4,12 @@
 
 Gradient boosting decision trees (GBDT) are the consensus high-accuracy learner on structured
 / tabular data — winning at multi-class classification, click prediction, and learning-to-rank.
-But the training cost is becoming the bottleneck as datasets grow along *both* axes at once: many
-millions of rows **and** tens of thousands to millions of features. The dominant cost in GBDT is
-split finding: to grow one tree, at every node, for every feature, the learner must look at the
-data to evaluate the gain of candidate split points. So the per-tree cost scales like
-`#data × #feature`, and with big data on both axes this is simply too slow and too memory-hungry
-to be practical. The precise goal is a GBDT training procedure whose cost is **sub-linear in the
-product `#data × #feature`** — i.e. that pushes far fewer effective rows and far fewer effective
-columns through the split finder — **without losing accuracy**: the trees it grows must be
-essentially as good as the trees grown on the full data. "Just subsample rows" and "just drop
-features" are the obvious levers, but as the Baselines below show, naive versions of both lose
-accuracy, and it is not obvious how to apply the accuracy-preserving versions to GBDT at all.
+Training cost grows as datasets expand along *both* axes at once: many millions of rows **and**
+tens of thousands to millions of features. The dominant cost in GBDT is split finding: to grow
+one tree, at every node, for every feature, the learner must look at the data to evaluate the
+gain of candidate split points. The per-tree cost scales like `#data × #feature`. The question
+is how to reduce this cost while keeping the trees essentially as accurate as those grown on the
+full data.
 
 ## Background
 
@@ -43,19 +38,17 @@ contribution is the **square of a sum of gradients** divided by its count.
 
 **Two ways to find splits.** (i) *Pre-sorted* (SLIQ, Mehta et al. 1996; SPRINT, Shafer et al.
 1996; used by scikit-learn and gbm-in-R, and one mode of XGBoost): pre-sort each feature's
-values and enumerate every candidate split on the sorted order. It finds the exact optimum but
-is slow and memory-heavy — it stores sorted indices and must maintain them across splits. (ii)
-*Histogram-based* (CLOUDS, Ranka & Singh 1998; Jin & Agrawal 2003; McRank, Li et al. 2007; used
-by pGBRT and one mode of XGBoost): bucket each continuous feature into a small number of
-discrete bins (e.g. 255, so a bin index fits in one byte), then for a node accumulate, per bin,
-the sum of gradients and the instance count in a single pass over the node's rows — that is the
-node's *histogram*. Split search then runs over the `#bin` bin boundaries instead of all sorted
-values. Building the histograms costs `O(#data × #feature)`; searching costs `O(#bin × #feature)`.
-Since `#bin` is far smaller than `#data`, **histogram building dominates**. A standard
-acceleration: a parent node's histogram equals the sum of its two children's, so build the
-histogram for the smaller child and obtain the sibling by subtraction in `O(#bin)`. The
-histogram path is the more memory- and speed-efficient of the two, so it is the natural
-substrate to build on; but **whoever reduces `#data` or `#feature` reduces the dominant term**.
+values and enumerate every candidate split on the sorted order. It finds the exact optimum and
+stores sorted indices maintained across splits. (ii) *Histogram-based* (CLOUDS, Ranka & Singh
+1998; Jin & Agrawal 2003; McRank, Li et al. 2007; used by pGBRT and one mode of XGBoost):
+bucket each continuous feature into a small number of discrete bins (e.g. 255, so a bin index
+fits in one byte), then for a node accumulate, per bin, the sum of gradients and the instance
+count in a single pass over the node's rows — that is the node's *histogram*. Split search then
+runs over the `#bin` bin boundaries instead of all sorted values. Building the histograms costs
+`O(#data × #feature)`; searching costs `O(#bin × #feature)`. Since `#bin` is far smaller than
+`#data`, **histogram building dominates**. A standard acceleration: a parent node's histogram
+equals the sum of its two children's, so build the histogram for the smaller child and obtain
+the sibling by subtraction in `O(#bin)`.
 
 **Leaf-wise (best-first) tree growth (Shi 2007).** Two growth orders exist. *Level-wise* splits
 every node of a depth before descending. *Leaf-wise* repeatedly splits the single leaf whose
@@ -68,9 +61,7 @@ of leaves and the depth.
 one-hot encodings (one-hot word representations in text mining), indicator features, and engineered
 binary features mean most entries are zero, and many feature pairs are (almost) never nonzero on
 the same instance. The pre-sorted GBDT path can exploit this by skipping zero entries (Chen &
-Guestrin 2016). The histogram path, as it stands, cannot: it must retrieve a bin value for every
-instance on every feature whether the value is zero or not, so it pays full `#data × #feature`
-even when the data is mostly zeros.
+Guestrin 2016).
 
 ## Baselines
 
@@ -81,39 +72,24 @@ baseline. It supports both the pre-sorted (exact greedy) and histogram-based spl
 a regularized second-order objective (the gain `½ Σ G²/(H+λ) − γ` generalizes the variance gain
 above through the loss's first and second derivatives `g_i, h_i`), a sparsity-aware split finder
 that routes missing/zero entries to a learned default direction, column blocks, and out-of-core
-support. **Gap:** even in histogram mode it still scans every instance for every feature to
-build histograms, so its split-finding cost is `O(#data × #feature)`; on datasets that are large
-in both dimensions this dominates, and its histogram mode is memory-consuming — large enough to
-run out of memory on the biggest datasets.
+support.
 
-**Stochastic Gradient Boosting (SGB, Friedman 2002).** The one row-subsampling scheme that
-applies to GBDT directly: at each boosting round, draw a *uniform* random subset of the data and
-fit the round's tree on that subset only. Reduces `#data` per round. **Gap:** uniform sampling
-treats every instance as equally informative for the split gain; in practice it loses accuracy
-relative to training on the full data, so the speed-up comes at a measurable quality cost.
+**Stochastic Gradient Boosting (SGB, Friedman 2002).** At each boosting round, draw a *uniform*
+random subset of the data and fit the round's tree on that subset only. Reduces `#data` per round.
 
 **Weight-based instance subsampling for boosting (Friedman, Hastie, Tibshirani 2000; Dubout &
 Fleuret 2011; Appel et al. 2013).** A family that speeds up boosting by sampling instances
 according to a per-instance importance — e.g. filtering instances whose weight is below a
-threshold, or adapting the sampling ratio over the run. These are accuracy-preserving because
-they sample by importance rather than uniformly. **Gap:** they are all built on AdaBoost, where
-each instance carries a maintained sample weight that serves as the importance signal. GBDT has
-no such native instance weight, so these schemes **cannot be applied to GBDT directly** — there
-is nothing to sample by.
+threshold, or adapting the sampling ratio over the run. These are built on AdaBoost, where
+each instance carries a maintained sample weight that serves as the importance signal.
 
 **Feature filtering (PCA, Jolliffe 2002; projection pursuit, Jimenez & Landgrebe 1999; Appel et
 al. 2013).** To reduce `#feature`, the standard move is to filter or project out weak features,
-usually via principal-component analysis or projection pursuit. **Gap:** these rely on the
-assumption that the features contain significant redundancy. In practice features are often
-engineered each for a distinct contribution, so removing any of them can hurt training accuracy
-— the redundancy the method needs may not be there.
+usually via principal-component analysis or projection pursuit.
 
 **Per-feature nonzero tables for sparse histograms.** One can make the histogram build skip
 zeros by maintaining, per feature, a table of the instances with nonzero values and scanning
 only those, dropping the build cost for a feature from `O(#data)` to `O(#non-zero-data)`.
-**Gap:** maintaining one such table per feature throughout the whole tree-growth process costs
-extra memory and bookkeeping, and the per-feature accounting itself does not shrink the *number*
-of histograms that must be built — it stays `#feature` of them.
 
 ## Evaluation settings
 
@@ -138,8 +114,7 @@ The natural yardsticks already in use for a big-data GBDT trainer:
 
 A faster GBDT trainer plugs into the same model-wrapper shape already used for tabular boosting:
 prepare train / validation matrices, hand a parameter dictionary and tabular data to a tree engine,
-then return one score per test row. What is not settled is how the tree-training backend should
-scale on very large, sparse matrices. The wrapper, loss-to-gradient interface, validation callbacks,
+then return one score per test row. The wrapper, loss-to-gradient interface, validation callbacks,
 and prediction surface are ordinary machinery.
 
 ```python

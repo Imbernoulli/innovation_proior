@@ -2,7 +2,7 @@
 
 Large Transformer language models are increasingly useful but barely fit in memory. At and beyond 6.7B parameters, the feed-forward and attention-projection matrix multiplications hold about 95% of the parameters and 65-85% of the compute. Storing those weights in 16-bit forces large multi-GPU deployments. The obvious lever is to store the linear-layer weights in 8-bit integers and run the large products on Int8 tensor cores.
 
-The precise problem: can an already-trained 16/32-bit Transformer, up to 175B parameters, have its linear-layer weights converted to Int8 and be used immediately at inference with no retraining, no post-quantization tuning, and no predictive degradation? Prior 8-bit Transformer work degraded accuracy, needed tuning, and had only been studied below 350M parameters. What happens from 350M to 175B was unknown.
+The precise problem: can an already-trained 16/32-bit Transformer, up to 175B parameters, have its linear-layer weights converted to Int8 and be used immediately at inference with no retraining and no post-quantization tuning? Prior 8-bit Transformer work had been studied below 350M parameters. What happens from 350M to 175B is unknown.
 
 # Background
 
@@ -10,11 +10,11 @@ The precise problem: can an already-trained 16/32-bit Transformer, up to 175B pa
 
 *Absmax symmetric quantization.* With a dequantization scale $c_x=\lVert\mathbf X_{f16}\rVert_\infty/127$,
 $$\mathbf X_{i8}=\left\lfloor \mathbf X_{f16}/c_x\right\rceil.$$
-Equivalently, this is multiplication by $s_x=127/\lVert\mathbf X_{f16}\rVert_\infty$. One scale for an entire tensor is fast and hardware-friendly, but one large value sets the range for every value.
+Equivalently, this is multiplication by $s_x=127/\lVert\mathbf X_{f16}\rVert_\infty$. One scale covers an entire tensor, making it fast and hardware-friendly.
 
 *Zeropoint asymmetric quantization.* For an asymmetric distribution, use the full dynamic range with
 $$nd_x=\frac{2\cdot127}{\max(\mathbf X)-\min(\mathbf X)},\qquad \mathbf X_{i8}=\left\lfloor nd_x\,\mathbf X\right\rceil,$$
-and carry a separate integer shift $zp_x$ for the operation. The shift moves the minimum and maximum toward the two ends of $[-127,127]$, reducing error when values are one-sided, such as post-ReLU activations or one-sided outlier dimensions. The cost is in the matmul: $(A_{i8}+zp_a)(B_{i8}+zp_b)$ expands into the Int8 product plus Int16/32 cross-terms unless a special fused instruction exists, and that is awkward on GPUs/TPUs. This practical cost is why symmetric absmax is the common path.
+and carry a separate integer shift $zp_x$ for the operation. The shift moves the minimum and maximum toward the two ends of $[-127,127]$, which suits one-sided distributions such as post-ReLU activations. The matmul then expands as $(A_{i8}+zp_a)(B_{i8}+zp_b)$, which includes Int16/32 cross-terms unless a special fused instruction exists. Symmetric absmax avoids those cross-terms.
 
 *The matmul with scales.* For hidden states $\mathbf X_{f16}\in\mathbb R^{s\times h}$ and weights $\mathbf W_{f16}\in\mathbb R^{h\times o}$, quantize to $\mathbf A_{i8}$ and $\mathbf B_{i8}$, accumulate $\mathbf A_{i8}\mathbf B_{i8}$ in Int32, then multiply by the dequantization scales. With one scale per tensor, $\mathbf X_{f16}\mathbf W_{f16}\approx (c_xc_w)\mathbf C_{i32}$.
 
@@ -22,21 +22,19 @@ and carry a separate integer shift $zp_x$ for the operation. The shift moves the
 $$\mathbf C_{f16}\approx \mathbf C_{i32}\odot(\mathbf c_x\otimes\mathbf c_w),\qquad \mathbf c_x\in\mathbb R^s,\ \mathbf c_w\in\mathbb R^o.$$
 This gives every inner product its own row/column scale pair while still permitting a single Int8 GEMM followed by an output rescale.
 
-**The failure mode of a shared activation row scale.** A single scale per tensor lets one large-magnitude entry waste most of the quantization bins. Row-wise activation scaling confines that damage to one token row, and row/column scaling also gives the weight columns their own precision. But if the large values are persistent feature columns of $\mathbf X$, each token row still contains both the outlier feature and the normal features. The normal values in that row are still quantized under a scale set by the outlier.
-
 **Diagnostic finding: emergent outlier features.** As Transformers scale, a small set of feature dimensions, the columns of $\mathbf X\in\mathbb R^{s\times h}$, develop extreme magnitudes up to about 20x larger than other dimensions. These outliers are systematic: in a 6.7B model about 150,000 outlier values appear per 2048-token sequence, yet they are concentrated in about 6 feature dimensions, and the same dimensions light up across essentially all layers. For analysis, a recurring outlier feature has magnitude at least 6.0, appears in the same feature dimension in at least 25% of layers, and appears in at least 6% of sequence positions. They emerge with a sharp parameter-scale shift: around 6.7B parameters, the fraction of layers carrying these outliers rises from about 65% to 100%, and affected sequence positions rise from about 35% to about 75%. Measured against perplexity rather than parameter count, the emergence is smooth and monotonic, suggesting it tracks model quality rather than size alone. The outliers are usually one-sided, which is why asymmetric zeropoint quantization handles them better than symmetric absmax. They are also load-bearing: zeroing the outlier dimensions cuts the mean top-1 attention softmax probability from about 40% to about 20% and inflates validation perplexity by 600-1000%, whereas zeroing the same number of random dimensions changes top-1 probability by at most about 0.3% and perplexity by about 0.1%.
 
 # Baselines
 
-**Per-tensor absmax / zeropoint.** One scale, or one scale plus a zeropoint, per matrix. Simple and hardware-friendly for absmax, but a single outlier ruins precision for the whole tensor. These schemes hold only to small and mid-scale models before the scale trend breaks.
+**Per-tensor absmax / zeropoint.** One scale, or one scale plus a zeropoint, per matrix. Simple and hardware-friendly for absmax.
 
-**Row-wise quantization.** A separate absmax scale per row of the activation matrix, with a corresponding scale on the weight side. It confines an outlier's effect to its row, but outliers live in columns, so row-wise activation scaling still mixes outlier and normal features within each row.
+**Row-wise quantization.** A separate absmax scale per row of the activation matrix, with a corresponding scale on the weight side. This confines scaling to individual token rows.
 
-**Row/column inner-product scaling.** One scale for each activation row and one for each weight column. This is the natural granularity for a GEMM because each output is one row-column inner product. It improves precision over row-wise-only scaling, especially on the weight side, but the activation outlier feature still shares a row scale with normal features.
+**Row/column inner-product scaling.** One scale for each activation row and one for each weight column. This is the natural granularity for a GEMM because each output is one row-column inner product. It preserves a single Int8 GEMM followed by an output rescale.
 
-**ZeroQuant / nuQmm.** Parallel large-model work uses group-wise quantization, an even finer normalization granularity than row/column scaling, with custom CUDA kernels. These methods target throughput and footprint and validate larger models than earlier BERT-scale work, but their finer normalization still applies one uniform precision across each group and degrades once the column outliers grow extreme.
+**ZeroQuant / nuQmm.** Parallel large-model work uses group-wise quantization, an even finer normalization granularity than row/column scaling, with custom CUDA kernels. These methods target throughput and footprint and validate larger models than earlier BERT-scale work.
 
-**Prior outlier studies.** Earlier work tied large-magnitude features in BERT-family models to LayerNorm, positional structure, anisotropy, and token-frequency effects. That work had not connected outlier emergence to autoregressive model scale or made the outlier dimensions the central obstruction to degradation-free large-scale Int8 inference.
+**Prior outlier studies.** Earlier work tied large-magnitude features in BERT-family models to LayerNorm, positional structure, anisotropy, and token-frequency effects.
 
 # Evaluation settings
 

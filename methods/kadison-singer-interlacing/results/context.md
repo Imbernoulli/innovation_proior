@@ -12,16 +12,14 @@ limits of coordinate evaluations. Restriction always gives *at least one*
 extension; the question is whether it is *unique*. Kadison and Singer suspected
 the answer was negative but did not formally conjecture either way.
 
-What makes the question hard, and important, is that over the following decades a
-positive answer was shown to be equivalent to a long list of concrete, finite,
-combinatorial-linear-algebraic statements about decomposing matrices and vectors
-into well-behaved pieces — statements in operator theory, frame theory,
-discrepancy theory, and signal processing. So the abstract operator-algebra
-question became a question about a clean, finite-dimensional phenomenon. The goal
-is to settle one of these equivalent finite statements *with a universal constant*
-— a bound on the number of pieces that does **not** grow with the dimension. That
-uniformity is exactly what every partial result of the previous decades failed to
-achieve at the right scale.
+Over the following decades a positive answer was shown to be equivalent to a long
+list of concrete, finite, combinatorial-linear-algebraic statements about
+decomposing matrices and vectors into well-behaved pieces — statements in operator
+theory, frame theory, discrepancy theory, and signal processing. So the abstract
+operator-algebra question became a question about a clean, finite-dimensional
+phenomenon. The goal is to settle one of these equivalent finite statements *with
+a universal constant* — a bound on the number of pieces that does **not** grow
+with the dimension.
 
 ## Background
 
@@ -64,22 +62,12 @@ $$\sum_i \mathbb{E}\, v_iv_i^* = I, \qquad \mathbb{E}\,\|v_i\|^2 \le \epsilon,$$
 and the question is how small $\big\|\sum_i v_iv_i^*\big\|$ can be made over the
 support of the distribution.
 
-**What was known about such sums (the diagnostic facts).** Sums of independent
-random rank-one matrices are exactly what matrix concentration was built for. The
-matrix Chernoff / Ahlswede-Winter inequality and Rudelson's isotropic-position
-bound give, in this setting,
+**What was known about such sums.** Sums of independent random rank-one matrices
+are exactly what matrix concentration was built for. The matrix Chernoff /
+Ahlswede-Winter inequality and Rudelson's isotropic-position bound give, in this
+setting,
 $$\Big\|\sum_i v_iv_i^*\Big\| \le C(\epsilon)\cdot \log n$$
-with high probability. Two features of this bound are the obstruction to be
-overcome. First, the *scale*: a $\log n$ factor is fatal when the target is a
-universal constant independent of $n$ — paving needs $r$ independent of the
-dimension, so any dimension-dependent norm bound is unusable. Second, the *mode of
-guarantee*: concentration says the bound holds for *almost every* outcome, but the
-combinatorial choice we actually need can be exponentially rare. A union of
-disjoint cliques shows that the good signing for a Ramanujan graph exists for only
-an exponentially small fraction of signings; "with high probability" tools cannot
-locate such an outcome. A first-moment existence statement — "*some* outcome is
-good" — is the right kind of guarantee, and it must come at the constant scale, not
-the $\log n$ scale.
+with high probability.
 
 **Tools for the roots of polynomials.** A self-adjoint positive semidefinite
 matrix $M$ has $\|M\|$ equal to its largest eigenvalue, which is the largest root
@@ -163,42 +151,26 @@ bound the operator norm of a sum of independent random matrices by controlling
 matrix moments / Laplace transforms. In the present setting they yield
 $\|\sum_i v_iv_i^*\| \le C(\epsilon)\log n$ with high probability. Core idea:
 $\mathbb{E}\,\mathrm{Tr}\,e^{\theta \sum_i v_iv_i^*}$ factorizes well enough to give
-a tail bound on the top eigenvalue. **Limitation:** the bound carries a $\log n$
-factor and is therefore dimension-dependent — useless for a paving constant that
-must be uniform in $n$; and it is a high-probability statement, which cannot
-certify an outcome that is good but exponentially rare.
+a tail bound on the top eigenvalue.
 
 **Bourgain-Tzafriri restricted invertibility / partial Kadison-Singer results.**
 Under stronger hypotheses than the full conjecture, various authors
 (Bourgain-Tzafriri; Berman et al.; Paulsen; Baranov-Dyakonov; Lawton; Akemann
 et al.; Popa) obtained partial pavings or partitions. The strongest of these gave
-constants on the order of $1/\log n$ rather than universal constants. **Limitation:**
-all leave a dimension-dependent gap; none produces the universal, dimension-free
-constant the equivalences demand.
+constants on the order of $1/\log n$.
 
 **The deterministic barrier / sparsification method.** Builds a *reweighted*
 sub-sum $\sum_i s_iv_iv_i^*$ with $s_i\ge 0$, few nonzero, condition number
 $\le \frac{d+1+2\sqrt d}{d+1-2\sqrt d}$, via the upper/lower potential functions
-and barrier shifts described above. **Limitation:** the weights $s_i$ it produces
-can vary wildly; it controls a reweighted sum, but the conjectures here require the
-choice to be a genuine *subset* or *partition* (weights forced to be $0/1$, or a
-clean two-coloring). Forcing the weights to be equal is not a minor technicality —
-it is a different and harder problem.
+and barrier shifts described above.
 
-**The interlacing-families existence principle.** From the same line of work: a
-collection of real-rooted polynomials indexed by a product set
-$S_1\times\cdots\times S_m$ is an *interlacing family* if, at every level, the
-children of any partial assignment have a common interlacing. Such a family always
-contains a polynomial whose largest root is at most the largest root of the sum of
-the whole family — proved by repeatedly applying the common-interlacing lemma down
-the tree. This converts "the average is good" into "some leaf is good," exactly the
-first-moment existence statement matrix concentration cannot give. **Where it
-stalls:** to use it one must (a) exhibit the right family of polynomials whose sum
-is the expected characteristic polynomial, (b) prove that family really is an
-interlacing family, and (c) bound the largest root of that expected polynomial — and
-for *non*-identically-distributed vectors the covariances do not commute, so the
-clean univariate $(1-cD)$-on-one-polynomial picture that handles the isotropic case
-no longer applies, and the classical Laguerre root bound is not available.
+**The interlacing-families existence principle.** A collection of real-rooted
+polynomials indexed by a product set $S_1\times\cdots\times S_m$ is an
+*interlacing family* if, at every level, the children of any partial assignment
+have a common interlacing. Such a family always contains a polynomial whose largest
+root is at most the largest root of the sum of the whole family — proved by
+repeatedly applying the common-interlacing lemma down the tree. This converts
+"the average is good" into "some leaf is good," a first-moment existence statement.
 
 ## Evaluation settings
 

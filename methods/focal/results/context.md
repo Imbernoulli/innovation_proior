@@ -10,27 +10,21 @@ the regime that would make RL usable where exploration is dangerous or expensive
 autonomous driving, controlled-environment agriculture): learn once from static multi-task logs,
 then drop into a new task and act well from a handful of recorded transitions.
 
-Two difficulties have to be solved at once, and they interfere with each other.
-
-First, the **offline** difficulty. A value-based RL learner bootstraps: it regresses `Q(s,a)` toward
+The **offline** side. A value-based RL learner bootstraps: it regresses `Q(s,a)` toward
 `r + γ Q(s',a')` where `a'` is chosen by the *learned* policy. When the learner can collect new data,
 an over-optimistic `Q` value at an out-of-distribution `(s',a')` gets corrected the next time that
-action is tried. Offline, there is no "next time": OOD over-estimates are never corrected, they feed
-back into the backup, and the value function can diverge to absurd magnitudes. So an offline learner
-must somehow be constrained to the part of action space the dataset actually covers — the support of
-the behavior policy.
+action is tried. Offline, there is no "next time": the policy-improvement step queries `Q` at OOD
+actions, and the values are backed up from the fixed dataset alone.
 
-Second, the **task-inference** difficulty. To behave well on a new task the agent must compress the
-context (the few available transitions) into a compact task representation `z`, condition its policy
-and value functions on `z`, and learn that compression jointly with control — robustly, from few
-samples, and *without exploring* to disambiguate which task it is in. A representation that smears
-distinct tasks together, or that only learns through an unstable value-learning signal, will fail.
+The **task-inference** side. To behave well on a new task the agent must compress the context (the
+few available transitions) into a compact task representation `z`, condition its policy and value
+functions on `z`, and learn that compression jointly with control — from few samples, and without
+exploring to disambiguate which task it is in.
 
-The precise goal: an end-to-end, model-free algorithm that (1) infers task identity from a few
-logged transitions with no test-time interaction; (2) conditions an actor-critic on that inferred
-task variable; and (3) trains the whole thing on static multi-task data without the value functions
-diverging — fast to adapt, computationally cheap, and effective across continuous-control meta-RL
-benchmarks.
+The question: an end-to-end, model-free algorithm that (1) infers task identity from a few logged
+transitions with no test-time interaction; (2) conditions an actor-critic on that inferred task
+variable; and (3) trains the whole thing on static multi-task data, across continuous-control
+meta-RL benchmarks.
 
 ## Background
 
@@ -39,44 +33,42 @@ benchmarks.
 `Q_π(s,a) = R(s,a) + γ E_{s'∼P}[V_π(s')]`, and value-based methods iterate a Bellman backup
 `(BQ)(s,a) := R(s,a) + γ E_{P}[max_{a'} Q(s',a')]`. With neural-network function approximators the
 backup is realized by regression of `Q_ψ` toward a target built from a slowly-updated target network.
-The pathology that matters offline is **bootstrapping error** (Kumar et al. 2019): deep networks
-generalize poorly to actions outside the behavior policy's support, the policy-improvement step
-queries `Q` at exactly such out-of-distribution actions, and with no new data the resulting
-over-estimates are never corrected and propagate through the backups. Empirically, an unconstrained
-offline value function can blow up to enormous magnitude.
+A phenomenon studied in the offline setting is **bootstrapping error** (Kumar et al. 2019): deep
+networks generalize poorly to actions outside the behavior policy's support, the policy-improvement
+step queries `Q` at exactly such out-of-distribution actions, and with no new data those values are
+propagated through the backups.
 
-**Behavior-constrained offline RL.** The remedy on the table is to keep the learner close to the
-behavior policy. Two concrete instances: BCQ (Fujimoto et al. 2019) parameterizes the policy as small
-learned perturbations of behavior actions, so the policy can only select actions near the data; BEAR
-(Kumar et al. 2019) penalizes the policy for diverging from the behavior support using a
-sample-based kernel MMD and takes a conservative minimum over a target-Q ensemble, with the
-constraint strength tuned as a Lagrange multiplier against a divergence threshold. The common theme —
-"regularize the learner toward the logged transitions" — was unified by Wu, Tucker & Nachum (2019)
-into the **behavior-regularized actor-critic (BRAC)** framework: insert a divergence
-`D(π_θ(·|s), π_b(·|s))` between the learner and behavior policies into the actor-critic objective,
-either as a *value penalty* added inside the target Q,
+**Behavior-constrained offline RL.** One family of methods keeps the learner close to the behavior
+policy. BCQ (Fujimoto et al. 2019) parameterizes the policy as small learned perturbations of
+behavior actions, so the policy selects actions near the data; BEAR (Kumar et al. 2019) penalizes the
+policy for diverging from the behavior support using a sample-based kernel MMD and takes a
+conservative minimum over a target-Q ensemble, with the constraint strength tuned as a Lagrange
+multiplier against a divergence threshold. The common theme — regularize the learner toward the
+logged transitions — was unified by Wu, Tucker & Nachum (2019) into the **behavior-regularized
+actor-critic (BRAC)** framework: insert a divergence `D(π_θ(·|s), π_b(·|s))` between the learner and
+behavior policies into the actor-critic objective, either as a *value penalty* added inside the
+target Q,
 ```
 V^D_π(s) = Σ_t γ^t E[ R_π(s_t) − α D(π_θ(·|s_t), π_b(·|s_t)) ],
 ```
 or as a *policy regularizer* applied only in the actor update (α set to zero in the Q update). The
 divergence `D` can be a kernel MMD, a Wasserstein distance, or any f-divergence. For an f-divergence,
-a key trick avoids ever estimating a cloned behavior density: every f-divergence has a **dual
+a trick avoids ever estimating a cloned behavior density: every f-divergence has a **dual
 (Fenchel) form** (Nowozin et al. 2016),
 ```
 D_f(p,q) = max_g  E_{x∼p}[ g(x) ] − E_{x∼q}[ f*(g(x)) ],
 ```
 with `f*` the convex conjugate of `f`; for KL, `f(x) = −log x` and `f*(t) = −log(−t) − 1`. One then
 learns a discriminator `g` by minimax instead of fitting a generative model of the behavior policy.
-BCQ and BEAR both reappear as special cases of BRAC. A known cost of this whole family, inherited
-from SAC (Haarnoja et al. 2018), is sensitivity to the reward scale and to the regularization
-strength `α`, which must be tuned per environment.
+BCQ and BEAR both reappear as special cases of BRAC. This whole family, inheriting from SAC (Haarnoja
+et al. 2018), uses a reward scale and a regularization strength `α` set per environment.
 
 **Context-based meta-RL.** Meta-RL trains across `p(T)` so the agent can adapt quickly to a new task.
 The context-based view treats the unknown task as an unobserved part of the state — a latent `z`
 inferred from past experience — turning meta-RL into RL on an augmented MDP whose state is `(s, z)`.
 An inference network `q_φ(z|c)` maps context `c` (a set of transitions) to `z`, and a universal
-policy `π_θ(a|s,z)` and value function condition on it (Schaul et al. 2015). The strongest off-policy
-instance, PEARL (Rakelly et al. 2019), makes three choices. (i) The encoder is **probabilistic and
+policy `π_θ(a|s,z)` and value function condition on it (Schaul et al. 2015). The off-policy instance
+PEARL (Rakelly et al. 2019) makes three choices. (i) The encoder is **probabilistic and
 permutation-invariant**: each transition `c_n` produces a Gaussian factor `Ψ_φ(z|c_n) = N(μ_n, σ_n)`,
 and the factors are combined by a **product of Gaussians**,
 ```
@@ -100,59 +92,38 @@ the prototypes. The choice of squared Euclidean distance is principled: it is th
 whose cluster representative is the mean, so prototype-as-mean and distance-as-squared-Euclidean are
 the matched pair (the model is equivalent to mixture-density estimation with a spherical-Gaussian
 class density). The embedding is permutation-invariant (a mean) and fully deterministic. This is the
-metric-learning view: instead of inferring a posterior, *shape the geometry* of an embedding so that
+metric-learning view: instead of inferring a posterior, shape the geometry of an embedding so that
 same-class points cluster and different-class points separate.
 
-**Distance metric learning and its collapse failure.** The workhorse objective of that lineage is the
-contrastive loss (Chopra et al. 2005; Hadsell et al. 2006). For a pair of inputs with embeddings
-`q_i, q_j` and a same/different label,
+**Distance metric learning.** The workhorse objective of that lineage is the contrastive loss (Chopra
+et al. 2005; Hadsell et al. 2006). For a pair of inputs with embeddings `q_i, q_j` and a same/different
+label,
 ```
 L_cont(x_i, x_j) = 1{y_i = y_j} ‖q_i − q_j‖₂²  +  1{y_i ≠ y_j} max(0, m − ‖q_i − q_j‖₂)²,
 ```
 a "spring model": same-label pairs are pulled together by an attractive quadratic, different-label
-pairs are pushed apart by a margin-`m` hinge. Hadsell et al. make two observations that matter here.
-First, minimizing *only* the attractive term over similar pairs collapses the embedding to a constant
-(every distance goes to zero), so an explicit repulsive term between dissimilar pairs is mandatory.
-Second, the repulsive margin term behaves like a spring that acts *only within radius `m`*: it exerts
-zero force once a pair is already farther than `m` apart, and its short-range force is bounded rather
-than singular when a dissimilar pair happens to start very close together. A related concern from
-graph embedding (Luo et al. 2011): a purely quadratic distance objective — the Laplacian-embedding
-form `Σ_{ij} W_{ij} ‖Y_i − Y_j‖²` — over-weights
-keeping *dissimilar* points apart and under-preserves the local topology of *similar* points, which
-that work addresses by replacing the quadratic with an inverse-of-distance objective
-`Σ_{ij} W_{ij} / (‖Y_i − Y_j‖² + σ²)`.
+pairs are pushed apart by a margin-`m` hinge. Hadsell et al. note that the attractive term over
+similar pairs needs an explicit repulsive term between dissimilar pairs, and that the repulsive margin
+term acts like a spring *only within radius `m`*: it exerts zero force once a pair is already farther
+than `m` apart, and its short-range force is bounded rather than singular when a dissimilar pair starts
+very close together.
 
 ## Baselines
 
 **PEARL ported to offline (Rakelly et al. 2019).** Take PEARL — probabilistic permutation-invariant
 encoder, KL information bottleneck, posterior-sampling exploration, encoder trained by Bellman
 gradients, SAC backbone — and run it on logged data, without exploration at train or test. Core idea
-and math as above. *Gap*: most of the probabilistic machinery exists to *explore* an unknown task
-(sample `z` from the prior, act, narrow the belief), and offline there is no exploration to do. The
-encoder learns only through the value-learning gradient, so when offline Bellman backups become
-ill-behaved (the bootstrapping divergence above) the task-inference signal is corrupted along with
-the value function, and the embedding stops distinguishing tasks; the value-learning signal also
-exerts no *direct* pressure to separate distinct tasks' embeddings.
+and math as above. The encoder learns through the value-learning (Bellman) gradient.
 
 **Contextual / task-augmented BCQ (Fujimoto et al. 2019).** Put the inferred latent `z` into the
-state and run offline BCQ on the augmented MDP, with the task-inference module again trained through
-the value-learning (Bellman) gradients. Core idea and math as above. *Gap*: the behavior constraint
-addresses bootstrapping, but the encoder is still coupled to value learning through Bellman
-gradients, so task inference inherits whatever instability the offline value learning has; and BCQ's
-action-perturbation constraint is a single-task device that does not by itself produce a clean,
-separable task representation.
+state and run offline BCQ on the augmented MDP, with the task-inference module trained through the
+value-learning (Bellman) gradients. Core idea and math as above. The behavior constraint is BCQ's
+action-perturbation device.
 
 **Two-stage model-based multi-task batch RL (Li et al. 2019).** Train, per task, an offline BCQ
 policy and explicit reward/dynamics models, then distill across tasks with a metric-learning term.
-Core idea: bring metric learning into multi-task batch RL via per-task models. *Gap*: it is
-model-based and multi-stage — a reward/dynamics model and a BCQ policy per task — which is
-computationally heavy and not end-to-end; the task representation is a byproduct of separate model
-fits rather than a single jointly-trained embedding.
-
-The shared limitation across these baselines: each ties task inference to the value-learning signal
-(Bellman gradients) and/or carries probabilistic/exploration machinery that the offline setting
-cannot use, and none of them imposes a *direct* geometric penalty on merged embeddings for distinct
-tasks.
+Core idea: bring metric learning into multi-task batch RL via per-task models; the task representation
+is read out of the separate model fits.
 
 ## Evaluation settings
 
@@ -180,12 +151,12 @@ The natural yardsticks, all pre-existing:
 
 The substrate is a context-based meta-RL actor-critic harness: a deterministic-MLP toolkit, a
 TanhGaussian policy and Q/V networks that take the latent task variable as an extra input, per-task
-replay buffers over the static datasets, a context sampler, and an outer meta-training loop. What is
-*not* settled is how the agent turns context into a task variable and what objective trains that
-mapping — that is the single empty slot. The agent below collects context and exposes an `adapt()`
-that must produce the task variable `z`; the algorithm samples per-task RL batches and context
-batches and takes a gradient step. The bodies that (a) aggregate per-transition embeddings into `z`
-and (b) supply the objective that trains the encoder are left as stubs.
+replay buffers over the static datasets, a context sampler, and an outer meta-training loop. The
+open slot is how the agent turns context into a task variable and what objective trains that mapping.
+The agent below collects context and exposes an `adapt()` that must produce the task variable `z`; the
+algorithm samples per-task RL batches and context batches and takes a gradient step. The bodies that
+(a) aggregate per-transition embeddings into `z` and (b) supply the objective that trains the encoder
+are left as stubs.
 
 ```python
 import torch

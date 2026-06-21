@@ -2,50 +2,38 @@
 
 A speech recognizer should work reliably "out of the box" across many recording
 conditions, accents, domains, and languages — not just on the single distribution
-it was tuned for. The dominant pipeline does the opposite: pre-train an audio
-encoder, then *fine-tune* it on each target dataset. The precise problem is that
-this fine-tuning step is both a usability burden (it needs a skilled practitioner
-per deployment) and a robustness hazard (fitting to one dataset's idiosyncrasies
-inflates in-distribution accuracy while the model still makes basic errors on
-other distributions). The goal is a single system that generalizes broadly
-*zero-shot* — usable directly, with no dataset-specific fine-tuning of a decoder —
-across environments, tasks, and languages. The open question is what training
-recipe yields that breadth.
+it was tuned for. The dominant pipeline pre-trains an audio encoder, then
+*fine-tunes* it on each target dataset. The open question is what training
+recipe yields broad zero-shot generalization across environments, tasks, and
+languages without dataset-specific fine-tuning of a decoder.
 
 ## Background
 
-**The unsupervised-encoder gap.** Self-supervised pre-training on raw audio
-(wav2vec 2.0; Baevski et al. 2020) learns excellent *encoder* representations from
+**Self-supervised audio pre-training.** Self-supervised pre-training on raw audio
+(wav2vec 2.0; Baevski et al. 2020) learns *encoder* representations from
 enormous unlabeled corpora — scaled to ~1,000,000 hours (Zhang et al. 2021) — far
-beyond the ~1,000 hours of a typical academic supervised set. But because the
-objective is purely unsupervised, these systems learn no equivalently capable
-*decoder* mapping representations to usable text; they require a fine-tuning stage
-to perform recognition at all. That fine-tuning is the source of both the
-usability and the brittleness problems.
+beyond the ~1,000 hours of a typical academic supervised set. The objective is
+contrastive masked prediction over quantized latent speech units; the result is an
+encoder whose representations transfer well to downstream tasks via fine-tuning.
 
-**Why fine-tuning hurts robustness.** Machine-learning models are very good at
-exploiting dataset-specific patterns that boost held-out accuracy *within* a
-dataset but do not transfer. In vision, fine-tuning on ImageNet was documented to
-raise that dataset's accuracy by ~9% while *not* improving average accuracy on
-seven other natural-image datasets of the same objects (Radford et al. 2021): a
-model can look "superhuman" on one distribution and still fail basic cases on
-another, precisely because it learned that distribution's quirks. The same risk
-applies to a fine-tuned speech decoder.
+**Robustness and distribution shift.** Machine-learning models can exploit
+dataset-specific patterns. In vision, fine-tuning on ImageNet raised that
+dataset's accuracy by ~9% without improving average accuracy on seven other
+natural-image datasets of the same objects (Radford et al. 2021): a model can
+perform well on one distribution while behaving differently on another.
 
-**Supervised multi-dataset training generalizes better.** Recognizers pre-trained
-in a *supervised* fashion across many datasets/domains are more robust and
-transfer better to held-out data than single-source models (Narayanan et al. 2018;
-Likhomanenko et al. 2020; Chan et al. 2021). SpeechStew (Chan et al. 2021) mixes
-seven supervised datasets into 5,140 hours — robust, but tiny next to the million
-unsupervised hours.
+**Supervised multi-dataset training.** Recognizers pre-trained in a *supervised*
+fashion across many datasets/domains transfer broadly to held-out data
+(Narayanan et al. 2018; Likhomanenko et al. 2020; Chan et al. 2021). SpeechStew
+(Chan et al. 2021) mixes seven supervised datasets into 5,140 hours of training
+material.
 
 **Weak supervision trades quality for quantity.** Relaxing the demand for
 gold-standard human transcripts lets automated pipelines harvest far more
 (audio, transcript) pairs from the internet — 10,000 to 30,000 hours of noisier
-data (Chen et al. 2021; Galvez et al. 2021). Vision saw that moving from curated
-datasets to much larger weakly-supervised ones improves robustness and
-generalization (Mahajan et al. 2018; Kolesnikov et al. 2020). Speech had not yet
-pushed this scale.
+data (Chen et al. 2021; Galvez et al. 2021). In vision, moving from curated
+datasets to larger weakly-supervised ones improves robustness and generalization
+(Mahajan et al. 2018; Kolesnikov et al. 2020).
 
 **The sequence-to-sequence Transformer.** An encoder-decoder Transformer (Vaswani
 et al. 2017) consumes a source sequence with a bidirectional encoder and generates
@@ -58,22 +46,17 @@ gives an open vocabulary over arbitrary text.
 
 **Self-supervised encoders + fine-tuning (wav2vec 2.0; Baevski et al. 2020).**
 Contrastive masked pre-training on unlabeled audio, then fine-tune for
-recognition. Core idea: learn representations cheaply from unlabeled data. Gap: no
-pre-trained decoder, so each deployment needs a fine-tuned head, with the
-robustness hazard above; performance is reported *after* dataset-specific
-fine-tuning, not zero-shot.
+recognition. Core idea: learn representations cheaply from unlabeled data.
+Performance is reported after dataset-specific fine-tuning.
 
 **Supervised multi-dataset training (SpeechStew; Chan et al. 2021).** Pool several
 high-quality supervised corpora and train one model. Core idea: domain diversity
-buys robustness. Gap: the total available gold-standard supervision (~5k hours) is
-orders of magnitude smaller than unlabeled corpora, capping how far this can go.
+buys robustness. Total available gold-standard supervision is ~5k hours.
 
 **Weakly-supervised mid-scale datasets (GigaSpeech, People's Speech; Chen et al.
 2021; Galvez et al. 2021).** Automated pipelines harvest 10k–30k hours of noisier
-labeled audio. Core idea: relax transcript quality to gain quantity. Gap: only a
-few times larger than the sum of clean datasets, still far below unsupervised
-scale, and these systems are typically still evaluated with in-distribution
-training splits rather than zero-shot.
+labeled audio. Core idea: relax transcript quality to gain quantity. These systems
+are typically evaluated with in-distribution training splits.
 
 ## Evaluation settings
 
@@ -95,8 +78,7 @@ are the standing datasets, metrics, and input features for the evaluation settin
 The available toolkit is a log-mel front end, a standard encoder-decoder Transformer
 (pre-activation residual blocks, sinusoidal/learned position embeddings, tied
 input-output token embeddings), a byte-level BPE tokenizer, and an AdamW training
-loop with warmup and gradient clipping. The empty slot is the training recipe: what
-data the model is trained on and what the decoder is asked to predict.
+loop with warmup and gradient clipping.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F

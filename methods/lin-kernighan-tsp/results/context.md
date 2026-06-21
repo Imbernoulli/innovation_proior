@@ -10,13 +10,6 @@ small or favorable instances, yet the running time remains exponential in the ha
 practical need is a method that, for instances of a hundred or more cities, returns optimal or
 near-optimal tours quickly, with statistical confidence rather than a proof certificate.
 
-The central tension is between the strength of a local move and the cost of searching for it. A
-stronger move can escape more local optima, but if searching for that move costs too much, the
-procedure loses the very speed that makes a heuristic useful. The prevailing way of setting that
-tradeoff is to fix the exchange size in advance. That is the awkward point: one value of `k` must
-serve the whole run, even though early moves may need large rearrangements and late moves may need
-small repairs.
-
 ## Background
 
 The dominant practical attack is iterative local search. Start from a feasible tour, repeatedly
@@ -30,20 +23,12 @@ The k-optimality classes nest. A 3-optimal tour is also 2-optimal, a 4-optimal t
 3-optimal, and so on; at the limit, replacing all `n` edges can express any tour, so n-optimality
 is global optimality. Larger `k` therefore imposes a stronger local-optimality condition. In the
 Euclidean plane, 2-opt already has a clear geometric meaning: a 2-optimal tour has no crossed
-edges. But 2-opt is still weak, and 3-opt removes many defects that cannot be repaired by a single
-segment reversal.
+edges. 3-opt removes defects that cannot be repaired by a single segment reversal.
 
 The cost grows quickly. A full k-opt checkout must examine on the order of `n^k` edge subsets, so
 the per-checkout work is roughly `Theta(n^k)`. Lin's 1965 3-opt procedure is the practical fixed-k
-reference point: it improves greatly over Croes-style inversion search, but the checkout that
-certifies no improving 3-opt move remains cubic. Moving to 4-opt increases the work by another
-factor of `n`, and the benefit is not predictable enough to justify a fixed 4-opt sweep as the
-default.
-
-A second ingredient is an elementary arithmetic fact about cyclic sequences of real numbers. If a
-cyclic list has positive total sum, then some rotation of that list has every partial sum positive:
-rotate to begin just after a place where the prefix sum is minimal, and every prefix after that
-rotation lies above the minimum.
+reference point: it improves greatly over Croes-style inversion search, and the checkout that
+certifies no improving 3-opt move is cubic.
 
 ## Baselines
 
@@ -51,28 +36,21 @@ rotation lies above the minimum.
 the tour, reverse the segment between them, and keep the reversal if it shortens the tour. This is
 the standard 2-opt move, because it breaks two tour edges and reconnects the two open paths in the
 only other way that remains a tour. The automatic part of the method stops at an inversion-free
-tour. Its gap is the weakness of 2-opt: a tour may have no improving reversal while still being far
-from optimal. Croes also describes manual adjustment, but that is not a scalable automatic
-procedure.
+tour.
 
 **Lin 1965 - lambda-optimality and 3-opt.** Lin formalizes `lambda`-optimality and implements
 3-opt as the next practical step beyond inversion search. A 3-opt move breaks three tour edges and
 reconnects the resulting pieces in a shorter Hamiltonian cycle; one common view is to remove a
 section of consecutive cities and reinsert it elsewhere, either in the same order or reversed. The
 method generates many random starts, iterates to a 3-opt local optimum, and keeps the best tours;
-a reduction idea fixes edges that appear repeatedly in good local optima. The gap is that `k = 3`
-is fixed for the whole run. It is much stronger than 2-opt, but it still cannot make a move whose
-useful exchange depth is four, ten, or thirty, while checking all such depths directly is too
-expensive.
+a reduction idea fixes edges that appear repeatedly in good local optima.
 
 **Held-Karp exact methods.** Dynamic programming over subsets and 1-tree lower bounds inside
-branch-and-bound provide exact solutions or strong lower bounds, but they remain exponential in
-general. They are the correctness yardstick on small instances, not a practical engine for large
-unstructured cases.
+branch-and-bound provide exact solutions or strong lower bounds but remain exponential in general.
+They supply correctness yardsticks on small instances.
 
 **Human-guided tour repair.** Plotting Euclidean tours and letting a human repair visible defects
-can work on some two-dimensional instances. Its gap is not only human time; the idea depends on
-geometry that may not exist for arbitrary symmetric distance matrices.
+can work on some two-dimensional instances.
 
 ## Evaluation settings
 

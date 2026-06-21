@@ -7,28 +7,15 @@ regression, mathematical expression trees over a primitive set of functions and 
 by repeatedly selecting fitter individuals and recombining them with subtree crossover and
 mutation. Run such a system for a few dozen generations and a robust, by-then-decade-old
 phenomenon appears: after an initial phase in which the mean program size (node count) is
-roughly static, the average size starts to climb, generation after generation, *without any
-matching gain in fitness*. This is **bloat**. It is not the benign growth a problem may
-genuinely require (a regression target may need a larger expression to fit all the cases);
-bloat is growth that buys nothing in fitness. It is costly on every axis a practitioner cares
-about: bloated programs are slow to evaluate (and slow to use afterwards), opaque to read,
-and tend to generalise poorly.
+roughly static, the average size starts to climb, generation after generation, without any
+matching gain in fitness. This is **bloat**.
 
-The practical problem is sharp. The simplest and by far the most widely used remedy is to
-shrink the fitness of a program by an amount that grows with its size, so selection prefers
-smaller programs at equal quality. The intensity of that pressure is governed by a single
-scalar, and the value of that scalar is the whole ballgame: set it too small and the
-population still bloats wildly; set it too large and GP treats *minimising size* as its real
-objective, almost ignoring fitness, and converges on extremely small but useless programs.
-Worse, the "right" value is not portable — it depends on the problem, the primitive set, the
-selection scheme, the population size, and it *drifts as the run proceeds*. There is, at this
-point, essentially no theory to set it; users proceed by trial and error, and even a
-hand-tuned constant can only ever achieve partial control over how the mean size evolves over
-time. The goal a real solution must meet: a *principled, computable* prescription for that
-scalar — one that can be set automatically, generation by generation, from quantities already
-in hand, and that delivers tight, predictable control over the average program size across
-problems and selection schemes, ideally even letting the practitioner *dictate* the size
-trajectory rather than merely cap it.
+The simplest and most widely used remedy is to shrink the fitness of a program by an amount
+that grows with its size, so selection prefers smaller programs at equal quality. The
+intensity of that pressure is governed by a single scalar parsimony coefficient. Its value
+depends on the problem, the primitive set, the selection scheme, and the population size, and
+it drifts as the run proceeds. The central question is how to set the per-generation
+size-selection pressure from quantities already available in the population.
 
 ## Background
 
@@ -101,45 +88,27 @@ the **parsimony coefficient**, held *constant* through the run (the original `f`
 to recognise solutions and stop). Bigger programs lose more fitness and have fewer children.
 This is the simplest, most widely deployed bloat control, and connects naturally to the
 generalisation-versus-accuracy tradeoff and to Minimum-Description-Length penalties.
-**Limitation:** the only general way to choose `c` is trial and error, and the good value is
-problem-, primitive-, and selection-dependent; moreover, because the population statistics
-that determine how much pressure a given `c` exerts change every generation, a fixed `c` can
-only ever achieve *partial* control over the size trajectory — it cannot hold mean size on a
-chosen course, and the same `c` that is mild early can be punishing late, or vice versa.
 
 **Experimentally-adapted coefficient (Zhang & Mühlenbein, *Evolutionary Computation* 3(1),
 1995).** Recognising that a constant is too rigid, this line lets `c` be re-adjusted at each
-generation, and reported benefits from doing so (on evolving Sigma-Pi neural networks with
-GP). **Limitation:** the adjustment is empirical/heuristic — there is no derivation that says
-*what* value `c` should take at generation `t` to achieve a stated effect on mean size, so it
-remains a tuned schedule rather than a computed one, and most implementations in the
-literature fall back to a constant anyway.
+generation and reported benefits from doing so (on evolving Sigma-Pi neural networks with GP).
 
 **Anti-bloat operators (size-fair crossover/mutation; Langdon 2000; Crawford-Marks & Spector
 2002; hoist and shrink mutation).** Instead of touching fitness, constrain the operators so
 they cannot grow programs: size-fair crossover bounds the inserted subtree by the size of the
 excised one; hoist mutation replaces a subtree with a subtree *of itself* (always smaller);
-shrink mutation replaces a subtree with a single terminal. **Limitation:** these bias or
-restrict the search operators, which can curtail exploration, and they act on *individual*
-operations rather than giving any handle on the *population-level* mean-size dynamics; they do
-not let you state and hit a target size.
+shrink mutation replaces a subtree with a single terminal.
 
 **Hard size/depth limits (Koza 1992).** Reject any offspring exceeding a size or depth cap and
-return a parent. **Limitation:** parents that nearly violate the cap get copied more often, so
-the population fills up with programs jammed against the limit (stringy under size caps, bushy
-under depth caps) — control by truncation, not by shaping the dynamics, and again no ability
-to follow a chosen size trajectory.
+return a parent.
 
 **Tarpeian method (Poli 2003).** Act directly on the selection probabilities of the size
 evolution equation: with some frequency, set the fitness of a randomly chosen
 longer-than-average program to zero so it cannot be a parent (and need not even be evaluated,
-saving time). Tuning that frequency modulates the anti-bloat intensity. **Limitation:** the
-frequency is again a hand-set knob with no closed-form link to a desired mean-size outcome.
+saving time). Tuning that frequency modulates the anti-bloat intensity.
 
 **Multi-objective bloat control (Ekart & Németh 2001; Kotanchek et al. 2006).** Treat fitness
-and size as two objectives and select by a Pareto criterion. **Limitation:** it changes the
-problem into a multi-objective search (with its own diversity and selection complications) and
-still offers no single computable dial for the mean-size trajectory.
+and size as two objectives and select by a Pareto criterion.
 
 ## Evaluation settings
 

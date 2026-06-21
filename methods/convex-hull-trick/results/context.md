@@ -19,7 +19,7 @@ Two monotonicity facts are guaranteed:
 
 The values can be negative, and products such as `b[j] * a[i]` can be large.
 The direct transition scans every earlier `j` for every `i`, which is
-$O(n^2)$. The target is to compute all `dp` values in linear time under the two
+$O(n^2)$. The target is to compute all `dp` values faster under the two
 monotonicity assumptions.
 
 ## Code framework

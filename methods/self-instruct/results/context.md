@@ -4,32 +4,30 @@
 
 A pretrained language model trained only on next-token prediction is not, out of the box, good at *following instructions* — given "Write an essay about school safety" or "Classify the sentiment of this sentence," a vanilla LM does not reliably produce the intended response. The recipe that fixes this is *instruction tuning*: fine-tune the LM on a collection of (instruction, input, output) examples spanning many tasks, after which the model generalizes to follow *new* instructions it never saw in training. Two ingredients power this: a large pretrained LM, and a large, diverse corpus of human-written instruction data.
 
-That second ingredient is the bottleneck, and the question is how to remove it. Human-written instruction data is *expensive* to collect, and — more insidiously — *limited in diversity*: people asked to write tasks gravitate to familiar, "popular" NLP problems (classification, QA, NLI), so the data clusters around a narrow region of task space and a narrow set of ways to phrase instructions. Generalization to genuinely unseen tasks is empirically tied to the *size and diversity* of the instruction data, so a human-curated set caps how general the resulting model can get. The precise question: can the instruction data itself be generated *by a language model*, almost for free and far more diverse than humans naturally produce — bootstrapping the supervision needed for instruction tuning from a tiny human seed plus the model's own generations — so that fine-tuning the model on its own output makes it dramatically better at following instructions, with minimal human labeling?
+The question is how to build and expand that instruction corpus. Human-written instruction data is collected through manual annotation, and annotators tend to write tasks in domains familiar to them — classification, QA, NLI. Generalization to genuinely unseen tasks is empirically tied to the *size and diversity* of the instruction data. Can a language model itself be used as a generator of instruction data, given a small human-authored seed, so that fine-tuning the model on that generated data improves its instruction-following ability?
 
 ## Background
 
-**Instruction tuning and its data dependence.** Vanilla LMs become effective instruction-followers when fine-tuned on datasets of natural-language instructions paired with desired outputs (Mishra et al., 2022; Wei et al., 2022 (FLAN); Sanh et al., 2022 (T0); Wang et al., 2022 (Super-NaturalInstructions)). These works establish a direct correlation: the broader and more diverse the instructional data, the better the model generalizes to unseen tasks. The data, though, is human-annotated — PromptSource and Super-NaturalInstructions are large hand-built collections — and the diversity of generalization is therefore bounded by what annotators produce, which skews toward classical NLP tasks.
+**Instruction tuning and its data dependence.** Vanilla LMs become effective instruction-followers when fine-tuned on datasets of natural-language instructions paired with desired outputs (Mishra et al., 2022; Wei et al., 2022 (FLAN); Sanh et al., 2022 (T0); Wang et al., 2022 (Super-NaturalInstructions)). These works establish a direct correlation: the broader and more diverse the instructional data, the better the model generalizes to unseen tasks. The data is human-annotated — PromptSource and Super-NaturalInstructions are large hand-built collections.
 
 **What an "instruction task" is.** A task t is defined by an instruction I_t in natural language and has n_t ≥ 1 input-output instances {(X_{t,i}, Y_{t,i})}. The model should satisfy M(I_t, X_{t,i}) = Y_{t,i}. The instruction/input boundary is soft: "Write an essay about school safety" can be a self-contained instruction (empty input X), or be split into instruction "Write an essay about the following topic" + input "school safety." Allowing empty inputs widens the format diversity.
 
 **LMs as few-shot generators.** Large LMs (GPT-3, the davinci engine, 175B params) exhibit strong in-context learning: prompt them with a few demonstrations of a pattern and they continue the pattern. This is the engine that could, in principle, be turned on the *meta-task* of producing instruction data — given a few example tasks in the prompt, generate more tasks; given an instruction plus examples of solving tasks, generate the input/output for it.
 
 **Prior art the method reacts to / resembles.**
-- **LM-based data generation/augmentation** (Schick & Schütze, 2021; Wang et al., 2021 (WANLI); Meng et al., 2022): use LMs to synthesize training data — but *for a specific, pre-defined task* (QA, NLI). They populate an existing task; they do not invent new task *definitions*.
-- **Instruction generation from examples** (Zhou et al., 2022; Honovich et al., 2022): produce an instruction *given* a few examples of one task — task-specific reverse-engineering, not task-agnostic creation of new tasks from scratch.
-- **Self-training** (He et al., 2019; Xie et al., 2020): a model labels unlabeled data and retrains on its own labels — but assumes a fixed *target task* and a pool of unlabeled *examples* under it.
+- **LM-based data generation/augmentation** (Schick & Schütze, 2021; Wang et al., 2021 (WANLI); Meng et al., 2022): use LMs to synthesize training data for a specific, pre-defined task (QA, NLI). They populate an existing task; they do not invent new task *definitions*.
+- **Instruction generation from examples** (Zhou et al., 2022; Honovich et al., 2022): produce an instruction *given* a few examples of one task — task-specific reverse-engineering of instructions.
+- **Self-training** (He et al., 2019; Xie et al., 2020): a model labels unlabeled data and retrains on its own labels, within a fixed *target task* and a pool of unlabeled *examples* under it.
 - **Knowledge distillation** (Hinton et al., 2015): transfer knowledge from a teacher to a (usually smaller) student.
-- **InstructGPT** (Ouyang et al., 2022): builds a general instruction-follower, but via human-collected demonstrations and feedback in an opaque, proprietary pipeline; the role of the *data* is understudied because the data is private.
-- **Concurrent: Unnatural Instructions** (Honovich et al., 2022): also generates instruction data with GPT-3, but seeds from Super-NaturalInstructions tasks and generates with an *already instruction-tuned* model (text-davinci-002) — i.e. distilling from a tuned model rather than from a vanilla LM.
-
-The opening these leave: a *task-agnostic* procedure that invents *new task definitions* (instruction + instances) from scratch, using only a *vanilla* (untuned) LM and a tiny human seed, with no target task and no human-labeled examples per task.
+- **InstructGPT** (Ouyang et al., 2022): builds a general instruction-follower via human-collected demonstrations and feedback; the role of the *data* is understudied because the data is private.
+- **Concurrent: Unnatural Instructions** (Honovich et al., 2022): generates instruction data with GPT-3, seeded from Super-NaturalInstructions tasks and generated with an *already instruction-tuned* model (text-davinci-002).
 
 ## Baselines
 
-- **Off-the-shelf vanilla LMs (GPT-3 "davinci", T5-LM).** Pretraining only, no instruction tuning. **Gap:** follow instructions poorly out of the box — they show the floor.
-- **Public instruction-tuned models (T0, Tk-Instruct; 11B).** Fine-tuned from T5 on human-built instruction collections (PromptSource, Super-NaturalInstructions). **Gap:** trained on human data skewed to classical NLP tasks; diversity-bounded.
-- **InstructGPT (text-davinci-001/002/003).** Strong general instruction-followers from human demonstrations + feedback. **Gap:** proprietary, opaque, expensive human data — not a recipe one can reproduce or study.
-- **Same-model fine-tuned on existing public data (GPT-3 fine-tuned on T0 / Super-NI data).** Controls for the base model, isolating the effect of the *data source*. **Gap:** still human-authored, diversity-limited data.
+- **Off-the-shelf vanilla LMs (GPT-3 "davinci", T5-LM).** Pretraining only, no instruction tuning.
+- **Public instruction-tuned models (T0, Tk-Instruct; 11B).** Fine-tuned from T5 on human-built instruction collections (PromptSource, Super-NaturalInstructions).
+- **InstructGPT (text-davinci-001/002/003).** General instruction-followers from human demonstrations and feedback.
+- **Same-model fine-tuned on existing public data (GPT-3 fine-tuned on T0 / Super-NI data).** Controls for the base model, isolating the effect of the *data source*.
 
 ## Evaluation settings
 

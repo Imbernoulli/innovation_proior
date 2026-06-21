@@ -4,13 +4,13 @@ Few-shot image classification under episodic evaluation: given a support set of 
 
 ## Prior art / Background / Baselines
 
-The relevant line of work casts few-shot classification as learned comparison in an embedding space. Each baseline below is described by its core idea and the concrete limitation it leaves.
+The relevant line of work casts few-shot classification as learned comparison in an embedding space.
 
-- **Borrowed-feature nearest neighbour.** Train a standard classifier on the base classes, drop the softmax, and classify novel-class queries by nearest neighbour in the penultimate features. Limitation: the embedding is trained to separate the base classes, not to make instance-to-instance comparisons reliable for an unseen support set.
+- **Borrowed-feature nearest neighbour.** Train a standard classifier on the base classes, drop the softmax, and classify novel-class queries by nearest neighbour in the penultimate features.
 
-- **Neighbourhood Components Analysis (Goldberger et al., 2004).** Make kNN differentiable by replacing the hard nearest neighbour with a soft one — point i selects point j with probability ∝ exp(−‖Ax_i − Ax_j‖²) — and learn the linear map A by maximizing expected leave-one-out accuracy. Limitation: A is a single linear map, and the objective is point-against-all-training rather than shaped like an N-way K-shot episode.
+- **Neighbourhood Components Analysis (Goldberger et al., 2004).** Make kNN differentiable by replacing the hard nearest neighbour with a soft one — point i selects point j with probability ∝ exp(−‖Ax_i − Ax_j‖²) — and learn the linear map A by maximizing expected leave-one-out accuracy.
 
-- **Nearest Class Mean (Mensink et al., 2013).** Represent each class by the mean of its examples and assign a query to the nearest mean under a learned Mahalanobis metric; new classes are added by averaging their support features. Limitation: the embedding is linear for the many-examples regime, and the non-linear extension requires a separate k-means step decoupled from metric learning.
+- **Nearest Class Mean (Mensink et al., 2013).** Represent each class by the mean of its examples and assign a query to the nearest mean under a learned Mahalanobis metric; new classes are added by averaging their support features.
 
 ## Fixed substrate / Code framework
 

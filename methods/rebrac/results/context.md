@@ -6,30 +6,16 @@ We are handed a fixed dataset `D` of transitions `(s, a, r, s')` collected by so
 behavior policy (or mixture of policies), and asked to learn the best possible continuous
 control policy `pi(s)` from it **without ever interacting with the environment**. The MDP is
 the usual `{S, A, P, R, gamma}` with `S subset R^n`, `A subset R^m`, and the objective is the
-discounted return `E_pi[sum_t gamma^t R(s_t, a_t)]`. The catch that makes offline different
-from ordinary off-policy RL is precise and well documented: any bootstrapped value method
-must evaluate `Q(s', a')` at the next action `a'` chosen by the *current* policy, but offline
-`a'` is frequently an action the dataset never contains. A function approximator asked for
-`Q` at such an out-of-distribution (OOD) action returns an essentially unconstrained
+discounted return `E_pi[sum_t gamma^t R(s_t, a_t)]`. The core difficulty is that any bootstrapped
+value method must evaluate `Q(s', a')` at the next action `a'` chosen by the *current* policy,
+but offline `a'` is frequently an action the dataset never contains. A function approximator
+asked for `Q` at such an out-of-distribution (OOD) action returns an essentially unconstrained
 extrapolation, and because the policy is trained to *maximize* `Q`, it is actively pulled
 toward whichever OOD actions the critic happens to overrate. The overrated target then feeds
-the next Bellman backup, the error compounds, values diverge, and the policy collapses. So
-the goal is concrete: suppress this OOD value overestimation strongly enough that learning is
-stable, while still letting the policy exploit the genuinely good in-distribution actions —
-and do it on D4RL MuJoCo locomotion (HalfCheetah, Hopper, Walker2d) such that one
-configuration generalizes across datasets rather than overfitting a single one.
-
-A second, methodological pressure sits on top of the algorithmic one. By this time the
-offline-RL literature has produced many algorithms of escalating complexity — conservative
-critic penalties, large critic ensembles, learned generative behavior models, expectile value
-functions — and each tends to ship not only its core idea but a bundle of "minor"
-design/implementation choices (network depth, batch size, inter-layer normalization, learning
-rates, actor pre-training). These choices are rarely ablated against a clean baseline, so it
-is impossible to attribute reported gains to the algorithm versus the bundle. A solution that
-mattered would therefore have to be *minimal and honestly attributable*: few moving parts,
-each one individually justified and ablatable, no secondary networks, negligible compute
-overhead, and a parameter count no larger than the prior baselines (the contribution must be
-algorithmic, not capacity).
+the next Bellman backup, the error compounds, values diverge, and the policy collapses. The
+question is how to suppress this OOD value overestimation while still letting the policy
+exploit the genuinely good in-distribution actions — evaluated on D4RL MuJoCo locomotion
+(HalfCheetah, Hopper, Walker2d) such that one configuration generalizes across datasets.
 
 ## Background
 
@@ -98,9 +84,7 @@ smoothing*: add clipped noise to the target action,
 are forced to share value and the target stops overfitting narrow Q peaks. (3) *Delayed
 policy and target updates*: update the actor and the slow targets `theta' <- tau·theta +
 (1-tau)·theta'` (`tau = 5e-3`) only every `d = 2` critic steps, letting critic error settle
-before each policy step. **Gap:** TD3 has nothing that keeps the policy near a fixed dataset;
-run offline, the actor walks straight into the OOD region and the clipped-min cannot rescue a
-critic whose entire off-distribution surface is unconstrained.
+before each policy step.
 
 **TD3+BC (Fujimoto & Gu 2021).** The minimalist offline baseline that has become the
 de-facto comparison point. It changes the online base in essentially one line: add a
@@ -113,12 +97,7 @@ transferable across reward scales it normalizes the value term: since the BC ter
 treated as a stop-gradient scalar (it rescales the loss, it is not differentiated). It also
 normalizes state features `s_i <- (s_i - mu_i)/(sigma_i + eps)`, `eps = 1e-3`. The critic is
 left exactly as in TD3. Architecturally it keeps TD3's two hidden layers, no inter-layer
-normalization, batch 256. **Gaps:** (1) only the *actor* is regularized — the critic target
-still bootstraps `min Q(s', a')` at an unconstrained next action `a'`, which at the next
-state can itself be OOD and overrated; (2) a single coupled penalty strength means actor-side
-and critic-side caution cannot be set independently; (3) the architecture and optimization
-defaults (depth, normalization, batch, learning rate) are inherited from the online base and
-never revisited, so whatever those choices leave on the table is left there.
+normalization, batch 256.
 
 **BRAC (Wu, Tucker & Nachum 2019).** The general behavior-regularized actor-critic framework
 that names the two penalty locations. Value penalty puts the divergence inside the critic
@@ -127,18 +106,12 @@ target,
 and policy regularization puts it inside the actor objective,
 `max_pi E[ E_{a''~pi}[Q(s, a'')] - alpha·D̂(pi(·|s), pi_b(·|s)) ]`.
 It surveyed KL, kernel MMD and Wasserstein for `D̂` and found no consistent advantage.
-**Gap:** the framework names the two penalty locations, but its practical instantiations still
-leave open whether a simple deterministic actor-critic can get the same protection without a
-separately learned behavior model, and whether the actor-side and critic-side pressures should
-really be forced to share one knob.
 
 **IQL (Kostrikov, Nair & Levine 2022).** A contrasting offline approach that sidesteps
 querying OOD actions entirely: it fits an expectile value function `V` by asymmetric
 regression (default expectile `tau = 0.7`) so the critic never has to evaluate actions
 outside the data, then extracts a policy by advantage-weighted regression with temperature
-`beta = 3.0`. **Gap:** the policy is only ever pushed toward dataset actions reweighted by
-advantage; it cannot improve beyond the best in-support action by the same maximize-`Q`
-mechanism that an actor-critic uses, and it adds its own pair of knobs (`tau`, `beta`).
+`beta = 3.0`.
 
 ## Evaluation settings
 

@@ -5,27 +5,17 @@
 We want to measure how robust an image classifier really is to small, worst-case input
 perturbations. The standard tool is to *attack* the model: search for a perturbation `delta`
 with `||delta||_inf <= eps` that flips the prediction, and report the fraction of inputs that
-survive. The trouble is that the strongest, cheapest attacks all rely on `nabla_x` of the
-model's loss, computed by backpropagation. That assumes two things that often fail in
-practice. First, the model may not be differentiable end-to-end at all — many proposed defenses
-insert a non-differentiable preprocessing step (JPEG compression, quantization, a discrete
-purification loop) before the network, so backprop simply cannot be run through the whole
-pipeline. Second, even when an analytic gradient exists, it may be useless: a model can
+survive. The strongest, cheapest attacks rely on `nabla_x` of the model's loss, computed by
+backpropagation. Many proposed defenses insert a non-differentiable preprocessing step (JPEG
+compression, quantization, a discrete purification loop) before the network, so backprop cannot
+be run through the whole pipeline. Even when an analytic gradient exists, a model can
 intentionally or accidentally produce gradients that are tiny, noisy, or point the wrong way
-("gradient masking"), so a gradient-based attacker stalls in a poor local region and reports a
-high robust accuracy that does not reflect the true vulnerability.
+("gradient masking"), so a gradient-based attacker may report a high robust accuracy that does
+not reflect the true vulnerability.
 
-The precise goal is therefore an attack that needs **no access to model gradients or weights** —
-only the ability to feed inputs forward and read out the model's logits — yet is strong enough
-to expose ordinary adversarial vulnerability inside the `L_inf` ball when such vulnerability is
-present. It must work in **high dimension** (the optimization variable is the whole image,
-`D = C*H*W`, which is several thousand for CIFAR and over a hundred thousand for ImageNet),
-under a **limited query budget** (each forward pass costs one query, and we cannot afford a
-number of queries that scales with `D`), and it must tolerate a **stochastic, noisy objective**
-(the defended model may inject randomness — random resizing/padding, dropout, a sampling-based
-purifier — so the same input gives a different logit on each call). An attack that meets these
-constraints turns "the model resisted my gradient attack" into a far more trustworthy signal,
-because failure can no longer be blamed on missing or masked gradients.
+The question is how to mount a strong attack that needs **no access to model gradients or
+weights** — only the ability to feed inputs forward and read out the model's logits — on the
+`L_inf` ball in high input dimension, against models whose outputs may be stochastic.
 
 ## Background
 
@@ -49,7 +39,7 @@ Three pieces of background are load-bearing.
 *noisy measurements* of `L`, the classical machinery is stochastic approximation. The
 Robbins–Monro recursion (1951) descends with a noisy gradient estimate and a decaying step,
 `theta_{k+1} = theta_k - a_k * ghat_k(theta_k)`, and converges to a stationary point under mild
-conditions if `a_k` shrinks neither too fast nor too slowly. The catch is that Robbins–Monro
+conditions if `a_k` shrinks neither too fast nor too slowly. The Robbins–Monro framework
 presumes access to a (noisy) *gradient* `ghat`. When even that is unavailable — we can measure
 the function value `L` but have no formula for its derivative — the classical fallback is the
 Kiefer–Wolfowitz finite-difference scheme (1952): probe each coordinate separately,
@@ -84,13 +74,6 @@ self-normalizing, per-coordinate-scaled update that copes well with noisy and un
 gradients. It is the standard drop-in replacement for a raw gradient step when the gradient
 estimates are noisy, which is exactly the regime here.
 
-A diagnostic fact that frames the whole problem: gradient-based search for adversarial examples
-works *for the same reason* gradient-based training works (Goodfellow et al. 2014). The
-corollary — observed repeatedly in the gradient-masking literature — is that the standard
-failure modes of neural-net training (vanishing gradients, discrete/highly-nonlinear
-operations) become *failure modes of the attacker*. So a defense can look robust to PGD simply
-by reproducing one of those training pathologies, with no real robustness underneath.
-
 ## Baselines
 
 These are the attacks a new black-box attack is measured against and reacts to.
@@ -98,33 +81,23 @@ These are the attacks a new black-box attack is measured against and reacts to.
 **Projected gradient descent (PGD), white-box (Kurakin et al. 2016; Madry et al. 2017).**
 Iterate `x <- Pi_{N_eps(x0)}( x - alpha * nabla_x J(x) )`, where `Pi` projects onto the
 `L_inf` ball and `J` is the correct-class advantage; in practice the raw gradient step is
-replaced by Adam and `x` is randomly initialized inside the ball. **Gap:** it needs
-`nabla_x J`, computed by backprop. Against a non-differentiable pipeline it cannot be run at
-all, and against a gradient-masking model the gradient it does get is uninformative, so PGD
-stalls and reports robustness that may be illusory.
+replaced by Adam and `x` is randomly initialized inside the ball. It needs `nabla_x J`,
+computed by backprop.
 
 **Transfer-based attacks (Papernot et al. 2017; Szegedy et al. 2013).** Craft adversarial
 examples on a *surrogate* model the attacker can differentiate, then feed them to the target.
-**Gap:** success depends entirely on how similar the surrogate is to the target. A model can
-suffer almost no accuracy drop under a transfer attack while still admitting many adversarial
-examples that the surrogate simply never finds — so a transfer attack passing is weak evidence
-of true robustness.
+Success depends on how similar the surrogate is to the target model.
 
 **Coordinatewise finite-difference / zeroth-order (the Kiefer–Wolfowitz route; ZOO, Chen et
 al. 2017).** Estimate the gradient one coordinate at a time with two-sided differences and
 descend (ZOO pairs this with coordinatewise Adam and importance sampling). This is a genuine
-black-box attack — it queries only `L`. **Gap:** assembling a full gradient costs on the order
-of `2D` queries, and `D` is the number of input pixels times channels (thousands to hundreds
-of thousands). The query cost scales with the input dimension, which makes it impractical under
-any realistic budget on real images.
+black-box attack — it queries only `L`. Assembling a full gradient costs on the order of `2D`
+queries, where `D` is the number of input pixels times channels.
 
 **Natural evolution strategies (NES; Wierstra et al. 2008; Ilyas et al. 2017).** Estimate a
 *smoothed* gradient of `E_{u}[L(x + sigma u)]` by sampling Gaussian directions `u ~ N(0, I)`
 and forming `(1/sigma) * E[ u * (antithetic loss difference) ]`; descend on the estimate. This
-is an efficient black-box random-search family rather than a coordinate sweep. **Gap:** it
-commits to a *Gaussian* smoothing distribution and inherits the variance and tuning of that
-smoothing scale, leaving open whether this is the right fit for a noisy constrained adversarial
-inner loop under fixed query budgets.
+is an efficient black-box random-search family rather than a coordinate sweep.
 
 ## Evaluation settings
 

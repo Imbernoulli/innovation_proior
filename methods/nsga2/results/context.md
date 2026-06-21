@@ -10,20 +10,13 @@ of that entire front in **one** run, so a decision-maker can pick a trade-off af
 
 Because a population-based search carries many candidate solutions at once, an evolutionary
 algorithm is the natural tool: a single run can, in principle, populate the whole front.
-That gives two simultaneous objectives for the *algorithm itself*, which pull against each
-other:
+That gives two simultaneous objectives for the *algorithm itself*:
 
 1. **Convergence** — drive the population down onto the true front.
 2. **Diversity / spread** — keep the survivors spread out *across* the front, not bunched on
    one piece of it, and reaching its extremes.
 
-A method that only converges collapses to a crowded blob; a method that only spreads never
-lands on the front. The precise problem is an EA that does both at once, while being (a)
-**cheap** enough to run with a reasonably large population, (b) **elitist** so high-quality
-parents compete directly with their offspring instead of being discarded merely because a
-generation ended, and (c) **free of fragile tuning knobs** controlling diversity. Each prior
-method below buys one or two of these and pays for it elsewhere. Closing all three gaps
-together is the problem.
+The question is how to design an EA that pursues both objectives well.
 
 ## Background
 
@@ -53,15 +46,13 @@ Several empirical lessons had accumulated and frame the design space:
 
 - **Elitism helps MOEAs.** Studies (Zitzler et al. 1999; Rudolph 1998) reported that carrying
   the best-so-far material forward measurably speeds convergence and reduces regressions where
-  useful solutions are lost between generations. A purely generational EA, which discards the
-  parents wholesale, can regress.
-- **Non-domination sorting, as done, is expensive.** Building the rank layers the naive way —
+  useful solutions are lost between generations.
+- **Non-domination sorting cost.** Building the rank layers the naive way —
   recomputing pairwise dominations front by front — costs on the order of `O(M N^3)` for `M`
-  objectives and population `N`, which throttles the population size one can afford.
-- **`sigma_share` is fragile.** The spread that fitness sharing achieves depends strongly on
+  objectives and population `N`.
+- **`sigma_share` sensitivity.** The spread that fitness sharing achieves depends on
   the chosen `sigma_share`; it also presupposes a distance metric and an implicit guess about
-  how many niches the front supports. There were guidelines but no parameter-free recipe, and
-  comparing every pair to compute niche counts is itself `O(N^2)`.
+  how many niches the front supports. Comparing every pair to compute niche counts is `O(N^2)`.
 
 For real-coded (continuous-variable) GAs, two variation operators had become standard and
 are taken as given building blocks:
@@ -114,39 +105,29 @@ are taken as given building blocks:
 
 ## Baselines
 
-The prior elitist MOEAs a new method would be measured against and reacts to.
-
 **SPEA — Strength-Pareto EA (Zitzler & Thiele 1998/99).** Maintains an *external archive* of
 all non-dominated solutions discovered so far, which participates in selection. Each archive
 member's "strength" is the count of current-population solutions it dominates; a population
 member's fitness is the sum of the strengths of the archive members that dominate it (lower is
 better), which makes selection push toward the archive's non-dominated solutions. Diversity is
 maintained by a deterministic clustering of the archive when it overflows. Implemented
-naively it is `O(N^3)`; with careful bookkeeping `O(N^2)`. **Gap:** it couples archive-size
-management, strength-based fitness, and a separate clustering step, so the method is heavier
-than a plain generational population loop.
+naively it is `O(N^3)`; with careful bookkeeping `O(N^2)`.
 
 **PAES — Pareto-Archived Evolution Strategy (Knowles & Corne 2000).** A `(1+1)`-ES: one parent
 produces one mutated offspring, accepted or rejected by comparing dominance against the parent
 and an archive of best solutions. When parent and offspring are mutually non-dominated, the
 tie is broken by an *adaptive grid* that divides objective space into `2^{ld}` cells (depth `l`,
 `d` variables) and prefers the offspring if it lands in a less crowded cell. Worst-case cost is
-`O(a N)` for archive size `a`, hence `O(N^2)` overall. **Gap:** diversity rests on a hard grid
-discretization with its own depth parameter, and a single-parent `(1+1)` search explores
-slowly compared with a full population.
+`O(a N)` for archive size `a`, hence `O(N^2)` overall.
 
 **Rudolph's elitist GA (1998).** Compares the non-dominated members of the offspring against
-the parents to form the next parent set, and proves convergence to the front. **Gap:** it has
-no explicit mechanism to maintain spread — convergence is guaranteed but the solutions can
-clump, leaving the diversity side of the multiobjective goal unresolved.
+the parents to form the next parent set, and proves convergence to the front.
 
 **Original layered ranking + fitness sharing (the immediate predecessor).** Rank the
 population into Pareto layers (each layer assigned a dummy fitness kept below the previous
 layer's minimum shared value, so earlier layers always dominate selection pressure), then
-apply fitness sharing within each layer. **Gaps, concretely:** the ranking as implemented is
-`O(M N^3)`; the scheme is *not* elitist, so good solutions can be lost generation to
-generation; and the within-layer spread is governed by `sigma_share`, which must be set by the
-user and to which performance is sensitive.
+apply fitness sharing within each layer. The ranking as implemented is `O(M N^3)`, and the
+within-layer spread is governed by `sigma_share`.
 
 ## Evaluation settings
 

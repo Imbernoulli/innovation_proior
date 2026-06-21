@@ -8,11 +8,11 @@ Write the input function as `a` and the resulting solution as `u`, both function
 G† : a ↦ u,
 ```
 
-a map between two infinite-dimensional spaces of functions. The question is whether we can *learn* this operator once, from a finite set of observed pairs `{a_j, u_j}`, so that a new instance costs a single forward evaluation rather than a fresh PDE solve — and do so in a way that is not bound to one mesh, so the learned object transfers across discretizations and resolutions. A solution would have to: (i) represent a map between function spaces, not between fixed-size arrays; (ii) be cheap to evaluate after training; (iii) require no per-instance re-optimization; (iv) ideally require no knowledge of the governing equation beyond data; and (v) keep its accuracy as the discretization is refined or changed.
+a map between two infinite-dimensional spaces of functions. The question is whether we can *learn* this operator once, from a finite set of observed pairs `{a_j, u_j}`, so that a new instance costs a single forward evaluation rather than a fresh PDE solve, and how to do so in a way that is tied to function space rather than to one fixed mesh.
 
 ## Background
 
-**The continuum object and why it is hard.** Let `A = A(D; R^{d_a})` and `U = U(D; R^{d_u})` be (separable Banach) spaces of functions on `D`. The target `G† : A → U` is typically nonlinear, even when the underlying PDE is linear: for steady Darcy flow `−∇·(a∇u) = f`, the equation is linear in `u` but the coefficient-to-solution map `a ↦ u` is not. We have access to data only through point samples: a discretization `D_j = {x_1,…,x_n} ⊂ D` and the evaluations `a_j|_{D_j}`, `u_j|_{D_j}`. A method that ingests these as a length-`n` vector and emits a length-`n` vector has silently committed to a fixed grid.
+**The continuum object.** Let `A = A(D; R^{d_a})` and `U = U(D; R^{d_u})` be (separable Banach) spaces of functions on `D`. The target `G† : A → U` is typically nonlinear, even when the underlying PDE is linear: for steady Darcy flow `−∇·(a∇u) = f`, the equation is linear in `u` but the coefficient-to-solution map `a ↦ u` is not. We have access to data only through point samples: a discretization `D_j = {x_1,…,x_n} ⊂ D` and the evaluations `a_j|_{D_j}`, `u_j|_{D_j}`.
 
 **Green's functions: the solution operator of a linear PDE is an integral operator.** For a linear differential operator `L` with `Lu = f`, the solution is
 
@@ -30,29 +30,27 @@ F(κ * v) = F(κ) · F(v),     κ * v = F⁻¹( F(κ) · F(v) ).
 
 A convolution, which costs `O(N²)` if done directly, can therefore be computed by two Fourier transforms and a pointwise product; on a uniform grid the Fast Fourier Transform does each transform in `O(N log N)`.
 
-**The mesh-dependence pain point, measured.** A fully convolutional surrogate trained on the 1-D viscous Burgers map does not hold its error under refinement: its relative error rises from about `0.10` at `s = 256` to above `0.32` at `s = 8192`. The learned filters are tied to the training grid spacing, so refinement changes the finite-dimensional problem the network sees. That diagnostic motivates defining the model in function space rather than as one fixed array-to-array map.
-
-**Spectral decay of the data.** The solution fields encountered here have Fourier spectra that decay with wavenumber; for turbulent Navier–Stokes the energy spectrum follows roughly a `k^{−5/3}` slope. Truncating a Navier–Stokes solution (`ν = 1e−3`) to its lowest 20 Fourier modes captures it to about 2% relative error. Most of the energy lives in the low modes, though high modes are not negligible for the harder low-viscosity regimes.
+**Spectral content of the data.** The solution fields encountered here have Fourier spectra that decay with wavenumber; for turbulent Navier–Stokes the energy spectrum follows roughly a `k^{−5/3}` slope.
 
 ## Baselines
 
-**Classical numerical solvers (FEM / FDM / pseudospectral).** Discretize `D` and solve the resulting algebraic system for one instance. They are accurate and need no data, but they impose a resolution trade-off (coarse = fast/inaccurate, fine = accurate/slow), solve a *single* instance per run, and become very expensive when fine meshes are required. Gap: no amortization across instances; mesh-bound.
+**Classical numerical solvers (FEM / FDM / pseudospectral).** Discretize `D` and solve the resulting algebraic system for one instance. They are accurate and need no data; coarse meshes are fast, fine meshes are accurate, and each run solves a single instance.
 
-**Finite-dimensional neural surrogates.** Parameterize `G†` as a deep convolutional network between Euclidean spaces `R^n → R^n` (image-to-image regression: fully-convolutional nets, U-Net, ResNet, and turbulence-specific spatio-temporal convolutional nets). They amortize across instances and are fast at inference, but they are mesh-dependent by construction: the parameters are tied to the training discretization and geometry, the error grows under resolution change, and they cannot be queried off the grid or transferred to a different mesh. Gap: not discretization-invariant.
+**Finite-dimensional neural surrogates.** Parameterize `G†` as a deep convolutional network between Euclidean spaces `R^n → R^n` (image-to-image regression: fully-convolutional nets, U-Net, ResNet, and turbulence-specific spatio-temporal convolutional nets). They amortize across instances and are fast at inference; the parameters are tied to the training discretization and geometry.
 
-**Neural-FEM / physics-informed networks.** Represent the *solution function* `u` itself as a neural network and fit it by minimizing the PDE residual (Deep Ritz; physics-informed neural networks). Mesh-free and accurate, and they replace a finite basis with the space of networks — but they model **one instance**: every new coefficient/initial condition requires solving a fresh optimization problem, so they inherit the per-instance cost of classical methods, and they require the governing equation to be known. Gap: no operator; per-instance re-training.
+**Neural-FEM / physics-informed networks.** Represent the *solution function* `u` itself as a neural network and fit it by minimizing the PDE residual (Deep Ritz; physics-informed neural networks). They are mesh-free and replace a finite basis with the space of networks; each one models a single instance, fitting a fresh optimization problem per coefficient/initial condition given the governing equation.
 
-**Finite-dimensional operator surrogates via reduced bases.** Encode `a` and `u` into finite latent spaces — PCA / POD reduced-basis methods, or a learned PCA autoencoder with a network mapping between latent codes. These take a step toward operators but commit to a linear, data-fixed basis whose dimension is chosen up front. Gap: expressivity capped by the fixed linear subspace.
+**Finite-dimensional operator surrogates via reduced bases.** Encode `a` and `u` into finite latent spaces — PCA / POD reduced-basis methods, or a learned PCA autoencoder with a network mapping between latent codes — using a linear basis whose dimension is chosen up front.
 
-**Low-rank / branch–trunk operator networks.** Approximate the kernel by a finite sum of separable terms `κ(x, y) = Σ_{j=1}^r φ_j(x) ψ_j(y)`, equivalently a branch network reading samples of `a` times a trunk network of the query point `x`. Mesh-free at the output, but the input sensor locations are fixed and the kernel is constrained to low rank. Gap: fixed input sampling; rank-limited kernel.
+**Low-rank / branch–trunk operator networks.** Approximate the kernel by a finite sum of separable terms `κ(x, y) = Σ_{j=1}^r φ_j(x) ψ_j(y)`, equivalently a branch network reading samples of `a` at fixed sensor locations times a trunk network of the query point `x`. The output is mesh-free.
 
-**Graph / nonlocal neural operators (the direct predecessor framework).** Cast the operator as an iterative architecture that lifts the input to a higher channel dimension, applies several layers, and projects back. Each layer composes a pointwise linear map with a **kernel integral operator**
+**Graph / nonlocal neural operators.** Cast the operator as an iterative architecture that lifts the input to a higher channel dimension, applies several layers, and projects back. Each layer composes a pointwise linear map with a **kernel integral operator**
 
 ```
 (K(a) v)(x) = ∫_D κ(x, y, a(x), a(y)) v(y) dy,
 ```
 
-where `κ` is itself a learned neural network, so that stacking the linear integral operator with pointwise nonlinearities yields a nonlinear operator — the function-space analogue of "linear layer + activation." This is genuinely mesh-free and transfers between discretizations, evaluating the integral by message passing / Nyström quadrature on a graph over the sample points (a multi-scale/multipole variant reduces the constant). Its limitation is cost: the integral couples every evaluation point to every other, so a layer is `O(N²)` in the number of points, and the turbulent Navier–Stokes regime strains this graph-based evaluation. Gap: the integral operator is the bottleneck — too expensive to scale, and the central obstacle this line of work had not yet removed.
+where `κ` is itself a learned neural network, so that stacking the linear integral operator with pointwise nonlinearities yields a nonlinear operator — the function-space analogue of "linear layer + activation." It is mesh-free and transfers between discretizations, evaluating the integral by message passing / Nyström quadrature on a graph over the sample points (a multi-scale/multipole variant). The integral couples every evaluation point to every other, so a layer is `O(N²)` in the number of points.
 
 ## Evaluation settings
 

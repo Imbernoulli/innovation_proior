@@ -11,26 +11,14 @@ downstream can run. The goal is a *good* completion: one whose filled-in values 
 the (unknown) truth, so the reconstruction error is small and a downstream model trained on
 `X_imp` performs as if the data had been observed.
 
-What makes this hard in the regime that matters here is the combination of properties real
-data has all at once: (1) **mixed variable types** — continuous measurements sit next to
-categorical ones (a mass-spectrometer setting, a binary disease label, a multi-level
-diagnostic code) in the same table, and the relations *between* a continuous and a categorical
-variable carry information that a method handling only one type must throw away; (2) **complex
-structure** — nonlinear dependencies and interactions between variables, which a method that
-assumes a linear or Gaussian relationship cannot represent; (3) **unequal scales** — variables
-measured in wildly different units, so anything distance-based must be told how to weight them;
-(4) **high dimensionality** — sometimes `p ≫ n` (thousands of genes, dozens of samples), where
-a method that fits a joint model over all variables becomes ill-posed or infeasible; and (5)
-**no prior knowledge** — the analyst usually cannot say which parametric family each variable's
-conditional distribution belongs to, nor hand-tune a knob per data set. A solution would have
-to fill any kind of table, make as few distributional assumptions as possible, require no
-tuning parameter the user must guess, and ideally report how trustworthy each imputed column
-is — all without setting aside precious data for a test set.
+How should an imputer be designed to handle real tabular data, where continuous measurements
+sit next to categorical ones, relationships among variables may be nonlinear, and the analyst
+has no prior knowledge of which parametric family each variable's conditional distribution
+belongs to?
 
 ## Background
 
-The field already had a clear taxonomy of imputation ideas, and an equally clear sense of
-where each one stopped.
+The field had a clear taxonomy of imputation ideas.
 
 **Single vs. multiple imputation, and the missingness mechanism.** Rubin (1978) framed
 multiple imputation: rather than filling each hole with one number, draw several plausible
@@ -92,22 +80,16 @@ whose truth is known.
 
 ## Baselines
 
-These are the prior methods a new imputer would be measured against and would react to.
+These are the prior methods a new imputer would be measured against.
 
 **Mean (unconditional) imputation.** Replace each missing entry of a column by the mean of
-that column's observed entries. *Limitation:* it is the no-covariate predictor — it uses no
-other variable, so it cannot recover any value that depends on the rest of the row; it deflates
-the imputed column's variance and pulls its correlations with other variables toward zero.
+that column's observed entries. It is the no-covariate predictor — it uses no other variable.
 
 **KNNimpute (Troyanskaya et al. 2001).** For a variable with a missing entry, find its `k`
 nearest neighbors (rows, in the gene-expression setting variables) by Euclidean distance over
-the observed coordinates and impute a distance-weighted average of their values. *Limitations:*
-it is defined for continuous data only; the neighbor count `k` is a tuning parameter whose
-choice has a large effect on accuracy and is not known in advance (so it must be cross-validated
-in practice); the Euclidean distance requires the variables to be put on a common scale, so the
-data must be standardized (and de-standardized afterward) — an extra step the user must manage;
-and a weighted average over neighbors is a locally smooth, near-linear estimate that captures
-interactions and sharp nonlinear structure poorly.
+the observed coordinates and impute a distance-weighted average of their values. The neighbor
+count `k` is a tuning parameter; the Euclidean distance requires the variables to be put on a
+common scale, so the data must be standardized (and de-standardized afterward).
 
 **MICE / fully conditional specification (Van Buuren & Oudshoorn 1999; Van Buuren 2007; built
 on Schafer 1997).** The chained-equations method: specify a parametric conditional model per
@@ -115,29 +97,17 @@ incomplete variable — linear regression with normal errors for continuous, log
 polytomous logistic for multi-category — and iterate the round-robin described above, drawing
 imputations from each conditional given the current fill of the others. It handles mixed types
 and, via the multiple-imputation scheme, can express the uncertainty of each imputed value.
-*Limitations:* the user must *specify a parametric model for every variable*, and the choice of
-model without prior knowledge is difficult and can strongly affect performance; the procedure
-assumes that an implied joint distribution exists from which the conditionals are draws; and on
-ill-distributed or nearly dependent variables (e.g. a binary variable with very few cases in one
-category) the implementation can fail outright unless such variables are pruned by hand.
 
 **MissPALasso (Städler & Bühlmann 2010).** An EM-type method for high-dimensional, near-normal
 continuous matrices: regress the missing variables on the observed ones with an `ℓ1` (lasso,
 Tibshirani 1996) penalty, then use the fitted coefficients to update the latent distribution in
-the E-step. *Limitations:* continuous data only; it carries a penalty parameter `λ` that must be
-tuned (cross-validation), and requires the regressions to be standardized to a common scale; the
-model is linear-Gaussian; and at very high dimension the computation becomes infeasible.
+the E-step. It carries a penalty parameter `λ` and requires the regressions to be standardized
+to a common scale.
 
 **Iterative soft-thresholded SVD / matrix completion (Mazumder, Hastie & Tibshirani 2010).**
 For a single continuous matrix with missing entries, repeatedly fit a low-rank approximation by
 soft-thresholding the singular values and refill the holes with the current low-rank estimate,
-iterating to convergence. *Limitation:* it imposes a *global low-rank linear* structure on the
-whole matrix and is continuous-only, so it cannot represent per-variable nonlinear conditional
-dependence or mixed types.
-
-Across these, the recurring costs are: restriction to one variable type; a tuning parameter the
-user must guess or cross-validate; a required standardization step; and a linear / parametric /
-distributional assumption that limits how much of the data's real structure can be exploited.
+iterating to convergence. It imposes a global low-rank linear structure on the whole matrix.
 
 ## Evaluation settings
 
@@ -171,9 +141,7 @@ that already exist are a univariate initial fill (`SimpleImputer(strategy="mean"
 supervised estimator interface with `fit` and `predict`, and the generic *round-robin* shape
 inherited from chained equations — start from a complete initial fill, then repeatedly sweep the
 incomplete variables, each time fitting some per-variable predictor on the others and overwriting
-that variable's holes, stopping when the sweeps stop changing the matrix or a cap is hit. What is
-not settled is which per-variable predictor to use and how exactly to decide the sweeps have
-converged — that is the empty slot.
+that variable's holes, stopping when the sweeps stop changing the matrix or a cap is hit.
 
 ```python
 import numpy as np
@@ -232,6 +200,3 @@ class CustomImputer(BaseEstimator, TransformerMixin):
             #       to return.
         return X_imp
 ```
-
-The single empty slot is the per-variable predictor together with the sweep-ordering and the
-convergence/return rule.

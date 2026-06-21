@@ -7,24 +7,11 @@ observations — pairs `(x, y)` of inputs and a measured output — find the *ma
 relationship* that produced them, written as an explicit symbolic formula. Not a black-box
 predictor that returns a number, but an expression a human can read, manipulate, integrate,
 and interpret: `y = log(x+1) + log(x^2+1)`, `y = 2 sin(x) cos(z)`, a polynomial, a rational
-function, an econometric identity. The hard part is that the *form* of the relationship is
-unknown. Conventional regression sidesteps this: linear, quadratic, or higher-order polynomial
-regression each FIX a functional template in advance and only solve for the numeric
-coefficients that minimize squared error. But the central decision — *which* family of
-functions to fit (polynomial? a sum of sinusoids? something with a logarithm or a ratio?) —
-is made by the human before any fitting happens, and the answer to that decision is precisely
-what we lack. The real problem is to discover *both* the functional form *and* its constants
-at once.
-
-What would a solution have to achieve? It must search a space whose members are expressions of
-*indeterminate size and shape* — an expression can be three symbols or three hundred, a shallow
-sum or a deeply nested composition. There is no fixed-dimensional parameter vector to optimize:
-the number of "parameters" is not even constant across candidates, so the whole apparatus of
-gradient descent or coefficient-fitting cannot be stated, because there is nothing of fixed
-dimension to descend over. The objects are hierarchical, non-numeric, and combinatorial. We
-need a way to *search the space of formulas itself* for one that fits the data well, without
-pre-committing to a template, and with the ability to grow or shrink the candidate as the
-search demands. That is the problem.
+function, an econometric identity. Conventional regression sidesteps the form question: linear,
+quadratic, or higher-order polynomial regression each fix a functional template in advance and
+only solve for the numeric coefficients that minimize squared error. The question is how to
+discover *both* the functional form *and* its constants from data, without pre-committing to a
+template family.
 
 ## Background
 
@@ -56,24 +43,15 @@ solutions are assembled by crossover splicing together short, high-fitness sub-p
 to search large, non-linear, multidimensional spaces effectively where gradient information is
 unavailable.
 
-The diagnostic fact that matters here is about *representation*. Holland's theory and almost all
-of the genetic-algorithm work built on it rest on the fixed-length character string. That choice
-buys mathematical tractability — the schema counting is clean precisely because every chromosome
-has the same length and every locus has a fixed, pre-assigned meaning. But it also pins down, in
-advance, the size of the object being evolved and what each position represents. For a problem
-whose solution is an expression of unknown and *varying* size and shape, the length of the string
-and the role of each locus would have to be fixed before the search starts — committing to the
-very structure that is supposed to be discovered. Representing a deeply hierarchical, variable-size
-object as a flat fixed-length string is awkward and limiting, and the need to let the structures
-undergoing adaptation grow in complexity beyond fixed strings was an openly recognized direction
-(Cramer 1985; Fujiki & Dickinson 1987; Goldberg 1989, among the works surveyed at the time).
+The predominant genetic-algorithm work builds on fixed-length character strings. The need to
+let the structures undergoing adaptation grow in complexity beyond fixed strings was an actively
+explored direction at the time (Cramer 1985; Fujiki & Dickinson 1987; Goldberg 1989, among
+others).
 
 At the implementation level, one can already execute a proposed formula on a matrix of input
 values, compare its outputs with the measured targets, and reject or penalize candidates whose
-numeric evaluation fails. That does not solve the search problem. It only supplies the scoring
-interface: hand the system a candidate, get back finite predictions and an error. The missing
-piece is the adaptive representation and variation machinery that can propose new symbolic
-candidates without assuming their final size, shape, or operator layout in advance.
+numeric evaluation fails. That supplies the scoring interface: hand the system a candidate,
+get back finite predictions and an error.
 
 ## Baselines
 
@@ -81,28 +59,16 @@ candidates without assuming their final size, shape, or operator layout in advan
 `y = a₀ + a₁x + a₂x²` (quadratic), or a chosen higher-order polynomial — and solve for the
 coefficients `aᵢ` that minimize the sum of squared residuals `Σ(y − ŷ)²`, in closed form via the
 normal equations. Fast, optimal *for the chosen template*, and statistically well understood.
-Its limitation is structural: the functional form is an input, not an output. If the data were
-generated by `log(x+1) + log(x²+1)` or `2 sin(x) cos(z)`, no polynomial template recovers it —
-a transcendental function is not a finite polynomial — and the analyst gets, at best, a
-high-order polynomial that interpolates the sample and generalizes poorly. The method cannot
-propose a functional form it was not handed.
 
 **The genetic algorithm on fixed-length strings (Holland 1975; Goldberg 1989).** A general,
 representation-agnostic optimizer for combinatorial fitness landscapes: population, proportionate
-selection, one-point crossover, mutation, run for generations. Where it stalls for *this* problem
-is the encoding. To apply it one must serialize the candidate into a fixed-length chromosome and
-fix what each locus means; the schema theory that justifies the method is itself stated over
-fixed-length strings. An object whose size and shape are unknown and must vary during the search
-does not sit naturally in this representation — fixing the length pre-decides how big the answer
-may be, and a flat string is an unnatural container for a nested, hierarchical expression. The
-selection-and-recombination engine is exactly what one would want; the string chromosome is where
-it does not reach.
+selection, one-point crossover, mutation, run for generations. Each candidate is serialized into
+a fixed-length chromosome, with a fixed meaning assigned to each locus. The schema theory that
+justifies the method is stated over fixed-length strings.
 
 **Earlier evolution of variable-size structures (Cramer 1985; Fujiki & Dickinson 1987).** Initial
 explorations applied evolutionary operators to more structured, program-like objects rather than
-flat strings, showing that increasing representational complexity was an active direction. They
-left open a simple, general recipe for evolving symbolic formulas across many domains while
-preserving enough syntactic validity for the search to keep running.
+flat strings, demonstrating that increasing representational complexity was an active direction.
 
 ## Evaluation settings
 
@@ -130,8 +96,8 @@ What already exists is a generic population-based evolutionary-search harness an
 evaluate a proposed symbolic candidate on numeric data. The evaluator takes a candidate and an
 input matrix, returns predictions, and guards the outer loop from invalid numeric output. The
 harness can initialize a population, score everyone, ask for a new generation, repeat, and keep
-the best-so-far. What is *not* settled is the candidate representation or the rules that choose,
-combine, perturb, and preserve candidates — those are the slots to be designed.
+the best-so-far. The candidate representation and the rules that choose, combine, perturb, and
+preserve candidates are the slots to be designed.
 
 ```python
 import random

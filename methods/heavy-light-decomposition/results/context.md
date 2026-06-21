@@ -16,10 +16,9 @@ $n$ nodes.
 The tree is read into a $0$-based adjacency list together with the per-node
 values. A generic segment tree over a flat array is already available — point
 update plus range query under any associative combine (it is written for sum
-below; swapping `_combine`/`_identity` turns it into a max tree). What is missing
-is the part that connects the tree to that flat array: a `build` that
-preprocesses the tree, and the two top-level operations `update(u, val)` and
-`path_query(u, v)`.
+below; swapping `_combine`/`_identity` turns it into a max tree). To be filled
+in are a `build` that preprocesses the tree and the two top-level operations
+`update(u, val)` and `path_query(u, v)`.
 
 ```python
 import sys

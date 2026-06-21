@@ -15,14 +15,11 @@ $\min_x \max_i \lvert a_i^\top x - b_i\rvert$.
 
 Constrained-minimum problems of this kind are of perennial interest, and convex ones are the
 one large class where there is real hope: with convexity, every local minimum is a global
-minimum, so a method that gets "stuck" is still correct. Yet there has been relatively little
-success in finding **general computational techniques** that handle them on the machines of the
-day. The goal is a method that (i) works under weak assumptions — continuity and convexity,
-not smoothness, since the objectives we care about have kinks; (ii) reduces the hard curved
-problem to subproblems we can already solve fast and at scale; and (iii) comes with a
-convergence guarantee on a compact domain. Compactness of the feasible set is, for practical
-purposes, no restriction when a finite minimum exists: if the set were only closed, the inquiry
-can be confined to a compact convex subset containing the minimizer.
+minimum, so a method that gets "stuck" is still correct. The question is how to compute a
+solution on the machines of the day under weak assumptions — continuity and convexity, not
+smoothness, since the objectives we care about have kinks. Compactness of the feasible set is,
+for practical purposes, no restriction when a finite minimum exists: if the set were only
+closed, the inquiry can be confined to a compact convex subset containing the minimizer.
 
 ## Background
 
@@ -36,8 +33,8 @@ everywhere: $F(z) \ge F(t) + g^\top (z - t)$ for all $z$. Geometrically this aff
 a **supporting hyperplane** to the graph of $F$ at $t$. Such a support exists at every point of
 a convex function (in the interior of its domain), and for a max-type function
 $F = \max_i g_i$ a subgradient at $t$ is simply $\nabla g_h(t)$ for any index $h$ active at $t$
-(or a convex combination of the active gradients) — so the first-order information is cheap and
-available even where there is no gradient. On a compact working set the support slopes are
+(or a convex combination of the active gradients) — so the first-order information is available
+even where there is no gradient. On a compact working set the support slopes are
 bounded, $\lVert g\rVert \le K < \infty$.
 
 **The supporting-hyperplane / separation picture.** A closed convex set is the intersection of
@@ -56,63 +53,49 @@ finite subset goes back to Remez's exchange procedure for Chebyshev approximatio
 in one form or another, by a number of authors (Novodvorskii–Pinsker, Beale, Stiefel, Wolfe,
 Stone).
 
-**Linear programming is the one solved problem.** By the late 1950s, LP is the mature, reliable,
-large-scale optimization technology. The simplex method (Dantzig, 1947) and especially the
-**revised simplex / generalized simplex** method for minimizing a linear form under linear
-inequality constraints (Dantzig, Orden, Wolfe, *Pacific J. Math.* 5 (1955) 183–195), together
-with the **dual method** for the LP problem (Lemke, *Naval Res. Logist. Quart.* 1 (1954) 36–47),
-solve LPs efficiently, and — crucially — the revised simplex machinery makes it cheap to
-**re-solve an LP after adding one new constraint or one new variable**, warm-started from the
-previous solution.
+**Linear programming is a mature technology.** By the late 1950s, LP is a reliable, large-scale
+optimization technology. The simplex method (Dantzig, 1947) and especially the **revised
+simplex / generalized simplex** method for minimizing a linear form under linear inequality
+constraints (Dantzig, Orden, Wolfe, *Pacific J. Math.* 5 (1955) 183–195), together with the
+**dual method** for the LP problem (Lemke, *Naval Res. Logist. Quart.* 1 (1954) 36–47), solve
+LPs efficiently, and the revised simplex machinery makes it cheap to **re-solve an LP after
+adding one new constraint or one new variable**, warm-started from the previous solution.
 
-**The diagnostic pain.** For nonlinear convex programs the existing tools fall short exactly
-where our objectives live. **Gradient projection** (Rosen, *J. SIAM* 8 (1960) 181–217, Part I)
-moves along the projected negative gradient and so needs differentiability of the objective and
-a tractable projection onto the (curved) feasible set; for a nonsmooth $F$ there is no gradient
-to project, and projecting onto a general curved convex set is itself hard. The problem we most
-want to solve — minimax / Chebyshev fitting — has a kinked objective, so smooth descent methods
-do not even get started. What *does* work, robustly and at scale, is LP — but LP, as it stands,
-solves only linear programs, not curved convex ones.
+**The objectives we care about.** Among nonlinear convex programs, the minimax / Chebyshev
+fitting problem $\min_x \max_i\lvert a_i^\top x - b_i\rvert$ has a kinked objective; its
+feasible-set variants are stated through curved convex constraints $G(x)\le 0$. These are the
+instances the present inquiry targets.
 
 ## Baselines
 
 - **Simplex / revised simplex for linear programming** (Dantzig 1947; Dantzig, Orden, Wolfe
   1955). Minimizes a linear form $c^\top x$ over a polyhedron $\{x : Ax \ge b\}$ by walking
-  vertices. Exact, fast, and reusable: re-optimizing after adding a constraint costs little. Its
-  limitation as a baseline for *our* problem is simply that it solves **linear** programs only —
-  it cannot directly minimize a curved convex objective or handle a curved feasible set.
+  vertices. Exact, fast, and reusable: re-optimizing after adding a constraint costs little.
 
 - **Dual method for LP** (Lemke 1954) and **revised simplex** plumbing (Dantzig–Orden–Wolfe
-  1955). These matter as baselines because they decide *how cheaply* an iterative scheme that
-  repeatedly adds constraints can run: the dual LP gains one variable per added primal
-  constraint, so the previous optimum is a warm start. A method that adds one supporting
-  halfspace per step inherits this efficiency.
+  1955). These decide *how cheaply* an iterative scheme that repeatedly adds constraints can
+  run: the dual LP gains one variable per added primal constraint, so the previous optimum is a
+  warm start. A scheme that adds one supporting halfspace per step inherits this efficiency.
 
 - **Gradient projection for nonlinear programming** (Rosen 1960). Core idea: from a feasible
   point, step along the negative gradient projected onto the active constraints' tangent
-  subspace, then restore feasibility. The gap it leaves: it requires a differentiable objective
-  and repeated projection onto a possibly curved convex set, and it has no clean way to exploit
-  a fast LP solver. It does not address nonsmooth (max-type) objectives at all.
+  subspace, then restore feasibility. It uses the objective's gradient and projects onto the
+  feasible set at each step.
 
 - **Gomory's integer-programming cutting planes** (Gomory, *An algorithm for integer solutions
   to linear programs*, Princeton IBM Math. Research Project TR No. 1, 1958; Bull. AMS 64 (1958)
   275–278). Core idea: solve the LP relaxation; if the optimal vertex is fractional, append a
-  linear inequality (a "cut") that is satisfied by every integer-feasible point but **violated by
-  the current fractional optimum**, removing it; re-solve; repeat until the optimum is integral.
-  This is the proof of concept that "minimize a linear form, cut off the unwanted optimum with a
-  separating linear inequality, re-solve" is a complete and effective scheme. The gap relative to
-  our problem: Gomory's cuts are tailored to *integrality* (the unwanted point is a fractional
-  vertex, and the cut is derived from the simplex tableau), not to *convex feasibility* (where
-  the unwanted point is one that violates a curved convex constraint).
+  linear inequality (a "cut") that is satisfied by every integer-feasible point but violated by
+  the current fractional optimum, removing it; re-solve; repeat until the optimum is integral.
+  The cuts are tailored to *integrality* — the unwanted point is a fractional vertex, and the
+  cut is derived from the simplex tableau.
 
 - **Remez / Chebyshev exchange and the support-plane idea** (Remez; Cheney–Goldstein's "Newton's
   method for convex programming," *Numer. Math.* 1 (1959) 253–268). Core idea for the
   semi-infinite Chebyshev problem: a convex function is the upper envelope of its support planes,
   so an infinite system of linear inequalities (one per support point) can be approached by a
   finite, growing subset, and the convex hypersurface is replaced by its support planes during
-  computation. The gap: it is stated for Chebyshev approximation / semi-infinite linear systems,
-  and is not posed as a general method for convex programs with a convergence guarantee on a
-  compact set.
+  computation. It is stated for Chebyshev approximation / semi-infinite linear systems.
 
 ## Evaluation settings
 

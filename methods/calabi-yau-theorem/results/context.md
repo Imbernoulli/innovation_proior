@@ -1,8 +1,6 @@
 ## Research question
 
-The point to explain is not merely that Yau proved the Calabi conjecture. The question is what made the proof methodologically distinctive: it turned a global existence problem for canonical Kahler metrics into a scalar nonlinear elliptic PDE, then proved enough uniform estimates to make a continuity argument close.
-
-Calabi asked for a Kahler metric in a fixed Kahler class with prescribed Ricci form. In the special case where the first Chern class vanishes, this gives a unique Ricci-flat representative in each Kahler class, the geometric core behind the Calabi-Yau theorem. The hard part is existence, not uniqueness.
+Calabi asked for a Kahler metric in a fixed Kahler class with prescribed Ricci form. In the special case where the first Chern class vanishes, a positive answer would give a Ricci-flat representative in each Kahler class. The question is one of existence: given the cohomological compatibility data, produce an actual Kahler metric realizing the prescribed Ricci curvature.
 
 ## Geometric setup
 
@@ -18,18 +16,10 @@ with a normalization condition on `phi` and the right volume constraint.
 
 ## Baselines
 
-Calabi had already identified the reduction to a complex Monge-Ampere type equation and established uniqueness once a solution exists. The continuity method also offered a natural strategy: start from a solvable equation and deform toward the target one.
+Calabi had already identified the reduction to a complex Monge-Ampere type equation and established uniqueness once a solution exists. The continuity method is a standard strategy for existence problems of this type: start from a solvable equation and deform toward the target one, studying the set of parameters along the path for which a smooth solution exists. Along such a path the linearized operator is elliptic when the deformed metric remains Kahler.
 
-Openness along the continuity path is comparatively standard because the linearization is elliptic once the metric remains Kahler. The gap is closedness. A sequence of solutions along the path may fail to converge unless the potentials and their derivatives are controlled uniformly, independently of the deformation parameter.
+## Analytic setting
 
-## Analytic bottleneck
+The equation is fully nonlinear in second derivatives, because the determinant of the complex Hessian controls the volume form. The metric is encoded entirely through the scalar potential `phi`, with the positivity condition `omega_phi > 0` keeping the solution inside the Kahler class and the determinant equation encoding the prescribed volume change.
 
-The equation is fully nonlinear in second derivatives, because the determinant of the complex Hessian controls the volume form. A formal solution path is not enough; the proof needs bounds that prevent degeneration of the metric, loss of ellipticity, or blow-up of derivatives.
-
-Yau's proof supplied a chain of a priori estimates: a `C^0` bound for the potential, second-order/Laplacian control to keep the deformed metric comparable to the background metric, and then higher regularity estimates. These bounds make the family of solutions precompact in the needed smooth topology.
-
-## Methodological significance
-
-The deep move is to replace a geometric existence question by an estimate-closed analytic system. The complex Monge-Ampere equation keeps the Kahler class visible through the potential while encoding the Ricci prescription through the determinant equation. The a priori estimates then show that every possible obstruction along the continuity path is analytic and controllable.
-
-This is why the proof is more than a clever coordinate calculation. It creates a bridge from cohomological compatibility to metric existence: topology supplies the right class and volume constraint, complex geometry supplies the scalar potential formulation, and nonlinear elliptic PDE estimates supply compactness. Once those estimates close, the geometric object exists.
+The available tools are those of nonlinear elliptic PDE: estimates on the potential and its derivatives, elliptic regularity theory, and compactness arguments for families of solutions. The setting connects three layers: topology supplies the cohomology class and volume constraint, complex geometry supplies the scalar potential formulation, and nonlinear elliptic PDE supplies the analytic machinery for the Monge-Ampere equation.

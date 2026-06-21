@@ -18,17 +18,13 @@ nonlinearity. The relevant families are:
 
 - **Fourier Neural Operator (FNO) and geo-FNO (Li et al. 2021; 2022).** They parameterize the
   integral kernel in the Fourier domain with fixed basis and learnable spectral multipliers,
-  evaluated by FFT. **Gap:** the FFT assumes a periodic uniform grid; on irregular, non-periodic
-  boundaries the deformation degenerates and accuracy is poor.
+  evaluated by FFT.
 - **Graph-kernel neural operators / message passing on the mesh graph (Li et al. 2020).** They
   approximate operator iterations by learnable kernels over local graph neighborhoods and handle
-  arbitrary unstructured meshes. **Gap:** the kernel is local, so carrying information from the
-  nose of a car to its wake requires many message-passing steps, and global correlations are
-  weak.
+  arbitrary unstructured meshes.
 - **Attention-based neural operators (Vaswani et al. 2017).** They treat the mesh points as
   quadrature nodes for a learned integral kernel, giving an expressive, geometry-agnostic
-  parameterization. **Gap:** with N mesh points the cost is O(N²), infeasible at tens of
-  thousands of points; linear approximations sacrifice resolution.
+  parameterization.
 
 ## Fixed substrate / Code framework
 

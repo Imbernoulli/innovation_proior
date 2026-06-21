@@ -6,19 +6,11 @@ A time series presents, at each step `t`, a value (or for the multivariate case 
 `M`-channel vector `x_t in R^M`), observed over a look-back window of length `L`. The task is
 to predict the next `T` values `(x_{L+1}, ..., x_{L+T})`, often hundreds of steps ahead, while
 also learning representations that can transfer to downstream time-series tasks. The
-Transformer is the obvious tool — its attention
-learns relations between sequence elements with no fixed locality assumption, and it powers
-the strongest sequence models in language, vision, and speech. Yet on the standard
-forecasting benchmarks a one-layer linear model with no attention at all matches or beats
-every published Transformer forecaster. That result is the live problem: either attention is
-the wrong inductive bias for these series, or the series is being *fed* to attention in a way
-that destroys the structure attention is good at finding. A solution has to (1) be genuinely
-competitive with — and ideally beat — the simple linear model on the same fixed protocol;
-(2) actually exploit a longer look-back, since in principle more history should help, where
-naive attention is the bottleneck; (3) handle many channels without needing more data than
-these modest datasets provide; (4) stay robust to the train/test distribution drift these
-non-stationary series exhibit; and (5) retain what a linear map cannot — a multi-layer
-representation that can be pre-trained on unlabelled series and transferred.
+Transformer is the obvious tool — its attention learns relations between sequence elements with
+no fixed locality assumption, and it powers the strongest sequence models in language, vision,
+and speech. The question is how to best tokenize and route a raw time-series window through a
+Transformer encoder so that attention operates over meaningful units, the look-back can be
+kept long, and the resulting representations are useful beyond a single trained head.
 
 ## Background
 
@@ -27,28 +19,25 @@ self-attention `Attention(Q,K,V) = softmax(Q K^T / sqrt(d_k)) V`, stacked with p
 feed-forward blocks and residual connections — is the default sequence model, and has been
 carried into time series. The standard recipe embeds **each time step** as one token: the
 value (or the `M`-vector) at step `t` is linearly projected to a `D`-dimensional token, and
-self-attention runs over the `L` step-tokens. Several pressures shaped the field's
+self-attention runs over the `L` step-tokens. Several considerations have shaped the field's
 assumptions:
 
-- **Quadratic attention cost forces short windows.** Vanilla attention is `O(n^2)` in time
+- **Attention cost scales with sequence length.** Vanilla attention is `O(n^2)` in time
   and memory for `n` tokens. With one token per step, `n = L`, so doubling the look-back
-  quadruples the cost. This is *the* reason the efficient-Transformer line spent years
+  quadruples the cost. This is the reason the efficient-Transformer line spent years
   sparsifying or low-ranking the attention matrix to make a long `L` affordable.
 
-- **A single time step has little semantic content.** This is the load-bearing observation.
-  In language a token is a word or sub-word — a unit with standalone meaning, so attention
-  between tokens is meaningful. A single value `x_t` in isolation carries almost no
-  information about local shape; the meaningful structure (a rising edge, a daily bump, a
-  spike-and-decay) lives in a *neighborhood* of steps, not in one step. Time series are also
-  heavily temporally redundant: adjacent points are nearly equal, so point-to-point attention
-  spends most of its budget on near-duplicates.
+- **Local structure in time series.** A single value `x_t` in isolation carries limited
+  information; the meaningful structure (a rising edge, a daily bump, a spike-and-decay)
+  lives in a neighborhood of steps. Time series are also heavily temporally redundant:
+  adjacent points are nearly equal, so consecutive step values are strongly correlated.
 
 - **Grouping into patches elsewhere.** In vision, the Vision Transformer (Dosovitskiy et al.
   2021) cuts an image into 16x16 patches and linearly projects each patch to a token — this
   is what made Transformers work on images; BEiT and masked autoencoders (He et al. 2022)
   build masked pre-training on those patches. Sub-word tokens in language (BERT/WordPiece) and
   convolutional sub-sequence features in speech (wav2vec) are the same idea. The common thread
-  is that the *unit of attention* should already carry local semantics.
+  is that the *unit of attention* already carries local semantics.
 
 - **Distribution shift.** These series are non-stationary: the mean and scale of a window
   drift over time, so test windows sit at levels the training windows never visited.
@@ -61,24 +50,18 @@ assumptions:
   (Zerveas et al. 2021): time series carry outlier timestamps with extreme values that a
   per-token layer-norm cannot temper, whereas a batch-norm over the batch/time dimension can.
 
-A diagnostic finding from the linear-model work sharpens the problem. The complex Transformer
-baselines do **not** reliably improve when given a longer window — their error stays flat or
-rises as `L` grows, evidence they overfit rather than exploit the extra history. The simple
-linear model, by contrast, can keep improving with longer `L`. So the Transformers were both
-expensive on long windows *and* unable to benefit from them, even though older history can carry
-usable signal.
+A finding from the linear-model work (Zeng et al. 2023) is that complex Transformer baselines
+do not reliably improve when given a longer window — their error stays flat or rises as `L`
+grows — while the simple linear model can keep improving with longer `L`.
 
 ## Baselines
 
 **Linear forecaster (Zeng et al., AAAI 2023; "Are Transformers Effective for Time Series
 Forecasting?").** Decompose each univariate series into trend (moving average) and seasonal
 (remainder), apply one shared linear layer per component mapping the length-`L` look-back
-directly to the length-`T` horizon, and sum. Crucially it is **channel-independent**: the same
-linear map is applied to every channel separately, with no cross-channel mixing. On the
-standard benchmarks this matches or beats every published Transformer. **Gap:** a linear map
-from window to horizon has no capacity to model nonlinear local structure or to learn
-transferable representations for downstream tasks; it is a strong but expressively shallow
-yardstick, and it leaves open whether a properly-applied attention model could extract more.
+directly to the length-`T` horizon, and sum. It is **channel-independent**: the same linear
+map is applied to every channel separately, with no cross-channel mixing. On the standard
+benchmarks this matches or beats every published Transformer.
 
 **Point-wise efficient Transformers — Informer (Zhou et al., AAAI 2021), Autoformer (Wu et
 al., NeurIPS 2021), FEDformer (Zhou et al., ICML 2022), Pyraformer (Liu et al., ICLR 2022).**
@@ -87,35 +70,23 @@ attention that keeps only dominant query-key pairs plus a distilling step that h
 sequence; Autoformer with a series-decomposition block plus an auto-correlation mechanism that
 aggregates over period-shifted subseries; FEDformer with attention in the frequency domain on
 a few selected modes; Pyraformer with a pyramidal attention of inter- and intra-scale edges.
-They use an encoder-decoder that emits the whole horizon at once. **Gap:** the input token is
-still a single time step, so attention is computed between points that individually carry
-little semantic content; and the `M`-vector step is projected as one mixed token, entangling
-all channels. Empirically they do not benefit from longer look-back windows and tend to
-overfit, so the attention machinery is not buying what its cost implies.
+They use an encoder-decoder that emits the whole horizon at once.
 
 **Patch-flavoured attempts — LogTrans (Li et al., NeurIPS 2019), Triformer (Cirstea et al.,
 IJCAI 2022).** LogTrans replaces the point-wise dot product with a causal-convolution-derived
 query/key so the score depends on a local neighborhood, but its *value* is still a single time
-step. Triformer introduces a patch attention, but it uses a pseudo-timestamp as the query
-within a patch purely to cut complexity. **Gap:** neither makes a subseries the actual input
-unit fed to the encoder, so neither turns local shape into the thing attention operates over.
+step. Triformer introduces a patch attention, using a pseudo-timestamp as the query within a
+patch to cut complexity.
 
 **Masked time-series Transformer (Zerveas et al., KDD 2021; "A Transformer-based Framework for
 Multivariate Time Series Representation Learning", TST).** A Transformer for representation
-learning whose input token is again the per-step vector `x_t`; it pre-trains by masking values
+learning whose input token is the per-step vector `x_t`; it pre-trains by masking values
 at randomly chosen **single time steps** and reconstructing them, and it established that
-batch-norm beats layer-norm here. **Gaps:** masking isolated steps is too easy — a masked
-value is recoverable by interpolating its immediate neighbors, so the task does not force the
-model to learn high-level structure, and Zerveas et al. had to add complex multi-size masking
-to compensate; and for a downstream forecast head, mapping the `L` per-step representation
-vectors of dimension `D` to `M` channels times `T` horizon needs a projection matrix of size
-`(L*D) x (M*T)`, which is huge and overfits when downstream data is scarce.
+batch-norm beats layer-norm here.
 
 **Channel-independence precedents (Zheng et al. 2014 multichannel CNN; the linear forecaster
 above).** Treating each channel as its own univariate signal with a shared model worked for
-CNNs and for the linear model, but had not been carried onto a Transformer backbone. **Gap:**
-untested for attention — whether a shared univariate Transformer would beat a channel-mixing
-one, and why, was open.
+CNNs and for the linear model.
 
 ## Evaluation settings
 
@@ -124,8 +95,7 @@ one, and why, was open.
   (ETTh1, ETTh2, ETTm1, ETTm2; 7 channels each). Horizons `T in {96, 192, 336, 720}` (and
   `{24, 36, 48, 60}` for the small ILI). Metrics MSE and MAE on the standard
   train/val/test split. Look-back `L` is a knob; a fair comparison fixes the same `L` across
-  models. The larger datasets (Weather, Traffic, Electricity) have many series, so results
-  there are more stable and less prone to overfitting.
+  models.
 - **Representation-learning protocol.** Self-supervised pre-train on the unlabelled series,
   then either linear-probe (train only the head) or end-to-end fine-tune, and forecast.
 

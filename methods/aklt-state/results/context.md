@@ -51,9 +51,7 @@ spin-singlet wavefunction of many spin-½'s can always be written as a superposi
 such pairwise bonds ("valence-bond coverings"). Anderson's resonating-valence-bond (RVB) proposal
 (1973, 1987) takes a fluctuating quantum superposition of many bond coverings as a candidate
 disordered ground state, and made disordered non-Néel states topical through their possible
-relevance to high-Tᵪ superconductivity. The difficulty with RVB as a *calculational* tool is that a
-fluctuating superposition of bond coverings is not the eigenstate of any simple local Hamiltonian,
-so its properties cannot be obtained exactly.
+relevance to high-Tᵪ superconductivity.
 
 **Higher spin from spin-½.** A spin-s representation is the fully symmetric part of the tensor
 product of 2s spin-½'s. Algebraically this is the Schwinger-boson construction: with bosons a†, b†,
@@ -66,40 +64,25 @@ spin-½ pieces and is the natural engine for any valence-bond construction at sp
 **Bethe-ansatz Heisenberg chain (spin-½, and the s = 1 bilinear chain).** The pure bilinear chain
 H = Σ Sᵢ·Sᵢ₊₁ is the realistic model. For spin-½ it is solved exactly (unique ground state,
 power-law correlations, no gap). The s = 1 bilinear chain is *not* exactly solvable; numerics
-suggest a ground-state energy ≈ −1.40 per bond and, per Haldane, a gap, but there is no closed-form
-ground state and no rigorous statement. **Gap it leaves open:** the physically realistic integer-spin
-model is analytically intractable — one has no exact wavefunction to compute with and no rigorous
-proof of any of its conjectured properties.
+suggest a ground-state energy ≈ −1.40 per bond and, per Haldane, a gap.
 
 **Majumdar–Ghosh model (spin-½, 1969).** For the frustrated spin-½ chain
 H = Σᵢ [Sᵢ·Sᵢ₊₁ + ½ Sᵢ·Sᵢ₊₂] (the special ratio J₂ = J₁/2), Majumdar and Ghosh found the exact
-ground states. The trick: rewrite the per-triple term as a positive operator. Three spin-½'s have
-total spin ½ or 3/2; grouping the Hamiltonian as a sum over consecutive triples,
+ground states by rewriting the per-triple term as a positive operator. Three spin-½'s have total
+spin ½ or 3/2; grouping the Hamiltonian as a sum over consecutive triples,
 H ∝ Σᵢ [(Sᵢ + Sᵢ₊₁ + Sᵢ₊₂)² − 3/4], every term is the (rescaled) projection onto total spin 3/2 of
 a triple, so it is ≥ 0, and any state in which every three consecutive spins have total spin ½ is
 annihilated by every term and hence is an exact zero-energy ground state. The two states with
 nearest-neighbor singlet bonds — the fully dimerized coverings (•—•)(•—•)… in the two distinct
-registers — have this property. **Gap it leaves open:** these two ground states are *degenerate*
-and *break* translation symmetry (period 1 → period 2); they are ultra-short-ranged dimer products
-of just two sites each, and the model is spin-½. This is the dimerized class, which the
-half-integer theorem permits — it is precisely *not* the unique-gapped-unbroken-symmetry phase the
-integer conjecture is about. What it does supply is a method: choose the local Hamiltonian as a sum
-of positive projectors so that a hand-built valence-bond state sits in its kernel and is therefore
-provably a ground state without diagonalizing anything.
+registers — have this property. These two ground states are degenerate and break translation
+symmetry (period 1 → period 2); they are dimer products of two sites each, and the model is spin-½.
 
 **Resonating valence bonds (Anderson).** A disordered superposition of fluctuating valence-bond
 coverings, proposed as a non-Néel ground state for frustrated two-dimensional antiferromagnets.
-**Gap it leaves open:** it is a variational/heuristic ansatz, not the exact ground state of a
-written-down local Hamiltonian, so its correlations, degeneracy, and gap cannot be computed
-rigorously; one cannot even establish that it is disordered with a gap for any specific model.
 
 **Large-n SU(n) chains (Affleck 1985).** In the large-n limit of certain SU(n) generalizations of
 the antiferromagnetic chain, the leading Hamiltonian simply counts nearest-neighbor valence bonds,
-and a "solid" single-bond-per-link state emerges as the ground state. **Gap it leaves open:** this
-is a controlled limit of a different (large-n) model, not a rigorous statement about the physical
-SU(2) spin chain at finite, small spin; it indicates that a crystalline bond pattern can be
-energetically preferred but proves nothing about gap, uniqueness, or correlations for the spin-1
-Heisenberg-type chain.
+and a "solid" single-bond-per-link state emerges as the ground state.
 
 ## Evaluation settings
 

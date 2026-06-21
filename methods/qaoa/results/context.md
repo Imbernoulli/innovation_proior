@@ -18,15 +18,8 @@ maximize the number of edges whose endpoints get different colors. These problem
 in general, and even constant-factor approximation is hard for some of them, so the realistic
 goal is a guaranteed *approximation ratio* `C(z)/max C` rather than the exact optimum.
 
-The precise goal is a quantum procedure for approximate optimization with three properties at
-once. (1) It should have a **tunable knob** — a single integer that, as it grows, provably
-improves the approximation, so one can spend more circuit depth to buy more quality. (2) Its
-quantum circuit should be **no harder to build than the objective is to write down**: each
-gate should act on no more bits than the corresponding clause touches, so a sum of 2-local
-clauses compiles to 2-local gates. (3) For the regime where the knob is held fixed, choosing
-the procedure's free parameters should be **classically efficient** — the cost of figuring out
-how to run the quantum computer should not blow up with `n`. No existing quantum optimization
-recipe of the time has all three; closing that gap is the problem.
+The question is how to design a quantum circuit procedure for approximate combinatorial
+optimization that is practical for near-term gate-model hardware.
 
 ## Background
 
@@ -71,23 +64,12 @@ T ≫ ℰ / g_min²,   g_min = min_s (E_1(s) − E_0(s)),   ℰ = max_s |⟨1;s|
 ```
 
 With `ℰ` typically of order a single eigenvalue, the **required runtime is governed by
-`1/g_min²`** — it explodes as the inverse square of the smallest gap encountered along the
-path.
-
-*Two diagnosed pain points of this approach.* First, the gap `g_min` can be exponentially
-small in `n` for hard instances, so the guaranteed-success runtime can be exponential — and
-because the runtime appears inside the Hamiltonian, this is a single long, continuous,
-fully-coherent analog evolution. Near-term quantum hardware cannot stay coherent for such long
-runs; a method that demands one monolithic deep evolution is not implementable on devices with
-short coherence times and a modest gate budget. Second, the adiabatic procedure's
-**success probability is not even monotonic in `T`**: for a given instance it can rise with
-runtime, then fall sharply, with the eventual large-`T` rise out of reach of any simulable or
-runnable time (Crosson, Farhi, Lin, Lin, Shor, 2014, `arXiv:1401.7320`, exhibit a 20-qubit
-Max2Sat instance with exactly this non-monotone behavior). There are also instances where the
-adiabatic evolution gets trapped in a false minimum for any subexponential runtime — for a
+`1/g_min²`** — it scales as the inverse square of the smallest gap encountered along the
+path. The adiabatic procedure's success probability also varies non-monotonically with `T` for
+some instances (Crosson, Farhi, Lin, Lin, Shor, 2014, `arXiv:1401.7320`). There are also
+instances where the adiabatic evolution gets trapped for subexponential runtimes — for a
 Hamming-weight-symmetric objective the evolution is stuck at weight `w = n` while the true
-optimum is at `w = 0` (Farhi, Goldstone, Gutmann, 2002, `quant-ph/0201031`). So "make `T`
-large" is both physically out of reach and not reliably correct.
+optimum is at `w = 0` (Farhi, Goldstone, Gutmann, 2002, `quant-ph/0201031`).
 
 *Three standard mathematical tools sit on the table.* **Trotterization** (the Lie–Trotter product formula): for non-commuting `A` and `B`,
 `e^{−i(A+B)t} = (e^{−iA t/N} e^{−iB t/N})^N + O(t²/N)`, so a continuous evolution under a sum of
@@ -118,36 +100,22 @@ enough constant would imply P = NP, while general-instance `½ + ε` is itself N
 the optimum in `H_P`'s ground state, prepare `H_B`'s easy ground state `|s⟩`, and evolve under
 the slowly varying `H(t) = (1−t/T)H_B + (t/T)H_P` for a long time `T`, relying on the adiabatic
 theorem to track the ground state into the answer. *Math:* one continuous Schrödinger
-evolution `i d|ψ⟩/dt = H(t)|ψ⟩`; correctness governed by `T ≫ ℰ/g_min²`. *Gaps it leaves:* the
-runtime is set by `1/g_min²`, which can be exponential; it is one long coherent analog
-evolution, too deep for near-term gate-model hardware; success probability is non-monotone in
-`T` so "run longer" is not a safe strategy; and the algorithm aims squarely at the *exact*
-optimum (large overlap with the optimal string), with no built-in knob to trade a little
-quality for a much shallower circuit. It also has no efficient offline way to certify good
-run parameters for a fixed depth budget.
+evolution `i d|ψ⟩/dt = H(t)|ψ⟩`; correctness governed by `T ≫ ℰ/g_min²`.
 
 **Continuous-time quantum walks / quantum decision trees** (Farhi, Gutmann, 1997,
 `quant-ph/9706062`). *Idea:* evolve `e^{−ibB}` where `B` is the adjacency matrix of a graph
 whose vertices are configurations and whose edges connect configurations differing by one
 move; amplitude spreads across the graph like a wave. *Math:* a single `e^{−ibB}` applied to a
-localized starting vertex. *Gap it leaves:* on its own a quantum walk has no mechanism to bias
-toward high-objective configurations — it spreads, but does not preferentially concentrate on
-good strings — so it is a primitive, not a complete optimizer.
+localized starting vertex.
 
 **Simulated annealing (classical).** *Idea:* a thermal random walk over assignments with a
 temperature lowered toward zero, settling into low-energy (good) configurations. *Math:*
-Metropolis transitions with a cooling schedule. *Gap it leaves:* it is the classical foil —
-it lowers temperature to find a minimum, whereas a coherent quantum evolution keeps the system
-in a true ground state of an evolving Hamiltonian; on objectives with tall thin barriers the
-thermal walk can be trapped, motivating a quantum alternative.
+Metropolis transitions with a cooling schedule.
 
 **Classical approximation algorithms for the example problems.** Goemans–Williamson SDP
 rounding (`0.878` for MaxCut), Halperin–Livnat–Zwick for cubic MaxCut, and Håstad's
 bounded-occurrence E3LIN2 algorithm (`½ + constant/D`). *Idea/math:* polynomial-time rounding
-of relaxations or combinatorial arguments. *Gap they leave:* they are the standard a method
-must be compared against; they set the bar a new quantum method should aim to meet or,
-eventually, beat — and they are the source of the inapproximability thresholds that say how
-much improvement over random guessing is even possible.
+of relaxations or combinatorial arguments.
 
 ## Evaluation settings
 

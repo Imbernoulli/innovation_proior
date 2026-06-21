@@ -6,22 +6,22 @@ Serve a fixed autoregressive LLM on a fixed GPU (or fixed multi-GPU group) at th
 
 Autoregressive transformer inference has two regimes. **Prefill** ingests an entire prompt at once (compute-bound), then **decode** emits one token per forward pass, attending over all previous tokens (memory-bandwidth-bound). To avoid recomputing past keys and values, every serving system keeps a **KV cache**: per-request key and value tensors for every past token, at every layer and head.
 
-The load-bearing observations on current systems:
+Characteristics of current systems:
 
 - The KV cache is enormous and grows token-by-token. For multi-billion-parameter models the per-token footprint is hundreds of kilobytes across layers, so a long request occupies a large slice of GPU memory that only grows during generation. Cache capacity, not model weights, usually limits concurrency.
 - Throughput at fixed latency is set by batch size, and batch size is set by memory. Decode is bandwidth-bound: one decode pass over B requests costs nearly the same wall-clock as over one request, so tokens-per-second scales near-linearly with B until memory runs out.
 - Requests have wildly different and unpredictable lengths. Prompt and generation lengths vary by orders of magnitude, and a request's final length is not known when it arrives.
-- Standard serving reserves cache memory as one contiguous chunk per request, sized to the maximum sequence length. A short request holds the whole reservation until it finishes; the unused tail is dead memory. Measurements on such systems show that only 20–40% of KV-cache memory holds live tokens; the rest is wasted by over-reservation and fragmentation.
-- Requests in a stream share content. Many requests begin with the same system prompt, few-shot preamble, or instruction header, yet each stores its own private copy of the identical prefix keys and values.
-- Prefill and decode interfere. A long-prompt prefill is one large compute-bound burst; other in-flight decodes are many small bandwidth-bound steps. Run naively, a long prefill stalls everyone else's decoding, while pure-decode passes leave compute units idle.
-- The cache is stored at full activation precision. KV entries are kept in FP16/BF16 (two bytes per element), so the cache footprint scales directly with that choice.
+- Standard serving reserves cache memory as one contiguous chunk per request, sized to the maximum sequence length. Measurements on such systems show that 20–40% of KV-cache memory holds live tokens, with the rest reserved for future growth or held by requests shorter than their allocation.
+- Many requests begin with the same system prompt, few-shot preamble, or instruction header, each storing its own private copy of the identical prefix keys and values.
+- A long-prompt prefill is one large compute-bound burst; other in-flight decodes are many small bandwidth-bound steps.
+- KV entries are kept in FP16/BF16 (two bytes per element), so the cache footprint scales directly with that choice.
 
 Baselines:
 
-- **HuggingFace Transformers generation loop.** Reference autoregressive generation that loads the model, batches prompts, and calls `model.generate` with a per-request KV cache preallocated for the batch. **Gap:** batching lasts the whole `generate` call, so short requests wait for the longest request in their batch to finish, and the contiguous-per-request cache leaves much memory reserved-but-unused, keeping the sustainable batch size small.
-- **FasterTransformer.** Heavily hand-optimized inference engine with fast fused transformer kernels; the raw per-pass performance reference. **Gap:** kernels are fast, but request and memory management still reserve per-request cache up to a max length and batch coarsely, so under variable-length streams the GPU feeds fast kernels with small effective batches.
-- **Orca.** Introduces iteration-level request handling: scheduling decisions happen at model-iteration granularity, so requests can join and leave the running set between steps. **Gap:** it opens up the scheduling axis but still keeps the KV cache as per-request contiguous memory, so the same memory waste caps how many requests can actually be co-resident, and the scheduler cannot fill the GPU beyond that cap.
-- **Just batch more requests.** The obvious throughput knob is to raise the configured batch size. **Gap:** under contiguous per-request reservation, raising the batch size forces a proportional max-length reservation that overflows memory long before compute saturates; shrinking the reservation risks running out of cache mid-generation.
+- **HuggingFace Transformers generation loop.** Reference autoregressive generation that loads the model, batches prompts, and calls `model.generate` with a per-request KV cache preallocated for the batch. Batching lasts the whole `generate` call, so requests in the same batch complete together, and the cache is preallocated contiguously per request up to the maximum sequence length.
+- **FasterTransformer.** Heavily hand-optimized inference engine with fast fused transformer kernels; the raw per-pass performance reference. Request and memory management reserve per-request cache up to a max length and batch coarsely.
+- **Orca.** Introduces iteration-level request handling: scheduling decisions happen at model-iteration granularity, so requests can join and leave the running set between steps. The KV cache is maintained as per-request contiguous memory.
+- **Just batch more requests.** Raising the configured batch size is the direct throughput knob, trading higher memory use for larger effective batches.
 
 ## Fixed substrate / Code framework
 

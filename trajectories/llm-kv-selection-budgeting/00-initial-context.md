@@ -1,14 +1,14 @@
 ## Research question
 
-Long-context LLM inference stores a key-value tensor for every prefill token in every attention layer. The cache grows linearly with prompt length; on a 30k-token document it rivals the model weights, and every decode step attends over the whole cache. The design task is a **KV token-retention controller**: after a standard full-attention prefill, score the cached prefill KV entries, keep a small fixed-budget subset (the canonical budget retains ~20% of prefill tokens), and decode from that subset without losing long-context task quality. The model, datasets, prompt templates, decode loop, and budget enforcement are fixed. The only degrees of freedom are the per-token scoring rule and the metadata it uses.
+Long-context LLM inference stores a key-value tensor for every prefill token in every attention layer. The cache grows linearly with prompt length; on a 30k-token document it rivals the model weights, and every decode step attends over the whole cache. How can the prefill KV cache be compressed to a small fixed-budget subset — retaining roughly 20% of prefill tokens — while preserving long-context task quality?
 
 ## Prior art / Background / Baselines
 
-- **Scaled dot-product attention.** A layer computes `softmax(QK^T/sqrt(d_k))V` over all positions in one parallel matmul during training, but generation is sequential. Gap: the parallelism available during training is unavailable during autoregressive decoding.
-- **Incremental KV cache.** Because the causal mask freezes each `(k_j, v_j)` once position `j` is produced, each decode step only projects the new token, appends its KV, and attends the new query over the stored history. Gap: nothing is evicted, so cache memory and the per-step bandwidth to reload it grow linearly with sequence length.
-- **Sliding-window / recent-only cache.** Keep only the last `L` tokens and evict the oldest. Gap: quality drops sharply once initial tokens leave the window, and any dependency older than the window is silently dropped.
-- **Quantization of the cache (e.g., KIVI, CacheGen).** Store every token's KV at lower precision. Gap: every token is still retained and attended, so the number of attended tokens — and thus the attention compute — is unchanged.
-- **Attention-score eviction (e.g., H2O, SnapKV).** Score tokens by the attention mass they receive and keep the heavy hitters. Gap: it requires the materialized attention matrix, which efficient attention kernels do not expose; the scores are also query-dependent, so the kept set changes with the question.
+- **Scaled dot-product attention.** A layer computes `softmax(QK^T/sqrt(d_k))V` over all positions in one parallel matmul during training, but generation is sequential.
+- **Incremental KV cache.** Because the causal mask freezes each `(k_j, v_j)` once position `j` is produced, each decode step only projects the new token, appends its KV, and attends the new query over the stored history.
+- **Sliding-window / recent-only cache.** Keep only the last `L` tokens and evict the oldest.
+- **Quantization of the cache (e.g., KIVI, CacheGen).** Store every token's KV at lower precision.
+- **Attention-score eviction (e.g., H2O, SnapKV).** Score tokens by the attention mass they receive and keep the heavy hitters.
 
 The substrate keeps the full incremental cache during prefill and then asks the controller to discard tokens under a fixed budget, using only the hook's inputs (cached keys, values, hidden states) and never a realized attention matrix.
 

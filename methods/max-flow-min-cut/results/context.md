@@ -4,7 +4,7 @@ A transportation network has two distinguished terminals. Traffic starts at one 
 
 The same network has a second, adversarial question. Which links must be removed, and with what least total capacity, to separate the origin from the destination? In the rail setting that motivated the problem, this was the operational question: identify a bottleneck in a large railway system, not merely a set of locally busy tracks.
 
-The difficulty is that these two quantities look related but not identical. A route-packing answer gives a feasible traffic pattern. A separating set gives an upper bound on every possible traffic pattern. A useful method has to produce both a large feasible flow and a small separating certificate, so the claimed optimum is checkable directly on the network.
+These two quantities look related. A route-packing answer gives a feasible traffic pattern. A separating set gives an upper bound on every possible traffic pattern. The broad question is whether and how the two can be connected.
 
 ## Objects Already On The Table
 
@@ -32,15 +32,15 @@ Since backward flow is nonnegative and each forward flow is at most capacity,
 
 `|f| <= sum_{S->T} f <= sum_{S->T} c = cap(S,T)`.
 
-Thus every cut is an upper bound on every flow. This gives an immediate weak relationship: the best possible flow is no larger than the cheapest cut. What is not settled by this bound alone is whether the gap can always be closed, or how a computation would know it has closed the gap.
+Thus every cut is an upper bound on every flow.
 
-## Existing Approaches And Gaps
+## Existing Approaches
 
-One approach is to formulate the flow problem as a linear program and apply a general method such as simplex. That is mathematically legitimate, but it treats the graph as a large set of equations and inequalities. For a hand-built rail model with uncertain capacities, it is too cumbersome and gives little network-level explanation of why the answer is final.
+One approach is to formulate the flow problem as a linear program and apply a general method such as simplex. That is mathematically legitimate and treats the graph as a large set of equations and inequalities.
 
-Another approach is greedy flooding: push traffic along available routes until bottlenecks appear, return excess, and continue. This is easy to perform on a map and fits the operational setting. Its weakness is certification. A greedy early route can occupy an arc that should later be freed for a better global routing, and a procedure that only adds traffic has no principled way to retract a bad placement.
+Another approach is greedy flooding: push traffic along available routes until bottlenecks appear, return excess, and continue. This is easy to perform on a map and fits the operational setting.
 
-A third approach is route decomposition: view a flow as a sum of path flows. This makes existence and convexity visible, but by itself it does not tell a planner which paths to choose, when to stop, or how to read a minimal separating set from the resulting flow.
+A third approach is route decomposition: view a flow as a sum of path flows. This makes existence and convexity visible.
 
 ## Evaluation And Code Scaffold
 

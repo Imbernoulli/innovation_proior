@@ -9,14 +9,12 @@ match the shallower net and then improve on it. Reality contradicts this. Past a
 layers makes a plain feed-forward convolutional net *worse*, and crucially worse on the
 *training* set, not just the test set — so it is not overfitting, it is an optimization
 failure. Residual reformulation (below) pushes the usable depth dramatically — networks of
-100+ layers train and generalize well — but the depth lever is still not automatically a
-generalization lever: on CIFAR-10, a 1202-layer residual net can fit the training set extremely
-well yet test worse than a much smaller 110-layer residual net. The precise problem is to
-understand whether the repeating residual block still places any avoidable operation on the
-direct signal/gradient path once identity shortcuts are in place, and to redesign only that
-block so the path through long same-shape stretches is as undistorted as possible, while adding
-no parameters and no real computation and changing nothing about the data pipeline, optimizer,
-classifier head, or initialization.
+100+ layers train and generalize well — but on CIFAR-10, a 1202-layer residual net can fit the
+training set extremely well yet test worse than a much smaller 110-layer residual net. The
+question is how to design the internal structure of the repeating residual block to support
+optimization and generalization as depth is pushed further, while adding no parameters and no
+real computation and changing nothing about the data pipeline, optimizer, classifier head, or
+initialization.
 
 ## Background
 
@@ -30,9 +28,7 @@ counterpart throughout training. The argument that makes this surprising rather 
 there is an explicit solution by construction for the deeper net — copy the shallow net's
 layers and set the extra ones to identity — that achieves the shallow net's training error, so
 the deeper net's *representational* capacity is a strict superset. The solver simply fails to
-find a solution at least as good. The lesson the field drew: not all architectures are equally
-easy to optimize, and approximating an identity mapping with a stack of nonlinear layers is
-evidently hard for SGD.
+find a solution at least as good.
 
 **Residual reformulation.** Rather than ask a stack of layers to fit a target mapping
 `H(x)` directly, let it fit the *residual* `F(x) := H(x) − x`, so the block computes
@@ -65,8 +61,7 @@ At inference, fixed population statistics (moving averages of mean/var collected
 replace the batch statistics. In the prevailing recipe BN is inserted immediately *before* the
 nonlinearity, i.e. the layer computes `ReLU(BN(W x))`. Besides accelerating and stabilizing
 training, BN is observed to *regularize*: it injects mini-batch-dependent noise into each
-activation and can partly substitute for dropout. The exact placement of BN relative to the
-weight layer and the nonlinearity is, at this point, treated as settled (conv → BN → ReLU).
+activation and can partly substitute for dropout.
 
 **ReLU and the backprop chain rule.** The rectifier `σ(x)=max(0,x)` (Nair & Hinton 2010) has
 derivative 1 for positive pre-activations and 0 for negative ones, so wherever a ReLU sits on
@@ -79,20 +74,14 @@ which is the classic obstruction to training depth.
 
 **Plain deep convolutional nets (e.g. VGG-style stacks, Simonyan & Zisserman 2015).** Stack
 many 3x3 conv-BN-ReLU layers and a classifier on top. Core idea: depth builds hierarchical
-features. **Limitation:** subject to the degradation phenomenon above — beyond a moderate
-depth the training error climbs, so they cannot be pushed to very large depth even though a
-deeper stack provably *can* represent everything a shallower one can.
+features.
 
 **Original residual unit (He et al. 2016a).** As written above: `x_next = ReLU(F(x) + x)`
 with `F` = conv-BN-ReLU-conv-BN and an identity shortcut, where the final ReLU is applied
 *after* the element-wise addition. Core idea: the additive shortcut preconditions the
-optimization toward identity, letting 100+-layer nets train. **Limitation it leaves open:**
-the gains do not continue automatically to extreme depth. As reported by He et al. (2016a), a
-1202-layer net (19.4M params) reaches 7.93% on CIFAR-10 — *worse* than a 110-layer net (1.7M
-params, 6.61%) — even though the deeper net can drive training error very low; they attribute
-this case to overfitting on the small dataset. So at moderate depth the unit works well, but
-at ~1000 layers the design question is no longer just "can it fit?" It is whether the block
-keeps optimization and regularization as clean as possible when depth is pushed hard.
+optimization toward identity, letting 100+-layer nets train. On CIFAR-10, a 1202-layer net
+(19.4M params) reaches 7.93% — compared with 6.61% for a 110-layer net (1.7M params); He et
+al. (2016a) attribute this to overfitting on the small dataset.
 
 **Highway Networks (Srivastava, Greff & Schmidhuber 2015).** Replace the bare additive
 shortcut with a learned, data-dependent gate. The block computes
@@ -103,11 +92,7 @@ y = H(x, W_H) · T(x, W_T) + x · (1 − T(x, W_T)) ,   T(x) = σ(W_T x + b_T) ,
 
 with `b_T` initialized to a negative value so the network starts biased toward "carry"
 (passing `x` through). Core idea: let the network *learn* how much of each unit to transform
-vs. carry, inspired by LSTM gates. **Limitation:** the carry path is multiplied by the
-data-dependent factor `(1 − T(x))`, which lies in `(0,1)` and is generally `< 1`. Across many
-stacked blocks the shortcut signal is multiplied by a product of such sub-unit factors; the
-gate can "close" and make a layer non-residual, and training is sensitive to the gate-bias
-initialization. Highway nets had not demonstrated accuracy gains at extreme (100+) depth.
+vs. carry, inspired by LSTM gates.
 
 ## Evaluation settings
 

@@ -9,11 +9,11 @@ R(f) = ||f*f||_2^2 / ( ||f*f||_inf · ||f*f||_1 )  ≤  1,
 ```
 
 unattained because an autoconvolution is never an indicator. Barnard–Steinerberger (arXiv:1903.08731)
-asked how large `C2 := sup_f R(f)` can be; the answer is approached by explicit constructive lower bounds.
-The simplest candidate, a flat step function, scores exactly `2/3` because its autoconvolution is a rigid
-triangle — and refining the grid does not move it, since only the *shape* of the heights affects `R`. The
-question here is the first real construction: how to introduce variation among the heights and search for a
-non-flat profile whose autoconvolution bends away from the tent, clearing the `2/3` floor.
+asked how large `C2 := sup_f R(f)` can be; the value is approached by explicit constructive lower bounds.
+A flat step function scores exactly `2/3`, because its autoconvolution is a triangle, and `R` depends only
+on the *shape* of the heights, not on the grid resolution. The question here is how to set non-flat heights
+on a coarse grid so that the autoconvolution departs from the triangle, to find a non-trivial profile and
+its score.
 
 ## Construction class and scoring
 
@@ -26,5 +26,5 @@ Score `R`, higher better, `≤ 1`. Self-convolution via FFT.
 ## Known reference points
 
 Flat floor `0.6667`; Matolcsi–Vinuesa 20-step `0.88922`; AlphaEvolve 50-step `0.89628`; Boyer–Li 575-step
-`0.901564`; AlphaEvolve-V2 record `0.96102`; ceiling `1.0`. This method works at a coarse `N = 20` — the
-resolution at which the published `0.88` band was first reached — to find the basic non-trivial shape.
+`0.901564`; AlphaEvolve-V2 record `0.96102`; ceiling `1.0`. The setting here is a coarse `N = 20` grid —
+the resolution at which the published `0.88` band was first reached.

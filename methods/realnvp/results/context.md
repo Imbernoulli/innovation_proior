@@ -6,28 +6,14 @@ unsupervised: leverage large pools of unlabeled data to learn the underlying den
 p(x), so that we can both *create* novel content and support reconstruction-style
 applications (inpainting, denoising, colorization, super-resolution).
 
-The hard part is that the data lives in a very high-dimensional space and is far from
-factorial: pixels are heavily correlated in intricate, multi-scale ways. We need a
-model expressive enough to capture that structure, yet still trainable at scale. What
-would make such a model genuinely useful is a *single* family that delivers all of the
-following at once:
-
-1. a tractable, **exact** training objective — the actual log-likelihood, not a lower
-   bound or an adversarial surrogate;
-2. **exact and efficient sampling** — ideally parallel over dimensions, not a long
-   sequential chain;
-3. **exact and efficient inference** of the latent representation z given a data point x;
-4. a **usable, interpretable latent space** of dimension comparable to the data.
-
-No existing family achieves all four simultaneously. Each leading approach buys some of
-these properties at the cost of others. The question is whether there is a model class
-that gives exact likelihood, exact fast sampling, exact inference, and a meaningful
-latent space together.
+The data lives in a very high-dimensional space and is far from factorial: pixels are
+heavily correlated in intricate, multi-scale ways. The question is how to build a
+model expressive enough to capture that structure, yet still trainable at scale.
 
 # Background
 
-**The maximum-likelihood ideal and where tractability breaks.** The cleanest way to fit
-a generative model is to maximize the likelihood of the data under it. For latent-variable
+**The maximum-likelihood ideal and tractability.** The cleanest way to fit a
+generative model is to maximize the likelihood of the data under it. For latent-variable
 models p(x) = ∫ p(x|z) p(z) dz, this requires the marginal, which is generally
 intractable; for undirected models it requires the partition function, also intractable.
 Almost all of the machinery in the field exists to work around one of these two
@@ -46,29 +32,22 @@ so that
 
 where ∂f/∂xᵀ is the Jacobian of f at x. Sampling is inverse-transform sampling: draw
 z ~ p_Z and return x = g(z) = f^{-1}(z). Inference is just z = f(x). No discriminator,
-no approximate posterior, no partition function — *if* f is bijective and *if* that
+no approximate posterior, no partition function — provided f is bijective and the
 Jacobian determinant is computable. This identity is old: it underlies the
 maximum-likelihood view of independent components analysis (Bell & Sejnowski 1995;
 Hyvärinen et al. 2004), Gaussianization (Chen & Gopinath 2000), and earlier deep density
 models (Bengio 1991; Rippel & Adams 2013).
 
-**Why the change-of-variables route had not scaled.** The catch is the Jacobian
-determinant. For an arbitrary differentiable map on R^D, computing the Jacobian and its
-determinant costs on the order of D^3 and is numerically poorly conditioned. Constraining
-the map to be bijective on top of that makes naive applications both expensive and
-fragile. This is precisely why large-scale density models built on the change-of-variables
-formula had not entered general use, even though the principle is exact and clean.
+For an arbitrary differentiable map on R^D, computing the Jacobian and its determinant
+costs on the order of D^3. This cost is the central computational challenge of the
+change-of-variables approach.
 
-**A diagnostic about existing image generators.** Two empirical facts about prior systems
-frame the problem. First, latent-variable models trained against a fixed-form
-reconstruction cost (a Gaussian decoder, i.e. an L2 term) systematically produce blurry
-samples — the L2 objective rewards capturing low-frequency content far more than high
-frequency, so sharp detail is sacrificed. Second, autoregressive models, which factor
-p(x) = ∏_i p(x_i | x_{<i}) and are exact and flexible, sample *sequentially*: generating a
-D-dimensional image requires D conditional draws in order, which is non-parallelizable and
-becomes a bottleneck for large images and for real-time use. These two observations — the
-blur from fixed reconstruction costs, and the sequential-sampling bottleneck — say that a
-desirable model would avoid a fixed reconstruction cost *and* allow parallel sampling.
+**Observations about existing image generators.** Latent-variable models trained against
+a fixed-form reconstruction cost (a Gaussian decoder, i.e., an L2 term) systematically
+produce blurry samples — the L2 objective rewards capturing low-frequency content more
+than high frequency. Autoregressive models, which factor p(x) = ∏_i p(x_i | x_{<i}) and
+give exact, flexible likelihoods, sample *sequentially*: generating a D-dimensional image
+requires D conditional draws in order.
 
 **Building blocks that already exist.** Deep convolutional residual networks (He et al.
 2015, 2016) make very deep image models trainable via skip connections. Batch
@@ -86,11 +65,8 @@ models. All of these are available to plug into whatever new map we design.
 1986) and Deep Boltzmann Machines (Salakhutdinov & Hinton 2009) define p(x) through an
 energy over a bipartite (or layered) structure. Their conditional-independence structure
 permits efficient block conditional inference, but the marginal over latents involves an
-intractable partition function. Consequently training (contrastive divergence / persistent
-CD), evaluation (annealed importance sampling), and sampling (MCMC) all rest on
-approximations whose convergence time is undetermined; MCMC tends to produce highly
-correlated samples and the approximations can hinder performance. *Gap:* no exact
-likelihood, no exact sampling, no fast exact inference.
+intractable partition function. Training (contrastive divergence / persistent CD),
+evaluation (annealed importance sampling), and sampling (MCMC) rest on approximations.
 
 **Variational autoencoders.** The VAE (Kingma & Welling 2013; Rezende et al. 2014) is a
 directed latent-variable model with a generator network mapping a Gaussian z to x, trained
@@ -98,28 +74,20 @@ jointly with an amortized approximate inference network q(z|x) by maximizing a v
 lower bound (ELBO) on log p(x), using the reparameterization trick (Williams 1992) to
 backpropagate through the sampling. *Math:* maximize E_{q(z|x)}[log p(x|z)] − KL(q(z|x) ‖
 p(z)) ≤ log p(x). Ancestral sampling is exact and parallel, and inference is amortized and
-fast. *Gaps:* the objective is only a *bound*, not the likelihood; inference is
-*approximate*; and the usual Gaussian decoder imposes a fixed-form L2 reconstruction cost
-that produces blurry samples.
+fast.
 
 **Autoregressive models.** Fully-visible models — from logistic-autoregressive Bayes nets
 and NADE/MADE (Frey 1998; Bengio & Bengio 1999; Larochelle & Murray 2011; Germain et al.
 2015) to PixelRNN/PixelCNN (van den Oord et al. 2016) — write p(x) = ∏_i p(x_i | x_{<i})
 under a fixed ordering. *Math:* the joint is the product of learned conditionals; the
 log-likelihood is exact and a sum of per-dimension terms. They are extremely flexible and
-give state-of-the-art likelihoods on images. *Gaps:* sampling is inherently sequential (D
-ordered conditional draws), hence non-parallelizable and slow for large data; the ordering,
-though arbitrary, materially affects training; and there is no natural latent representation
-attached to the model.
+give state-of-the-art likelihoods on images.
 
 **Generative adversarial networks.** GANs (Goodfellow et al. 2014; Denton et al. 2015;
 Radford et al. 2015) train an arbitrary differentiable generator g: z → x by pitting it
 against a discriminator that distinguishes samples from data, bypassing likelihood
 entirely. *Math:* a minimax game; the discriminator supplies the generator's training
-signal. They produce sharp, realistic samples and avoid any fixed reconstruction cost.
-*Gaps:* no tractable likelihood (so density evaluation and sample-diversity metrics are
-intractable); training is unstable and sensitive to hyperparameters; and there is no
-inference network mapping x back to z.
+signal. They produce sharp, realistic samples.
 
 **The bijective-generator family — NICE.** The most direct prior attempt to make the
 change-of-variables route practical is the additive-coupling construction (Dinh et al.
@@ -136,13 +104,11 @@ and requires no inverse of m. The Jacobian is lower-triangular with an *identity
 
 so its determinant is exactly 1. Stacking these with alternating partitions yields a deep,
 freely-parameterized, exactly-invertible map with a trivially tractable Jacobian
-determinant, and a factorial prior p_H (logistic or Gaussian). *Gaps:* because every
-coupling has unit-determinant Jacobian, the whole map is **volume-preserving** — it cannot
-locally contract or expand probability mass, which limits how it can shape the density. NICE
-patches this only with a single final diagonal scaling layer S (contributing Σ_i log|S_ii|
-to the log-likelihood), leaving the coupling stack itself rigid. It is also fully-connected,
-with no exploitation of the 2-D local structure of images, no multi-scale hierarchy, and no
-in-flow normalization for stably training a deep stack.
+determinant, and a factorial prior p_H (logistic or Gaussian). The whole map is
+**volume-preserving** because every coupling has unit-determinant Jacobian; NICE
+includes a single final diagonal scaling layer S contributing Σ_i log|S_ii| to the
+log-likelihood. It is fully-connected and operates on flat vectors, without
+convolutional structure or multi-scale hierarchy.
 
 # Evaluation settings
 

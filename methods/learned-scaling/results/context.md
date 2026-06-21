@@ -11,19 +11,14 @@ factor governs the backward pass, so for `r > 1` gradients explode like `r^L` an
 vanish like `r^L`. Only `r ≈ 1`, sustained across all `L` layers, keeps both signals and gradients
 alive at large depth.
 
-The precise goal is a mechanism that keeps signal and gradient magnitudes stable at large depth,
-lets optimization begin from a well-conditioned regime rather than an unstable early phase, is cheap
-enough to drop into fully-connected nets, convolutional ResNets, or Transformers without
-per-architecture retuning, and reduces the scaffolding (careful per-layer initialization recipes,
-normalization layers, learning-rate warm-up) that the field had accumulated to make deep training
-work at all. Each prior approach below buys a subset of these and pays for it somewhere. Closing
-that gap is the problem.
+The question is how to design the residual-stream update rule so that signal and gradient
+propagation remain stable across many layers, including architectures such as Transformers that
+combine normalization and self-attention inside each block.
 
 ## Background
 
 By this time the dominant way to make depth trainable falls into three families — careful
-initialization, normalization, and residual connections — often stacked together. The relevant
-theory and the relevant pain points:
+initialization, normalization, and residual connections — often stacked together.
 
 **The vanishing/exploding gradient problem and the `r^L` picture.** A deep network propagates a
 signal `x_0` of width `w` through `L` width-preserving functions `F[W_i] : R^w -> R^w`. Both the
@@ -75,13 +70,11 @@ Transformer (Xiong et al. 2020) shows that at initialization the expected gradie
 parameters near the output layer are large, so applying a large learning rate immediately makes
 training unstable — which is exactly why the original Transformer recipe prescribes a learning-rate
 warm-up. Moving the normalization inside the residual branch (Pre-LN) makes the initial gradients
-well-behaved and lets warm-up be dropped, with its own tradeoffs. Either way, the
+well-behaved and lets warm-up be dropped. Either way, the
 warm-up/normalization-placement machinery exists because the init-time residual stream is not yet a
 well-conditioned object on its own.
 
 ## Baselines
-
-The prior methods a new residual-stream design would be measured against and would react to.
 
 **Plain deep network, `x_{i+1} = F(x_i)`.** No shortcut at all; the `r^L` factor is unmitigated.
 The diagnostic finding that frames the whole area (He et al. 2016): a deeper *plain* network has
@@ -94,26 +87,17 @@ block and let `F` learn a residual. The rationale: if the optimal map for a bloc
 identity, it is easier for the optimizer to push the residual `F` toward zero than to fit the
 identity out of a stack of nonlinear layers. This made hundreds of convolutional layers trainable.
 Pre-activation ResNet (He et al. 2016b) moves the activation before the addition so the shortcut
-carries a cleaner, unmodulated signal. **Gap:** the residual branch contributes at full strength at
-initialization — the block is *not* the identity at step 0 — and with standard initialization a
-residual block's output variance grows by roughly a constant factor per layer, so the output
-variance still compounds with depth; the shortcut tames the problem for moderate depth but does not
-make the block start as a true identity.
+carries a cleaner, unmodulated signal.
 
 **Highway Networks, `x_{i+1} = C(x)·x_i + T(x)·F(x_i)` (Srivastava et al. 2015).** The first
 feed-forward nets with hundreds of layers; learned, *data-dependent* transform and carry gates
 `T = σ(W_T^T x + b_T)`, `C = 1 - T`, with `b_T` initialized negative to bias toward carrying the
 signal. Gated ResNet (Savarese et al. 2016) simplifies this to a single scalar gate by setting
-`W_T = 0`, `b_T = α`, and `C = 1 - T`. **Gap:** Highway's gates add input-dependent parameters and
-compute, while the scalar gated-residual variant removes that dependence but still keeps a sigmoid
-transform/carry split; a finite negative bias can lean toward carrying the signal, but it does not
-make the residual transformation exactly zero and the carry path exactly one at initialization.
+`W_T = 0`, `b_T = α`, and `C = 1 - T`.
 
 **Zero-`γ` (Goyal et al. 2017; Hardt & Ma 2016; He et al. 2019).** When the last operation inside a
 residual branch is a normalization layer with a learnable scale `γ`, initialize that `γ` to zero, so
-the branch outputs zero at the start and the block begins as the identity. **Gap:** it applies only
-when such a normalization layer exists, and it zero-initializes many parameters per block (one per
-channel), so the mechanism is tied to normalization rather than to the residual stream itself.
+the branch outputs zero at the start and the block begins as the identity.
 
 **FixUp initialization (Zhang et al. 2019).** A normalization-free recipe derived top-down from the
 requirement that one SGD step change the network *function* by an amount that is `Θ(η)` and
@@ -122,9 +106,7 @@ residual net is lower-bounded by a quantity that grows with depth, so the networ
 at initialization. The fix is several coordinated pieces: zero-initialize the last layer of each
 residual branch and the classifier; scale the weight layers inside a residual branch of `m` layers
 by `L^{-1/(2m-2)}`; and add a per-branch scalar multiplier (initialized at 1) plus scalar biases
-(initialized at 0). **Gap:** it is an elaborate, architecture-aware initialization — the branch
-rescaling exponent depends on how many layers each branch has — and its scalar multiplier starts at
-1, so the multiplier is not the part that suppresses the residual branch at initialization.
+(initialized at 0).
 
 **The Transformer residual placements.** The original Post-LN block
 `x_{i+1} = LayerNorm(x_i + sublayer(x_i))` (Vaswani et al. 2017) requires learning-rate warm-up and
@@ -132,13 +114,6 @@ becomes hard to train much beyond a dozen layers without large compute or auxili
 losses (Al-Rfou et al. 2019). Pre-LN, `x_{i+1} = x_i + sublayer(LayerNorm(x_i))` (Xiong et al.
 2020), removes the warm-up requirement by moving the normalization before the sublayer. The GPT-2
 placement `x_{i+1} = x_i + Norm(F(x_i))` (Radford et al. 2019) is another point in this space.
-**Gap:** all of these carry the cost and Jacobian effects of a normalization layer in every
-sublayer, and the residual branch still contributes a full learned transformation at initialization.
-
-Together these baselines leave a tension: the general tools still require normalization, warm-up, or
-careful initialization to keep very deep signal propagation under control, while the more
-identity-biased tools are tied to particular architectures, normalization placements, or multi-part
-recipes.
 
 ## Evaluation settings
 

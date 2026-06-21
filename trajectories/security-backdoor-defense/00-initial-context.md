@@ -6,9 +6,9 @@ The design task is a poisoned-sample scoring rule. After the fixed harness train
 
 ## Prior art / Background / Baselines
 
-- **BadNets / Blended attacks** — the threat model. Core idea: stamp a small trigger on a fraction of one class, relabel those examples to the target class, and train normally; the model learns trigger → target while clean accuracy stays high. Gap: the corruption is invisible from accuracy and camouflaged at the pixel level, so the ordinary training loop does not flag poisoned examples.
+- **BadNets / Blended attacks** — the threat model. Core idea: stamp a small trigger on a fraction of one class, relabel those examples to the target class, and train normally; the model learns trigger → target while clean accuracy stays high.
 
-- **Confidence / per-class statistics** — a simple defense baseline. Core idea: score each point by softmax confidence on its label, or by a per-class confidence z-score, because poisoned examples are often classified confidently into the target. Gap: the signal is weak and overlaps heavily with clean data; once the model fits the clean data confidently, poisoned examples rank no better than chance.
+- **Confidence / per-class statistics** — a simple defense baseline. Core idea: score each point by softmax confidence on its label, or by a per-class confidence z-score, because poisoned examples are often classified confidently into the target.
 
 ## Fixed substrate / Code framework
 

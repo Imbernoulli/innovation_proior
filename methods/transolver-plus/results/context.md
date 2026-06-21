@@ -12,18 +12,10 @@ back to quadratic attention over the point set.
 The strongest available direction is to avoid point-to-point attention by grouping
 points into a small set of learned physical-state tokens. That keeps the number of
 global tokens `M` small, usually 32 or 64, and makes the expensive token
-interaction nearly independent of `N`. But two problems remain open before such a
-solver is practical at industrial scale. First, the learned state tokens can become
-too similar when the input point cloud is enormous, so the operator degenerates
-toward an average-pooling behavior instead of retaining detailed physics. Second,
-the pointwise projections and intermediate activations still have to fit in GPU
-memory, and a million-point tensor can exceed the budget even when the attention
-itself is no longer quadratic.
+interaction nearly independent of `N`.
 
-The question is therefore: how can one keep the slice-attention operator's
-linear-in-`N` structure while making the learned physical states more
-distinguishable and while distributing the state computation over GPUs with
-communication that does not grow with the number of mesh points?
+The question is: how can one extend the slice-attention operator's linear-in-`N`
+structure to industrial-scale meshes with millions of points?
 
 ## Background
 
@@ -60,42 +52,25 @@ The original analysis relates this state-token operator to an integral operator
 over a learned slice domain, so the state-token view is not merely an engineering
 compression trick.
 
-The unresolved scaling issue is not simply the asymptotic attention term. If the
-weights `w` become nearly uniform, every `s_j` approaches the same global average
-and the later attention no longer sees distinct physical states. If the pointwise
-feature stream is duplicated for choosing slices and carrying token content, the
-layer spends extra memory exactly where the point count is largest. And if points
-are split across GPUs, the numerator `sum_i w_ij x_i` and denominator
-`sum_i w_ij` are global sums, so local shard statistics are not sufficient.
-
 ## Baselines
 
 **Slice-attention neural operator.** It learns physical slices, averages point
 features into `M` tokens, attends among tokens, and deslices back to points. Its
 main advantage is linear complexity in the point count and strong behavior on
-irregular geometry. Its gaps are homogeneous or weakly distinguished state
-weights on very large meshes, doubled point projection streams in the published
-implementation, and no fully optimized multi-GPU state-statistic reduction.
+irregular geometry.
 
 **Linear-attention PDE Transformers.** Galerkin-style attention, GNOT, and related
 methods reduce attention complexity by changing the attention algebra. They are
-efficient and easy to batch, but they still treat mesh points as the attention
-tokens. On complex irregular geometry, point tokens can be too local or too noisy
-to serve as compact physical states.
+efficient and easy to batch, and they treat mesh points as the attention tokens.
 
 **Fourier and graph neural operators.** Fourier methods are powerful on regular or
 latent grids, while graph neural operators and mesh networks naturally handle
-unstructured meshes. Fourier bases struggle when geometry is irregular and
-surface-volume structure is important. Graph models can become unstable or
-expensive on million-scale unstructured meshes, and local message passing can miss
-global physical correlations.
+unstructured meshes. Graph models support local message passing between neighboring
+points and can aggregate information across the mesh through successive layers.
 
 **Generic parallelism for long sequences.** Tensor parallelism, pipeline/model
 parallelism, RingAttention, and Ulysses-style feature partitioning reduce memory
-or distribute attention, but their communication scales with either the feature
-stream or the point sequence. For a PDE solver whose bottleneck can be expressed
-as a few global state statistics, the open question is whether communication can
-be limited to those small statistics.
+or distribute attention across devices.
 
 ## Evaluation settings
 
@@ -198,6 +173,4 @@ class Model(nn.Module):
 ```
 
 The embedding, residual layout, feed-forward block, and readout are fixed. The
-empty slot must preserve the slice-attention advantage, avoid homogeneous state
-tokens at large `N`, and make the state computation distributable by small global
-sums rather than by communicating the point sequence.
+empty slot must implement the slice-attention operator within this backbone.

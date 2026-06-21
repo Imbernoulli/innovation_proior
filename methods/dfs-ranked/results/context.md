@@ -11,50 +11,35 @@ stop, either by declaring a final answer or by giving up. The agent succeeds onl
 arrives at a final answer that actually resolves the instruction within a fixed budget of
 model queries.
 
-The difficulty is that this is a search problem over an enormous space. The number of
-candidate next actions at any state is the product of (all the free-form thoughts the model
-could write) × (every available API) × (every possible parameter string) — for practical
-purposes unbounded. The API calls are real and irreversible: a wrong call consumes budget,
-changes state, and returns a possibly useless or error response. Complex instructions need
-several tools chained over multiple rounds, so the chance of taking at least one wrong step
-along the way is high, and the cost of a single bad early step is large. The precise goal is a
-*reasoning/search strategy* that (1) lets the agent recover from a bad action instead of being
-locked into it, (2) explores more than one line of attack through the action space, and
-(3) does so without spending an unreasonable number of model queries — ideally collapsing to
-the cheapest possible behavior on easy instructions and only paying more when the instruction
-is genuinely hard. Existing strategies achieve at most one of these; closing the gap is the
-problem.
+This is a search problem over a large space. The number of candidate next actions at any
+state is the product of (all the free-form thoughts the model could write) × (every available
+API) × (every possible parameter string) — for practical purposes unbounded. The API calls
+are real and irreversible: a call consumes budget, changes state, and returns a response.
+Complex instructions need several tools chained over multiple rounds. The question is what
+*reasoning/search strategy* the agent should follow as it works through the action space
+under a model-query budget.
 
 ## Background
 
 By this time the dominant way to make an LLM solve a task that needs intermediate work is to
 have it *write out* that work. Chain-of-thought prompting (Wei et al. 2022) shows that
 eliciting intermediate reasoning steps before the final answer sharply improves performance on
-arithmetic and multi-step reasoning — but a chain of thought is purely internal; it never
-touches the world. For tasks that require *acting* (querying a knowledge source, calling a
-tool, navigating an environment), the agent needs to interleave thinking with grounded
-actions whose results feed back into the next thought. That interleaving is the prevailing
-recipe for tool-use agents, and the practical lessons that come with it are the load-bearing
-facts here.
+arithmetic and multi-step reasoning; a chain of thought is purely internal and never touches
+the world. For tasks that require *acting* (querying a knowledge source, calling a tool,
+navigating an environment), the agent interleaves thinking with grounded actions whose results
+feed back into the next thought. That interleaving is the prevailing recipe for tool-use
+agents.
 
-The first lesson is that **a single trajectory is brittle**. When the agent commits to one
-linear sequence of (thought → action → observation), an early mistake has nowhere to go: it
-sits in the context and conditions every subsequent step. Two concrete failure modes are
-observed repeatedly with single-chain agents on real APIs. (a) *Error propagation*: one
-mistaken action propagates, and the model gets trapped in a faulty loop — for instance,
-calling the same API the wrong way over and over, or hallucinating an API name that does not
-exist and then continuing as if it had. (b) *Limited exploration*: a single chain explores
-exactly one direction in the action space, so if that direction is unproductive the agent
-never tries the alternatives that would have worked. These are not hypothetical; on complex
-multi-tool instructions even the strongest available model of the time fails to find a valid
-solution path with single-chain reasoning, which is precisely why high-quality solution paths
-are hard to obtain at all.
+One property of the interleaved recipe is that **a single trajectory is one linear sequence**.
+When the agent commits to one linear sequence of (thought → action → observation), each step
+sits in the context and conditions every subsequent step. On complex multi-tool instructions,
+even the strongest available model of the time often does not find a valid solution path with
+single-chain reasoning, which is part of why high-quality solution paths are hard to obtain.
 
-The second lesson is about **decision retraction**. Standard interleaved-reasoning agents have
-no mechanism to *undo* a committed action. Once `a_t` is taken, the agent moves forward; it
-cannot decide, after seeing `r_t`, that `a_t` was a wrong turn and that it should go back to
-the state before `a_t` and try something else. This is the structural root of error
-propagation: without retraction, every error is permanent.
+A second property concerns **decision retraction**. Standard interleaved-reasoning agents move
+forward once `a_t` is taken; after seeing `r_t`, the agent's default behavior is to condition
+the next action on the full prefix and continue rather than to return to the state before
+`a_t`.
 
 A third strand reframes problem-solving for LLMs as *deliberate* search rather than left-to-
 right generation. Instead of one chain, one can let the model maintain several partial
@@ -63,17 +48,13 @@ and use a classical search procedure to decide which to pursue, look ahead, and 
 This view supplies a vocabulary of reusable primitives — generating multiple candidate
 continuations from a state, scoring or comparing partial solutions with the model itself, and
 running a graph search (breadth-first or depth-first) over the resulting structure. The
-demonstrations of this view, however, live on toy domains with small, countable next-step sets
-(combine four numbers to make 24; fill a crossword), where the candidate set at each node can
-be essentially enumerated and a single numeric self-evaluation is reliable enough to guide the
-search. The tool-use setting violates both assumptions: the candidate set is unbounded, and
-the environment is real and stateful.
+demonstrations of this view live on toy domains with small, countable next-step sets (combine
+four numbers to make 24; fill a crossword), where the candidate set at each node can be
+essentially enumerated and a single numeric self-evaluation guides the search. The tool-use
+setting differs: the candidate set is unbounded, and the environment is real and stateful.
 
 A practical constraint frames everything: model queries cost money and time. Any strategy that
-explores more must justify the extra queries. A method that, on an easy instruction, spends as
-little as the cheapest single-chain agent — and only pays the exploration premium when the
-instruction actually demands it — is far more attractive than one that pays a fixed high cost
-everywhere.
+explores more spends more queries, and a run is capped by a maximum number of model queries.
 
 ## Baselines
 
@@ -84,10 +65,7 @@ would react to.
 intermediate reasoning steps before its final answer. Core idea: the intermediate steps give
 the model "room to compute," decomposing a hard one-shot mapping into easier sub-steps, which
 markedly improves multi-step reasoning. *Algorithm:* a single forward generation — reason,
-then answer; no interaction with any external environment. **Gap:** a chain of thought is
-self-contained text; it never executes anything, so it cannot obtain real API responses, and
-it is a single linear pass with no notion of trying an action, observing a result, and
-revising. For tool use it cannot even get off the ground.
+then answer; no interaction with any external environment.
 
 **ReAct (Yao et al. 2022).** Interleave reasoning and acting in one trajectory: the model
 alternates between a *Thought* (free-form reasoning that tracks the plan, interprets the last
@@ -96,10 +74,6 @@ returns an *Observation* that conditions the next Thought. Core idea: reasoning 
 better (the model plans and recovers from surprises) and acting makes reasoning better (the
 model grounds its reasoning in real feedback rather than hallucinating). *Algorithm:* a single
 chain `Thought_1 → Action_1 → Obs_1 → Thought_2 → ...` until the model emits a final answer.
-**Gap:** it is still one trajectory and has no mechanism for decision retraction. An initial
-mistaken action stays in the context and can lead to a cascade of subsequent errors; the agent
-cannot back up to a prior state and choose a different action. It explores a single path
-through the action space.
 
 **Reflexion (Shinn et al. 2023).** Add a *verbal* learning loop on top of an interleaved-
 reasoning agent: after a trial fails, the model reflects in natural language on *why* it
@@ -107,11 +81,7 @@ failed, stores that self-reflection in an episodic memory buffer, and retries th
 with the reflection prepended — a "semantic gradient" that steers the next attempt without any
 weight updates. Core idea: failures carry usable information; reading your own post-mortem
 before retrying improves the next trial. *Algorithm:* run a trial → if it fails, generate a
-reflection → append to memory → restart the trial. **Gap:** the unit of revision is the *whole
-trial*. Each retry starts over from the root with extra advice; the method does not branch
-within a single trajectory, does not keep several partial paths alive at once, and does not
-*select* among candidate next steps at an intermediate state. It corrects between attempts, not
-within one.
+reflection → append to memory → restart the trial.
 
 **Deliberate tree search over thoughts (Yao et al. 2023).** Cast solving as search over a tree
 whose nodes are partial solutions ("thoughts"). Four plug-in choices: how to decompose a
@@ -124,15 +94,10 @@ for the most promising); and a *search algorithm* over the tree. Two searches ar
 breadth-first, which keeps the `b` most promising states at each depth (Algorithm 1), and
 depth-first, which expands the most promising state first and, when a state's value falls below
 a threshold `v_th`, prunes that subtree and *backtracks to the parent* to continue (Algorithm
-2). On Game-of-24 this turns a few-percent chain-of-thought success rate into a large one.
-**Gap:** the demonstrations live where the next-step set at each node is small and essentially
+2). On Game-of-24 this turns a few-percent chain-of-thought success rate into a large one. The
+demonstrations are set where the next-step set at each node is small and essentially
 enumerable, the environment is simulated and resettable, and a single scalar per-state value
-is calibrated enough to drive pruning via a fixed threshold `v_th`. None of that holds for an
-agent acting on real APIs, where the candidate continuations from a state are unbounded
-free-form (thought, API, parameters) triples, the actions are real and irreversible, and a
-lone numeric self-score on a tool trajectory is noisy. The fixed breadth `b` and the
-value-threshold pruning are tuned to brute-force-searchable puzzles, not to an open-ended,
-budget-constrained tool-use loop.
+drives pruning via a fixed threshold `v_th`.
 
 ## Evaluation settings
 

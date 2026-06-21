@@ -11,12 +11,10 @@ as possible.
 
 The subtlety that separates this from the classical Steiner tree problem is that **the requested
 pairs need not all be tied together**. Different clients want different, possibly disjoint, pairs
-connected; the cheapest legal answer can be a *disconnected* forest of several trees. Forcing one
-connected network over all the terminals (a Steiner tree) can be arbitrarily more expensive than
-the true optimum. The problem is NP-hard — it contains the Steiner tree problem, one of Karp's
-original NP-complete problems — so an exact polynomial algorithm is not expected. The goal is a
-polynomial-time algorithm whose output is provably within a small constant factor of optimal, and
-the target constant is 2.
+connected; the cheapest legal answer can be a *disconnected* forest of several trees. The problem is
+NP-hard — it contains the Steiner tree problem, one of Karp's original NP-complete problems — so an
+exact polynomial algorithm is not expected. The goal is a polynomial-time algorithm whose output is
+provably within a constant factor of optimal.
 
 ## Background
 
@@ -45,46 +43,28 @@ cut-packing statements to weighted instances; rational costs follow by scaling a
 usual limiting argument. This is the same cost-weighted lower-bound intuition that the moat-packing
 dual makes explicit.
 
-**Why the obvious primal-dual choice is not enough (the diagnostic).** A primal-dual covering
-algorithm keeps a feasible dual and a partial primal, and at each step raises the dual of a single
-*violated* set (one not yet hit) until some edge constraint becomes tight, then buys that edge. For
-covering with sets of size at most `f`, this yields an `f`-approximation, because each tight edge's
-cost is shared among at most `f` of the raised duals. For connection problems `f` is the size of a
-cut, which can be as large as the number of pairs `k`. The failure is concrete: take one common
-source `s = s_1 = … = s_k` and distinct sinks `t_1, …, t_k`. If the algorithm raises only the dual
-of the singleton `{s}`, the cheapest legal completion buys all `k` star edges, every one of which
-crosses `δ({s})`, so a single moat is charged `k` times — a `k`-approximation. The single-violation
-rule stalls here at a factor that grows with the number of pairs.
-
 ## Baselines
 
 - **Steiner tree heuristics (Takahashi–Matsuyama 1980; Kou–Markowsky–Berman 1981).** Build a tree
   over a single terminal set, e.g. via shortest-path metric closure and a spanning tree, giving
-  factor `2(1 − 1/|T|)` for terminal set `T`. Core gap: they assume *all* terminals belong to one
-  component; applied to a forest instance by connecting every terminal, they can be arbitrarily worse
-  than the true (possibly disconnected) optimum.
+  factor `2(1 − 1/|T|)` for terminal set `T`.
 
 - **Solve-the-LP-then-take-tight-edges (Hochbaum 1982).** Compute an optimal dual `y*`, then take
-  every edge whose dual constraint is tight. Gives `f`-approximation. Two gaps: it must actually
-  solve an LP with exponentially many constraints, and `f` (max cut size) is as bad as `k` for
-  connection problems.
+  every edge whose dual constraint is tight. Gives `f`-approximation where `f` is the maximum number
+  of constraints in which any variable appears.
 
 - **Single-violation primal-dual (Bar-Yehuda–Even 1981).** Grow one violated set's dual at a time;
   no need to solve the LP, only to keep raising a feasible dual. Gives `f`-approximation by the same
-  charging. Gap: for Steiner forest the single-violation rule gives only `k`, as the star example
-  shows.
+  charging argument.
 
 - **Goemans–Bertsimas survivable-network tree heuristic (1993).** Handles requirements of the
   special form `r_ij = min(r_i, r_j)` by decomposing into a sequence of ordinary Steiner tree
-  problems solved by a known heuristic, factor `2·min(log R, p)`. Gap: restricted to that special
-  requirement form; it cannot handle arbitrary `0/1` pairs, where each subproblem is no longer an
-  ordinary Steiner tree.
+  problems solved by a known heuristic, factor `2·min(log R, p)`.
 
 - **Reverse-delete cleanup (introduced for primal-dual covering).** After a feasible edge set is
   built, redundant edges can be removed without breaking feasibility — an edge whose deletion still
   leaves every pair connected is unnecessary. One can examine edges for deletion in the order added,
-  or in the *reverse* of that order; the choice of order is a free parameter of the cleanup. Without
-  any cleanup, edges that become unnecessary after later mergers survive in the bought set.
+  or in the *reverse* of that order; the choice of order is a free parameter of the cleanup.
 
 ## Evaluation settings
 

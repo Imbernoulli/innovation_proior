@@ -1,48 +1,34 @@
 ## Research question
 
-Pre-trained Transformer encoders set the state of the art on sentence-pair regression
+Pre-trained Transformer encoders achieve strong performance on sentence-pair regression
 and classification — semantic textual similarity (STS), natural language inference,
 paraphrase detection — by feeding *both* sentences into the network together (a
-cross-encoder) and reading a prediction off the joint representation. That works
-beautifully for scoring one pair at a time, but it is catastrophic the moment the task
-is "find the most similar pair (or nearest neighbor) in a large collection." Because
-the score is only defined on a *pair* jointly encoded, finding the best match in a
-collection of n = 10,000 sentences needs n·(n−1)/2 = 49,995,000 forward passes — on the
-order of 65 hours on a V100 GPU; clustering or large-scale semantic search is
-simply infeasible. The goal: derive a *fixed-size embedding for a single sentence* such
-that semantically similar sentences are close under a cheap vector similarity (e.g.
-cosine), so that the expensive joint encoding is replaced by one encode per sentence
-plus near-instant vector comparisons while retaining as much of the strong encoder's
-semantic knowledge as possible. The crux is that the encoder was never trained to
-produce a *standalone* sentence vector that behaves well under cosine similarity.
+cross-encoder) and reading a prediction off the joint representation. The question is
+how to produce fixed-size sentence embeddings from a pre-trained encoder that support
+efficient similarity search and clustering over large collections.
 
 ## Background
 
-**The cross-encoder and its scaling wall.** A pre-trained Transformer takes the two
+**The cross-encoder.** A pre-trained Transformer takes the two
 sentences concatenated with a `[SEP]` separator, runs full multi-head self-attention
 across all tokens of both sentences over its layers, and passes the result to a small
 regression/classification head. The two sentences interact through attention at every
-layer, which is exactly why it is accurate — and exactly why it does not factorize:
-there is no per-sentence vector you can precompute and reuse. Any retrieval/clustering
-workload that is quadratic in the number of *pairs* inherits the full forward-pass cost.
+layer. Finding the best match in a collection of n = 10,000 sentences requires
+n·(n−1)/2 = 49,995,000 forward passes, on the order of 65 hours on a V100 GPU.
 
-**Naive single-sentence embeddings from a pre-trained encoder, and the diagnostic that
-they are bad.** The obvious workaround is to push a single sentence through the encoder
-and read off a fixed vector — either the output of the special classification token, or
-the mean of the token output vectors (offered by popular "encoder-as-a-service" tooling).
-The diagnostic finding is that these vectors are poor for similarity. Measured by
-Spearman correlation between cosine similarity and human STS labels, averaging the
-encoder outputs lands well below averaging GloVe word vectors, and the
-classification-token vector is worse still. So out of the box the encoder maps
-sentences to a space that is unsuitable for cosine similarity — the representation
-exists but its geometry is wrong for the metric.
+**Single-sentence embeddings from a pre-trained encoder.** A single sentence can be
+pushed through the encoder and a fixed vector read off — either the output of the
+special classification token, or the mean of the token output vectors (offered by
+popular "encoder-as-a-service" tooling). Measured by Spearman correlation between
+cosine similarity and human STS labels, averaging the encoder outputs lands well below
+averaging GloVe word vectors, and the classification-token vector performs worse still.
 
-**Why naive vectors fail under cosine geometry.** Cosine similarity treats every dimension
-equally and only sees the angle between two vectors. A representation can carry the
-information needed for a *downstream classifier* (which can re-weight dimensions) yet be
-useless under cosine, where no re-weighting is allowed. This is where the naive readouts
-stall: nothing in the pre-training ever forced semantic closeness to correspond to small
-angle under an equal-weight metric.
+**Cosine similarity and vector geometry.** Cosine similarity treats every dimension
+equally and only sees the angle between two vectors. A representation can carry
+information needed for a *downstream classifier* (which can re-weight dimensions) yet
+produce different results under cosine, where no re-weighting is allowed. Pre-training
+objectives for Transformers do not explicitly target the cosine geometry of resulting
+sentence representations.
 
 **Siamese and triplet networks (Bromley et al. 1993; Schroff et al. 2015).** The
 classical recipe for learning a metric-friendly embedding: pass each input through the
@@ -55,40 +41,29 @@ directly comparable.
 
 ## Baselines
 
-**The cross-encoder (the accurate but unscalable reference).** Pre-trained Transformer
+**The cross-encoder (the accurate reference).** Pre-trained Transformer
 fed both sentences jointly, with a regression head; state of the art on the STS
-benchmark. Core idea: full cross-attention between the sentences. Gap: produces no
-reusable per-sentence vector, so retrieval/clustering over a collection is quadratic in
-pairs and infeasible at scale.
+benchmark. Core idea: full cross-attention between the sentences.
 
 **Averaged / `[CLS]` pre-trained-encoder embeddings.** Mean of token outputs, or the
 classification-token output, used as a sentence vector. Core idea: reuse the pre-trained
-encoder with no extra training. Gap: the resulting geometry is poor under cosine
-similarity — worse than averaged GloVe on STS.
+encoder with no extra training.
 
 **Averaged word embeddings (GloVe — Pennington et al. 2014; fastText).** Mean of static
-word vectors. Core idea: cheap, fixed, compositional-by-averaging sentence vector. Gap:
-no contextualization; a strong but shallow baseline that the pre-trained encoder's
-naive embeddings fail to beat on STS.
+word vectors. Core idea: cheap, fixed, compositional-by-averaging sentence vector.
 
 **InferSent (Conneau et al. 2017).** A BiLSTM with max-pooling trained *from scratch* on
 SNLI + MultiNLI in a siamese setup, feeding the classifier the concatenation
-`(u, v, |u−v|, u·v)`. Core idea: supervised NLI data yields good general sentence
-embeddings; the siamese structure makes them comparable. Gap: trained from random
-initialization (no large-scale pre-trained encoder underneath), so it leaves the
-pre-trained encoder's knowledge on the table.
+`(u, v, |u−v|, u·v)`. Core idea: supervised NLI data yields general sentence
+embeddings; the siamese structure makes them comparable.
 
 **Universal Sentence Encoder (Cer et al. 2018).** A Transformer trained on multiple
 tasks and augmented with SNLI supervision to produce sentence embeddings. Core idea:
-multitask training of a dedicated sentence encoder. Gap: again a purpose-built encoder
-rather than a light fine-tune of an existing pre-trained model; broad but not always
-strongest on STS.
+multitask training of a dedicated sentence encoder.
 
 **Poly-encoders (Humeau et al. 2019).** Compute a score between m learned context
 vectors and precomputed candidate embeddings via attention, reducing cross-encoder cost
-for retrieval. Core idea: partial precomputation for ranking. Gaps: the score function
-is not symmetric and the overhead is still too large for clustering, which needs O(n²)
-symmetric similarity computations over plain vectors.
+for retrieval. Core idea: partial precomputation for ranking.
 
 ## Evaluation settings
 

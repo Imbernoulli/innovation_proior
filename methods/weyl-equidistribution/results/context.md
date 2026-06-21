@@ -87,19 +87,7 @@ the *continuous* average of e(φ) decays like O(1)/t. The trouble is purely that
 the discrete sum Σ_{h} e(φ(h)) is not an integral and has no closed form when
 deg φ ≥ 2.
 
-**The two pain points, precisely.** (i) The definition quantifies over *all*
-intervals at once — a rigid, geometric object that does not interact well with
-the algebraic structure of sequences like nξ or p(n). (ii) Even granting a way
-to test a single sequence, the known proofs are *ad hoc per family*: a
-two-interval comparison for nξ, a contour integral for n²ξ, nothing uniform
-across degree or dimension. A theory is missing that (a) gives one checkable
-condition equivalent to uniform distribution and (b) lets the polynomial and
-multidimensional cases be handled by a single mechanism rather than a new trick
-each time.
-
 ## Baselines
-
-These are the prior treatments a new theory would be measured against.
 
 **Bohl / Sierpiński / Weyl (1909–1910), linear case.** Claim: ξ irrational ⇒
 {nξ} uniformly distributed. Method (Bohr's elementary version): fix a large
@@ -107,37 +95,21 @@ integer H; take two equal-length intervals [1] and [2]; choose L so that
 α₁ + Lε is congruent mod 1 to a point of [2]; compare the counts n₁, n₂ of the
 first n multiples falling in [1] and [2] and show |n₁ − n₂| stays below a fixed
 bound C, then ≤ n/H + const, hence (n₁ − n₂)/n → 0; since this holds for any
-two equal intervals, each interval gets its fair share. **Gap:** the argument is
-welded to the additive structure of the arithmetic progression nξ — successive
-points differ by the constant step ξ. It gives no handle on a sequence whose
-increments themselves change (a polynomial of degree ≥ 2), and it does not
-package the conclusion into a reusable test one could apply to a new sequence
-without redoing the geometry.
+two equal intervals, each interval gets its fair share.
 
 **Kronecker (1884), approximation theorem.** Claim: 1, ξ₁,…,ξ_p rationally
 independent ⇒ {(nξ₁,…,nξ_p)} dense in the torus. Method: approximate integer
 solution of linear forms; pigeonhole / continued-fraction style approximation.
-**Gap:** it delivers only *density* — the orbit gets arbitrarily close to every
-point — and says nothing about the *frequency* of visits. The far stronger
-quantitative statement (each region of volume V is visited with limiting
-frequency V) is left open, and the method, being about closeness rather than
-proportion, does not reach it.
+The conclusion is that the orbit gets arbitrarily close to every target point.
 
 **Hardy & Littlewood (1912/1914), quadratic case.** Claim: ξ irrational ⇒
 {n²ξ} uniformly distributed; underlying goal, bound Σ e(n²ξ) to control
 ζ(1+ti). Method: a generating-function / Cauchy-integral-theorem argument
-specific to the quadratic phase. **Gap:** the proof does not scale — it is built
-around degree 2, leans on complex-analytic machinery rather than the
-combinatorics of the sum, and offers no route to a polynomial of arbitrary
-degree, let alone to several polynomials jointly. Each higher degree would need
-its own contour argument, if one could be found at all.
+specific to the quadratic phase.
 
 **The continuous integral ∫₀ᵗ e(φ(t)) dt = O(1).** Claim/method: for
 non-constant polynomial φ, substitute φ(t)=x and integrate by parts; ∫|φ″/φ′²|
-converges, so the integral is bounded. **Gap:** this is the *continuous* average;
-it settles the moving-point-on-a-line problem but says nothing directly about
-the *discrete* sum over integers, which is the actual object for sequences
-indexed by n. The discrete sum has no antiderivative trick available.
+converges, so the integral is bounded.
 
 ## Evaluation settings
 
@@ -198,19 +170,7 @@ def average_along_sequence(seq, f, N):
     return sum(f(seq(h)) for h in range(1, N + 1)) / N
 
 def is_uniformly_distributed(seq, N):
-    """Decide/certify uniform distribution of {seq(n)} mod 1 from computable data.
-
-    The defining test (frequencies of *all* intervals -> their lengths) is not
-    something we can check directly. We need a single, checkable condition,
-    expressed through the primitives above, that is *equivalent* to uniform
-    distribution -- and a way to verify that condition for structured sequences
-    (nξ, polynomials, several coordinates) by one mechanism.
-    """
-    # TODO: the condition we will discover, and the argument that certifies it
+    """Decide uniform distribution of {seq(n)} mod 1 from computable data."""
+    # TODO: fill in the condition and the argument that certifies it
     pass
 ```
-
-Each stub here will be filled by the discovered theory: `is_uniformly_distributed`
-becomes the checkable equivalent condition (a specific choice of test functions
-fed to `average_along_sequence`), and the proof that it holds for the target
-families is what turns these computable quantities into a certificate.

@@ -5,21 +5,9 @@ $n$-vertex graph containing no copy of $H$. For a single forbidden graph this lo
 like a question about the detailed shape of $H$: its cycles, local degrees, clique number, and
 which vertices are adjacent inside it.
 
-The Erdos-Stone-Simonovits question is whether those details control the leading term of
-$\mathrm{ex}(n,H)$ as $n$ grows. The answer is strikingly coarse:
-
-$$
-\mathrm{ex}(n,H)=\left(1-\frac{1}{\chi(H)-1}+o(1)\right)\frac{n^2}{2}
-$$
-
-for every fixed graph $H$ with $\chi(H)\ge 2$, interpreting the bipartite case
-$\chi(H)=2$ as $\mathrm{ex}(n,H)=o(n^2)$. The first-order edge density is governed by the
-chromatic number alone.
-
-The central conceptual move is to stop treating every forbidden subgraph as a bespoke object.
-Instead, reduce the problem to the smallest number of color classes that $H$ needs. In the dense
-limit, forbidding $H$ is asymptotically the same as forbidding the complete graph with
-$\chi(H)$ colors expanded into bounded-size parts.
+The question here is what determines the leading term of $\mathrm{ex}(n,H)$ as $n$ grows, for a
+general fixed graph $H$. Turan's theorem settles the case where $H$ is a clique; the task is to
+say what the first-order edge density is when $H$ is an arbitrary fixed graph.
 
 ## Background
 
@@ -34,66 +22,52 @@ The reason is coloring: $T_r(n)$ is $r$-colorable, so it cannot contain any grap
 chromatic number is $r+1$.
 
 For a general fixed graph $H$ with $\chi(H)=r+1$, this same Turan graph is automatically
-$H$-free. That gives the lower bound
+$H$-free, since $H$ needs $r+1$ colors and $T_r(n)$ provides only $r$. That gives the lower bound
 
 $$
 \mathrm{ex}(n,H)\ge e(T_r(n)).
 $$
 
-The hard direction is the converse: why should every graph with density just above the Turan
-density contain $H$, even if $H$ is far from a clique? ESS answers by finding not merely a
-$K_{r+1}$, but a bounded blow-up of it.
-
-A blow-up $K_{r+1}(t)$ is the complete $(r+1)$-partite graph with $t$ vertices in each part.
-Every fixed $(r+1)$-chromatic graph $H$ embeds into some $K_{r+1}(t)$: take a proper
-$(r+1)$-coloring of $H$, put each color class into one part, and add all missing cross-edges.
-So if a dense graph is forced to contain $K_{r+1}(t)$ for sufficiently large fixed $t$, it is
-also forced to contain $H$.
+A useful object on the construction side is the blow-up. The blow-up $K_{r+1}(t)$ is the complete
+$(r+1)$-partite graph with $t$ vertices in each part. Every fixed $(r+1)$-chromatic graph $H$
+embeds into some $K_{r+1}(t)$: take a proper $(r+1)$-coloring of $H$, put each color class into
+one part, and add all missing cross-edges.
 
 ## Baselines
 
-- **Turan for cliques.** Exact and structural for $K_{r+1}$: the extremal graph is
-  $r$-partite. Gap: most forbidden graphs are not cliques, so the theorem alone does not say why
-  their internal details should vanish from the leading term.
+- **Turan for cliques.** Exact and structural for $K_{r+1}$: the extremal graph is the balanced
+  $r$-partite $T_r(n)$.
 
-- **Clique-number intuition.** One might guess that the largest clique in $H$ controls the answer.
-  Gap: odd cycles have clique number $2$ but chromatic number $3$, and their extremal density is
-  the same first-order density as forbidding $K_3$, not the same as forbidding an edge.
+- **Clique-number intuition.** One natural guess is that the largest clique inside $H$ controls
+  the answer.
 
-- **Local-count intuition.** Degrees, cycle lengths, and special substructures of $H$ matter for
-  exact and lower-order extremal questions. Gap: these data do not control the $n^2$ coefficient
-  for fixed non-bipartite $H$.
+- **Local-count intuition.** Degrees, cycle lengths, and special substructures of $H$ are the
+  quantities that govern exact and lower-order extremal questions.
 
-- **Bipartite exceptional regime.** If $\chi(H)=2$, the formula gives coefficient $0$:
-  $\mathrm{ex}(n,H)=o(n^2)$. Gap: the theorem deliberately does not determine the correct
-  subquadratic order; there the detailed shape of $H$ matters again.
+- **Bipartite case.** When $\chi(H)=2$, $H$ embeds in a complete bipartite graph, a setting whose
+  extremal counts are studied separately and are subquadratic in $n$.
 
 ## Evaluation settings
 
-The theorem is evaluated at fixed $H$ and $n\to\infty$. The target is the first-order asymptotic
-density, not the exact finite-$n$ extremal number and not the second-order term.
+The target is the first-order asymptotic density at fixed $H$ as $n\to\infty$, not the exact
+finite-$n$ extremal number and not the second-order term.
 
 The natural stress tests are graphs with the same chromatic number but very different internal
-form: $K_{r+1}$, odd cycles for $r=2$, complete multipartite graphs, sparse high-chromatic graphs,
-and graphs whose color classes are very unbalanced. ESS predicts that all of them share the same
-leading coefficient once $\chi(H)$ is fixed.
+form: $K_{r+1}$, odd cycles for $r=2$, complete multipartite graphs, sparse high-chromatic
+graphs, and graphs whose color classes are very unbalanced.
 
 The construction side must produce many $H$-free edges. The balanced Turan graph $T_r(n)$ does so
-because it is $r$-colorable. The forcing side must show that any fixed positive excess over the
-Turan density creates enough cross-partite richness to contain a complete blow-up $K_{r+1}(t)$,
-and therefore any fixed $H$ with $\chi(H)=r+1$.
+because it is $r$-colorable. The matching upper-bound side must show that a positive excess over
+the Turan density forces a copy of $H$.
 
 ## Proof artifact
 
-The final artifact should state the ESS theorem in chromatic-number form, then explain the two
+The final artifact should state the extremal density for a general fixed $H$ and supply the two
 matching directions:
 
-1. Lower bound: $T_{\chi(H)-1}(n)$ has the Turan edge density and is $H$-free.
-2. Upper bound: the Erdos-Stone blow-up theorem says that exceeding that density by any fixed
-   $\epsilon n^2$ forces a $K_{\chi(H)}(t)$ for every fixed $t$ once $n$ is large enough.
-3. Embedding: every fixed $H$ with $\chi(H)=r+1$ is a subgraph of $K_{r+1}(t)$ for some fixed $t$.
+1. Lower bound: a Turan-type construction that is $H$-free and attains the claimed density.
+2. Upper bound: an argument that exceeding that density by any fixed $\epsilon n^2$ forces a copy
+   of $H$ once $n$ is large enough.
 
-This is the distinctive insight: the extremal problem for a particular forbidden graph collapses,
-at first order, to the color-count obstruction. The specific graph affects which blow-up size is
-needed and may affect lower-order terms, but the $n^2$ coefficient is the Turan coefficient
-determined only by $\chi(H)$.
+The construction relies on coloring; the embedding step links a fixed $H$ to the complete
+multipartite blow-up $K_{r+1}(t)$ that hosts it.

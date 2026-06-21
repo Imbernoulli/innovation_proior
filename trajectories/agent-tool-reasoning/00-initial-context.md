@@ -4,10 +4,10 @@ A frozen LLM is given a user query and a set of real RapidAPI tools. It must ful
 
 ## Prior art / Background / Baselines
 
-- **Chain-of-thought prompting (Wei et al. 2022).** Few-shot exemplars lead the model to write intermediate reasoning steps before the final answer. Gap: it is a closed box that never queries the world, so whenever a step needs a fact the model does not know, it fabricates it; for tool use, it can invent APIs that do not exist.
-- **Self-consistency (Wang et al. 2022).** Sample many reasoning chains and take a majority vote. Gap: every chain samples from the same model-internal distribution, so it reduces path-level noise but not missing grounding; many chains can converge on the same wrong answer.
-- **Acting-by-prompting / LLM-as-policy (WebGPT, SayCan, etc., 2021–2022).** At each step the model observes the world, emits an action, and the action is executed before the next observation is fed back. Gap: there is no explicit reasoning between actions, so on multi-step tasks the model loses the goal, repeats calls, and cannot reliably synthesize a final answer from gathered observations.
-- **Reflect-and-retry (Reflexion, Shinn et al. 2023).** After a failed episode, generate a natural-language reflection, store it, and rerun the entire task with the reflection prepended. Gap: correction happens only between whole episodes, so one mistake forces the agent to discard all earlier steps and reconstruct them.
+- **Chain-of-thought prompting (Wei et al. 2022).** Few-shot exemplars lead the model to write intermediate reasoning steps before the final answer.
+- **Self-consistency (Wang et al. 2022).** Sample many reasoning chains and take a majority vote.
+- **Acting-by-prompting / LLM-as-policy (WebGPT, SayCan, etc., 2021–2022).** At each step the model observes the world, emits an action, and the action is executed before the next observation is fed back.
+- **Reflect-and-retry (Reflexion, Shinn et al. 2023).** After a failed episode, generate a natural-language reflection, store it, and rerun the entire task with the reflection prepended.
 
 ## Fixed substrate / Code framework
 

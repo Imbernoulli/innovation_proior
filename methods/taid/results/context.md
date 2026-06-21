@@ -8,20 +8,7 @@ next token — but the quality of the distilled student is governed entirely by 
 divergence we minimize between the teacher distribution `p` and the student distribution `q_theta`,
 position by position over the sequence.
 
-The hard part is that the teacher and the student are very *different* models, and that difference
-shows up in three coupled ways that the choice of objective has to contend with. First, a **capacity
-gap**: the teacher has far more parameters and can represent distributions the small student
-provably cannot. Second, **mode averaging**: a student told to cover every region of probability
-mass the teacher places will, when it lacks the capacity to do so faithfully, smear its mass thinly
-across all of them and produce an oversmoothed, low-accuracy distribution. Third, **mode collapse**:
-a student told instead to stay only where the teacher is confident will pile all of its mass on a
-few dominant modes and drop the rest of the teacher's structure. The precise goal is a distillation
-objective for autoregressive LMs that transfers knowledge from a teacher that may be *much* larger
-than the student — without the student either oversmoothing to cover an unreachable teacher or
-collapsing onto a sliver of it — and that does so cheaply, ideally from teacher logits alone without
-an expensive sampling loop. Each existing objective below sits at one end of this averaging/collapse
-axis, or it relies on a fixed comparison distribution whose signal can be poorly matched to the
-student under a large capacity gap. Closing that gap is the problem.
+The question is how to choose that objective when the teacher is much larger than the student.
 
 ## Background
 
@@ -46,13 +33,13 @@ The load-bearing concepts are about *which* divergence and *what target*:
   drops the rest, the **mode-collapse** failure. These are the same two pathologies named above,
   now tied to the geometry of the two KL directions.
 
-- **The curse of the capacity gap (a diagnostic phenomenon).** Intuition says a stronger teacher
-  should produce a stronger student. In practice, beyond a point, *enlarging the teacher degrades
-  the student*: distilling from a 410M, 1B, 2.8B, 6.9B family into a fixed small student, accuracy
-  can fall as the teacher grows, and fixed-target objectives that look fine with a comparable teacher
-  break down when the teacher is much larger. Mirzadeh et al. (2019), Cho & Hariharan (2019), and
-  Zhang et al. (2023) report this across settings: a target distribution can be too far from the
-  student's reachable set regardless of how good that target is in the abstract.
+- **The capacity gap.** Intuition says a stronger teacher should produce a stronger student. In
+  practice, beyond a point, *enlarging the teacher degrades the student*: distilling from a 410M,
+  1B, 2.8B, 6.9B family into a fixed small student, accuracy can fall as the teacher grows, and
+  fixed-target objectives that look fine with a comparable teacher break down when the teacher is
+  much larger. Mirzadeh et al. (2019), Cho & Hariharan (2019), and Zhang et al. (2023) report this
+  across settings: a target distribution can be too far from the student's reachable set regardless
+  of how good that target is in the abstract.
 
 - **Self-distillation as a regularizer, and its theoretical ceiling.** Distilling a model into a
   copy of *itself* — feeding the model's own predictions back as labels and refitting — is known to
@@ -80,16 +67,12 @@ The load-bearing concepts are about *which* divergence and *what target*:
 LMs as `J_KL(p, q_theta) = (1/S) sum_s sum_{y_s} p(y_s|y^{<s}) log( p(y_s|y^{<s}) / q_theta(y_s|y^{<s}) )`.
 The student is trained to match the teacher's full soft distribution at every position. Core idea:
 the teacher's soft probabilities carry "dark knowledge" — relative weights over wrong answers — that
-a one-hot label lacks. **Limitation:** forward KL is mass-covering, so under a capacity gap the
-student oversmooths to cover all teacher modes and loses accuracy (mode averaging).
+a one-hot label lacks.
 
 **Reverse-KL and f-divergence distillation (Wen et al., 2023).** Replace forward KL with reverse KL
 `J_RKL(p, q_theta) = J_KL(q_theta, p)`, and more generally consider f-divergences such as total
 variation distance `J_TVD(p, q) = (1/2) sum_y |p(y) - q(y)|`. Core idea: a mode-seeking objective
 keeps the student honest where the teacher is confident, avoiding the oversmoothing of forward KL.
-**Limitation:** reverse KL is mode-seeking, so a low-capacity student concentrates on a few dominant
-teacher modes and drops the rest (mode collapse). The two KL directions trade one pathology for the
-other; neither sits in between.
 
 **Generalized JSD distillation (Agarwal et al., ICLR 2024).** Interpolate between the two KL
 directions with a mixture distribution in probability space. With `0 < beta < 1` and
@@ -99,12 +82,7 @@ which behaves like forward KL as `beta -> 0` and reverse KL as `beta -> 1`. This
 *between* averaging and collapse, tuned by a single coefficient. The same line pairs this with an
 on-policy / student-generated-output regime — cast distillation as imitation learning with an
 interactive expert, sample sequences from the current student, and have the teacher label them — to
-fix the train/inference mismatch of autoregressive models. **Limitations:** the mixture coefficient
-`beta` is *fixed* throughout training and the probability-space mixture must be chosen upfront. If
-the teacher is far outside the small student's representable family, the comparison distribution can
-remain too teacher-dominated for the student to use well. The on-policy variant adapts the data
-distribution via student samples, but pays a heavy cost: generating student rollouts every step is
-expensive at LLM scale.
+fix the train/inference mismatch of autoregressive models.
 
 **Skew-KL distillation (Ko et al., ICML 2024).** Mix teacher and student in probability space with a
 fixed skew `alpha`, and have the *teacher* teach the mixture:
@@ -113,15 +91,7 @@ fixed skew `alpha`, and have the *teacher* teach the mixture:
 idea: blending the student into the comparison distribution keeps the KL ratio's denominator away
 from zero, which bounds the gradient norm and stabilizes optimization (the bare KL gradient explodes
 as the student probability of a token goes to zero). It is also paired with an adaptive off-policy
-scheduler to use student-generated outputs sparingly. **Limitations:** the mixing coefficient is
-again *fixed* over training, and the knowledge flow is indirect — the teacher is taught to match the
-mixture rather than the student being taught directly — while the interpolation ratio is constant, so
-the comparison geometry is set before training begins.
-
-The recurring gap across all four: the main comparison object is a fixed teacher distribution, a
-fixed teacher/student blend, or an expensive sampled interaction. Under a large capacity gap, the
-cheap fixed-objective choices can expose the small student to a signal that is either too broad
-(averaging), too narrow (collapse), or too difficult to fit.
+scheduler to use student-generated outputs sparingly.
 
 ## Evaluation settings
 

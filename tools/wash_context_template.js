@@ -55,7 +55,7 @@ If the TARGET is already clean by these rules, make only the edits that are stil
 
 phase('Clean')
 const results = await parallel(LIST.map(p => () =>
-  agent(prompt(p), { label: `clean:${p.split('/').slice(0,2).join('/')}`, phase: 'Clean', schema: SCHEMA, agentType: 'general-purpose' })
+  agent(prompt(p), { label: `clean:${p.split('/').slice(0,2).join('/')}`, phase: 'Clean', schema: SCHEMA, agentType: 'general-purpose', model: 'sonnet' })
 ))
 
 return results.filter(Boolean)

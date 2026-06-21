@@ -30,11 +30,11 @@ where `(a*a)_k = Σ_n a_n a_{k−n}`. Every admissible height vector certifies `
 
 ## Prior art / Background / Baselines
 
-- **Flat indicator.** Uniform heights produce a triangular autoconvolution and score `R = 2.0`. This is far above the known lower bound, leaving a large constructive gap.
+- **Flat indicator.** Uniform heights produce a triangular autoconvolution and score `R = 2.0`.
 
-- **Best published construction.** A numerically optimized non-uniform step function has achieved `R = 1.5098`. It improves on the flat indicator, but the value is still well above the analytic lower bound, and the construction offers no clear structural principle for further reduction.
+- **Best published construction.** A numerically optimized non-uniform step function has achieved `R = 1.5098`.
 
-- **Analytic lower bound (Cloninger–Steinerberger, 2017).** Analytic arguments prove `C1 ≥ 1.28`. This is not an explicit function, so it provides a floor without showing what shape might approach it.
+- **Analytic lower bound (Cloninger–Steinerberger, 2017).** Analytic arguments prove `C1 ≥ 1.28`.
 
 ## Fixed substrate / Code framework
 

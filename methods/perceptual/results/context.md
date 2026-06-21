@@ -16,14 +16,12 @@ geometric distortions, noise, compression, and the characteristic artifacts of n
 generators.
 
 The goal, then, is a function `d(x, x0)` on pairs of image patches whose ordering of pairs agrees
-with human perceptual judgments. What makes this hard is not just engineering. Human similarity
-judgments (1) depend on high-order image structure rather than local pixel statistics; (2) are
-context-dependent — there are many "respects of similarity" a person can hold in mind at once (is a
-red circle closer to a red square or a blue circle?), so the "right" answer shifts with context;
-and (3) may not even satisfy the axioms of a distance metric — Tversky's work on similarity shows
-human judgments can be asymmetric and violate the triangle inequality. So fitting a function
-directly to raw human judgments is not obviously tractable, and a method has to find some way around
-the context-dependence and the sheer dimensionality of the image space.
+with human perceptual judgments. Human similarity judgments (1) depend on high-order image structure
+rather than local pixel statistics; (2) are context-dependent — there are many "respects of
+similarity" a person can hold in mind at once (is a red circle closer to a red square or a blue
+circle?), so the "right" answer shifts with context; and (3) may not even satisfy the axioms of a
+distance metric — Tversky's work on similarity shows human judgments can be asymmetric and violate
+the triangle inequality.
 
 ## Background
 
@@ -43,9 +41,7 @@ computed in sliding windows and pooled. Multi-Scale SSIM (Wang, Simoncelli & Bov
 this across a scale pyramid; FSIM (Zhang et al. 2011) weights a phase-congruency feature map; HDR-VDP
 (Mantiuk et al. 2011) models visibility. These are shallow, fixed functions of low-level statistics.
 They were validated on full-reference IQA datasets (LIVE, TID2008, CSIQ, TID2013) built around a few
-images and a handful of distortion types, and on those they beat plain pixel error. A known caveat:
-they were not designed for situations where spatial/geometric ambiguity is a large factor (Sampat et
-al. 2009 on complex-wavelet SSIM), and on geometric distortions they degrade.
+images and a handful of distortion types, and on those they beat plain pixel error.
 
 **Deep features used as a "perceptual loss."** A separate, empirically driven discovery had recently
 swept image synthesis: the *internal activations* of a deep convolutional network trained for
@@ -60,10 +56,7 @@ results. A diagnostic observation accompanies it: when you optimize an image to 
 feature-reconstruction loss at *early* layers, the result is visually indistinguishable from the
 target; minimize it at *deeper* layers and the image keeps the content and overall spatial structure
 but not the exact color, texture, or shape (Johnson et al. 2016, reproducing Dosovitskiy & Brox
-2016). And a cautionary one: minimizing feature distance *alone* as a generator objective produces
-high-frequency artifacts, "because for each natural image there are many non-natural images mapped to
-the same feature vector" (Dosovitskiy & Brox 2016) — so feature distance had been treated as one term
-to be combined with others, never examined on its own as a candidate *perceptual distance*.
+2016).
 
 These deep features come from standard classification backbones — VGG (Simonyan & Zisserman 2014),
 the shallower AlexNet (Krizhevsky 2012; Krizhevsky 2014), and the lightweight SqueezeNet (Iandola et
@@ -81,19 +74,13 @@ Whether any of this transfer extends to *low-level perceptual similarity*, and w
 
 ## Baselines
 
-A new perceptual distance would be measured against, and reacts to, the following.
+A new perceptual distance is measured against the following.
 
 **Per-pixel `l2` / PSNR.** `d(x,y) = mean_i (x_i - y_i)^2`, or its log-scaled form PSNR. Treats each
-pixel independently. *Limitation:* a large pixel error need not correspond to a large perceptual
-change and vice versa — blur produces a large perceptual change with small `l2`, a one-pixel shift
-produces a large `l2` with almost no perceptual change. It is blind to structure because it never
-looks beyond a single pixel.
+pixel independently.
 
 **SSIM / MS-SSIM / FSIM (Wang 2004; Wang 2003; Zhang 2011).** Hand-built combinations of local
-luminance/contrast/structure statistics (formula above). *Limitation:* fixed, shallow functions of
-low-order local statistics with a small number of designer-chosen constants; they capture some
-structure that pixel error misses but were not designed for geometric distortions and correlate only
-moderately with human judgments on richer distortion sets; nothing in them is learned from human data.
+luminance/contrast/structure statistics (formula above).
 
 **Feature-reconstruction "perceptual loss" (Johnson et al. 2016; Gatys et al. 2016; Dosovitskiy &
 Brox 2016).** A distance computed as the (squared, normalized) Euclidean distance between deep feature
@@ -105,24 +92,16 @@ ell_feat^{phi,j}(y_hat, y) = (1 / (C_j H_j W_j)) || phi_j(y_hat) - phi_j(y) ||_2
 
 summed over chosen layers `j` of a fixed pretrained network `phi` (Gatys additionally matches Gram
 matrices `G^phi_j(x)_{c,c'} = (1/(C_j H_j W_j)) sum_{h,w} phi_j(x)_{h,w,c} phi_j(x)_{h,w,c'}` for
-style). *Limitation:* this object was constructed and used as a *training* signal for generators; it
-was never validated as a *metric* against human perceptual judgments, and it is used raw — the
-activations of different channels and layers enter at wildly different magnitudes with no calibration,
-and there is no account of which channels or layers actually matter for human perception, nor any
-human grounding at all. It is a plausible perceptual quantity that nobody had measured against people.
+style). This object was constructed and used as a *training* signal for generators.
 
 **Earlier deep-net image-assessment work (Kim & Lee 2017; Gao et al. 2017; Amirshahi et al. 2017;
 Talebi & Milanfar 2017; Berardino et al. 2017).** Various uses of CNNs for image quality: training a
 CNN on low-level differences, comparing internal activations with multi-scale post-processing, or
-no-reference aesthetic scoring. *Limitation:* narrower datasets and mostly single-image *quality*
-assessment rather than pairwise perceptual *similarity*, and no systematic study across architectures
-and training signals.
+no-reference aesthetic scoring.
 
 **Existing IQA datasets (LIVE, TID2008, CSIQ, TID2013).** The de-facto yardsticks: many human
 judgments collected on a few reference images and a handful of synthetic distortion types (TID2013:
-~500k judgments over 3000 distortions from 25 images × 24 distortion types × 5 levels). *Limitation:*
-they target full-image *quality*, contain few distortion types, include no CNN-generated artifacts and
-few geometric distortions, and cover the image space thinly (few images, many ratings each).
+~500k judgments over 3000 distortions from 25 images × 24 distortion types × 5 levels).
 
 ## Evaluation settings
 

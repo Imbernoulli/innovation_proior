@@ -11,17 +11,9 @@ the largest models.
 The question is whether that one factorization is *necessary* for those capabilities, or whether
 they follow from the more basic principle — maximum-likelihood / KL minimization with an expressive
 model — and could be obtained from a different factorization that does not commit to a fixed
-left-to-right order. The pressure to ask comes from a concrete failure: the strict left-to-right
-order bakes in a directional bias. A model trained that "A is B" systematically fails to answer "B
-is ?" — the reversal curse — because at training time the gradient for predicting B from A never
-also teaches predicting A from B. Any genuinely order-agnostic generative model would, in
-principle, not have this asymmetry. So the goal is a likelihood-based generative model for text
-that (1) is a principled maximum-likelihood objective (an actual bound on `-log p_θ`, not a
-heuristic reconstruction loss), (2) scales like an AR transformer with data and parameters, (3)
-conditions bidirectionally rather than on a fixed causal prefix, and (4) can be both *sampled*
-from and *scored* (likelihood-evaluated) for downstream tasks. A solution would have to define a
-generation process that builds a sequence out of nothing, a training loss provably tied to the
-likelihood of that process, and a decoding procedure that turns the trained predictor into samples.
+left-to-right order. One observable consequence of the strict left-to-right order is the reversal
+curse: a model trained on "A is B" systematically fails to answer "B is ?" because at training
+time the gradient for predicting B from A never also teaches predicting A from B.
 
 ## Background
 
@@ -47,36 +39,31 @@ processes on text perplexity.
 
 **Masked language modeling.** BERT (Devlin 2018) trains a bidirectional transformer to fill in
 `[MASK]`ed positions, `L = -E[ Σ_{i ∈ masked} log p(x^i | x_masked) ]`, using a *fixed* mask ratio
-(~15%). It is a superb representation learner, with full bidirectional context, but it is not a
-generative model: a single fixed corruption level gives no process that turns a fully-masked
-sequence into a sample, and no likelihood of the data under such a process.
+(~15%). It is a superb representation learner, with full bidirectional context.
 
 **Any-order autoregressive models (AO-ARM).** Uria et al. 2014, Hoogeboom et al. 2021: model the
 joint over *all* orders `π` of the `L` positions with a shared network and `[MASK]` placeholders,
 minimizing `-E_{x_0, π∼U_π}[ Σ_{i} log p_θ(x_0^{π(i)} | x_0^{π(<i)}; π) ]`. Filling a position
 given a subset of revealed positions is literally predicting a masked token from an unmasked
-context, so AO-ARM and masked corruption are describing the same object from two directions — but
-the AO-ARM view does not by itself supply a diffusion-style sampling schedule.
+context, so AO-ARM and masked corruption are describing the same object from two directions.
 
-**Diagnostic facts known before the method.** Several measured phenomena about existing systems
-frame the design and are taken as given (not re-measured here): masking/absorbing discrete
-diffusion beats uniform and Gaussian-structured discrete diffusion on text; for masked corruption,
-when the denoising network is made to leave already-revealed tokens untouched and to never emit
-`[MASK]`, the per-step objective simplifies and the measured likelihood improves; once a token is
-revealed in an absorbing reverse process it never changes again, so over a full rollout there are
-at most `L` genuinely distinct denoiser inputs; and in iterative parallel decoding of masked
-predictors, keeping the highest-confidence predictions and re-masking the rest produces markedly
-better samples than keeping a random subset.
+**Measured properties of masking-based systems.** Several phenomena about these systems are
+measured and taken as given: masking/absorbing discrete diffusion beats uniform and
+Gaussian-structured discrete diffusion on text; when the denoising network leaves already-revealed
+tokens untouched and never emits `[MASK]`, the per-step objective simplifies and measured
+likelihood improves; once a token is revealed in an absorbing reverse process it never changes
+again, so over a full rollout there are at most `L` genuinely distinct denoiser inputs; and in
+iterative parallel decoding of masked predictors, keeping the highest-confidence predictions and
+re-masking the rest produces markedly better samples than keeping a random subset.
 
 ## Baselines
 
 **D3PM, absorbing variant (Austin et al. 2021).** The first discrete-diffusion framework for text:
 general `Q_t`, the variational bound above, with `[MASK]` as the absorbing state the best-performing
-instance. Core math is the KL-per-step ELBO. **Limitation:** because it is built to support
-*arbitrary* `Q_t`, the objective is evaluated by materializing the full transition matrices `Q̄_t`
-and comparing full true and approximate posterior distributions at every step — heavy, and the
-resulting log-likelihood trails AR models by a sizable margin; the loss is a sum of dense KL terms
-rather than something that reduces to a plain token-level cross-entropy.
+instance. Core math is the KL-per-step ELBO. Because it is built to support *arbitrary* `Q_t`, the
+objective is evaluated by materializing the full transition matrices `Q̄_t` and comparing full true
+and approximate posterior distributions at every step; the loss is a sum of dense KL terms rather
+than something that reduces to a plain token-level cross-entropy.
 
 **Continuous-time / Rao-Blackwellized masked diffusion (Sahoo et al. 2024; Shi et al. 2024).**
 Specialize to masking and exploit two structural properties of the denoiser — never predict
@@ -85,36 +72,29 @@ discrete-time diffusion loss becomes a masked-token cross-entropy with weight
 `(α_s-α_t)/(1-α_t)` for a reverse step from `t` to `s < t`. Letting the number of
 steps `T -> ∞` gives a continuous-time negative-ELBO with cross-entropy weight
 `(-α'_t)/(1-α_t)`: `L∞ = E_q ∫_0^1 [(-α'_t)/(1-α_t)] · [-log⟨x_θ(z_t,t), x⟩] dt`, a
-*weighted average of masked-token cross-entropies*. **Limitation:** these works are demonstrated at the perplexity-benchmark scale
-(LM1B / OpenWebText, hundreds of millions of parameters), approaching but not matching AR
-perplexity; whether masked diffusion retains its likelihood footing and competes on downstream
-task ability at LLM scale (billions of parameters, trillions of tokens, in-context learning and
-instruction following) is left open.
+*weighted average of masked-token cross-entropies*. These works are demonstrated at the
+perplexity-benchmark scale (LM1B / OpenWebText, hundreds of millions of parameters), approaching
+but not matching AR perplexity.
 
 **Reparameterized absorbing diffusion (Ou et al. 2024).** Shows the concrete score of absorbing
 diffusion factors as a *time-independent* clean-data conditional times an analytic time-dependent
 scalar, `[e^{-σ̄(t)}/(1-e^{-σ̄(t)})] · p_0(x̂^i | x_t^UM)`, so the network can drop its time input
 and simply output a distribution over clean tokens (a softmax head, GPT-like). It further proves
 the absorbing-diffusion objective equals the AO-ARM objective in the fully-noised limit.
-**Limitation:** delivered as a likelihood/perplexity and sampling-efficiency result at small scale;
-it does not itself produce a large, instruction-following generative language model.
+Delivered as a likelihood/perplexity and sampling-efficiency result at small scale.
 
 **MaskGIT (Chang et al. 2022).** A bidirectional transformer for *images* trained with masked
 visual token modeling, `L = -E[ Σ_{i ∈ masked} log p(y_i | Y_M) ]`, and decoded by iterative
 parallel sampling: at each of `T` steps predict all masked tokens, keep the most confident ones,
 re-mask the rest, with the number kept set by a mask-schedule function `γ(r)` (e.g. cosine) and
 temperature annealing on the confidences. This is the source of confidence-based parallel
-decoding. **Limitation:** the training objective is a flat sum of masked cross-entropies with no
-weighting across corruption levels and no derivation as a likelihood bound — it is a heuristic
-reconstruction loss, and it is built and evaluated for image tokens, not for language modeling at
-scale.
+decoding. The training objective is a flat sum of masked cross-entropies with no weighting across
+corruption levels; the method is built and evaluated for image tokens.
 
 **Standard autoregressive LLMs (LLaMA-family, etc.).** The yardstick: next-token transformers
 with causal masking, optionally grouped-query attention and a prefix KV cache for fast decoding.
-**Limitation relevant here:** the causal factorization is strictly left-to-right, which is what
-produces the reversal-curse asymmetry and forbids any global revision of already-emitted tokens;
-the KV cache that makes them fast is exactly a consequence of that one-directional, write-once
-structure.
+The causal factorization is strictly left-to-right, and the KV cache that makes them fast is a
+direct consequence of that one-directional, write-once structure.
 
 ## Evaluation settings
 

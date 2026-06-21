@@ -18,12 +18,10 @@ the step sizes — and therefore the per-step integration error — are distribu
 range. A numerical ODE solver only ever approximates the true trajectory: each step incurs a *local
 truncation error* that accumulates into a *global* error, and with a small step budget that error is
 large enough to visibly corrupt the output even when the solver update rule and the trained network
-are held fixed. The precise problem: choose `{sigma_i}` (and the solver) so that the accumulated
-truncation error at a given `N` is as small as possible — which is what lets `N` itself be pushed
-down — and do so in a way that is decoupled from how the network happened to be trained, so that the
-same sampling recipe transfers across models. The schedules in use at the time were inherited from
-each model's *training-time* forward noising process rather than chosen for sampling efficiency, and
-none of them exposed a way to deliberately reallocate resolution between high and low noise.
+are held fixed. The question is how to choose `{sigma_i}` (and the solver) so that the accumulated
+truncation error at a given `N` is as small as possible, in a way that is decoupled from how the
+network happened to be trained. The schedules in use at the time were inherited from each model's
+*training-time* forward noising process rather than chosen for sampling efficiency.
 
 ## Background
 
@@ -79,44 +77,26 @@ what keeps truncation error small.
 
 ## Baselines
 
-The schedules a new discretization would be compared against, each a real recipe with a concrete gap.
+The schedules a new discretization would be compared against:
 
 **Evenly spaced in `sigma` (linear).** Place the noise levels at equal spacing,
-`sigma_i = sigma_max + (i/(N-1))(sigma_min - sigma_max)`. Simplest possible choice. *Limitation:* it
-ignores where the integration error actually lives. The diagnostic measurement above shows the single-step
-error is an order of magnitude larger at low noise than at high noise, so equal spacing pours a fixed step
-size into a region (low `sigma`) that demands small steps and wastes resolution where the field is easy
-(high `sigma`); with few steps the low-noise error dominates the result.
+`sigma_i = sigma_max + (i/(N-1))(sigma_min - sigma_max)`. Simplest possible choice.
 
 **Variance-exploding geometric schedule (Song et al. 2021; SMLD lineage).** The original variance-exploding
 sampler uses noise levels equally spaced in log-`sigma`,
 `sigma_bar_i = sigma_min (sigma_max/sigma_min)^{1 - i/(N-1)}`, i.e. a geometric sequence. Brought into the
 common ODE framework this corresponds to `s(t) = 1`, `sigma(t) = sqrt(t)`, `t_i = sigma_bar_i^2`.
-*Limitation:* it is a single fixed shape. It packs steps tightly toward low `sigma` and produces
-trajectories that are strongly curved near the data and, in fact, curved throughout the range; it offers no
-control to trade step resolution between high and low noise, and its shape was dictated by the forward
-diffusion rather than by the integration error of the reverse solve.
 
 **Cosine schedule from improved DDPM (Nichol & Dhariwal 2021).** DDPM (Ho et al. 2020) defines a forward
 Markov chain with a variance schedule `{beta_t}` giving cumulative
 `alpha_bar_t = prod_{s<=t}(1 - beta_s)`; improved DDPM replaces the linear `beta` schedule with a cosine
 one, `alpha_bar_t = sin^2( (pi/2) j / (M(1 + C_2)) )` after reindexing, clamped to avoid singularities.
 Mapped into noise levels this yields a sampling schedule by indexing into the model's `M = 1000` originally
-trained levels (each `t_i` rounded to a supported level). *Limitation:* it is a *training-time*
-discretization, designed to allocate the forward noising steps to the perceptually important content range,
-and it is tied to the discrete grid the model was trained on — it is not derived from, and does not target,
-the per-step integration error of the sampling ODE.
+trained levels (each `t_i` rounded to a supported level).
 
 **Variance-preserving / DDPM-style schedule (Ho et al. 2020; Song et al. 2021).** The variance-preserving
 formulation maps to `sigma(t) = sqrt(e^{(1/2) beta_d t^2 + beta_min t} - 1)` with steps taken uniformly in
-`t`. *Limitation:* its trajectories flatten into near-horizontal lines at large `sigma` (the local gradients
-only begin pointing toward data at small `sigma`), so a large fraction of the step budget is spent in a
-regime that contributes little; like the others it is inherited from the forward process, not chosen to
-minimize sampling error.
-
-Across all four, the common gap is the same: the discretization is a fixed shape handed down from the
-model's training-time noise process, with no single interpretable control for *how* to distribute the few
-sampling steps across the noise range so as to put the integration error where it costs least.
+`t`.
 
 ## Evaluation settings
 

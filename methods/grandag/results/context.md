@@ -6,26 +6,21 @@ We observe a random vector `X = (X_1, ..., X_d)` and we want the *directed acycl
 that encodes which variable is a direct cause of which — not a correlation graph, not an
 undirected skeleton, but oriented edges `i -> j` carrying a causal reading. The data is purely
 *observational*: no interventions, no experiments, just samples from the joint distribution
-`P_X`. Two structural obstacles make this hard.
+`P_X`.
 
-The first is combinatorial. A DAG on `d` nodes is one of a set whose size grows *super-
-exponentially* in `d` (faster than `d!`, since the orderings themselves are only part of the
+Two features of the setting shape any approach. The space of DAGs on `d` nodes is
+*super-exponential* in `d` (faster than `d!`, since the orderings themselves are only part of the
 count), and the defining property — acyclicity — is a global, discrete constraint on the edge
-set. Any search that proposes an edge must, in principle, re-check that no cycle was created, so
-the natural algorithms are greedy local searches over orderings or over edge additions/deletions,
-each step guarded by an acyclicity test. These heuristics are method-specific and do not update
-the whole structure at once.
+set: an algorithm that proposes an edge must, in principle, re-check that no cycle was created.
+Separately, from `P_X` alone the causal direction is generally *not* recoverable: many distinct
+DAGs induce exactly the same set of conditional independences (the same *Markov equivalence
+class*), so observational data pins down that class — a partially directed graph (CPDAG) — unless
+one adds parametric assumptions on the data-generating mechanism that break the symmetry between
+cause and effect.
 
-The second is identifiability. From `P_X` alone the causal direction is generally *not*
-recoverable: many distinct DAGs induce exactly the same set of conditional independences (the same
-*Markov equivalence class*), so observational data can at best pin down that class — a partially
-directed graph (CPDAG) — leaving some edges unoriented. To orient edges one must add parametric
-assumptions on the data-generating mechanism that break the symmetry between cause and effect.
-
-So the goal a solution must hit: given observational samples, under a clearly stated assumption
-that makes `G` identifiable, recover the *fully directed* graph for *nonlinear* mechanisms, at
-graph sizes (tens of nodes) where greedy combinatorial search is already painful — and do it in a
-way that revises the whole structure jointly rather than one edge at a time.
+The question we take up: given observational samples, under a stated assumption that makes `G`
+identifiable, recover the *fully directed* graph for *nonlinear* mechanisms at graph sizes (tens
+of nodes) of practical interest.
 
 ## Background
 
@@ -39,63 +34,55 @@ independence tests and orient by collider rules; Spirtes et al. 2000) and *score
 (define a score `S(G)` — typically a regularized maximum likelihood — and search for
 `argmax_{G in DAG} S(G)`; Koller & Friedman 2009).
 
-**Additive noise models make nonlinear mechanisms identifiable.** The key identifiability result
-the field rests on for continuous nonlinear data is the *additive noise model* (ANM): assume
+**Additive noise models make nonlinear mechanisms identifiable.** The identifiability result the
+field rests on for continuous nonlinear data is the *additive noise model* (ANM): assume
 `X_j := f_j(X_{pi_j}) + N_j` with the `N_j` mutually independent and the `f_j` nonlinear,
 satisfying mild regularity conditions (Hoyer, Janzing, Mooij, Peters & Scholkopf 2008; Peters,
 Mooij, Janzing & Scholkopf 2014). Under these assumptions `G` is identifiable from `P_X` — even
 when the noise is Gaussian, *because the nonlinearity itself breaks the cause/effect symmetry*
 (the special restricted case where a linear-Gaussian model would be unidentifiable but a
 nonlinear-Gaussian one is not). Intuitively, regressing effect on cause leaves a residual
-independent of the cause, while regressing cause on effect does not — nonlinearity is here a
-blessing, not a curse. This is what lets a method aim at the *directed* graph rather than only its
-equivalence class. A practical estimator built directly on this is RESIT (regress each variable on
-candidate parents, test the residuals for independence), which is greedy and does not scale much
-beyond ~20 nodes. A diagnostic fact about maximum-likelihood scoring that any score-based method
-must contend with: the unpenalized log-likelihood *never decreases when an edge is added*, so it
-overfits toward dense graphs and needs an explicit sparsity control.
+independent of the cause, while regressing cause on effect does not. This is what lets a method
+aim at the *directed* graph rather than only its equivalence class. A practical estimator built
+directly on this is RESIT (regress each variable on candidate parents, test the residuals for
+independence). A property of maximum-likelihood scoring relevant to any score-based method: the
+unpenalized log-likelihood *never decreases when an edge is added*, so such methods include an
+explicit sparsity control.
 
 **The combinatorial constraint and the spectral view of cycles.** A standard fact about a
 nonnegative (or binary) adjacency matrix `B`: `(B^k)_{jj}` counts the closed walks of length `k`
 through node `j`, so `tr(B^k)` counts all length-`k` cycles, and `B` is acyclic *iff* `tr(B^k)=0`
-for every `k = 1, 2, ...`. This characterizes acyclicity, but as a constraint it is discrete and,
-taken as a finite series `sum_{k=1}^d tr(B^k)=0`, numerically explosive: the entries of `B^k`
-can exceed machine precision for even moderate `d`, destabilizing both the value and its gradient.
+for every `k = 1, 2, ...`. This characterizes acyclicity, taken as a finite series
+`sum_{k=1}^d tr(B^k)=0`.
 
 ## Baselines
 
 These are the prior structure-learning methods a new approach would be measured against.
 
 **GES / greedy CPDAG search (Chickering 2003).** Greedily searches the space of CPDAGs to optimize
-the Bayesian information criterion, usually under a linear-Gaussian model. **Gap:** assumes
-linearity, and returns only a CPDAG — it leaves edges unoriented and cannot exploit nonlinear
-asymmetry to direct them.
+the Bayesian information criterion, usually under a linear-Gaussian model, and returns a CPDAG.
 
 **GSF (Huang et al. 2018).** The GES search engine with a generalized (kernel-based) score that
-admits nonlinear relationships, again over CPDAGs. **Gap:** still a greedy combinatorial search,
-and its runtime becomes prohibitive on larger graphs (search can fail to finish on ~100 nodes).
+admits nonlinear relationships, again over CPDAGs.
 
 **RESIT (Peters et al. 2014).** Built directly on ANM identifiability: greedily regress and test
-residual independence to find an ordering, then prune. **Gap:** the independence-test search does
-not scale past roughly 20 nodes.
+residual independence to find an ordering, then prune.
 
 **CAM — Causal Additive Models (Buhlmann, Peters & Ernest 2014).** Score-based, assuming an
-*additive* mechanism `f_j(x_{pi_j}) = sum_{i in pi_j} f_{ij}(x_i)` plus Gaussian noise. Its idea
-is to *decouple* the search for a topological order of the variables (greedy restricted maximum
+*additive* mechanism `f_j(x_{pi_j}) = sum_{i in pi_j} f_{ij}(x_i)` plus Gaussian noise. It
+*decouples* the search for a topological order of the variables (greedy restricted maximum
 likelihood) from per-node feature/edge selection (sparse additive regression). For larger graphs
 it first runs a *preliminary neighborhood selection* (PNS) — fit a flexible regressor of each
 variable on all others and keep only high-importance candidates — and after fitting it *prunes*
 each node's parents by a significance test, dropping parents whose covariate test exceeds a small
-p-value. **Gap:** the additive restriction `sum_i f_{ij}(x_i)` cannot express functions with
-interactions among parents, and the order search remains a greedy combinatorial procedure.
+p-value.
 
-**NOTEARS (Zheng, Aragam, Ravikumar & Xing 2018).** The pivotal departure: cast structure
-learning as a *continuous constrained optimization* by encoding the graph as a single real
-weighted matrix and replacing the combinatorial acyclicity constraint with one smooth equality.
-NOTEARS works on the spectral fact above but cures its numerics with the matrix exponential, which
-reweights the length-`k` closed-walk counts by `1/k!`: for a *binary* `B`, `B` is a DAG iff
-`tr e^B = d`. To handle real, possibly negative weights it replaces `B` by the (entrywise
-nonnegative) Hadamard square `W ∘ W`, giving the smooth constraint
+**NOTEARS (Zheng, Aragam, Ravikumar & Xing 2018).** Casts structure learning as a *continuous
+constrained optimization* by encoding the graph as a single real weighted matrix and replacing the
+combinatorial acyclicity constraint with one smooth equality. It builds on the spectral fact above
+using the matrix exponential, which reweights the length-`k` closed-walk counts by `1/k!`: for a
+*binary* `B`, `B` is a DAG iff `tr e^B = d`. To handle real, possibly negative weights it replaces
+`B` by the (entrywise nonnegative) Hadamard square `W ∘ W`, giving the smooth constraint
 
 ```
 h(W) = tr e^{W ∘ W} - d = 0,     with gradient   ∇h(W) = (e^{W ∘ W})^T ∘ 2W.
@@ -110,23 +97,18 @@ penalty, the program
 max_W  -(1/(2n)) || X - X W ||_F^2  -  λ || W ||_1     s.t.   tr e^{W ∘ W} - d = 0
 ```
 
-is solved by an off-the-shelf augmented-Lagrangian method — no bespoke greedy search, and every
-edge is updated at each step from the gradient. **Gap:** `W` encodes a *linear* SEM. The
-contribution of variable `i` to variable `j` is the single scalar `W_{ij}`; there is no way to let
-`X_j` depend nonlinearly on its parents, so on data with genuinely nonlinear mechanisms NOTEARS
-underfits and mis-scores directions.
+is solved by an off-the-shelf augmented-Lagrangian method, and every edge is updated at each step
+from the gradient.
 
-**DAG-GNN (Yu et al. 2019).** The first attempt to push the continuous-constraint paradigm to
-nonlinear mechanisms, via a graph-neural-network decoder trained on an evidence lower bound.
-**Gap:** it ties the per-variable mechanisms together through heavy parameter sharing in the GNN,
-which is ill-suited when the `f_j` are independent mechanisms; in that regime it tends to underfit.
+**DAG-GNN (Yu et al. 2019).** Pushes the continuous-constraint paradigm to nonlinear mechanisms via
+a graph-neural-network decoder trained on an evidence lower bound; the per-variable mechanisms are
+tied together through parameter sharing in the GNN.
 
-**MADE (Germain et al. 2015).** Not a causal method but a load-bearing piece of machinery: a
-masked autoencoder that multiplies each weight matrix by a fixed binary mask so the network
-respects the *autoregressive property* — output `j` depends only on inputs before `j` in a chosen
-ordering. The autoregressive property is exactly acyclicity for a *fixed* ordering. **Gap for our
-purposes:** MADE *fixes* the masking (hence the ordering) a priori; it does not learn which
-variable should depend on which.
+**MADE (Germain et al. 2015).** Not a causal method but a building block: a masked autoencoder that
+multiplies each weight matrix by a fixed binary mask so the network respects the *autoregressive
+property* — output `j` depends only on inputs before `j` in a chosen ordering. The autoregressive
+property is exactly acyclicity for a *fixed* ordering. MADE fixes the masking (hence the ordering)
+a priori.
 
 ## Evaluation settings
 
@@ -154,8 +136,8 @@ The natural yardsticks already in use for observational structure learning:
   set are also natural.
 - **Protocol.** Compare against random-graph baselines; hold out part of the data for early
   stopping and for selecting hyperparameters by held-out score (no ground truth available in
-  practice). Identifiability guarantees hold only in the population/exact-optimization limit, so
-  finite-sample, non-convex behavior must be checked empirically.
+  practice). Identifiability guarantees hold in the population/exact-optimization limit, so
+  finite-sample, non-convex behavior is checked empirically.
 
 ## Code framework
 
@@ -166,8 +148,7 @@ building blocks are PyTorch with autograd and RMSprop; a matrix exponential
 (`scipy.linalg.expm` / `torch.matrix_exp`); the smooth acyclicity constraint `tr e^{M} - d` for a
 *nonnegative* matrix `M`; the augmented-Lagrangian update scheme for a single equality-constrained
 problem; and CAM-style preliminary neighbor selection and significance-test pruning as reusable
-pre/post-processing. What is still open is how to combine a flexible conditional model for each
-variable with the graph-level constraint without falling back to a greedy order search.
+pre/post-processing.
 
 ```python
 import numpy as np

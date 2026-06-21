@@ -10,17 +10,13 @@ column of `W` and the noise `z = (z_1, ..., z_d)` is *not* assumed Gaussian. The
 `j`. The task is to choose `W` so that (i) it fits the data under a score function, and (ii) the
 induced graph is acyclic.
 
-The difficulty is entirely in the acyclicity requirement. The score is a smooth function of a
+The acyclicity requirement is the central challenge. The score is a smooth function of a
 real matrix and is easy to optimize on its own. But "the graph induced by `W` is a DAG" is a
 *combinatorial* constraint on the support pattern of `W`, and the number of DAGs on `d` nodes
 grows superexponentially in `d`, so one cannot enumerate or search this set directly. Learning a
 DAG that minimizes a decomposable score is NP-hard (Chickering 1996; Chickering, Heckerman &
-Meek 2004). The precise goal is a method that (1) handles arbitrary graph topology — in
-particular dense hub structures, not just sparse low-in-degree graphs; (2) makes no specific
-distributional assumption (works for Gaussian and non-Gaussian noise alike); (3) does not
-require graphical-model-specific machinery or per-problem heuristics; and (4) can be implemented
-with standard numerical tools. Every existing method below achieves some of these but stalls on
-the combinatorial constraint in a way that costs it one or more of the others.
+Meek 2004). The question is how to optimize a smooth score over the space of weighted adjacency
+matrices while satisfying the acyclicity constraint.
 
 ## Background
 
@@ -53,7 +49,7 @@ a good-scoring `W` whose graph is acyclic. To learn a sparse graph one adds an `
 simple algebraic condition on `W` that is amenable to gradient-based optimization. Existing
 approaches therefore enforce acyclicity *operationally* — by searching the discrete space in a
 way that only ever visits acyclic structures — rather than as a constraint a continuous solver
-could handle. This is the crux that splits the field into the families below.
+could handle.
 
 **A combinatorial fact about walks.** There is a classical and elementary identity relating
 matrix powers to graph structure (e.g. Harary & Manvel 1971): for a binary adjacency matrix `B`,
@@ -73,8 +69,7 @@ and which sparked a wave of fast algorithms (the graphical lasso, Friedman, Hast
 2008; QUIC, Hsieh et al. 2014). For deep networks, the major tool was stochastic gradient descent
 on a closed-form differentiable objective. In both cases progress came from writing the learning
 problem as a smooth/continuous program and delegating the heavy lifting to general-purpose
-optimization. The directed-acyclic case had not benefited this way, precisely because of the
-combinatorial acyclicity constraint, and that gap is the standing invitation.
+optimization.
 
 ## Baselines
 
@@ -82,9 +77,7 @@ combinatorial acyclicity constraint, and that gap is the standing invitation.
 Cussens, Haws & Studený 2017).** Optimize a decomposable discrete score `Q(G)` (BDe, BGe, BIC,
 MDL) over DAGs to *global* optimality via dynamic programming or integer linear programming
 (e.g. the GOBNILP solver). Core idea: enumerate candidate parent sets per node and solve a
-cutting-plane / DP problem for the best acyclic combination. Guarantees the optimum. **Gap:**
-built on an NP-hard combinatorial problem, so state-of-the-art exact solvers scale only to a few
-dozen nodes, and require restricting the maximum parent-set size to reach even that.
+cutting-plane / DP problem for the best acyclic combination.
 
 **Greedy / local search — greedy equivalence search and its fast variant (Chickering 2003;
 Ramsey et al. 2016).** GES searches over Markov equivalence classes (CPDAGs) rather than DAGs:
@@ -92,40 +85,26 @@ a forward phase greedily inserts the single edge that most improves the score, e
 implemented as a move on the equivalence class; then a backward phase greedily deletes edges
 until no deletion helps. Under score-equivalence and local consistency of the score, GES returns
 the true equivalence class in the large-sample limit. The fast greedy variant (FGS) scales this
-to very large problems and is the strongest practical baseline. **Gap:** it operates *locally*,
+to very large problems and is the strongest practical baseline. It operates *locally*,
 adding or removing one edge (or one equivalence-class move) at a time and checking acyclicity at
-each step; this is efficient only when each node has few parents, and degrades sharply as the
-in-degree grows. Local methods of this family also typically lean on structural assumptions —
+each step. Local methods of this family also typically lean on structural assumptions —
 bounded in-degree, bounded treewidth, edge constraints — which real networks with highly
 connected hub nodes (scale-free / small-world topologies; Watts & Strogatz 1998; Barabási &
-Albert 1999) violate and which cannot even be checked in practice.
+Albert 1999) may violate.
 
 **Order-based search (Teyssier & Koller 2005; Scanagatta et al. 2015, 2016).** Sidestep the
 acyclicity constraint by searching over topological *orderings*: any fixed ordering admits only
-acyclic structures, so the inner problem becomes parent selection per node. **Gap:** trades the
-hard acyclicity constraint for a search over `d!` orderings, still combinatorial, and
-typically still tied to sparsity / in-degree restrictions.
+acyclic structures, so the inner problem becomes parent selection per node.
 
 **Coordinate-descent and penalized-regression DAG learners (Fu & Zhou 2013; Aragam & Zhou 2015;
 Gu, Fu & Zhou 2018).** Use continuous penalties (e.g. concave or `ℓ1`) on the SEM coefficients,
 optimized one block/coordinate at a time, with explicit acyclicity enforcement interleaved into
-the descent (checking for and forbidding cycle-inducing updates). **Gap:** acyclicity is still
-imposed *outside* the continuous objective — enforced one edge at a time by combinatorial checks
-during descent — so the procedure remains a hybrid of continuous optimization and discrete
-bookkeeping rather than a single continuous program.
+the descent (checking for and forbidding cycle-inducing updates).
 
 **Constraint-based and non-Gaussian-specific methods (PC algorithm, Spirtes, Glymour & Scheines
 2000; LiNGAM, Shimizu et al. 2006).** PC recovers a CPDAG from conditional-independence tests.
 LiNGAM exploits non-Gaussian noise (via independent component analysis) to identify the full DAG
-rather than just its equivalence class. **Gap:** each rests on specific assumptions (reliable
-independence testing; a particular non-Gaussian identifiability route) and a bespoke algorithmic
-pipeline, rather than a single objective optimized by general numerical tools.
-
-A common thread runs through all of these: acyclicity is enforced by *operating on the discrete
-graph space* — exact enumeration, greedy edge moves, order permutations, or interleaved cycle
-checks — never as a smooth constraint inside a continuous program. Each pays for that with one of:
-poor scaling, dependence on low-in-degree / bounded-treewidth assumptions, distributional
-specialization, or conceptual machinery that demands graphical-model expertise to implement.
+rather than just its equivalence class.
 
 ## Evaluation settings
 

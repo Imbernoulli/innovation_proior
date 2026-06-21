@@ -4,9 +4,9 @@ Train-time data augmentation is a cheap regularizer for image classification: it
 
 ## Prior art / Background / Baselines
 
-- **Standard geometric augmentation (Krizhevsky et al. 2012; the CIFAR convention).** It pads the image by 4 pixels and crops back a random 32×32 window, then mirrors with probability 0.5. Gap: it only perturbs geometry, so it covers only a narrow slice of plausible image variations and leaves achievable regularization on the table.
-- **AutoAugment (Cubuk et al. 2019).** It searches a policy — five sub-policies, each two operations, each operation a (transform type, probability, magnitude) triple — by training an RNN controller with reinforcement learning on a small proxy task, then transfers the winning policy to the target. Gap: it adds a full second optimization loop, a search space near 10^32, and the proxy task gives no direct way to set augmentation strength for the target model and dataset.
-- **Population-Based Augmentation / Fast AutoAugment (Ho et al. 2019; Lim et al. 2019).** They use cheaper search procedures — population training or density matching — for the same policy family. Gap: they still require a search phase and per-transform probabilities and magnitudes; the cost drops but the mismatch between the proxy search and the target task remains.
+- **Standard geometric augmentation (Krizhevsky et al. 2012; the CIFAR convention).** It pads the image by 4 pixels and crops back a random 32×32 window, then mirrors with probability 0.5.
+- **AutoAugment (Cubuk et al. 2019).** It searches a policy — five sub-policies, each two operations, each operation a (transform type, probability, magnitude) triple — by training an RNN controller with reinforcement learning on a small proxy task, then transfers the winning policy to the target.
+- **Population-Based Augmentation / Fast AutoAugment (Ho et al. 2019; Lim et al. 2019).** They use cheaper search procedures — population training or density matching — for the same policy family.
 
 ## Fixed substrate / Code framework
 

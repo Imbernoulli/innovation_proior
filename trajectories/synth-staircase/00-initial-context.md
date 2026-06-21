@@ -18,20 +18,15 @@ target's Fourier support.
 
 - **Fixed-feature lower bounds.** Any linear method on a *fixed* feature map needs `n = Omega(d^k)`
   samples to fit a `k`-sparse parity. With the budget here (`n = b·T = 150·4000 = 6·10^5`, `d = 100`)
-  this covers degree-1 and degree-2 components but not the degree-3 monomial. Gap: a frozen feature
-  map cannot adapt to the unknown latent subset, so it pays `d^k` for the high-degree pieces of every
-  target.
+  this covers degree-1 and degree-2 components but not the degree-3 monomial.
 - **Mean-field limit of two-layer SGD.** With the `1/M` output normalization the weights travel an
   `O(1)` distance, so the network stays in the *feature-learning* regime and SGD concentrates onto a
   Wasserstein gradient flow on the empirical measure of neurons — features can move toward latent
-  coordinates. Gap: the dynamics is nonlinear and adaptive, but it does not identify which targets
-  the flow can drive to zero risk.
+  coordinates.
 - **Saddle-to-saddle / hierarchical pickup.** Starting from a near-origin init, the mean-field flow
   leaves signal directions at saddles; a coordinate's weight escapes only once lower-degree supports
   beneath it are active, so components are learned in increasing degree, with higher stairs orders
-  of magnitude slower. This makes a staircase learnable in `O(d)` and a non-staircase leap provably
-  stuck. Gap: the sequential degree-by-degree mechanism stalls when a single step must introduce
-  more than one new coordinate.
+  of magnitude slower.
 
 ## Fixed substrate
 

@@ -1,16 +1,14 @@
 ## Research question
 
-Decoder-only LLM inference in the long-context large-batch regime is bottlenecked by the key/value cache. Every past token leaves a key vector and a value vector in every layer, the cache grows linearly in batch size and sequence length, and each decode step streams the whole cache from HBM while the compute cores idle. Quantization of the running K/V tensors is the one lever that reduces bytes-per-element without dropping tokens or retraining. The design object is the **quantization policy** — bit width, grouping axis, asymmetric ranges and zero-points, residual window, and any prefill-time observation — that preserves benchmark output quality while shrinking the effective KV footprint. Everything else (the model, the decode replay loop, the workloads, the scoring) is fixed.
+Decoder-only LLM inference in the long-context large-batch regime is bottlenecked by the key/value cache. Every past token leaves a key vector and a value vector in every layer, the cache grows linearly in batch size and sequence length, and each decode step streams the whole cache from HBM while the compute cores idle. Quantization of the running K/V tensors reduces bytes-per-element without dropping tokens or retraining. The design object is the **quantization policy** — bit width, grouping axis, asymmetric ranges and zero-points, residual window, and any prefill-time observation — that preserves benchmark output quality while shrinking the effective KV footprint. Everything else (the model, the decode replay loop, the workloads, the scoring) is fixed.
 
 ## Prior art / Background / Baselines
 
-Most quantization methods assume a static tensor; the KV cache is a streaming object that grows one token at a time during decode. That constraint rules out much of the PTQ literature and defines the baseline family.
+Most quantization methods assume a static tensor; the KV cache is a streaming object that grows one token at a time during decode.
 
-- **Optimization-based PTQ (GPTQ, OBQ).** Solves a per-layer reconstruction problem with second-order error feedback. Gap: re-solving an optimization over the whole cache every decode step is too expensive; only cheap, local primitives are viable.
-- **Group-wise round-to-nearest (FlexGen).** Per group takes min/max, sets zero-point and scale, and rounds each element into `[0, 2^B − 1]`, running on a single token without calibration. Gap: uniform low-bit RTN is adequate at 4-bit but collapses at 2-bit, and it spends the same number of bits everywhere regardless of the tensor region.
-- **Outlier-aware quantization (LLM.int8(), SmoothQuant).** Notes that transformer activations carry persistent large-magnitude channels that propagate into the key cache. Gap: the diagnosis points to sensitive axes, but it does not yet yield a streaming cache quantization policy.
-
-These baselines are quantization policies on a common tensor-level interface; the contribution is the policy, not a backend or repository.
+- **Optimization-based PTQ (GPTQ, OBQ).** Solves a per-layer reconstruction problem with second-order error feedback.
+- **Group-wise round-to-nearest (FlexGen).** Per group takes min/max, sets zero-point and scale, and rounds each element into `[0, 2^B − 1]`, running on a single token without calibration.
+- **Outlier-aware quantization (LLM.int8(), SmoothQuant).** Notes that transformer activations carry persistent large-magnitude channels that propagate into the key cache.
 
 ## Fixed substrate / Code framework
 

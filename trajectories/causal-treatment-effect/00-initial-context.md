@@ -6,12 +6,12 @@ Three obstacles define the problem. **Confounding:** the raw treated-minus-contr
 
 ## Prior art / Background / Baselines
 
-The known estimators are meta-learners and related approaches that turn off-the-shelf supervised learners into CATE estimators. Each has a clear gap on this benchmark.
+The known estimators are meta-learners and related approaches that turn off-the-shelf supervised learners into CATE estimators.
 
-- **Naive difference of conditional means.** Fit a separate regression of $Y$ on $X$ in each treatment arm and subtract the two fitted surfaces. Gap: it must get both high-dimensional response surfaces right, and any misspecification or estimation error in either surface passes straight into $\hat\tau(x)$.
-- **S-learner and T-learner.** The S-learner pools both arms and includes treatment as an extra feature; the T-learner fits one model per arm and subtracts. Gap: the S-learner lets regularization shrink the treatment feature toward zero, attenuating the effect; the T-learner accumulates independent errors from two separately fitted surfaces and inherits the response-surface complexity even when the effect itself is simple.
-- **Inverse-propensity weighting.** Estimate the propensity score $e(x)$ and reweight each observed outcome by $1/e(x)$ for treated units and $1/(1-e(x))$ for controls. Gap: the weights explode where propensities are close to 0 or 1, so variance dominates exactly in the regions of weakest overlap.
-- **Orthogonalization / double machine learning.** First residualize $Y$ and $T$ on $X$, then estimate $\tau$ from the residual relationship. Gap: the variance reduction depends on having both nuisance models reasonably well estimated; if either nuisance is misspecified or the sample is small, the gains over simpler plug-in estimators can disappear.
+- **Naive difference of conditional means.** Fit a separate regression of $Y$ on $X$ in each treatment arm and subtract the two fitted surfaces.
+- **S-learner and T-learner.** The S-learner pools both arms and includes treatment as an extra feature; the T-learner fits one model per arm and subtracts.
+- **Inverse-propensity weighting.** Estimate the propensity score $e(x)=P(T=1\mid X)$ and reweight each observed outcome by $1/e(x)$ for treated units and $1/(1-e(x))$ for controls.
+- **Orthogonalization / double machine learning.** First residualize $Y$ and $T$ on $X$, then estimate $\tau$ from the residual relationship.
 
 ## Fixed substrate / Code framework
 

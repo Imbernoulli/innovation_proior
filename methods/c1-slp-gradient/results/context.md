@@ -1,4 +1,4 @@
-# Context: minimax Sequential-LP refinement for the C1 autocorrelation inequality
+# Context: refining the C1 autocorrelation construction at high resolution
 
 ## Research question
 
@@ -6,6 +6,9 @@ Certify a tight *upper* bound on the first autocorrelation constant `C1` of Barn
 (arXiv:1903.08731): `C1 = inf_f R(f)`, `R(f) = max_{|t|≤1/2}(f*f)(t)/(∫_{-1/4}^{1/4} f)²`, over non-negative `f`
 supported on `[-1/4,1/4]`. Every admissible `f` certifies `C1 ≤ R(f)`; **lower is better**. Provable range
 `C1 ∈ [1.28, 1.5028…]`.
+
+The task at this rung: starting from a coarse warm-start profile, refine the discretized construction at high
+resolution to push `R` further down.
 
 ## Construction class and score
 
@@ -16,21 +19,13 @@ peak `max_k b_k`; score
 R(a) = 2N · max_k (a*a)_k / ( Σ_n a_n )^2 .
 ```
 
-## This rung's obstruction
+The objective is the maximum over all autoconvolution nodes. The gradient of a self-convolution node with respect
+to a height is a shifted copy of the heights, `∂(a*a)_k/∂a_j = 2 a_{k−j}`.
 
-A coarse anneal (previous rung) reaches `1.5371` on `N=50` and then stalls — both from resolution and from a
-deeper issue: when the peak is pushed down it flattens a whole *plateau* of near-equal peak nodes, and a softmax
-gradient (or single-argmax subgradient) can only press down one node at a time, so it plateaus near `1.52`. The
-true objective is the *maximum over the whole near-tight set* — a **minimax**.
+## Warm start
 
-## Method
-
-Lift to `N=600` and solve the minimax by **Sequential Linear Programming**: epigraph variable `z` for the peak,
-minimize `z` s.t. every node `(a*a)_k ≤ z` and mass fixed; linearize the quadratic nodes around the current `a`
-(`∂(a*a)_k/∂a_j = 2 a_{k−j}`), solve the LP for the best peak-lowering step inside a small trust region, accept only
-if the true `R` drops, iterate. Focus the LP on the top-K near-tight nodes (cheaper, faithful under a small trust),
-with periodic full passes. This is the TTT-Discover / AutoEvolver "LP on the tight constraints" recipe. A
-`β`-annealed Adam pass on a softmax-max surrogate provides the warm start.
+A `β`-annealed Adam pass on a softmax-max surrogate of the objective brings a flat initialization down to about
+`1.52` on a moderate grid, and provides the starting profile for this rung.
 
 ## Fixed yardsticks
 

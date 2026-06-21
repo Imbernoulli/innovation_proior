@@ -4,28 +4,26 @@
 
 Given only a small, randomly chosen subset of the entries of an unknown matrix `W* in R^{d x d'}`,
 recover the missing entries. Fitting the observed entries is underdetermined: the constraints define a
-large affine set of interpolating matrices, and most interpolants need not match the unseen entries.
-The useful prior is that `W*` is low-rank, but the desired mechanism is not an explicit rank cap or an
-added penalty. The question is how to parameterize the completion so that ordinary gradient-based
-optimization, started near the origin and run to small training error, implicitly selects a low-rank
-interpolant.
+large affine set of interpolating matrices. The useful prior is that `W*` is low-rank. The question is
+how to parameterize the completion so that ordinary gradient-based optimization, started near the origin
+and run to small training error, selects a low-rank interpolant without an explicit rank cap or an added
+penalty.
 
-This is a deliberately clean test bed for the broader implicit-regularization problem in deep learning.
-Each matrix entry can be viewed as a regression example; observed entries are training data; recovery
-quality measures generalization to entries not used for fitting. The empty slot is the parameterization
-and initialization of the reconstruction matrix.
+This is a clean test bed for the broader implicit-regularization setting in deep learning. Each matrix
+entry can be viewed as a regression example; observed entries are training data; recovery quality
+measures generalization to entries not used for fitting. The open part is the parameterization and
+initialization of the reconstruction matrix.
 
 ## Background
 
 The standard convex surrogate for low rank is the nuclear norm
 `||W||_* = sum_r sigma_r(W)`, the sum of singular values. Under incoherence and enough observations,
-minimum-nuclear-norm completion can recover a low-rank matrix exactly. This makes nuclear norm the
-natural reference point: it is tractable, convex, and tightly connected to rank, but it is still only a
-surrogate.
+minimum-nuclear-norm completion can recover a low-rank matrix exactly. It is tractable, convex, and
+tightly connected to rank, the natural reference point for the task.
 
 The non-convex neural version begins with a full-dimensional factorization `W = W_2 W_1` and squared
 loss on the observed entries. If the hidden dimension is capped, rank is constrained explicitly; the
-interesting case leaves the hidden dimension full and relies on optimization. Prior work observed that
+case of interest leaves the hidden dimension full and relies on optimization. Prior work observed that
 small-step gradient descent from near-zero initialization tends to produce low-rank completions even
 without a rank cap. Gunasekar et al. formalized the leading conjecture: in the small-initialization,
 small-step limit, full-dimensional depth-2 factorization behaves like minimum nuclear norm; in a
@@ -39,26 +37,22 @@ A separate ingredient is the end-to-end dynamics of linear networks of arbitrary
 dot W = - sum_{j=1}^N [W W^T]^((j-1)/N) grad ell(W) [W^T W]^((N-j)/N).
 ```
 
-This formula is a pre-existing tool, not yet a completion algorithm. It says that factorization changes
-the product-space dynamics by preconditioning the gradient in a way that depends on the current singular
-spectrum of `W`. Balancedness holds exactly for identity-style initialization and is a good approximation
-for small random initialization.
+This formula describes how factorization changes the product-space dynamics: it preconditions the
+gradient in a way that depends on the current singular spectrum of `W`. Balancedness holds exactly for
+identity-style initialization and is a good approximation for small random initialization.
 
 ## Baselines
 
 **Minimum nuclear norm.** Solve `min ||W||_*` subject to matching the observed entries, or a softened
 version of the same objective. This is convex and has strong recovery guarantees in the well-sampled
-regime. Its limitation is that, when observations are too scarce, the nuclear-norm interpolant can differ
-from the true low-rank completion.
+regime.
 
 **Full-dimensional depth-2 factorization.** Optimize `W = W_2 W_1` on observed-entry squared loss, using
-small initialization and small steps. This is the shallow neural-network baseline. It is empirically
-low-rank-biased and theoretically tied to nuclear norm in restricted settings, but the mechanism remains
-ambiguous outside those settings.
+small initialization and small steps. This is the shallow neural-network baseline; it is empirically
+low-rank-biased and theoretically tied to nuclear norm in restricted settings.
 
 **Direct optimization over entries.** Treat `W` itself as the parameter and run gradient descent on the
-observed-entry squared loss. In an underdetermined problem this has no structural preference for a
-low-rank interpolant; it is the no-factorization control.
+observed-entry squared loss. This is the no-factorization control.
 
 ## Evaluation settings
 

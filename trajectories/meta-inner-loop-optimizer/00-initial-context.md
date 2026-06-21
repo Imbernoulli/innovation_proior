@@ -4,11 +4,11 @@ Gradient-based meta-learning learns an initialization that adapts to a new task 
 
 ## Prior art / Background / Baselines
 
-Existing few-shot learners leave different gaps:
+Three families of few-shot learners are in active use:
 
-- **Pretrain-and-fine-tune.** Pool data across tasks, train one network, and at test time take a few gradient steps on the new task's support set. Gap: the initialization minimizes average pooled loss, which for structured task families lands on a compromise that adaptation must escape; it is not built as a launch point for fast adaptation.
-- **Metric learners (Matching Networks, Prototypical Networks).** Learn an embedding and classify a query by soft nearest-neighbor to the support set. Gap: the "embed-and-compare" construction is tied to classification; it produces no adapted parametric network for regression, control, or other task forms.
-- **Learned optimizers / Meta-Learner LSTM.** Replace gradient descent with a recurrent network that reads each gradient and emits the parameter update, meta-learning initialization, direction, and step size jointly. Gap: backpropagating through the unrolled recurrent inner loop is memory-hungry and unstable, so the approach has not scaled to standard convolutional few-shot learners.
+- **Pretrain-and-fine-tune.** Pool data across tasks, train one network, and at test time take a few gradient steps on the new task's support set.
+- **Metric learners (Matching Networks, Prototypical Networks).** Learn an embedding and classify a query by soft nearest-neighbor to the support set.
+- **Learned optimizers / Meta-Learner LSTM.** Replace gradient descent with a recurrent network that reads each gradient and emits the parameter update, meta-learning initialization, direction, and step size jointly.
 
 ## Fixed substrate / Code framework
 

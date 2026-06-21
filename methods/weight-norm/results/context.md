@@ -6,34 +6,27 @@ Deep neural networks are trained, overwhelmingly, by first-order stochastic grad
 methods. The practical success of those methods is highly sensitive to the *curvature* of
 the loss surface: when the Hessian at a solution is ill-conditioned (a large ratio between
 its largest and smallest eigenvalues), gradient descent zig-zags across the steep
-directions and crawls along the flat ones, and progress per step is poor. A crucial and
-under-exploited fact is that this curvature is **not invariant to how the model is
-parameterized**. The very same input-output function can be written with different internal
-parameters, and some of those parameterizations give a far better-conditioned optimization
-problem than others. Two parameterizations that compute identical functions can therefore
-differ enormously in how fast SGD converges on them.
+directions and crawls along the flat ones, and progress per step is poor. A crucial fact is
+that this curvature is **not invariant to how the model is parameterized**. The very same
+input-output function can be written with different internal parameters, and some of those
+parameterizations give a better-conditioned optimization problem than others. Two
+parameterizations that compute identical functions can therefore differ in how fast SGD
+converges on them.
 
-The precise problem: take the elementary building block that almost every architecture is
+The question: take the elementary building block that almost every architecture is
 made of — a neuron that computes a weighted sum of its inputs plus a bias, followed by a
 pointwise nonlinearity, y = φ(w·x + b) — and find a *reparameterization* of its weights
 that improves the conditioning of the gradient and so speeds up first-order optimization.
-Because this block is shared across feed-forward nets, convolutional nets, recurrent nets,
-generative models and value/policy networks, a change at this level would help a very wide
-range of models at once. The solution must be cheap (little extra computation or memory),
-must not introduce dependencies between the examples in a minibatch, and must not inject
-stochastic noise into the gradient, so that it remains usable in recurrent models and in
-noise-sensitive settings such as reinforcement learning and generative modelling.
 
 ## Background
 
 **Curvature, conditioning, and reparameterization.** First-order methods make fast progress
-only when the loss is well-conditioned; pathological curvature stalls them
+only when the loss is well-conditioned
 (Martens 2010; Sutskever et al. 2013 on the importance of initialization and momentum).
-Crucially, the amount of curvature seen by the optimizer depends on the coordinates in
-which the parameters are expressed (Amari 1997): there are many equivalent ways to
-parameterize the same model, some far easier to optimize than others. This makes "find a
-better parameterization" a legitimate and powerful lever, distinct from changing the
-optimizer.
+The amount of curvature seen by the optimizer depends on the coordinates in which the
+parameters are expressed (Amari 1997): there are many equivalent ways to parameterize the
+same model, some far easier to optimize than others. This makes "find a better
+parameterization" a legitimate and powerful lever, distinct from changing the optimizer.
 
 **The natural gradient and its approximations.** The ideal preconditioner is the inverse
 Fisher information matrix: left-multiplying the gradient by it yields the *natural
@@ -58,10 +51,8 @@ almost no cost.
 **Initialization controls early-training feature scales.** Analytic initialization schemes
 (Glorot & Bengio 2010; He et al. 2015) set initial weight scales so that activations and
 gradients are well-scaled at the start, derived under assumptions on the feature
-distributions. Those assumptions hold at initialization but drift as training moves the
-weights, so initialization alone cannot keep activations well-behaved throughout training.
-A complementary idea is *data-dependent* initialization: run one minibatch through the
-network and set the per-layer scales and offsets from the measured pre-activation
+distributions. A complementary idea is *data-dependent* initialization: run one minibatch
+through the network and set the per-layer scales and offsets from the measured pre-activation
 statistics, so that every layer starts with unit-variance, zero-mean pre-activations
 (proposed concurrently by Mishkin & Matas 2015 (LSUV) and Krähenbühl et al. 2015).
 
@@ -76,35 +67,20 @@ where μ[t] and σ[t] are the mean and standard deviation of t over the examples
 minibatch; a learnable scale and shift are then reapplied. This reduces the shift in the
 distribution of each neuron's inputs during training and is argued to bring the Fisher
 matrix closer to the identity, which is why it accelerates training and tolerates larger
-learning rates. Its limitations, and the gap it leaves open: (1) it makes the output for
-one example depend on the other examples in the minibatch — the examples are coupled;
-(2) μ[t] and σ[t] are stochastic estimates, so the layer injects noise into the gradients,
-and that noise has high variance when the minibatch is small; (3) train and test compute
-different functions — at test time, when there is no representative minibatch, frozen
-running averages are substituted for μ[t], σ[t]; (4) it is awkward in recurrent networks,
-where the same weights are reused at every timestep and normalizing the recurrent cell
-states diminishes their ability to carry information across time; and (5) it carries real
-overhead in time and memory. These together make it ill-suited to recurrent models and to
-noise-sensitive applications such as deep reinforcement learning and generative models.
+learning rates.
 
 **Approximate-natural-gradient preconditioners (KFAC, FANG, PRONG).** Core idea: form a
 tractable approximation to the (inverse) Fisher and use it to precondition the gradient,
-approximating the natural gradient. Gap: they require estimating and inverting curvature,
-which adds substantial computation, memory, and implementation complexity, and ties the
-method to a particular optimizer rather than improving the model itself.
+approximating the natural gradient.
 
 **Output-reparameterization (Raiko et al. 2012).** Core idea: transform neuron outputs to
-zero average value and zero average slope, approximately diagonalizing the Fisher. Gap: it
-operates on the outputs and centers around average behaviour, working in the space of
-activations rather than touching the weight coordinates in which the steps are actually
-taken.
+zero average value and zero average slope, approximately diagonalizing the Fisher. This
+operates on the activations rather than on the weight coordinates in which the optimizer
+takes steps.
 
 **Norm-constrained weights (max-norm; Srebro & Shraibman 2005).** Core idea: keep the norm
-of each weight vector controlled. Gap: the optimization is still carried out in the
-original weight coordinates w, with the norm constraint merely *applied after* each SGD
-step (a projection). It never changes what the optimizer sees — the gradient is still the
-plain gradient in w — so the geometry the optimizer experiences is left untouched, and the
-conditioning is no better than before.
+of each weight vector controlled. The optimization is carried out in the original weight
+coordinates w, with the norm constraint applied after each SGD step as a projection.
 
 ## Evaluation settings
 

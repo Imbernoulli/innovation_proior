@@ -11,19 +11,9 @@ actions that drive an external system: a web browser, a robot's skill library, a
 game, a shopping site. These have been pursued as separate research topics, with separate
 methods and benchmarks.
 
-The problem is that each, used alone, has a structural blind spot. A model that only reasons has
-no way to consult the world: it runs entirely on what it absorbed during pretraining, so on any
-question whose answer it does not already hold — a multi-hop fact, a freshly changed number, a
-claim it must check — it can only guess, and a guess made early in a chain is carried,
-unchallenged, all the way to the end. A model that only acts can touch the world but is given no
-place to *think* between actions: on a long-horizon task it has to map a long, messy history of
-observations directly onto the next action, with no scratchpad in which to decompose the goal,
-recall a relevant fact, note that a subgoal is done, or work out what an observation means for
-the plan. The goal is a single policy, runnable as few-shot prompting over a frozen model, that
-solves both knowledge-intensive reasoning tasks and long-horizon interactive tasks — and that
-does not inherit either blind spot. A solution would have to preserve useful intermediate
-state for planning and synthesis while still letting external observations change later
-decisions.
+The question taken up here is whether a single policy, runnable as few-shot prompting over a
+frozen model, can solve both knowledge-intensive reasoning tasks and long-horizon interactive
+tasks.
 
 ## Background
 
@@ -32,38 +22,27 @@ abilities. Two lines are directly load-bearing here.
 
 **Reasoning by prompting.** Large models can be coaxed into multi-step reasoning by showing
 them, in the prompt, a handful of worked examples whose answers include the intermediate steps,
-not just the final result. The observed phenomenon that motivates everything downstream: this
-reasoning is produced from the model's *internal* representations and is never checked against
-anything outside the model. So when the chain needs a fact the model does not reliably hold, it
-fabricates one (hallucination), and because each step conditions on the previous text, a single
-fabricated fact derails the rest of the chain (error propagation). These are diagnosed, recurring
-failure modes of reasoning-only prompting, not occasional accidents.
+not just the final result. This reasoning is produced from the model's *internal* representations
+and is read off the model's own continuation.
 
 **Acting by prompting in interactive environments.** A frozen model can also serve as a policy:
 convert the environment's observation into text, let the model generate the next domain action
 (or a plan of actions), execute it, repeat. This line had begun to add *feedback* — piping the
 environment's textual state back into the prompt so the model can adjust — and to *ground* the
-model's outputs against the environment so it only proposes feasible actions. The observed
-limitation that sets up the problem: in these systems the model's between-action text, when there
-is any, stays close to the environment — what just happened, what remains — rather than ranging
-over the abstract structure of the task. On tasks that need goal decomposition, commonsense about
-where to look, or synthesis of many observations into one answer, an act-only policy loses the
-thread: it cannot decompose the goal into subgoals, it forgets which subgoal it is on, it repeats
-actions, and even with all the right observations in front of it, it cannot put them together into
-the final answer.
+model's outputs against the environment so it only proposes feasible actions.
 
 Two background frames make the setting precise. First, the **agent-environment loop**: at step
 `t` the agent receives an observation `o_t` from an observation space `O`, and takes an action
 `a_t` from an action space `A` according to a policy `pi(a_t | c_t)`, where the context
 `c_t = (o_1, a_1, ..., o_{t-1}, a_{t-1}, o_t)` is the full interaction history so far. Solving a
-task is choosing actions so the trajectory reaches a goal. The hard part is that the mapping from
-context to the right action, `c_t -> a_t`, can be highly implicit and computationally heavy —
-deciding the final action of a multi-hop question requires reasoning over the entire
-question-and-evidence trajectory at once. Second, the **few-shot in-context learning** frame: a
-frozen pretrained model conditioned on a few demonstrations in its prompt will imitate their
-form on a new instance, with no gradient updates. This is what makes "just write the right kind
-of demonstration" a viable way to install a new behavior, and what makes annotation cost — rather
-than training cost — the binding constraint.
+task is choosing actions so the trajectory reaches a goal. The mapping from context to action,
+`c_t -> a_t`, can be highly implicit and computationally heavy — deciding the final action of a
+multi-hop question requires reasoning over the entire question-and-evidence trajectory at once.
+Second, the **few-shot in-context learning** frame: a frozen pretrained model conditioned on a
+few demonstrations in its prompt will imitate their form on a new instance, with no gradient
+updates. This is what makes "just write the right kind of demonstration" a viable way to install
+a new behavior, and what makes annotation cost — rather than training cost — the binding
+constraint.
 
 ## Baselines
 
@@ -73,40 +52,26 @@ The prior methods a new approach would be measured against and would respond to.
 series of intermediate reasoning steps before the final answer; e.g. for an arithmetic word
 problem the demonstration walks through the subtotals and then states the result. On sufficiently
 large models this elicits a "thinking procedure" over arithmetic, commonsense, and symbolic
-tasks. **Gap:** the chain is generated and consumed entirely inside the model; it is never
-grounded against an external source, so it cannot obtain a fact it lacks or correct one it gets
-wrong, and an early mistake propagates through the rest of the chain — manifesting as
-hallucinated facts and false-but-confident answers.
+tasks. The chain is generated and consumed entirely inside the model.
 
 **Self-consistency (Wang et al. 2022).** Keep chain-of-thought exemplars but replace greedy
 decoding of a single chain with a sample-and-marginalize procedure: sample many diverse chains
 under stochastic decoding, let each produce its own final answer, and return the majority
 answer. This consistently improves chain-of-thought by exploiting that a correct answer is
-often reachable by several reasoning paths. **Gap:** it is still purely internal — sampling more chains
-adds reasoning diversity but no new external information; when the model simply does not hold (or
-mis-holds) the needed fact, the sampled chains can agree on the same wrong answer, so voting
-cannot rescue it.
+often reachable by several reasoning paths.
 
 **Zero-shot reasoning prompting (Kojima et al. 2022).** Appending a trigger phrase such as
-"Let's think step by step" elicits a reasoning chain with no exemplars at all. Same structural
-**gap** as chain-of-thought: ungrounded internal reasoning.
+"Let's think step by step" elicits a reasoning chain with no exemplars at all.
 
 **Acting-only / action-generation policies (Nakano et al. 2021; Ahn et al. 2022; Huang et al.
 2022).** Use the model as a policy that emits domain actions in an interactive environment.
-WebGPT (Nakano et al. 2021) has a model operate a web browser to answer long-form questions, but
-trains the policy with imitation and reinforcement learning from costly human feedback and does
-not model an explicit thinking step. SayCan (Ahn et al. 2022) lets the model score how much each
-candidate skill advances the instruction and multiplies that by a learned value/affordance
-function `p(skill succeeds | state)`, grounding the model's choice in what the robot can actually
-do from the current state — but the model only proposes and scores skills; it does not reason
-about the goal in language or keep a working memory. Inner Monologue (Huang et al. 2022) is the
-closest: it closes the loop by feeding textual environment feedback — success detection, scene
-descriptions, human replies — back into the prompt so the model can replan. **Gap:** in all of
-these the model's between-action language, where present, is tied to the environment's state and
-to what remains to be done; it is state feedback rather than free-form internal reasoning that
-decomposes goals, injects commonsense, handles exceptions, or synthesizes observations into an
-answer. Abstract decomposition and final synthesis remain mostly implicit in the next-action
-decision.
+WebGPT (Nakano et al. 2021) has a model operate a web browser to answer long-form questions,
+training the policy with imitation and reinforcement learning from human feedback. SayCan
+(Ahn et al. 2022) lets the model score how much each candidate skill advances the instruction
+and multiplies that by a learned value/affordance function `p(skill succeeds | state)`, grounding
+the model's choice in what the robot can actually do from the current state. Inner Monologue
+(Huang et al. 2022) closes the loop by feeding textual environment feedback — success detection,
+scene descriptions, human replies — back into the prompt so the model can replan.
 
 ## Evaluation settings
 

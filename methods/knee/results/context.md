@@ -10,8 +10,7 @@ narrow ones. Second, the prevailing schedules are chosen for *optimization speed
 fast as the loss will allow — without any explicit mechanism for steering SGD toward the wide minima that
 generalize. The question this work asks: if wide minima generalize better, what does that imply the
 learning-rate schedule should *do*, and is the standard practice of decaying early leaving generalization
-on the table? Concretely, can a schedule derived from the geometry beat a well-tuned cosine or linear
-decay at the same budget, and reach the original accuracy in *fewer* epochs?
+on the table?
 
 ## Background
 
@@ -39,16 +38,14 @@ device. This reframes "decay the rate" as "cool the search" — and raises the q
 milestones; cosine annealing (Loshchilov & Hutter 2017) decays smoothly along a half-cosine from `base_lr`
 to ~0 over the whole budget; linear decay drops the rate linearly to 0. All of these begin lowering the
 rate essentially from the start (cosine and linear immediately; step decay after the first plateau). Under
-the temperature view, they start *cooling* the search early — before SGD has had much time at high
-temperature to find a wide basin. Warmup (Goyal et al. 2017) prepends a short linear ramp to protect the
-high-curvature initial region, but the body still decays without a deliberate high-temperature *explore*
-phase.
+the temperature view, they start *cooling* the search early. Warmup (Goyal et al. 2017) prepends a short
+linear ramp to protect the high-curvature initial region, but the body still decays afterward.
 
 **Cyclical and warm-restart schedules.** Cyclical learning rates (Smith 2015) and cosine annealing with
 warm restarts (Loshchilov & Hutter 2017) periodically *raise* the rate, confirming that re-heating helps;
 the one-cycle policy (Smith & Topin 2019) uses a single rise-then-fall with a deep tail and argues the
 large rate is itself a regularizer. These establish that *high rate = good noise = wide minima*, but they
-shape the high-rate region as a ramp or a cycle, not as a sustained plateau chosen by budget.
+shape the high-rate region as a ramp or a cycle rather than a sustained plateau.
 
 ## Baselines
 
@@ -56,23 +53,14 @@ These are the schedules a geometry-derived schedule is measured against; all sha
 momentum substrate and differ only in `eta_t`.
 
 **Step / multi-step decay** (He et al. 2016; Zagoruyko & Komodakis 2016). Hold `eta` constant, multiply by
-a fixed factor at milestones (e.g. ×0.2 at 60/120/160 of 200). **Gap:** milestones and factor are
-hand-tuned and budget-glued; it cools in discrete shocks; and there is no principled high-temperature
-explore phase — the first plateau is high but its length is set by a milestone, not by the
-wide-minimum search.
+a fixed factor at milestones (e.g. ×0.2 at 60/120/160 of 200).
 
 **Cosine annealing** (Loshchilov & Hutter 2017). Smooth half-cosine from `base_lr` to 0 over the budget.
-**Gap:** begins decaying immediately; the rate is at its peak only at the single instant `epoch=0`, so the
-high-temperature search is vanishingly short — it spends most of the run cooling, finding a minimum quickly
-but not necessarily a *wide* one.
 
 **Linear decay** (the strongest simple budgeted baseline; Li et al. 2020 "budgeted training"). Decay `eta`
-linearly from `base_lr` to 0 over the budget. **Gap:** like cosine, it cools from the start; under the
-budgeted-training analysis it is the best of the simple monotone decays, which makes it the bar to beat,
-but it still allots no sustained explore phase.
+linearly from `base_lr` to 0 over the budget.
 
-**Warmup + decay** (Goyal et al. 2017). A short linear ramp then a monotone decay. **Gap:** the ramp only
-protects the init; the body still cools early, with no deliberate high-rate plateau.
+**Warmup + decay** (Goyal et al. 2017). A short linear ramp then a monotone decay.
 
 ## Evaluation settings
 
@@ -109,7 +97,7 @@ def get_lr(step, total_steps, base_lr, config):
       config      : architecture / dataset descriptors, if the schedule wants them
     """
     # TODO: the learning-rate schedule to design, derived from the geometry of the
-    #       minima SGD finds (wide minima generalize better -> when to explore vs exploit).
+    #       minima SGD finds.
     pass
 
 

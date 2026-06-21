@@ -5,17 +5,9 @@ that shares structure with the others (same robot, different target velocity; sa
 different goal) but differs in its reward function or dynamics, both unknown until the agent
 acts. We want an agent that, dropped into an unseen task, adapts in a handful of trajectories
 rather than learning from scratch. The agent only gets to *observe* the task through the
-transitions it collects: a stream of tuples `(s, a, r, s')`. The core open problem is how to use
+transitions it collects: a stream of tuples `(s, a, r, s')`. The core question is how to use
 a small, growing history of those observations to condition behavior on *this* task without
-assuming a fixed, hand-coded task identifier. Two demands make this hard at once. First,
-**meta-training sample efficiency**:
-learning this adaptation mechanism must not itself cost the tens of millions of environment
-steps that on-policy meta-RL burns, or the whole enterprise is impractical for real robots.
-Second, **adaptation under uncertainty**: when the agent first enters a new task it knows almost
-nothing, and especially under sparse rewards it must *explore* in a way that efficiently
-resolves which task it is in — which means the adaptation mechanism has to represent and act on
-its *uncertainty* about the task, not just emit a point guess. A solution has to deliver both:
-cheap meta-training and uncertainty-aware fast adaptation.
+assuming a fixed, hand-coded task identifier.
 
 ## Background
 
@@ -29,15 +21,12 @@ interactions. The field state on the relevant axes:
   RL, this says: since at test time the agent adapts from data it collects *on-policy*, it must
   be meta-trained on on-policy data too. This principle is the reason essentially all meta-RL of
   the period — RL² (Duan et al. 2016), MAML (Finn et al. 2017), ProMP (Rothfuss et al. 2018),
-  MAESN (Gupta et al. 2018) — is on-policy, and is therefore the diagnosed root cause of its
-  meta-training inefficiency.
+  MAESN (Gupta et al. 2018) — is on-policy.
 
-- **The off-policy efficiency gap, observed.** Off-policy actor-critic methods (DDPG, TD3, SAC)
+- **Off-policy actor-critic methods.** Off-policy actor-critic methods (DDPG, TD3, SAC)
   are empirically one to two orders of magnitude more sample-efficient than on-policy policy
   gradients on the same continuous-control benchmarks, because they reuse a replay buffer
-  instead of discarding each batch of experience after one gradient step. The data to make
-  meta-training cheap already exists in a buffer; the matching principle is what seemingly
-  forbids using it for adaptation.
+  instead of discarding each batch of experience after one gradient step.
 
 - **Adaptation as inference / a POMDP.** Adapting to an unknown task is formally RL in a
   partially observed MDP where the unobserved part of the state is the task identity (Kaelbling
@@ -76,12 +65,6 @@ interactions. The field state on the relevant axes:
   posterior over value functions maintained with bootstraps. The prerequisite is a representation
   of *uncertainty* to sample from.
 
-Empirically, the period's diagnostic findings frame the problem precisely: on-policy meta-RL is
-stable but staggeringly sample-hungry at meta-training; naive recurrent off-policy approaches
-(e.g. recurrent DDPG over trajectories) are observed to be hard to train and to underperform,
-which is attributed both to the train/test data-distribution mismatch above and to the
-difficulty of optimizing over whole trajectories rather than decorrelated transitions.
-
 ## Baselines
 
 The prior methods a new adaptation mechanism would be measured against and reacts to.
@@ -89,25 +72,15 @@ The prior methods a new adaptation mechanism would be measured against and react
 **RL² / recurrent meta-RL (Duan et al. 2016; Wang et al. 2016).** Run a recurrent network across
 the stream of transitions within and across episodes; its hidden state aggregates experience,
 and the policy is conditioned on that hidden state. Meta-training is on-policy policy-gradient.
-Core idea: let the RNN learn its own adaptation rule end-to-end. *Limitation:* on-policy by
-construction (the matching principle), so meta-training is extremely sample-inefficient; the
-RNN imposes an order-dependent summary over a sequence even though the underlying MDP is Markov,
-and recurrent optimization over long horizons is slow and unstable, capping how much context can
-be absorbed.
+Core idea: let the RNN learn its own adaptation rule end-to-end.
 
 **MAML (Finn et al. 2017).** Meta-learn an initialization such that one (or a few) policy-
 gradient steps on a new task's on-policy data yields a good task policy. Core idea: adaptation =
-gradient descent from a learned starting point. *Limitation:* on-policy policy gradients at both
-meta-train and adaptation, hence sample-hungry; adaptation is a deterministic gradient step that
-produces a point estimate of the policy and carries no representation of task uncertainty, so it
-has no principled exploration mechanism for sparse-reward adaptation.
+gradient descent from a learned starting point.
 
-**MAESN (Gupta et al. 2018).** Also introduces per-task latent variables and is probabilistic,
-but adapts the latent by gradient descent on on-policy data and explores by sampling the latent
+**MAESN (Gupta et al. 2018).** Introduces per-task latent variables and is probabilistic,
+and adapts the latent by gradient descent on on-policy data and explores by sampling the latent
 from its *prior*. Core idea: structured exploration through a learned latent noise distribution.
-*Limitation:* on-policy; exploration draws come from the prior and the latent is updated only by
-slow gradient steps, so within a test episode there is no fast online narrowing of the belief
-from collected evidence.
 
 **Soft actor-critic (Haarnoja et al. 2018).** The off-policy backbone of the period. Maximizes
 entropy-augmented return; learns a soft critic with a clipped double-Q target and a
@@ -116,16 +89,11 @@ reparameterized squashed-Gaussian actor:
 y = r + γ ( min_{j=1,2} Q̄_j(s', ã') − α log π(ã' | s') ),   ã' ~ π(· | s')
 L_critic = E[(Q(s,a) − y)²],   L_actor = E[ α log π(ã|s) − min_i Q_i(s, ã) ],  ã = tanh(μ+σ⊙ξ)
 ```
-Sample-efficient and stable, with a probabilistic policy. *Limitation:* single-task — there is
-no task variable, no notion of a task distribution, and no adaptation mechanism; it cannot, on
-its own, be told "you are now in a different task."
+Sample-efficient and stable, with a probabilistic policy.
 
 **Variational POMDP belief estimation (Igl et al. 2018).** Estimate a belief over hidden state
 in a general POMDP via amortized variational inference, conditioning the policy on the belief.
-Core idea: principled uncertainty over the unobserved state. *Limitation:* aimed at arbitrary
-POMDPs, so it does not exploit the special structure of the meta-RL setting (task fixed within an
-episode, repeated Markov observations of that fixed task), and it is not posed for off-policy
-sample reuse.
+Core idea: principled uncertainty over the unobserved state.
 
 ## Evaluation settings
 
@@ -139,9 +107,8 @@ The natural yardsticks already in use, all simulated in MuJoCo (Todorov et al. 2
 - **Locomotion varying the dynamics** — Walker-2D-Params (random system parameters), where tasks
   differ in transition dynamics rather than reward.
 - **Sparse-reward 2-D navigation** — a point robot must reach an unseen goal on a semicircle,
-  with reward given only inside a small radius around the goal (radii such as 0.2 and 0.8); the
-  natural stress test for uncertainty-aware exploration. Dense reward may be assumed at
-  meta-train time as a simplification.
+  with reward given only inside a small radius around the goal (radii such as 0.2 and 0.8). Dense
+  reward may be assumed at meta-train time as a simplification.
 - Protocol: a fixed set of training tasks and a disjoint set of held-out test tasks sampled from
   `p(T)`; horizon 200; adaptation performed at the trajectory level (collect a trajectory,
   update the task representation, repeat); the figure of merit is test-task return as a function

@@ -1,57 +1,39 @@
 ## Research question
 
 Model-free reinforcement learning can train agents for sophisticated behaviors with very few
-assumptions on the task, but it remains far harder to implement and tune than ordinary
-supervised learning. A supervised-learning practitioner writes a loss, calls a regression
-routine, and gets a stable, convergent fit. An RL practitioner instead juggles target
-networks, double critics, clipped surrogates, importance ratios, trust-region solvers, entropy
-schedules, and a long list of stabilization tricks, any one of which silently breaks training
-when mis-set. The precise goal is a reinforcement-learning algorithm whose training steps look
-as much as possible like ordinary supervised fitting, with stable likelihood-style and
-least-squares losses rather than delicate nested control machinery. It must satisfy several
-constraints at once: (1) use simple, convergent losses rather than adversarial or bootstrapped
-objectives that can diverge; (2) be able to *reuse off-policy data* — data
-collected by earlier versions of the policy held in a replay buffer, or even a completely
-static dataset gathered by some other policy — rather than discarding every batch after one
-update; (3) handle both continuous and discrete actions with no structural change; (4) avoid
-the instabilities that make value-bootstrapping methods fragile, especially the failure mode
-where a learned value is queried at actions never seen in the data. Each existing family below
-achieves some of these; none achieves all of them while staying as simple as a regression
-loop. Closing that gap is the problem.
+assumptions on the task. A supervised-learning practitioner writes a loss, calls a regression
+routine, and gets a fit; an RL practitioner instead works with target networks, double critics,
+clipped surrogates, importance ratios, trust-region solvers, and entropy schedules. The question
+here is whether a reinforcement-learning algorithm for continuous (and discrete) control can be
+built so that its training steps look as much as possible like ordinary supervised fitting —
+likelihood-style and least-squares losses — while reusing off-policy data: data collected by
+earlier versions of the policy held in a replay buffer, or a static dataset gathered by some
+other policy.
 
 ## Background
 
-By this time, deep RL for continuous control has two dominant camps, and the tension between
-them defines the design space.
+By this time, deep RL for continuous control has two dominant camps.
 
 **On-policy policy search.** Policy-gradient methods (Williams 1992; Sutton et al. 1999)
 parameterize a stochastic policy `pi_theta(a|s)` and ascend the expected discounted return
 `J(pi) = E_{tau~p_pi}[ sum_t gamma^t r_t ]` by differentiating it. They are conceptually
-direct and work on a wide range of tasks, but they are notoriously high-variance and unstable,
-and they are *on-policy* (or nearly so): the gradient is an expectation under the current
-policy's own trajectory distribution, so data collected by an older policy is formally invalid
-and is thrown away after a single update. This makes them sample-hungry — often impractical
-where each environment interaction is expensive, as in robotics.
+direct and work on a wide range of tasks. They are *on-policy* (or nearly so): the gradient is
+an expectation under the current policy's own trajectory distribution, so data collected by an
+older policy is formally invalid, and each batch is used for a single update.
 
 **Off-policy value-based methods.** Q-learning and its actor-critic descendants reuse a replay
-buffer by fitting an action-value function with Bellman backups. They are far more
-sample-efficient in principle, but they are observed to be brittle: training requires a battery
-of stabilizers — target networks, double-Q estimates, clipped double-Q, careful exploration
-noise — and even then can collapse. A specific, well-documented failure mode appears when the
-data is fully off-policy or static: the Bellman backup evaluates the critic at the *next*
-action chosen by the current policy, `Q(s', a')` with `a' ~ pi`, and when `a'` falls outside
-the action distribution present in the data, the critic's value there is an unconstrained
-extrapolation. The error accumulates through bootstrapping, and the policy learns to exploit
-these phantom high values. On static datasets it is regularly observed that plain behavioral
-cloning beats these value-based methods, precisely because cloning never queries
-out-of-distribution actions.
+buffer by fitting an action-value function with Bellman backups, using stabilizers such as
+target networks, double-Q estimates, clipped double-Q, and exploration noise. The Bellman backup
+evaluates the critic at the *next* action chosen by the current policy, `Q(s', a')` with
+`a' ~ pi`, so when `a'` falls outside the action distribution present in the data, the critic's
+value there is an extrapolation. On static datasets, a common comparison point is a plain
+behavioral-cloning policy, which is fit only to actions present in the data.
 
-**Importance sampling** is the textbook way to make a return estimate from one policy valid
-under another, by reweighting with the policy ratio. It is unbiased, but the ratio's variance
-explodes as the two policies separate, so it is a poor foundation for reusing data from many
-past policies.
+**Importance sampling** makes a return estimate from one policy valid under another by
+reweighting with the policy ratio. It is unbiased, and the ratio's variance grows as the two
+policies separate.
 
-Two background frames are load-bearing for what follows.
+Two background frames are relevant here.
 
 The first is the **performance-difference / expected-improvement identity** (Kakade & Langford
 2002). For any two policies, the difference in their returns is the advantage of one
@@ -65,10 +47,10 @@ J(pi) - J(mu) = E_{tau ~ p_pi}[ sum_t gamma^t A^mu(s_t, a_t) ]
 where `A^mu(s, a) = R^mu_{s,a} - V^mu(s)` is the advantage of taking action `a` and thereafter
 following the *sampling* policy `mu`, `R^mu_{s,a}` is the return so obtained, `V^mu` is `mu`'s
 value function, and `d_pi(s) = sum_t gamma^t p(s_t = s | pi)` is the unnormalized discounted
-state distribution. The catch is that the right-hand side averages over `d_pi`, the states of
-the *new* policy, which depends on the very `pi` being optimized. The standard remedy (used in
-the trust-region line below) is to form a surrogate that replaces `d_pi` by `d_mu`, the
-sampling policy's state distribution:
+state distribution. The right-hand side averages over `d_pi`, the states of the *new* policy,
+which depends on the `pi` being optimized. A standard construction (used in the trust-region
+line below) forms a surrogate that replaces `d_pi` by `d_mu`, the sampling policy's state
+distribution:
 
 ```
 hat_eta(pi) = E_{s ~ d_mu(s)} E_{a ~ pi(a|s)} [ A^mu(s, a) ].
@@ -90,8 +72,7 @@ objective term, divided by a normalizer.
 
 ## Baselines
 
-These are the prior methods a new algorithm in this space would be measured against and would
-react to.
+These are the prior methods a new algorithm in this space would be measured against.
 
 **Reward-weighted regression (RWR), Peters & Schaal (2007).** Casts policy search as
 expectation-maximization, so that the policy improvement step becomes *supervised regression*.
@@ -104,13 +85,8 @@ pi_{k+1} = argmax_pi  E_{s ~ d_{pi_k}(s)} E_{a ~ pi_k(a|s)} [ log pi(a|s) * exp(
 ```
 
 where `R_{s,a}` is the return and `beta > 0` a temperature, typically adapted across
-iterations. The appeal is exactly the appeal we want: each update is a stable, convergent
-weighted regression. **Gaps:** the weight is an exponential of the *raw return* with no
-baseline subtracted, so it is high-variance and sensitive to the absolute scale and offset of
-the reward; the sampling policy is the current policy `pi_k`, so it is on-policy and discards
-data after one update; and with neural-network function approximators RWR has been observed to
-perform poorly (Schulman et al. 2015; Duan et al. 2016), well below contemporary deep-RL
-methods.
+iterations. Each update is a weighted regression. The weight is an exponential of the *raw
+return*, and the sampling policy is the current policy `pi_k`.
 
 **Relative entropy policy search (REPS), Peters, Mülling & Altün (2010).** Maximizes expected
 reward subject to a bound on the relative entropy ("information loss") between the new
@@ -128,37 +104,31 @@ pi(a|s) = q(s,a) * exp( (1/eta) * delta(s,a) ) / sum_b q(s,b) * exp( (1/eta) * d
 ```
 
 where `delta(s,a) = R^a_s + sum_{s'} P^a_{ss'} V(s') - V(s)` is the Bellman error and `eta` is
-the Lagrange multiplier from the relative-entropy constraint. **Gaps:** turning this into an
-algorithm requires minimizing a convex but intricate *dual function* `g(theta, eta)` over both
-the multiplier `eta` and the value-function parameters `theta` (e.g. with BFGS); the value
-function is not a simple regression fit but is tied to a feature-matching constraint and a
-linear form `V = phi^T theta`; the weight uses a one-step Bellman error rather than a
-Monte-Carlo advantage; and the policy-iteration procedure proposed for it models the sampling
-distribution as only the *latest* policy, so it does not pool data across many past policies in
-a replay buffer.
+the Lagrange multiplier from the relative-entropy constraint. As an algorithm it minimizes a
+convex *dual function* `g(theta, eta)` over both the multiplier `eta` and the value-function
+parameters `theta` (e.g. with BFGS); the value function is tied to a feature-matching constraint
+and a linear form `V = phi^T theta`; the weight uses a one-step Bellman error; and the
+policy-iteration procedure models the sampling distribution as the *latest* policy.
 
 **Maximum a posteriori policy optimization (MPO), Abdolmaleki et al. (2018).** A deep variant
 of the REPS/EM line. It first fits an action-value `Q` of the current policy by bootstrapping,
 using Retrace(λ) for off-policy correction, then performs a KL-constrained policy improvement
 with respect to `Q`; the non-parametric E-step again produces a Boltzmann form `q(a|s)
-proportional to pi_old(a|s) exp(Q/temperature)`. It is strong, but **the gap is its
-complexity**: a bootstrapped Q-critic with an off-policy return correction, plus a dual
-optimization for the temperature, plus the policy projection — many moving parts, each with its
-own stabilization needs, far from a plain regression loop.
+proportional to pi_old(a|s) exp(Q/temperature)`. It combines a bootstrapped Q-critic with an
+off-policy return correction, a dual optimization for the temperature, and the policy
+projection.
 
 **Trust-region / proximal on-policy methods (Schulman et al. 2015; Schulman et al. 2017).**
 Maximize the advantage surrogate `hat_eta(pi)` above under a KL trust region between the new
 and old policy, either as a constrained natural-gradient step or, more simply, by clipping the
 importance ratio so the surrogate is not improved beyond a fixed neighborhood. They are stable
-and widely used. **Gap:** they are fundamentally on-policy — the surrogate and the ratio are
-defined against the policy that *collected the current batch* — so they cannot pool a buffer of
-data from many past policies, and remain comparatively sample-inefficient.
+and widely used; the surrogate and the ratio are defined against the policy that *collected the
+current batch*.
 
 **Off-policy actor-critics (DDPG, TD3, SAC).** Reuse a replay buffer through Bellman backups
-and a critic-to-actor gradient; sample-efficient and strong on standard benchmarks. **Gaps:**
-they inherit the value-bootstrapping fragility above (target networks, double critics,
-out-of-distribution action extrapolation on static data), and the critic-to-actor gradient
-path makes them awkward to apply to discrete action spaces.
+and a critic-to-actor gradient; sample-efficient and strong on standard benchmarks. They use
+target networks and double critics, and the action is produced through the critic-to-actor
+gradient path.
 
 ## Evaluation settings
 
@@ -169,16 +139,15 @@ The natural yardsticks already in use for continuous control:
   Metric: mean episodic return over evaluation episodes within a fixed interaction budget,
   averaged across several random seeds; a learning curve of return vs. environment steps.
 - **A discrete-action control task** — LunarLander — included to check that the same algorithm
-  works unchanged on discrete actions, where critic-to-actor methods are awkward.
+  works unchanged on discrete actions.
 - **High-dimensional motion-imitation tasks** with complex simulated characters (a 34-DoF
   humanoid, an 82-DoF dog) imitating motion-capture clips, following an established imitation
-  framework; the natural stress test for scaling to many degrees of freedom. Metric: normalized
+  framework; a stress test for scaling to many degrees of freedom. Metric: normalized
   return per episode.
 - **Fully off-policy / static-dataset tasks** — learning the best policy from a fixed dataset
   of transitions (states, actions, rewards) collected by a separate demonstration policy, with
-  no further environment interaction; the setting that most sharply separates methods that can
-  safely reuse off-policy data from those that cannot. Standard comparison points are the
-  demonstration policy's own return and a behavioral-cloning policy.
+  no further environment interaction. Standard comparison points are the demonstration policy's
+  own return and a behavioral-cloning policy.
 - Protocol: matched interaction budgets and matched network architectures across algorithms;
   comparisons read off learning curves and final-policy returns averaged over seeds.
 
@@ -190,9 +159,9 @@ two-hidden-layer MLP and whose log-standard-deviation is a learned vector; a sep
 value/critic MLP of the same shape; a rollout loop that collects a batch of transitions; an
 estimator that turns rewards and value estimates into per-step advantages and returns; and a
 minibatch optimization loop that normalizes the advantages per minibatch before applying a
-loss. What is *not* settled is the loss itself: given observed actions, old log-probabilities,
-advantages, returns, and old values, how should this one slot update the policy and the value
-network? That is the empty part.
+loss. The open slot is the loss itself: given observed actions, old log-probabilities,
+advantages, returns, and old values, how this one slot updates the policy and the value
+network.
 
 ```python
 import torch

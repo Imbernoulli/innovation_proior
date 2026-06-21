@@ -8,14 +8,9 @@ of the minibatch; those gradients have to be aggregated before the optimizer can
 then the aggregate has to be sent back. For a `d`-parameter model with `M` workers, the usual
 32-bit upload plus 32-bit return path moves `64 M d` bits per iteration.
 For modern nets with `d > 10^8`, the gradient exchange — not the arithmetic — is the wall-clock
-bottleneck, and it gets worse as you add workers. The precise goal is a scheme that (1) drastically
-cuts the number of bits communicated per coordinate, ideally to **one bit in both directions**;
-(2) keeps the convergence rate competitive with full-precision stochastic gradient descent on the
-non-convex objectives that deep learning actually presents; and (3) comes with a convergence
-guarantee under transparent assumptions, rather than only working empirically. Each existing
-approach achieves a subset — aggressive compression but no theory, or theory but with a variance
-blowup that makes the guarantee vacuous, or robustness but only in full batch. Closing that gap —
-extreme compression *with* a non-vacuous non-convex rate — is the problem.
+bottleneck, and it gets worse as you add workers. The question is how to reduce the number of bits
+communicated per coordinate while preserving useful convergence behavior on the non-convex
+objectives that deep learning presents.
 
 ## Background
 
@@ -28,16 +23,13 @@ problem.
 wildly different from another's and can drift during training, which makes a single global learning
 rate structurally hard to pick. A classical response is to throw the magnitude away and act only on
 the *sign* of each coordinate's gradient, adapting a separate step size per weight. This is robust
-and fast in full-batch training. The catch is the interaction with minibatching: SGD's whole logic
-is that, with a small enough learning rate, steps *average* the gradient over successive minibatches.
-A purely sign-based, magnitude-blind rule breaks that average. The canonical illustration (Hinton's
+and fast in full-batch training. The canonical illustration (Hinton's
 lecture notes on neural-net optimization): a weight that receives a gradient of `+0.1` on nine
 minibatches and `-0.9` on the tenth has average gradient zero and should stay put — but a sign rule
 increments it nine times and decrements it once by a comparable amount, so the weight drifts a long
 way. Curing this by keeping a moving average of the squared gradient and dividing by its root
 (`MeanSquare(w,t) = 0.9 MeanSquare(w,t-1) + 0.1 (dE/dw)^2`, step `~ g / sqrt(MeanSquare)`) gave
-the per-coordinate adaptive optimizers — which transmit full-precision rescaled gradients, so they
-do nothing for communication.
+the per-coordinate adaptive optimizers — which transmit full-precision rescaled gradients.
 
 **The geometry of high-dimensional vectors.** A way to summarize how "spread out" a vector
 `v ∈ R^d` is across its coordinates is the ratio `phi(v) := ||v||_1^2 / (d ||v||_2^2)`. It equals
@@ -70,49 +62,31 @@ theory settles for convergence to a stationary point — bounding the gradient n
 worker sends its 32-bit gradient up, the server averages and sends the 32-bit average down. Under
 `L`-smoothness and bounded total variance `sigma^2 := ||sigma||_2^2`, with step `delta = 1/L` and a
 growing batch (or `delta = 1/(L sqrt K)`, batch 1), the non-convex rate is
-`E[(1/K) sum_k ||g_k||_2^2] ≤ (1/sqrt N)[2L(f_0 - f*) + sigma^2]` in `N` gradient calls. **Gap:**
-it is the communication baseline to beat — `64 M d` bits per iteration — and offers nothing toward
-compression.
+`E[(1/K) sum_k ||g_k||_2^2] ≤ (1/sqrt N)[2L(f_0 - f*) + sigma^2]` in `N` gradient calls.
 
 **Resilient backpropagation, Rprop (Riedmiller & Braun, 1993).** Per-weight adaptive step that
 ignores gradient magnitude and reads only the sign: multiply a weight's step by `~1.2` if its last
 two gradient signs agree, by `~0.5` if they flip. Robust and fast in full batch, and the ancestor of
-RMSprop and Adam. **Gap:** it breaks the minibatch-averaging principle (the nine-`+0.1`/one-`-0.9`
-example), and it was studied for robustness, never for compression; there is no convergence theory
-for the stochastic, minibatch regime.
+RMSprop and Adam.
 
 **RMSprop / Adam (Tieleman & Hinton, 2012; Kingma & Ba, 2015).** Restore minibatch averaging by
 dividing the gradient by an exponential moving average of its root-mean-square; Adam adds a momentum
 average in the numerator, so its step is roughly `<g>_{beta1} / sqrt(<g^2>_{beta2})` — mean over RMS.
-**Gap:** the transmitted quantity is a full-precision rescaled gradient, so these do nothing for
-communication; and their convergence theory was shaky (Reddi et al., 2018, exhibit a convex problem
-where the original Adam proof fails).
 
 **1-bit SGD (Seide et al., 2014).** Quantize each gradient coordinate to one bit (a thresholded
 sign), but *carry the quantization error forward* into the next minibatch (error feedback) so the
 discarded magnitude is not lost. Empirically near-lossless on speech DNNs and dramatically cheaper
-to communicate. **Gap:** a heuristic — no convergence guarantee; the error-feedback accumulator is a
-corrective bolt-on whose effect on the rate was not characterized.
+to communicate.
 
 **QSGD (Alistarh et al., 2017).** Stochastically round each coordinate to one of a few discrete
 levels so the compressed gradient is an *unbiased* estimate of the true gradient; this lets standard
-SGD theory carry over directly. **Gap:** unbiasedness is bought with variance — at 1-bit precision
-the variance inflates by a factor `~sqrt(d)`, and for `d > 10^8` the SGD-style bound it bootstraps
-becomes vacuous. The return path (server summing quantized updates) loses efficiency and picks up
-log factors in the bit count, `(2 + log(2M+1)) M d`.
+SGD theory carry over directly. At 1-bit precision the return path from the server picks up log
+factors in the bit count, `(2 + log(2M+1)) M d`.
 
-**TernGrad (Wen et al., 2017).** Unbiased ternary quantization to `{0, ±1}`. Same unbiased-but-
-high-variance bargain as QSGD, with the same log factor on the way back from the server.
+**TernGrad (Wen et al., 2017).** Unbiased ternary quantization to `{0, ±1}`.
 
 **Stochastic sign descent under an `l_inf` majorization (Carlson et al., 2016).** Studies a
-stochastic signed update but assumes smoothness in the `l_inf` geometry. **Gap:** the `l_inf`
-majorization is a strong and somewhat unnatural assumption; convergence under an `l_2`-type
-(coordinate-wise) majorization for stochastic signed updates was not established.
-
-The recurring pattern: aggressive compression schemes that work in practice carry no non-convex
-guarantee, while schemes with a guarantee buy it through an unbiasing randomization whose variance
-explosion makes the guarantee say nothing at deep-learning scale — and the return path from the
-server stubbornly stays multi-bit.
+stochastic signed update under `l_inf`-geometry smoothness assumptions.
 
 ## Evaluation settings
 

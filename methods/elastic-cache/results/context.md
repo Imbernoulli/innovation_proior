@@ -5,32 +5,28 @@ A masked diffusion language model generates by *denoising*: it starts from a seq
 remasking the rest, until everything is filled in. The predictor is a Transformer with
 **bidirectional (non-causal) attention** — at every step every position attends to every
 other position, including positions that are still masked. This is what gives these models
-their infilling ability, but it makes inference expensive: a standard decoder recomputes
-queries, keys, and values (QKV) for *all* tokens at *all* layers at *every* denoising step.
-For a few-hundred-token answer over hundreds of steps, that is a very large amount of repeated
-matrix work and memory traffic, and it is the dominant cost of deployment.
+their infilling ability. A standard decoder recomputes queries, keys, and values (QKV) for
+*all* tokens at *all* layers at *every* denoising step; for a few-hundred-token answer over
+hundreds of steps that is a large amount of repeated matrix work and memory traffic, and it
+is the dominant cost of deployment.
 
-The precise problem: cut the per-step QKV recomputation drastically while keeping final-task
-accuracy essentially unchanged. Concretely a solution must decide, at inference time and with no
-retraining, **which** token positions and **which** layers actually need their key/value state
-recomputed at a given step, and **when** the cached state has gone stale enough to be worth
-recomputing — using only signals the model already produces during a forward pass, with overhead
-negligible next to the attention it is trying to avoid. The difficulty is that the property that
-makes caching trivial for ordinary autoregressive decoders does not hold here.
+The question: how to reuse key/value state across denoising steps in such a bidirectional
+decoder at inference time, with no retraining, while keeping final-task accuracy unchanged —
+using only signals the model already produces during a forward pass. The setting differs from
+ordinary autoregressive decoding, where the property that makes caching trivial does not hold.
 
 ## Background
 
-**Why causal KV caching is free, and why it breaks here.** In a causal (left-to-right)
-Transformer, the key and value of a position depend only on tokens to its left, which are already
-fixed once it is generated. So across decoding steps the cached keys/values of earlier positions
-are *exactly* invariant, `K^{t}_{[1:t-1]} = K^{t-1}_{[1:t-1]}`, and one simply caches them and
-reuses them forever (Pope et al. 2023). Under bidirectional attention this invariance is gone: a
-token's key/value is a function of the *whole* sequence, including positions that are still
-masked. When the model unmasks a new token, the context changes, and the keys/values of tokens
-committed earlier shift. Cached KV therefore becomes **stale**, and reusing it blindly corrupts
-the prediction. dKV-Cache (Ma et al. 2025) made this concrete by measuring that token
-representations evolve across denoising steps, with the largest jump in `K`/`V` happening *at*
-the step a token is decoded, after which it stabilizes.
+**Causal KV caching.** In a causal (left-to-right) Transformer, the key and value of a position
+depend only on tokens to its left, which are already fixed once it is generated. So across
+decoding steps the cached keys/values of earlier positions are *exactly* invariant,
+`K^{t}_{[1:t-1]} = K^{t-1}_{[1:t-1]}`, and one simply caches them and reuses them forever (Pope
+et al. 2023). Under bidirectional attention this invariance does not hold: a token's key/value
+is a function of the *whole* sequence, including positions that are still masked. When the model
+unmasks a new token, the context changes, and the keys/values of tokens committed earlier shift.
+dKV-Cache (Ma et al. 2025) measured that token representations evolve across denoising steps,
+with the largest jump in `K`/`V` happening *at* the step a token is decoded, after which it
+stabilizes.
 
 **Masked diffusion language models.** These are absorbing-state discrete diffusion models built
 on D3PM (Austin et al. 2021) and its continuous-time form (Campbell et al. 2022). The forward
@@ -44,9 +40,8 @@ variant decodes **semi-autoregressively** (left-to-right over blocks, diffusion 
 and uses *low-confidence remasking* — it keeps the high-confidence predictions and remasks the
 rest. The base predictor attends bidirectionally throughout.
 
-**Diagnostic observations about existing diffusion decoders.** Three measurable phenomena about
-how these models behave during denoising frame the design space (they are facts about the model's
-dynamics, independent of any caching scheme):
+**Measurable phenomena during denoising.** Several facts about the model's dynamics, independent
+of any caching scheme:
 
 - **Step-to-step KV change is small most of the time, and grows with depth.** Define the KV
   *drift* of a token as the step-to-step change `||K^{t}-K^{t-1}||_2 + ||V^{t}-V^{t-1}||_2`. For
@@ -62,10 +57,10 @@ dynamics, independent of any caching scheme):
   empirically its attention-weight rows stay highly similar between consecutive steps, and changes
   in attention weights track changes in KV state closely.
 
-**An analytic tool that will matter.** The softmax map `σ(z)_i = e^{z_i}/Σ_j e^{z_j}` is
-1-Lipschitz in the `ℓ2` norm: `||σ(z) - σ(z')||_2 ≤ ||z - z'||_2` (Gao & Pavel 2017, Prop. 2).
-This lets one bound how much attention *weights* can move in terms of how much the attention
-*logits* (hence the hidden states) move.
+**An analytic tool.** The softmax map `σ(z)_i = e^{z_i}/Σ_j e^{z_j}` is 1-Lipschitz in the `ℓ2`
+norm: `||σ(z) - σ(z')||_2 ≤ ||z - z'||_2` (Gao & Pavel 2017, Prop. 2). This bounds how much
+attention *weights* can move in terms of how much the attention *logits* (hence the hidden states)
+move.
 
 ## Baselines
 
@@ -79,34 +74,23 @@ adjacent steps is consistently close to 1, so reuse loses little. It is paired w
 softmax probability exceeds a threshold `ε`, falling back to the single most-confident token if
 none clears it. Their Theorem 1 supports this: if each of `n` candidate tokens has confidence
 `p_j > 1-ε` with `(n+1)ε ≤ 1`, the `argmax` of the product of marginals equals the `argmax` of the
-joint, so parallel factorized decoding agrees with greedy sequential decoding. **Gap (observed
-limitations):** the refresh is on a fixed per-block clock, decoupled from what the model is
-actually doing — it recomputes at block boundaries even when nothing has changed and holds stale
-KV through a block even when the model is making rapid revisions mid-block; it recomputes *all*
-layers uniformly, paying full price for shallow layers whose state has already settled; and the
-rigid block freezes distant masked tokens, including ones near a block boundary that still
-influence the current prediction, which hurts accuracy at small block sizes.
+joint, so parallel factorized decoding agrees with greedy sequential decoding. The refresh is on a
+fixed per-block clock — recompute at block boundaries — and recomputes all layers uniformly.
 
 **Delayed conditioned caching (dKV-Cache; Ma et al. 2025).** Exploits that a token's KV is most
 volatile at the moment it is decoded and stabilizes afterward: cache a decoded token's KV with a
 *one-step delay* and recompute KV for tokens that are still masked/active. Two variants —
 `dKV-Cache-Decode` refreshes the cache periodically (near-lossless, helps long sequences) and
 `dKV-Cache-Greedy` restricts caching to recently decoded tokens plus a fixed local window for a
-larger speedup at some accuracy cost. **Gap (observed limitations):** the refresh cadence is again
-a fixed interval / hand-set heuristic rather than a response to the model's current state, and the
-policy is applied uniformly across all layers — it does not exploit that shallow layers have
-already converged while deep layers have not.
+larger speedup at some accuracy cost. The refresh cadence is a fixed interval, applied uniformly
+across all layers.
 
 **Adaptive feature-similarity caching (dLLM-Cache; Liu et al. 2025).** Refreshes prompt features
 on a long fixed interval and recomputes only the generated rows whose features have low similarity
-to the cached ones. **Gap:** the prompt interval is still fixed, and the similarity test is on raw
-features rather than on the attention signal that drives the KV change; layers are treated alike.
+to the cached ones, the similarity being measured on raw features, with layers treated alike.
 
 **No-cache control.** Recompute QKV for every token at every layer every step. Exact, and the
-accuracy ceiling, but the slowest possible decoder — the cost being attacked.
-
-The common thread across the fixed-schedule baselines: they choose *when* to refresh by a clock,
-not by the model's state, and they refresh *everywhere* rather than only where the state has moved.
+accuracy ceiling.
 
 ## Evaluation settings
 

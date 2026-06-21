@@ -8,7 +8,7 @@ Kolmogorov complexity asks for a different kind of explanation. Given the string
 
 Classical information theory measures surprise relative to a probability model. An outcome with probability `p` carries about `-log p` bits of information. This makes randomness a relation among an object, a model, and an ensemble of alternatives. The same string can look typical under one distribution and exceptional under another.
 
-This external viewpoint is not a defect. It is exactly what communication theory, statistics, and coding need: if a source distribution is known, optimal codes exploit that distribution. But it leaves a philosophical and mathematical gap for individual objects. A single string by itself has no frequency table, no ensemble, and no repeated trials. Probability can say how likely the string was under a model; it does not directly say how much structure the string itself contains.
+This external viewpoint is exactly what communication theory, statistics, and coding need: if a source distribution is known, optimal codes exploit that distribution. A single string by itself has no frequency table, no ensemble, and no repeated trials. Probability says how likely a string was under a model.
 
 ## Kolmogorov move
 
@@ -22,8 +22,3 @@ The shift is from describing randomness outside the object to measuring descript
 
 This matters because it turns randomness into a property of individual finite strings, modulo the fixed universal machine and additive constants. The random-looking string is not random because we failed to notice a pattern; it is random when every pattern powerful enough to generate it is essentially as long as the string. The absence of a shorter program is the formal version of "no exploitable regularity."
 
-## Artifact scope
-
-The final answer should emphasize the conceptual innovation rather than a full technical survey. It should explain `K(x)` as shortest program length, incompressibility as algorithmic randomness, and the contrast with probability distributions. It should also mention the main caveats: exact Kolmogorov complexity is uncomputable, machine choices change values by an additive constant, and finite-string randomness is best understood asymptotically or with a fixed reference machine.
-
-The source base is intentionally narrow. I used a modern overview by Grunwald and Vitanyi for the Shannon-versus-Kolmogorov contrast, shortest-program definition, invariance, incompressibility, and uncomputability, plus a short Vitanyi note for the formal "shortest program reconstructs the object" phrasing. I did not perform broad historical source collection.

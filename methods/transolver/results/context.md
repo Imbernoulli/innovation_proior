@@ -13,15 +13,9 @@ does so on the meshes practitioners actually use — `N` from about a thousand u
 thousand points, arranged on **unstructured** meshes with **complex, non-periodic boundaries**
 (a car body, an airfoil), not just on tidy uniform grids.
 
-Two demands collide. First, **scale and efficiency**: a forward pass that touches tens of
-thousands of irregularly placed points cannot afford any operation that is quadratic in `N`.
-Second, **physical-correlation modeling**: a PDE field is governed by intricate, often
-long-range, multi-physics interactions, and the model has to capture the *correlations*
-between distant parts of the domain (the wake behind a car depends on its front), not just
-local smoothing. A solution must be cheap enough to run on 32k-point meshes *and* expressive
-enough to model these high-order interactions *and* able to ingest an arbitrary unstructured
-geometry without assuming a grid. Each tool below achieves some of this; none achieves all of
-it at once. Closing that gap is the problem.
+The question is how to build a neural operator layer that is both efficient on large irregular
+meshes and capable of capturing long-range physical correlations without assuming any particular
+grid structure.
 
 ## Background
 
@@ -48,31 +42,7 @@ multi-head split over channel subspaces and a roughly 4×-wide feed-forward subl
 (2021), in the Galerkin/Fourier Transformer line, and Kovachki et al. made the link precise:
 attention is a **Monte-Carlo approximation of an integral operator with a learnable kernel**,
 using the input tokens themselves as the quadrature nodes. Where FNO fixes the kernel to a
-truncated Fourier basis, attention *learns* the kernel from data. This is why Transformers are
-a natural backbone for neural operators — and exactly why their cost is the central obstacle.
-
-Several diagnostic facts about existing systems frame the difficulty, and they are knowable
-before any new method exists:
-
-- **Quadratic attention is out of reach at PDE scale.** Canonical attention over `N` mesh
-  points costs `O(N^2)`. With `N` in the tens of thousands, even gradient-checkpointed full
-  attention can be pushed only to roughly 7k tokens on a 40GB A100; for context, even
-  heavily-optimized large language models of the time top out around 32k tokens. So the natural
-  PDE meshes already exceed what plain attention can hold.
-- **Attention over raw mesh points learns the wrong thing.** Beyond cost, applying attention
-  directly to numerous individual points tends to overwhelm the mechanism: the informative
-  physical correlations get diluted across a sea of low-level point-to-point relations.
-- **Fourier-basis operators assume a grid.** FFT-based methods presume a uniform, effectively
-  periodic discretization. On genuinely irregular meshes with complex boundaries — a car
-  surface — Fourier-deformation operators degrade badly even after a comprehensive
-  hyperparameter search, because the periodic-boundary assumption is violated.
-- **Local graph kernels miss global structure.** Graph-kernel operators on the mesh graph
-  handle irregular geometry but aggregate locally, so they struggle to carry long-range
-  information across the domain.
-- **Geometry alone is a weak proxy for dynamics.** Spatially distant parts of a geometry can
-  participate in the same flow regime, while spatial neighbors can have sharply different
-  pressure or velocity behavior. A method that only sees raw mesh adjacency or fixed geometric
-  blocks has no direct way to express those non-local correlations.
+truncated Fourier basis, attention *learns* the kernel from data.
 
 ## Baselines
 
@@ -85,38 +55,26 @@ operator learning, attention computes the integral `G(u)(g*)` by Monte-Carlo qua
 the `N` input points as nodes and a row-normalized kernel `kappa` built from
 `exp((W_q u(g*))(W_k u(g_i))^T / sqrt(d))`, with the softmax denominator summing over
 key/value nodes for the fixed query. It is a *learnable* kernel, more flexible than FNO's fixed
-Fourier multipliers. **Gap:**
-the quadrature uses every mesh point as a node, so the cost is `O(N^2 C)`; on 32k-point meshes
-it is simply infeasible.
+Fourier multipliers.
 
 **Fourier Neural Operator and geometry-aware variants (Li et al. 2021; Li et al. 2022).** FNO
 parameterizes the kernel in the Fourier domain — a fixed basis with learnable spectral
 multipliers, truncated to low modes — and evaluates it with the FFT in `O(N log N)`. geo-FNO
 learns a deformation that maps an irregular input domain onto a uniform latent grid, runs FNO
-there, and maps back. **Gap:** both rest on the periodic-boundary assumption of Fourier bases;
-on complex, non-periodic geometries such as a car shape geo-FNO degenerates seriously, and
-since most other neural operators lean on the same deformation trick for irregular meshes, they
-inherit the failure on practical design tasks.
+there, and maps back.
 
 **Graph-kernel neural operator (Li et al. 2020).** Casts each operator iteration as an integral
 approximated by a learnable kernel over *local* graph neighborhoods — message passing on the
-mesh graph. Handles arbitrary unstructured meshes. **Gap:** the kernel is local, so the model
-struggles to propagate global information across the domain, which PDE correlations require.
+mesh graph. Handles arbitrary unstructured meshes.
 
 **Linear-attention PDE Transformers (Cao 2021; Li et al. 2023, OFformer; Hao et al. 2023,
-GNOT).** To escape the `O(N^2)` cost, these replace softmax attention with linear-complexity
+GNOT).** To reduce the cost of attention, these replace softmax attention with linear-complexity
 attention (Galerkin-type `Q(K^T V)`, Performer, Reformer, etc.), so the integral is evaluated
-in `O(N)`. GNOT was the prior best on standard benchmarks. **Gap:** they still place the
-attention *directly on the massive set of mesh points*. The complexity is fixed, but the
-modeling problem is not — learning reliable correlations among tens of thousands of individual
-points is hard, and cross-attention with mesh-point queries (OFformer) is hard to optimize at
-32k points, with the training loss left jittering.
+in `O(N)`. GNOT was the prior best on standard benchmarks.
 
 **Patch-based Vision Transformers (Dosovitskiy et al. 2021, ViT; Liu et al. 2021, Swin).**
 Patchify reduces token count and injects local context by grouping a regular square block of
-pixels into one token. **Gap:** the square-patch grouping presumes a structured grid; it does
-not apply to unstructured geometries, and a fixed geometric block can cut across non-local
-flow or stress correlations that are not arranged as square image regions.
+pixels into one token.
 
 ## Evaluation settings
 

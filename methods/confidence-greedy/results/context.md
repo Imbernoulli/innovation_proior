@@ -9,26 +9,21 @@ conditioned bidirectionally on all currently-visible tokens. The trained model i
 define a generative distribution `p_θ(r_0 | p_0)` over a response `r_0` given a prompt `p_0`, by
 *simulating a reverse process* that starts from a fully masked response and gradually fills it in.
 
-The problem is purely on the inference side: how do you turn that one-shot parallel predictor into
-a sequence of denoising steps that actually produces good text? The reverse process is discretized
-into a fixed number of steps `N`, and at each step you may only commit a fraction of the masked
-positions (the fraction is pinned by the requirement that the chain match the forward masking
-marginals — committing all of them in one shot is a different, much worse, distribution). So each
-step you face three sub-decisions: (1) *schedule* — how many masked positions to fill this step;
+The question is on the inference side: how do you turn that one-shot parallel predictor into a
+sequence of denoising steps that produces text? The reverse process is discretized into a fixed
+number of steps `N`, and at each step you may commit a fraction of the masked positions (the
+fraction is pinned by the requirement that the chain match the forward masking marginals). So each
+step has three sub-decisions: (1) *schedule* — how many masked positions to fill this step;
 (2) *position selection* — which masked positions to fill; (3) *token assignment* — what token to
-write at each. A good decoding strategy must answer all three, must work whether you decode the
-whole response in one parallel block or carve it into left-to-right sub-blocks
-(semi-autoregressive), must keep the number of model forward passes low (each step is one full
-forward pass — the dominant cost), and crucially must produce *high-accuracy* output on tasks with
-a single correct answer (math, code) while staying coherent and diverse on open-ended generation.
+write at each. A decoding strategy answers all three, runs whether you decode the whole response in
+one parallel block or carve it into left-to-right sub-blocks (semi-autoregressive), counts model
+forward passes (each step is one full forward pass — the dominant cost), and is used both on tasks
+with a single correct answer (math, code) and on open-ended generation.
 
-The naive answers fail. Filling positions *uniformly at random* each step is the position-selection
-rule that preserves the reverse-process masking rate; with the usual greedy or Gumbel token proposal,
-it is not an exact sample of the full reverse kernel, but it does keep the remasking marginal aligned.
-Filling *all* positions in a single step ignores that the parallel predictor assumes the other masked
-positions are still unknown, so committing many tokens at once violates that assumption and the joint
-sample degrades. The open question is what selection-and-assignment rule to put in the one empty slot
-of the decode loop so that the parallel predictor is used well.
+Filling positions *uniformly at random* each step is the position-selection rule that preserves the
+reverse-process masking rate; with the usual greedy or Gumbel token proposal, it keeps the remasking
+marginal aligned. Filling *all* positions in a single step commits many tokens at once. The question
+is what selection-and-assignment rule to put in the one empty slot of the decode loop.
 
 ## Background
 
@@ -78,21 +73,20 @@ head) with probability `(t-s)/t`. Iterating this kernel from `t = 1` (all masked
 is the reverse process; the network is trained by a masked cross-entropy (a likelihood bound), and
 any practical decoder has to choose a tractable discretization of this kernel.
 
-**The parallel-decoding error.** The reverse kernel above factorizes across positions, so a single
-step samples every masked position *independently* given the current context. This is the
-tokenwise-independence approximation (Tweedie tau-leaping): it is what makes parallel decoding fast,
-but it is also approximate, because once you commit position `i` the correct conditional for
-position `j` changes, and the independent sample did not account for that. The error is smallest
-when you commit *few* tokens per step and largest when you commit *many* at once — which is why a
-one-shot full unmask degrades, and why the per-step budget exists in the first place.
+**The parallel-decoding approximation.** The reverse kernel above factorizes across positions, so a
+single step samples every masked position *independently* given the current context. This is the
+tokenwise-independence approximation (Tweedie tau-leaping): it makes parallel decoding fast, and it
+is approximate, because once you commit position `i` the correct conditional for position `j`
+changes, and the independent sample did not account for that. The deviation grows with the number of
+tokens committed per step, which is what the per-step budget controls.
 
 **Greedy / annealed sampling.** For autoregressive LMs it is well established (Holtzman et al. 2019;
 Brown et al. 2020) that *how* you read a token off the predicted distribution trades diversity
 against fidelity. Greedy decoding (`argmax`, the mode) and low-temperature ("annealed") sampling
 suppress diversity; nucleus / high-temperature sampling preserves it. On open-ended generation,
-too-greedy decoding degenerates into dull, repetitive text; but on tasks with a *single* correct
-answer, less diversity tends to *raise* accuracy. Any decoding rule for a diffusion LM inherits this
-trade-off, position by position.
+less diversity reads as more repetitive text; on tasks with a *single* correct answer, less
+diversity tends to *raise* accuracy. Any decoding rule for a diffusion LM inherits this trade-off,
+position by position.
 
 ## Baselines
 
@@ -100,11 +94,9 @@ trade-off, position by position.
 proposal at every masked position (the released code uses the argmax of the logits, optionally after
 Gumbel perturbation), and for each currently-masked position keep it masked with probability `s/t`;
 equivalently, choose which proposals survive uniformly at random subject to the per-step transfer
-count. This preserves the intended remasking rate, but it is only a faithful *position* rule once the
-token proposal is greedy. Its limitation is clear: it treats every masked position as equally worth
-committing, so it can freeze tokens the model is deeply unsure about and defer tokens it is certain
-about in the same step. **Gap:** the random order throws away information the predictor already
-produced — namely how confident the model is at each position.
+count. This preserves the intended remasking rate, and is a faithful *position* rule once the token
+proposal is greedy. It treats every masked position as equally eligible for commitment, regardless
+of which proposals the predictor produced.
 
 **Confidence-based parallel decoding for masked image transformers (Chang et al. 2022, MaskGIT).**
 In the vision setting (masked visual-token modeling) the same one-shot parallel predictor is
@@ -117,20 +109,14 @@ curve); *Mask* — keep the most confident tokens and remask the rest,
 `m_i^{(t+1)} = 1 [c_i < sorted_j(c_j)[n]]`. The contribution is that "the model predicts all tokens
 simultaneously but only keeps the most confident ones," re-predicting the rest next iteration. To
 encourage diversity in image synthesis it samples the token stochastically with temperature
-annealing. **Gap / open question carried into the language setting:** the confidence-keeping idea is
-demonstrated for images with a *cosine* schedule and *stochastic* temperature-annealed token
-sampling; whether the same idea is the right one for a *masked diffusion language model* trained
-with a likelihood objective and a *linear* noise schedule, in a *semi-autoregressive* block regime,
-and tuned for deterministic-answer accuracy rather than image diversity, is not settled by the image
-result.
+annealing. This result is for images, with a *cosine* schedule and *stochastic* temperature-annealed
+token sampling.
 
-**Margin-based selection (an alternative confidence signal).** Instead of the predicted probability
-of the top token, score each masked position by the *margin* between its top-1 and top-2 predicted
-probabilities, and commit the largest-margin positions. The idea is that a large gap is a stronger
-signal of an unambiguous decision than a high absolute probability (which can be high even when the
-runner-up is nearly as high). **Gap:** the margin is a second-difference statistic, more sensitive to
-the tail shape of the distribution, and it is a different (and not obviously better) proxy for "this
-commitment will least perturb the joint" than the top-token probability itself.
+**Margin-based selection (an alternative score).** Instead of the predicted probability of the top
+token, score each masked position by the *margin* between its top-1 and top-2 predicted
+probabilities, and commit the largest-margin positions. The idea is that a large gap is a signal of
+an unambiguous decision; the margin is a second-difference statistic, sensitive to the tail shape of
+the distribution.
 
 ## Evaluation settings
 

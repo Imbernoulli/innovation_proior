@@ -25,25 +25,16 @@ an open-loop control sequence in the background, execute one step of the current
 shift, and re-optimize from the un-executed tail — fast enough to close a 40–50 Hz control
 loop on real hardware.
 
-The pain is that the two mature ways of doing this each break on exactly the features that
-matter here. Solving the optimal-control problem exactly means a partial differential equation
-in the state, which is intractable above a handful of dimensions. The fast local methods that
-people actually run on robots need *derivatives* of the dynamics and a *quadratic* model of the
-cost — precisely what a discontinuous, non-convex cost denies them. What is wanted is a method
-that (1) needs no derivatives of dynamics or cost, so it can swallow discontinuous, impulse-
-like costs and arbitrary nonlinear models; (2) is principled, i.e. grounded in the optimal-
-control problem rather than an ad-hoc score; (3) converges in very few iterations so it fits a
-real-time MPC loop; and (4) parallelizes, so thousands of candidate behaviors can be evaluated
-inside one control period on a GPU.
+How can derivative-free, forward-sampling methods be used to solve this stochastic optimal
+control problem in real time?
 
 ## Background
 
 **Stochastic optimal control and the HJB wall.** For the control-affine system above with the
 quadratic-control / arbitrary-state cost, the value function `V(x,t)` satisfies the stochastic
-Hamilton-Jacobi-Bellman PDE, and the optimal control is `u* = -R^{-1} G^T V_x`. The catch is
-that `V` solves a backward nonlinear PDE in the full state; discretizing space and time makes
-both memory and compute blow up with dimension. Classical PDE solution is a dead end for
-anything but toy systems.
+Hamilton-Jacobi-Bellman PDE, and the optimal control is `u* = -R^{-1} G^T V_x`. `V` solves a
+backward nonlinear PDE in the full state, and discretizing space and time makes both memory and
+compute grow with dimension.
 
 **The path-integral / free-energy reformulation (Kappen 2005; Theodorou & Todorov 2012).**
 A line of work showed that, *under a specific relationship between the control cost and the
@@ -62,52 +53,28 @@ psi(x_0, t_0) = E_P[ exp( -(1/lambda) S(tau) ) ],     S(tau) = phi(x_T) + integr
 where `P` denotes the *uncontrolled* dynamics (the system with `u = 0`). This is the "path
 integral": the value function is recast as an integral over all trajectories, which can be
 approximated by *forward sampling* — turn the machine on, let the noise generate trajectories,
-average a function of their cost. Kappen also flagged the physical reading: `lambda` is a
-temperature, the construction is a free energy, and Monte-Carlo or Laplace approximation can
-evaluate it in high dimensions. Taking the gradient of `psi` with respect to the initial state
-turns this into a path-integral expression for the optimal control itself,
+average a function of their cost. Kappen also noted that `lambda` is a temperature, the
+construction is a free energy, and Monte-Carlo or Laplace approximation can evaluate it in
+high dimensions. Taking the gradient of `psi` with respect to the initial state turns this into
+a path-integral expression for the optimal control itself,
 
 ```
 u* dt = M · E_P[ exp(-S/lambda) B dw ] / E_P[ exp(-S/lambda) ],
 ```
 
 where `M = R^{-1} G_c^T (G_c R^{-1} G_c^T)^{-1}`, which becomes `G_c^{-1}` when the
-actuated block is square. This ratio of trajectory expectations is again under the uncontrolled
-measure `P`. The fundamental shift from classical control is that there is no backward sweep:
-the optimal control is an expectation evaluated by forward simulation.
+actuated block is square. This ratio of trajectory expectations is under the uncontrolled
+measure `P`. The optimal control is an expectation evaluated by forward simulation.
 
-**The sampling-efficiency problem.** Writing the optimal control as `E_P[...]` is exact but
-practically hostile, because `P` is the *uncontrolled* dynamics. Sampling from `P` is "switch
-the system on and wait for the natural noise to do something interesting" — and for a well-
-engineered machine the natural noise is tiny, so almost every sampled trajectory has high cost
-and contributes a weight `exp(-S/lambda)` that is numerically ~0. The Monte-Carlo estimate is
-then dominated by a handful of lucky samples (or none), and the variance is enormous. This is
-the load-bearing failure mode: the expectation is taken under a distribution that essentially
-never visits the low-cost trajectories that determine the answer.
-
-**Importance sampling and changing the sampling distribution.** The standard cure for "the
-expectation is under a bad distribution" is importance sampling: draw from a more useful
-distribution `q` and reweight by the likelihood ratio `p/q`. Prior path-integral work used
-**Girsanov's theorem** to change the *mean* (the drift) of the sampling distribution — shift
-the controls you sample around, so that the rollouts cluster near a promising trajectory. This
-gives an iterative scheme: sample around the current control guess, reweight, update the guess.
-Policy Improvement with Path Integrals (PI^2; Theodorou, Buchli & Schaal 2010) is the canonical
-instance — a generalized path-integral reinforcement-learning method that updates control
-parameters by a *reward-weighted average* of explored variations.
-
-**The diagnostic limitation.** Across these methods the *variance* of the sampling
-distribution has always been held fixed at the system's natural noise level. In well-engineered
-systems that natural variance is very low, so even after the mean is shifted the rollouts stay
-bunched tightly around the current trajectory and never explore the state space aggressively
-enough to discover a qualitatively better behavior. The observed consequence is concrete: on a
-cart-pole swing-up, using only the natural system variance for exploration, the controller
-never swings the pole up at all and stalls at a high cost. Practitioners had patched around
-this two ways, both unsatisfying — artificially injecting extra noise into the *system* and
-then optimizing the (wrong) noisier system, or simply sampling from whatever distribution
-happened to work and ignoring that it no longer matches the measure the path-integral
-derivation assumed. So the field had a principled estimator whose sampling distribution it
-could only partially reshape, and the part it could not reshape was the part that controlled
-how far the rollouts dared to deviate.
+**Importance sampling and changing the sampling distribution.** The standard technique for
+estimating an expectation under one distribution using samples from another is importance
+sampling: draw from a distribution `q` and reweight by the likelihood ratio `p/q`. Prior
+path-integral work used **Girsanov's theorem** to change the *mean* (the drift) of the sampling
+distribution — shift the controls you sample around, so that the rollouts cluster near a
+promising trajectory. This gives an iterative scheme: sample around the current control guess,
+reweight, update the guess. Policy Improvement with Path Integrals (PI^2; Theodorou, Buchli &
+Schaal 2010) is the canonical instance — a generalized path-integral reinforcement-learning
+method that updates control parameters by a *reward-weighted average* of explored variations.
 
 ## Baselines
 
@@ -117,36 +84,22 @@ nominal trajectory it takes a first- or second-order Taylor expansion of the dyn
 quadratic expansion of the cost, computes a second-order local model of the value function by a
 backward Riccati-like sweep, and reads off a locally optimal control with a feedback gain; it
 iterates this, re-linearizing each pass. It is powerful and converges fast near a good nominal.
-**Gap:** it requires derivatives of the dynamics and a quadratic approximation of the cost. A
-discontinuous cost (an impulse the moment a quadrotor clips an obstacle) has no useful
-derivative and no faithful quadratic model — the discontinuity simply cannot be represented, so
-DDP-style methods must replace such a cost with a smooth surrogate (a sum of exponential
-barriers over every nearby obstacle), which both distorts the objective and scales with the
-number of obstacles. It also cannot natively exploit a model whose dynamics are non-smooth.
+It requires derivatives of the dynamics and a quadratic approximation of the cost.
 
 **Open-loop path-integral control with mean-only importance sampling (PI^2; Theodorou et al.
 2010, and the Girsanov-based iterative schemes).** Sample control perturbations around the
 current open-loop sequence, roll the (uncontrolled-plus-perturbation) dynamics forward, weight
 each rollout by `exp(-S/lambda)`, and set the new control to the weighted average of the
 perturbations — a derivative-free, principled update straight out of the path-integral form.
-This already satisfies the "no derivatives" and "principled" requirements. **Gap:** the
-reweighting only ever changes the *mean* of the sampling distribution; the exploration variance
-is locked to the system's natural noise. When that natural variance is too small — the common
-case for well-engineered hardware — the rollouts never stray far enough to find a much better
-trajectory, and convergence is too slow for an aggressive maneuver inside a real-time loop. To
-get useful deviations practitioners resort to injecting noise into the system itself and
-optimizing the perturbed system, which optimizes the wrong dynamics.
+The reweighting changes the *mean* of the sampling distribution; the exploration variance
+is tied to the system's natural noise.
 
 **Cross-entropy method (CEM) as a derivative-free planner.** A general black-box optimizer
 widely used to plan over a learned dynamics model: maintain a Gaussian over action sequences,
 sample a population, roll each out and score it, keep the top-`k` lowest-cost "elites", and
 refit the Gaussian to the *empirical mean and standard deviation of the elites alone*; iterate.
-It is derivative-free, trivially parallel, and does adapt both its mean and its spread.
-**Gap:** the elite step is a *hard* selection — every elite counts equally and every
-non-elite is discarded outright. All graded information about *how much better* one good sample
-is than another is thrown away at the threshold, and a near-elite sample just below the cutoff
-contributes nothing. The fit is to an unweighted top-`k` slice rather than to the full
-cost landscape, so it ignores the relative quality the cost function actually reports.
+It is derivative-free, trivially parallel, and adapts both its mean and its spread. The elite
+step is a hard selection — every elite counts equally and every non-elite is discarded outright.
 
 ## Evaluation settings
 

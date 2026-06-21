@@ -4,12 +4,12 @@ Semi-supervised node classification on citation networks: each node is a documen
 
 ## Prior art / Background / Baselines
 
-These methods put graph structure into a classifier. Each offers a usable mechanism and leaves a gap.
+These methods put graph structure into a classifier.
 
-- **Label propagation (Zhu et al. 2003).** Spread the few known labels across edges by solving for a harmonic function on the graph. Gap: node features are ignored, and the rule hard-codes that linked nodes share a label.
-- **Graph-as-regularizer (Belkin et al. 2006; Weston et al. 2012).** Train a feature predictor and add a Laplacian smoothness penalty that discourages different predictions on adjacent nodes. Gap: the graph only enters the loss; the model itself never propagates information across edges.
-- **Spectral graph convolution (Bruna et al. 2014).** Define convolution through the graph Fourier basis given by the Laplacian eigenvectors. Gap: it needs an O(N^3) eigendecomposition, uses O(N) non-localized parameters, and is tied to one graph's spectrum.
-- **ChebNet (Defferrard et al. 2016).** Approximate the spectral filter with a degree-K Chebyshev polynomial of the Laplacian. Gap: the receptive field is controlled by a fixed polynomial order, and the neighbor weights come from the supplied Laplacian rather than being learned from features.
+- **Label propagation (Zhu et al. 2003).** Spread the few known labels across edges by solving for a harmonic function on the graph.
+- **Graph-as-regularizer (Belkin et al. 2006; Weston et al. 2012).** Train a feature predictor and add a Laplacian smoothness penalty that discourages different predictions on adjacent nodes.
+- **Spectral graph convolution (Bruna et al. 2014).** Define convolution through the graph Fourier basis given by the Laplacian eigenvectors, requiring an O(N^3) eigendecomposition and O(N) non-localized parameters.
+- **ChebNet (Defferrard et al. 2016).** Approximate the spectral filter with a degree-K Chebyshev polynomial of the Laplacian, controlling the receptive field via polynomial order.
 
 ## Fixed substrate / Code framework
 

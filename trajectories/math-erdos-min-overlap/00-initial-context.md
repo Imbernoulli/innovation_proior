@@ -37,10 +37,10 @@ C(v) = ( max_k c_k ) · 2 / n
 | Motzkin–Ralston–Selfridge (1956) | 0.4 | early hand-optimized step function |
 | Erdős flat bound (1955) | 0.5 | trivial uniform-density upper bound |
 
-- **Erdős flat bound (1955)**: set every height to `1/2`. This is the simplest balanced split, but it gives `C = 0.5`, far above the true constant and the known lower bound.
-- **Motzkin–Ralston–Selfridge (1956)**: a hand-optimized step-function pattern that improves the bound to `0.4`. The gap is that it is a single ad hoc construction; it does not generalize and leaves a wide margin above the lower bound.
-- **Haugland (1993, 1996, 2016)**: a sequence of increasingly refined step functions, culminating in `C ≈ 0.380927`. The gap is that each improvement comes from a new hand-analyzed pattern; the space of step functions is large and has no known compact description that exposes the next improvement.
-- **White (2023)**: proves `C5 ≥ 0.379005` by convex programming. The gap is that this is only a lower bound; it does not supply a feasible step function, so the upper-bound side of the constant remains open.
+- **Erdős flat bound (1955)**: set every height to `1/2`. This is the simplest balanced split; it gives `C = 0.5`.
+- **Motzkin–Ralston–Selfridge (1956)**: a hand-optimized step-function pattern that improves the bound to `0.4`.
+- **Haugland (1993, 1996, 2016)**: a sequence of increasingly refined step functions, culminating in `C ≈ 0.380927`.
+- **White (2023)**: proves `C5 ≥ 0.379005` by convex programming.
 
 ## Fixed substrate / Code framework
 

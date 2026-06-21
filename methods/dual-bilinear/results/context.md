@@ -4,17 +4,14 @@
 
 Offline goal-conditioned reinforcement learning trains one policy `pi(a | s, g)` to reach many
 goals from many starts using only a fixed, reward-free dataset of trajectories. The goal usually
-enters the value and policy networks as the raw goal observation. That default is convenient, but it
-mixes the task with whatever the observation channel happens to contain: background pixels, sensor
-noise, lighting, distractor objects, and other details the agent cannot control. Two observations can
-describe the same underlying task while looking different, and two observations that look close can
-require very different control.
+enters the value and policy networks as the raw goal observation `g`, which carries whatever the
+observation channel contains: background pixels, sensor noise, lighting, distractor objects, and
+other details. Two observations can describe the same underlying task while looking different, and
+two observations that look close can require very different control.
 
-The open representation problem is to learn a goal code `phi(g)` that can replace the raw goal in
-the downstream agent without losing optimal control information. The code should be sufficient for
-expressing an optimal goal-reaching policy, yet it should discard observation details irrelevant to
-reaching. This has to work in the offline setting, where the learner cannot probe the environment to
-check whether a proposed representation is hiding useful information.
+The question is how to learn a goal code `phi(g)` that replaces the raw goal in the downstream
+agent. The setting is offline: the learner works from a fixed dataset and cannot probe the
+environment.
 
 ## Background
 
@@ -28,10 +25,9 @@ the optimal reaching time, then `V*(s, g) = gamma^{d*(s, g)}`; in deterministic 
 `r(s, g) = I(s = g) - 1`, giving `V*(s, g) = -(1 - gamma^{d*(s, g)}) / (1 - gamma)`, a monotone
 transform of the same reaching time.
 
-**Offline optimal-value learning.** Estimating an optimal value from a fixed dataset is difficult
-because an explicit `max_a Q(s, a, g)` backup queries actions outside the data. Implicit Q-learning
-uses expectile regression to approximate an in-support maximum. With residual
-`u = q - v`, the expectile loss is
+**Offline optimal-value learning.** An explicit `max_a Q(s, a, g)` backup queries actions outside
+the data. Implicit Q-learning instead uses expectile regression to approximate an in-support
+maximum. With residual `u = q - v`, the expectile loss is
 
 ```text
 ell_kappa^2(u) = |kappa - I(u < 0)| * u^2.
@@ -50,41 +46,33 @@ disjoint supports. In this model the natural goal reward is latent,
 `r^ell(s, g) = I(p^ell(s) = p^ell(g))`; reaching a goal means reaching the same latent state, not
 matching every noisy observation coordinate.
 
-**Representation bottlenecks.** A finite goal code must be paired with the current state inside a
-value or policy network. A shared metric embedding can be useful when the target is truly symmetric,
-but goal reaching is generally directed: going from `s` to `g` can have a different cost than going
-from `g` to `s`. A behavioral temporal representation can capture where the dataset tends to go, but
-that is different from the optimal reaching structure needed by an optimal policy.
+**Representation forms.** A finite goal code is paired with the current state inside a value or
+policy network. Shared metric embeddings model the goal target as symmetric. Goal reaching is
+directed: going from `s` to `g` can have a different cost than going from `g` to `s`. Behavioral
+temporal representations capture where the dataset tends to go.
 
 ## Baselines
 
 **Raw goals.** The simplest baseline is `phi(g) = g`: pass the raw goal observation directly to the
-downstream value and policy. This keeps all information, but it also keeps exogenous and
-task-irrelevant variation, so the downstream learner must infer invariances entirely from data.
+downstream value and policy. It keeps all information in the goal observation.
 
 **Variational information bottleneck.** A stochastic goal encoder
 `phi(g) ~ N(mu(g), Sigma(g))` is trained with the downstream objective plus a KL penalty
-`beta * D_KL(N(mu(g), Sigma(g)) || N(0, I))`. The bottleneck can remove information, but the KL
-term is generic compression; it does not know which coordinates are relevant to reaching, and the
-right `beta` is task dependent.
+`beta * D_KL(N(mu(g), Sigma(g)) || N(0, I))`, where `beta` controls the amount of compression.
 
 **VIP.** A value-style goal representation is trained with a metric parameterization such as
-`V(s, g) = -||phi(s) - phi(g)||_2`. This ties representation geometry to goal reaching, but the norm
-is symmetric and imposes metric structure even when reaching costs are directed or otherwise
-non-metric.
+`V(s, g) = -||phi(s) - phi(g)||_2`, tying representation geometry to goal reaching through a
+symmetric norm.
 
-**HILP.** Hilbert-style representations learn geometry useful for skills and planning. They share
-the appeal of temporal structure with metric methods, but their main use is not a standalone goal
-code for arbitrary downstream offline GCRL algorithms.
+**HILP.** Hilbert-style representations learn geometry useful for skills and planning, sharing the
+temporal structure of metric methods.
 
 **TRA.** Temporal representation alignment uses an inner-product representation trained by
 behavioral temporal contrastive learning. Its target reflects the behavior policy or dataset
-occupancy rather than the optimal goal-reaching value, so it can encode how the data moves rather
-than how an optimal agent would move.
+occupancy.
 
 **BYOL-gamma.** A self-predictive temporal bootstrap loss trains a goal representation from temporal
-consistency. It captures predictable temporal structure, but it does not directly target optimal
-reaching and has no sufficiency or noise-invariance guarantee for an optimal goal-conditioned policy.
+consistency, capturing predictable temporal structure.
 
 ## Evaluation settings
 

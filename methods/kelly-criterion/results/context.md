@@ -10,10 +10,10 @@ Consider a sequence of independent events whose outcomes become known only after
 
 The pre-decision data are the prior probabilities of the outcomes, the conditional probabilities induced by the received signal, and the posted payoff odds. In a simple two-outcome version, the inputs reduce to a win probability, a loss probability, and the net odds paid on a winning stake. In a multi-outcome version, the decision is a vector of fractions assigned across all possible outcomes after each signal.
 
-## Baseline Failures
+## Existing Approaches
 
-A one-period expected-payoff rule treats a favorable opportunity as a reason to take maximum exposure. In a repeated reinvested setting, that rule can put all capital at risk on events that still lose with positive probability. A fixed-dollar rule is not scale-free after the resource level changes. An arbitrary utility or cost function can rank outcomes, but its numerical values come from outside the communication problem and do not by themselves explain the channel's rate.
+A one-period expected-payoff rule chooses the action with the highest immediate expected gain. A fixed-dollar rule stakes a constant amount regardless of the current resource level. An arbitrary utility or cost function can rank outcomes according to numerical values supplied from outside the communication problem.
 
 ## Minimal Test Bed
 
-The simplest test is a repeated binary wager from initial wealth `W_0`. A proposed rule chooses a fraction of current wealth before each round using only the probability and odds. The rule should avoid certain ruin from ordinary losing events, increase exposure when the signal or probability advantage is stronger, reduce to no action when the odds give no advantage, and extend naturally to a multi-outcome signal model.
+The simplest test is a repeated binary wager from initial wealth `W_0`. A proposed rule chooses a fraction of current wealth before each round using only the probability and odds. The setting can be extended to a multi-outcome signal model in which the decision is a vector of fractions across outcomes after each received signal.

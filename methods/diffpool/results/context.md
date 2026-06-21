@@ -5,24 +5,20 @@
 Graph neural networks have become the standard tool for learning on graph-structured data: a node's
 features and its neighborhood are distilled, through repeated local message passing, into a dense
 embedding that downstream models consume. For node-level tasks — node classification, link
-prediction — this works cleanly, because the unit of prediction is a node and the GNN already
-produces one vector per node.
+prediction — the unit of prediction is a node and the GNN already produces one vector per node.
 
-But many of the most important problems are *graph-level*: predict a property of an entire molecule
+Many important problems are instead *graph-level*: predict a property of an entire molecule
 from its atom-bond graph, classify a protein's function from its structure graph, label a social
 network by community type. Here the unit of prediction is the whole graph, and a GNN that emits one
-vector per node leaves an unsolved last step: how to go from a variable-sized bag of node
+vector per node still requires a final step: how to go from a variable-sized bag of node
 embeddings to a single fixed-dimensional vector for the graph — one that can be fed to an ordinary
 classifier.
 
-The precise problem: given a graph G = (A, F) with adjacency A and node features F, produce a
-fixed-dimensional embedding of the *whole graph* that supports graph classification, in a way that
-(i) is learned end-to-end with the task rather than hand-engineered, (ii) respects and exploits the
-*hierarchical* structure real graphs have — atoms group into functional units, people into
-communities — rather than treating all nodes as a flat set, (iii) is permutation-invariant (the
-answer cannot depend on how the nodes happened to be numbered), and (iv) generalizes across graphs
-of different sizes and shapes, since a graph classifier sees many distinct graphs at train and test
-time.
+The setting: given a graph G = (A, F) with adjacency A and node features F, produce a
+fixed-dimensional embedding of the *whole graph* that supports graph classification, learned
+end-to-end with the task, permutation-invariant (the answer cannot depend on how the nodes happened
+to be numbered), and defined uniformly across graphs of different sizes and shapes, since a graph
+classifier sees many distinct graphs at train and test time.
 
 ## Background
 
@@ -44,39 +40,34 @@ A property that matters for graph-level use: when the aggregation is symmetric o
 whole GNN is permutation-equivariant — relabel the nodes by a permutation P and the output node
 embeddings are relabeled by the same P.
 
-**The flat-pooling gap.** Message passing only ever moves information *along edges*; the
-representation stays at the granularity of individual nodes. To produce a single graph vector the
-standard recipe is a *global* readout in one shot: sum or average all node embeddings (Duvenaud et
-al. 2015), introduce a virtual node connected to everything (Li et al. 2016), or run a
-set-aggregation network over the node embeddings (Gilmer et al. 2017, set2set). Each of these
-collapses the entire graph in a single flat operation. The diagnostic problem with all of them is
-that they discard hierarchy: a molecule's atoms first form bonds, then functional groups, then the
-whole molecule, and a flat sum over atom embeddings never represents the intermediate
-functional-group scale. By analogy, image CNNs owe much of their power to *spatial pooling* — they
-interleave convolution with downsampling so deeper layers see coarser, more global structure with
-larger receptive fields. GNNs as described have convolution but no analogue of that pooling step.
+**Global readouts.** Message passing moves information *along edges*; the representation stays at
+the granularity of individual nodes. To produce a single graph vector the standard recipe is a
+*global* readout in one shot: sum or average all node embeddings (Duvenaud et al. 2015), introduce
+a virtual node connected to everything (Li et al. 2016), or run a set-aggregation network over the
+node embeddings (Gilmer et al. 2017, set2set). Each of these reduces the entire graph in a single
+operation. By analogy, image CNNs use *spatial pooling* — they interleave convolution with
+downsampling so deeper layers see coarser, more global structure with larger receptive fields. GNNs
+as described have convolution; the pooling analogue is what graph-level work is concerned with.
 
-**Why a graph pooling operator is hard.** The naive transcription of CNN pooling fails immediately.
+**Locality on graphs.** A direct transcription of CNN pooling meets a structural difference.
 Images have spatial locality: an m×m patch is well defined and the same everywhere, so pooling is a
-fixed deterministic stride. Graphs have no such locality — there is no canonical "patch", because the
-neighborhood structure is irregular and differs node to node, and solving for a canonical node
-ordering is as hard as graph isomorphism (this is what sinks approaches that linearize the graph to
-a sequence and apply a 1-D CNN, e.g. Niepert et al. 2016, Zhang et al. 2018). Moreover graphs in a
-dataset have different numbers of nodes and edges, so any pooling operator must be defined uniformly
-across sizes.
+fixed deterministic stride. Graphs have no such locality — there is no canonical "patch", because
+the neighborhood structure is irregular and differs node to node, and solving for a canonical node
+ordering is as hard as graph isomorphism (the regime of approaches that linearize the graph to a
+sequence and apply a 1-D CNN, e.g. Niepert et al. 2016, Zhang et al. 2018). Graphs in a dataset
+also have different numbers of nodes and edges, so any pooling operator is defined uniformly across
+sizes.
 
 **Two-stage clustering approaches.** One line builds hierarchy by first running a *deterministic*
 graph-coarsening or clustering algorithm — spectral clustering (Defferrard et al. 2016), graph
 coarsening heuristics (Simonovsky & Komodakis 2017, Fey et al. 2018) — to group nodes, then running
-a GNN over the coarsened graph. The diagnostic limitation: the clustering is fixed in advance, not
-learned, so it cannot adapt to the prediction task, and it is computed per-graph by a separate
-subroutine rather than as a reusable strategy that generalizes across graphs.
+a GNN over the coarsened graph. The clustering is fixed in advance and computed per-graph by a
+separate subroutine, independent of the GNN that follows.
 
 **Low-rank factorization of adjacency.** Adjacency matrices admit low-rank / matrix-factorization
 approximations (related to spectral embedding and well-separated pair decomposition), a classical
 tool for compressing graph connectivity. Such factorizations are non-convex objectives with many
-local minima, and historically they are computed as a standalone preprocessing step decoupled from
-any downstream predictor.
+local minima, computed as a standalone preprocessing step.
 
 **Weisfeiler–Lehman and structural features.** Beyond raw node features, structural descriptors —
 node degree, local clustering coefficient — are cheap, permutation-respecting summaries of a node's
@@ -90,31 +81,24 @@ graph-level representation:
 
 - **Global mean / sum pooling (Duvenaud et al. 2015).** Run a GNN, then average or sum all final node
   embeddings into one vector for the classifier. Core idea: a permutation-invariant readout by a
-  symmetric reduction. Gap: a single flat aggregation over all nodes; no intermediate scales, so
-  community / functional-group structure is invisible to the classifier.
+  symmetric reduction.
 
 - **Virtual-node / gated readout (Li et al. 2016).** Add a node connected to every other node so that,
   after message passing, the virtual node's embedding summarizes the graph; gated recurrent updates
-  refine node states. Gap: still a single global summary; the hierarchy is not represented, and the
-  virtual node creates an artificial global hub.
+  refine node states. Core idea: a single learned node that aggregates the whole graph.
 
 - **Set-aggregation readout (Gilmer et al. 2017, set2set).** Feed the set of node embeddings to a
   permutation-invariant set network (e.g. an attention-based set2set readout) to produce the graph
-  vector. Core idea: a more expressive symmetric pooling than a plain sum. Gap: more capacity in the
-  readout, but it is still one flat operation over all nodes at once — no coarsening, no hierarchy.
+  vector. Core idea: a more expressive symmetric pooling than a plain sum.
 
 - **Sort-and-CNN / canonical-ordering readouts (Niepert et al. 2016; Zhang et al. 2018, SortPool).**
   Impose an ordering on nodes (via WL-style coloring or learned sorting), then apply an ordinary 1-D
   CNN over the ordered node embeddings. Core idea: borrow CNN pooling by sequentializing the graph.
-  Gap: choosing a structure-preserving canonical order is essentially graph isomorphism; nodes far
-  apart in the graph can land adjacent in the sequence, so the imposed locality is artificial.
 
 - **Two-stage deterministic clustering + GNN (Defferrard et al. 2016; Simonovsky & Komodakis 2017;
   Fey et al. 2018).** Coarsen the graph with a fixed clustering/coarsening algorithm, then run a GNN
-  on the coarsened graph; repeat to build hierarchy. Core idea: real coarsening, real hierarchy. Gap:
-  the coarsening is deterministic and task-agnostic — fixed before any gradient flows — so it cannot
-  specialize to the classification objective, and it is a per-graph subroutine rather than a learned,
-  transferable pooling strategy.
+  on the coarsened graph; repeat to build hierarchy. Core idea: real coarsening with a deterministic,
+  task-agnostic clustering computed per graph.
 
 ## Evaluation settings
 
@@ -137,7 +121,7 @@ the classical non-neural reference on these same datasets.
 
 The primitives that already exist: a message-passing GNN layer that maps (A, X) to node embeddings,
 the GCN propagation rule, an Adam optimizer, cross-entropy loss, and a training loop over a dataset
-of (adjacency, features, label) graphs. What is missing is the operator that turns per-node
+of (adjacency, features, label) graphs. The slot to fill is the operator that turns per-node
 embeddings into a graph-level prediction while respecting hierarchy. We lay out the scaffold with that
 operator left as an empty slot.
 

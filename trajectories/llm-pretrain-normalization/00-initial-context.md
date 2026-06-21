@@ -4,13 +4,13 @@ In a GPT-style decoder, the only design surface is the **per-block normalization
 
 ## Prior art / Background / Baselines
 
-- **Post-LN transformer.** It places `LayerNorm` after the residual add, `x = LN(x + Attn(x))`, so the branch operates on the unnormalized stream while the norm sits on the main path. Deep stacks have ill-conditioned early-layer gradients and require long, careful warmup to train without divergence.
+- **Post-LN transformer.** It places `LayerNorm` after the residual add, `x = LN(x + Attn(x))`, so the branch operates on the unnormalized stream while the norm sits on the main path.
 
-- **Pre-LN transformer.** It moves the norm inside the branch, `x = x + Attn(LN(x))`, leaving the residual stream as a clean identity path and making initial gradients bounded independent of depth. When both setups train to convergence, Pre-LN often reaches a slightly higher final loss than Post-LN.
+- **Pre-LN transformer.** It moves the norm inside the branch, `x = x + Attn(LN(x))`, leaving the residual stream as a clean identity path and making initial gradients bounded independent of depth.
 
-- **LayerNorm.** It subtracts the token-wise mean, divides by the standard deviation, and applies a learned gain and bias at every block. The per-token normalization therefore requires two reductions and an affine transform, and not every component is known to be load-bearing in a pre-norm block.
+- **LayerNorm.** It subtracts the token-wise mean, divides by the standard deviation, and applies a learned gain and bias at every block.
 
-- **Parallel attention + MLP block.** It computes both sublayers from the same normalized input and adds them in one step, `x = x + Attn(LN(x)) + MLP(LN(x))`, halving the norms per block and shortening sequential depth. At small scale it gives a measurable quality loss in return for the speedup.
+- **Parallel attention + MLP block.** It computes both sublayers from the same normalized input and adds them in one step, `x = x + Attn(LN(x)) + MLP(LN(x))`, halving the norms per block and shortening sequential depth.
 
 ## Fixed substrate / Code framework
 

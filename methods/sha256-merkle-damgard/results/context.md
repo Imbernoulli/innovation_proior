@@ -18,15 +18,14 @@ in increasing order of how easy they are to break:
 - **Collision resistance** — hard to find *any* pair M≠M' with H(M)=H(M').
 
 Collision resistance is the demanding one and the property signatures rest on (a
-signer who finds a collision can repudiate). Two obstacles stand in the way. First,
-the input is unbounded but the output is fixed, so collisions *exist* in abundance —
-"hard to find" is the most we can ask, and we want a *proof* that finding them is
-hard, reduced to a clean assumption. Second, we have no idea how to design and
-analyze a function on unbounded input directly; every primitive we know how to
-build and scrutinize takes a *fixed-size* input. The question is how to lift a
-fixed-input building block to arbitrary length without inventing a new, unanalyzed
-assumption for the long-message case — and ideally with the lifting itself proved
-to preserve collision resistance.
+signer who finds a collision can repudiate). Two observations frame the problem.
+First, the input is unbounded but the output is fixed, so collisions *exist* in
+abundance — "hard to find" is the most we can ask, and we want a *proof* that
+finding them is hard, reduced to a clean assumption. Second, we have no idea how
+to design and analyze a function on unbounded input directly; every primitive we
+know how to build and scrutinize takes a *fixed-size* input. The question is how
+to lift a fixed-input building block to arbitrary length, ideally with the lifting
+itself proved to preserve collision resistance.
 
 ## Background
 
@@ -45,10 +44,8 @@ function f:{0,1}^{n+b}→{0,1}^n a *compression function*: it eats n+b bits and 
 n, shrinking by b bits per call. Collision resistance for such a fixed-shape f is a
 self-contained combinatorial property we can study, model (e.g. in idealized
 models), and even reduce to number-theoretic assumptions. The open problem of the
-time is the *composition*: nobody had a clean way to chain fixed-size compressions
-into an arbitrary-length hash and *prove* the composite inherits collision
-resistance. Proofs were observed to get harder precisely as the message length
-grew.
+time is the *composition*: how to chain fixed-size compressions into an
+arbitrary-length hash and prove the composite inherits collision resistance.
 
 **Provable-but-slow vs. fast-but-unproven.** Two prior families framed the tension:
 
@@ -58,27 +55,21 @@ grew.
   RSA operation per message block — far too slow for bulk data.
 - *Cipher-based, fast.* Rabin's idea hashed by iterating a block cipher,
   h_{i+1}=E_{x_{i+1}}(h_i) with a fixed start h_0, keying the cipher with successive
-  message blocks. Fast, but with no security proof — and concretely weak: with DES
-  (64-bit block) this scheme falls to a birthday attack on the 64-bit chaining
-  value, and structurally, encrypting under one key and decrypting under another
-  manufactures collisions in the per-block function for free.
+  message blocks.
 
-**Diagnosing why the cipher-based block function fails.** Writing the per-block
-map as f(a,b)=E_a(b) (key a, plaintext b) exposes the problem: for any target c,
-solving E_a(b)=c for (a,b) is trivial — pick any key a and set b=E_a^{-1}(c). The
-map is a permutation in its data argument and hence invertible, so an adversary can
-steer its output at will and collide it without effort. The era's proposals to
-build a compression function out of a block cipher all had to contend with this
-invertibility, and it was an open question whether any of them could be argued
-collision-resistant from properties of E alone.
+**Cipher-based compression.** Writing the per-block map as f(a,b)=E_a(b) (key a,
+plaintext b) shows the structure: for any target c, solving E_a(b)=c for (a,b) is
+trivial — pick any key a and set b=E_a^{-1}(c), since E_a is a permutation in its
+data argument. The era's proposals to build a compression function out of a block
+cipher all had to contend with this invertibility, and it was an open question
+whether any of them could be argued collision-resistant from properties of E alone.
 
-**Length matters for composition.** A subtle pre-method fact: if you chain
-compressions over message blocks but treat padding naively, the composite can be
-collided without ever colliding the compression. Two messages that differ only by
-how the final block is filled — e.g. one that genuinely ends in some zero bits
-versus one that was padded with zeros to the block boundary — can drive the chain
-to the same final value. Whatever a composition argument needs from the padding,
-plain zero-fill does not supply it.
+**Padding and block sequences.** A pre-method fact: when chaining compressions over
+message blocks, the padding rule determines which bit sequences are fed to the chain.
+Two messages that differ only by how the final block is filled can drive the chain
+to the same final value if the padding is not carefully designed. Whatever a
+composition argument needs from the padding, it depends on the padding being
+*injective* in an appropriate sense.
 
 **The ideal-cipher model.** For arguing collision resistance of a cipher-based
 compression function, the relevant idealization treats the block cipher E as an
@@ -102,31 +93,21 @@ visibly hide no trapdoor.
 
 - **Iterated cipher hash (Rabin / DES-based).** h_0 fixed; h_{i+1}=E_{x_{i+1}}(h_i);
   output the last h. Core idea: reuse a trusted block cipher as the mixing engine.
-  Gap: no proof; the per-block map f(a,b)=E_a(b) is invertible and trivially
-  collidable; with a 64-bit block the chaining value falls to a 2^{32} birthday
-  search. It establishes *speed* as achievable but leaves *provable* collision
-  resistance open.
+  With a 64-bit block the chaining value is 64 bits wide.
 
 - **Claw-free / modular-squaring hashes (Damgård's earlier construction).** Build
   collision resistance from claw-free permutation pairs (f_0,f_1): finding x≠y with
   f_0(x)=f_1(y) is hard. These were the first hashes with a real collision-resistance
-  *proof* under a number-theoretic assumption. Gap: cost is on the order of an RSA
-  operation per message block — provable but impractically slow, and the proofs were
-  tailored per-construction rather than a general composition principle.
+  *proof* under a number-theoretic assumption, with proofs tailored per-construction.
 
 - **Naor–Yung composition (independent).** Shows fixed-size hashes can be composed
   to compress arbitrary polynomial-length messages, including for a weaker
   "universal one-way" (target-collision) property built from any one-way
-  permutation, with signature-scheme applications. Gap: to make the weaker-property
-  version work it must draw a *fresh independent instance* of the fixed-length hash
-  per message block, which is less direct and less efficient than chaining one fixed
-  instance.
+  permutation, with signature-scheme applications. The weaker-property version
+  draws a *fresh independent instance* of the fixed-length hash per message block.
 
 - **Merkle's "meta-method" (independent, concurrent).** The same chaining intuition —
-  iterate a fixed compression over message blocks from a fixed IV. Gap relative to
-  what we want: a clean *proof* of the composition without extra assumptions on the
-  parameters needs a few additional ingredients that a bare meta-method leaves
-  implicit.
+  iterate a fixed compression over message blocks from a fixed IV.
 
 ## Evaluation settings
 

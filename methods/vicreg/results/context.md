@@ -13,52 +13,43 @@ views agrees and the training loss can be minimized without learning useful info
 objective therefore needs a second job besides view agreement: it must make constant embeddings and
 low-information embeddings unattractive.
 
-The unresolved design pressure is whether this anti-collapse job can be stated as an ordinary
-statistic of the embedding batch, rather than being supplied by negatives, queues, target networks,
-stop-gradient placement, cluster balancing, or normalization. A clean solution should expose what
-quantity prevents collapse, keep the scale of the embeddings under control, avoid redundant
-coordinates, and still fit the standard ImageNet pretraining pipeline.
+The question is how to state this anti-collapse job as an ordinary statistic of the embedding batch,
+rather than supplying it via negatives, queues, target networks, stop-gradient placement, cluster
+balancing, or normalization.
 
 ## Prior Mechanisms
 
 Contrastive methods such as SimCLR and MoCo pull together two views of one image while pushing away
-other images. The repulsive term makes a constant representation bad, but it is estimated from many
-negative pairs, so it tends to need very large batches or a memory queue. SimCLR also shows that the
-augmentation composition and a projection head are load-bearing parts of the pipeline.
+other images. The repulsive term makes a constant representation bad, and it is estimated from many
+negative pairs. SimCLR also shows that the augmentation composition and a projection head are
+load-bearing parts of the pipeline.
 
 Clustering methods such as DeepCluster and SwAV avoid comparing every image pair by assigning images
 to prototypes or clusters. SwAV learns assignments online and keeps them balanced with an optimal
-transport step. This avoids explicit pairwise negatives, but the collapse-prevention mechanism still
-comes from a nontrivial assignment/balancing procedure.
+transport step.
 
 Distillation-style methods such as BYOL and SimSiam remove negatives and regress one view toward the
 other. They work by adding asymmetry: BYOL uses a target network updated by exponential moving
-average, and SimSiam uses a predictor with a stop-gradient target. These methods are effective, but
-the similarity loss itself still admits constant solutions; collapse is avoided by architecture and
-optimization dynamics.
+average, and SimSiam uses a predictor with a stop-gradient target.
 
 Redundancy-reduction and whitening methods move closer to a direct information criterion. Barlow
 Twins drives a normalized cross-correlation matrix between two branches toward the identity, making
 same-index coordinates agree and different-index coordinates decorrelate. W-MSE whitens latent
-features before applying an MSE. These methods show that decorrelation is a useful anti-redundancy
-signal, but they introduce cross-branch coupling or whitening/standardization operations.
+features before applying an MSE.
 
 ## What Must Be Measured
 
-There are two collapse modes to keep separate. Trivial collapse is the constant-vector solution:
-every coordinate has essentially zero spread across the batch. Informational collapse is less visible:
-the embeddings keep nonzero spread, but many coordinates duplicate the same signal, so the effective
-dimension is much smaller than the embedding dimension.
+There are two collapse modes. Trivial collapse is the constant-vector solution: every coordinate has
+essentially zero spread across the batch. Informational collapse is less visible: the embeddings keep
+nonzero spread, but many coordinates duplicate the same signal, so the effective dimension is much
+smaller than the embedding dimension.
 
-A batch statistic aimed at trivial collapse has to look at each coordinate across samples and ask
-whether it has enough spread. A statistic aimed at informational collapse has to look between
-coordinates and ask whether they move together. These are different checks. Per-coordinate spread
-does not prevent two coordinates from copying each other, and decorrelation alone does not prevent
-all coordinates from shrinking to a constant.
+A batch statistic aimed at trivial collapse looks at each coordinate across samples and asks whether
+it has enough spread. A statistic aimed at informational collapse looks between coordinates and asks
+whether they move together.
 
-The invariance objective has a separate role. It ties the statistics to the image content by requiring
-two augmented views of the same image to match. Without that term, a batch could satisfy spread and
-decorrelation with arbitrary sample-dependent signals that are not stable under augmentation.
+The invariance objective ties the statistics to the image content by requiring two augmented views of
+the same image to match.
 
 ## Evaluation Frame
 
@@ -70,10 +61,6 @@ The usual evaluation protocols are linear classification on ImageNet, semi-super
 1 percent and 10 percent of ImageNet labels, transfer to classification datasets such as Places205,
 VOC07, and iNaturalist2018, and transfer to detection or segmentation tasks using Faster R-CNN or
 Mask R-CNN. k-NN evaluation on frozen ImageNet representations is another diagnostic.
-
-A strong objective should also tolerate smaller batches better than methods whose anti-collapse
-signal is estimated from many negatives, and it should admit stress tests where the two branches do
-not necessarily share weights or architecture.
 
 ## Code Frame
 

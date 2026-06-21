@@ -15,17 +15,10 @@ Today such laws are produced by hand. A human expert stares at a new regime, pro
 form by intuition and analogy to prior laws, fits its coefficients, checks the fit, and iterates.
 This is slow, labor-intensive, and bounded by what a person can reason about — especially once a law
 must couple three, four, or five interacting variables. New regimes keep arriving faster than experts
-can characterize them. The precise problem: given a fixed dataset of observed trials, automatically
+can characterize them. The problem: given a fixed dataset of observed trials, automatically
 produce (1) a single symbolic functional form shared across a family of experimental settings, and
 (2) for each setting its own fitted coefficients, such that the law predicts *held-out, extrapolated*
-points — larger models, more tokens, more extreme hyperparameters — accurately. Two structural
-difficulties make this hard. First, **symbolism with open-endedness**: the space of candidate
-expressions is infinite and has no a-priori-known form; the ground-truth law is unknown even to the
-experts who study the regime, and any genuine improvement is itself a finding. Second, **abstraction
-across contexts**: the goal is not to fit each experimental group independently but to discover *one*
-form whose coefficients adapt per group — a single law that generalizes across dozens of disparate
-contexts. A solution would have to search a vast, unstructured formula space under a clear but
-unbounded objective, and do so robustly enough that the result extrapolates rather than memorizes.
+points — larger models, more tokens, more extreme hyperparameters — accurately.
 
 ## Background
 
@@ -44,14 +37,9 @@ with repetition, domain mixtures, supervised fine-tuning, inference-time paralle
 learning-rate/batch-size selection, and non-monotonic ("U-shaped") capability curves. Each was
 characterized separately, by hand.
 
-**Extrapolation is the real test.** A law is only useful if, fit on small-scale runs, it predicts
-large-scale behavior. So the natural evaluation holds out the *largest* models / datasets / most
-extreme hyperparameters and asks how well a law fit on the rest predicts them. This is where
-hand-crafted laws can quietly fail: a form that interpolates the observed region beautifully can bend
-the wrong way just outside it. Learning-rate/batch-size prediction is especially exposed because the
-available prior law predicts only the optimizer settings, not the full loss surface over the sweep.
-Even for regimes with a canonical law, the human form may fit the known region while remaining brittle
-under genuine extrapolation.
+**Extrapolation as the evaluation target.** A law is only useful if, fit on small-scale runs, it
+predicts large-scale behavior. The natural evaluation holds out the *largest* models / datasets /
+most extreme hyperparameters and asks how well a law fit on the rest predicts them.
 
 **Program search as scientific discovery.** A parallel line of work treats open-ended scientific and
 algorithmic problems as a *search over programs*, scored by an automated, objective evaluator: faster
@@ -79,48 +67,30 @@ periodic migration — this maintains diversity over long runs.
 a canonical human form, fit by standard optimizers (BFGS, SGD) per group:
 
 - *Chinchilla* (Hoffmann et al. 2022): `L = E + A/N^a + B/D^b`, the additive power-law decomposition
-  above. Limitation: it is a *single regime's* form; every new axis (vocabulary, experts, repetition,
-  hyperparameters) has required a fresh hand-designed expression, and the purely additive structure
-  cannot represent couplings between axes when they exist.
+  above.
 - *Vocabulary* (Tao et al. 2024): `L(N,V,D) = A/N^a + B/V^b + C/D^g + E`, defined on a
   *unigram-normalized* loss `Lossu` (the log-probability improvement of the model over a context-free
   unigram model, which can be negative) so that runs with different `V` are comparable. Larger `V`
   reduces tokenization cost but raises embedding difficulty; the `B/V^b` term captures the net effect.
-  Limitation: additive across all three axes; the form is fixed by hand.
 - *Data-constrained* (Muennighoff et al. 2023): when tokens are repeated (`D` exceeds the unique-token
   budget `U`), raw `D` and `N` are replaced by *effective* quantities via an exponential half-life,
   `D_eff = U + U R_D (1 - exp(-(D/U - 1)/R_D))` (and analogously `N_eff` with a base capacity `U_N`
   and its own decay `R_N`), then plugged into the Chinchilla form; at `D = U` it reduces to Chinchilla.
-  Repeated tokens count progressively less. Limitation: the repetition-decay mechanism, the effective
-  transforms, and the five-plus coefficients are all hand-designed; the form is frozen.
+  Repeated tokens count progressively less.
 - *Learning-rate & batch-size*: no established full-loss law exists. The closest prior art (Li et al.
-  2025, "Step Law") predicts only the *optima* `lr* = c N^a D^b`, `bsz* = d D^g`, fit from roughly 17
-  best-performing configurations out of about 3,000 experiments — discarding the vast majority of the
-  data. Limitation: it models the location of the optimum, not the loss surface, and throws away most
-  observations.
+  2025, "Step Law") predicts the *optima* `lr* = c N^a D^b`, `bsz* = d D^g`, fit from roughly 17
+  best-performing configurations out of about 3,000 experiments.
 - *Mixture-of-experts* (Krajewski et al. 2024): `log L = a log N + b log E_hat + c (log N)(log E_hat)
   + d`, an exponential of log-linear terms with an `N`-by-experts interaction (`E_hat` a stabilized
-  transform of the expert count). Limitation: being an exponential of a log-bilinear form, its
-  asymptotics are fragile — depending on the fitted sign of the interaction coefficient, the predicted
-  loss can grow without bound as scale increases.
+  transform of the expert count).
 - *Supervised fine-tuning* (Lin et al. 2024): `L(D) = C + A/(D^a + B)`, a "rectified" power law with a
-  pre-power phase at small `D` saturating to `C`. Limitation: the offset `B` enters additively next to
-  `D^a`, so its units depend on the exponent and its interpretation is muddied.
-
-Across all of these the common limitations are: the functional form is fixed by a human up front; the
-parameter-fitting routine is an off-the-shelf optimizer applied uniformly; and on the harder regimes
-the resulting laws extrapolate poorly, sometimes worse than a constant.
+  pre-power phase at small `D` saturating to `C`.
 
 **Symbolic regression and genetic programming.** The classical automated alternative to hand-design.
 Koza (1992) evolves expression trees under a small operator set `{+, -, *, /, pow, log, exp}`; Schmidt
 & Lipson (2009) distill free-form natural laws from data; Brunton et al. (2016, SINDy) recover
 governing equations via sparse regression over a candidate-function library; Udrescu & Tegmark (2020,
-AI Feynman) use physics-inspired heuristics to prune the search. Limitations for the present problem:
-the number of candidate expressions grows combinatorially, so exhaustive search is infeasible; these
-methods carry weak domain priors; the standard benchmarks ask them to *rediscover* a pre-known
-synthetic formula (essentially closed-form curve fitting), not to confront a genuinely open problem;
-and they have no mechanism for the multi-context abstraction this task needs — discovering one form
-whose coefficients adapt across many experimental groups.
+AI Feynman) use physics-inspired heuristics to prune the search.
 
 **LLM-driven evolutionary program search.** Romera-Paredes et al. (2024, FunSearch) pair a pretrained
 LLM with an automated evaluator and an island-based evolutionary loop. A database holds scored,
@@ -128,14 +98,12 @@ valid programs; each step samples several high-scoring programs into a "best-sho
 LLM to write an improved candidate, executes and scores it, and inserts it back. The evaluator acts as
 a guard against LLM confabulation: only programs that actually run and score well propagate. FunSearch
 discovered new constructions for the cap-set problem and bin-packing heuristics that beat first-fit and
-best-fit. Its structural limitation: it evolves a *single function body* embedded in a *fixed program
-skeleton* — the surrounding harness, and crucially the routine that would *fit* any free parameters,
-are hand-written and never searched. Novikov et al. (2025, AlphaEvolve) generalize this to evolving
-whole files and multiple code blocks via diff edits, with an LLM ensemble, a MAP-Elites-plus-islands
-database, and richer prompts; it is deliberately problem-agnostic, applying the same generic evolution
-to scheduling, hardware design, and kernel optimization. Its generality is also its limitation for a
-specialized regression-discovery task: a generic loop leaves scaling-law structure to be rediscovered
-from the prompt and score alone.
+best-fit. It evolves a *single function body* embedded in a *fixed program skeleton* — the surrounding
+harness, and crucially the routine that fits any free parameters, are hand-written. Novikov et al.
+(2025, AlphaEvolve) generalize this to evolving whole files and multiple code blocks via diff edits,
+with an LLM ensemble, a MAP-Elites-plus-islands database, and richer prompts; it is deliberately
+problem-agnostic, applying the same generic evolution to scheduling, hardware design, and kernel
+optimization.
 
 ## Evaluation settings
 

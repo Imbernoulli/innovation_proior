@@ -2,23 +2,14 @@
 
 ## Research question
 
-By the mid-1920s the quantum theory of the atom is a patchwork that works in a few places
-and collapses everywhere else. The problem to be solved is sharp: **find a mechanics of the
-atom that actually predicts what spectroscopists measure — the frequencies, intensities, and
-polarizations of spectral lines — without leaning on quantities that no experiment can reach.**
+By the mid-1920s the quantum theory of the atom is a patchwork of postulates and
+correspondence arguments. The question to be settled is how to compute, for an atomic system,
+the quantities that spectroscopy actually measures — the frequencies, intensities, and
+polarizations of spectral lines — from the forces acting in the system.
 
-The existing scheme computes those measurable line frequencies and intensities, but it
-obtains them as constituent relations between quantities that cannot be observed even in
-principle: the position of the electron in its orbit and its orbital period. A solution would
-have to do two things at once. First, it must reproduce the empirical successes of the old
-theory — the hydrogen spectrum, the fine structure, the Stark effect — where they exist.
-Second, and decisively, it must keep working in the cases where the old theory fails: the
-hydrogen atom in crossed electric and magnetic fields, the response of an atom to a
-periodically varying field (dispersion), the helium atom, and atoms with many electrons. The
-recurring symptom in every failure is the same — a calculation built on the electron's orbit
-gives the wrong answer or no answer at all. So a real fix probably cannot be a better orbit
-calculation; it has to be a theory whose primitive quantities are the observable ones, with
-the orbit removed from the foundations entirely.
+The existing scheme obtains those line frequencies and intensities as relations between the
+position of the electron in its orbit and its orbital period. The standing question is what a
+mechanics of the atom looks like and which quantities it should take as primitive.
 
 ## Background
 
@@ -42,9 +33,9 @@ of energy W(n) and W(m) is
 
   ν = ( W(n) − W(m) ) / h.
 
-This is already a radical break. Classically a bound charge radiates at its orbital frequency
-and the overtones of it; Bohr severs that link entirely — the radiated frequency is an energy
-*difference* divided by h and has nothing to do with the orbital period except in one limit.
+This is a radical break. Classically a bound charge radiates at its orbital frequency and the
+overtones of it; Bohr makes the radiated frequency an energy *difference* divided by h, tied
+to the orbital period only in one limit.
 
 **The correspondence principle.** Bohr's bridge back to classical physics. In the limit of
 large quantum numbers the transition frequency ν(n, n−α) for the jump n → n−α merges with the
@@ -58,60 +49,54 @@ series
 with ω(n) the orbital frequency for state n. Then the principle sets up a dictionary — the
 α-th Fourier amplitude A_α(n) of the orbit is the classical counterpart of the quantum
 amplitude for the transition n → n−α, and the radiated power in the α-th harmonic is the
-counterpart of the transition probability. This dictionary is the only systematic way the old
+counterpart of the transition probability. This dictionary is the systematic way the old
 theory connects an orbit (a one-state object) to a spectral line (a two-state object).
 
 **Adiabatic invariants.** Ehrenfest's adiabatic principle explains *why* the action
 variables J are the right things to quantize: under a slow change of the system's parameters
 the action of a periodic motion is invariant, and Burgers proved each action variable is
 adiabatically invariant, so a quantum condition imposed on J is stable under slow
-perturbations. This underwrites ∮ p dq = nh but does nothing to make the orbit observable.
+perturbations. This underwrites ∮ p dq = nh.
 
-**Dispersion theory — the crack that widened.** Classical dispersion theory (Helmholtz,
-Lorentz, Drude) models a medium as charged oscillators with resonance frequencies at the
-absorption lines, and explains anomalous dispersion (the index of refraction dropping near an
-absorption frequency). Transplanting this into the Bohr atom is where the orbit picture
-visibly fails: the dispersion oscillators resonate at the *transition* frequencies
-(W_i − W_f)/h, not at the electron's orbital frequency, and Bohr had been forced to sever
-those two frequencies to get the Balmer formula at all. Dispersion therefore becomes anomalous
-"at the wrong frequencies" if one uses orbital frequencies — a direct, quantitative
-embarrassment for the orbit.
+**Dispersion theory.** Classical dispersion theory (Helmholtz, Lorentz, Drude) models a
+medium as charged oscillators with resonance frequencies at the absorption lines, and explains
+anomalous dispersion (the index of refraction dropping near an absorption frequency). In the
+Bohr atom the dispersion oscillators resonate at the *transition* frequencies (W_i − W_f)/h,
+the same frequencies that enter the Balmer formula.
 
-Ladenburg (1921) took the first step out: drawing on Einstein's radiation theory he replaced
-the amplitudes of the classical dispersion formula by Einstein transition probabilities and
-the number of dispersion electrons by the number of quantum jumps, producing a formula written
-in terms of transitions — but only for the ground state. Kramers (1924) generalized it. He
-derived a classical dispersion formula having the form of an action-derivative of an
-expression built from the amplitudes and frequencies of the induced oscillations, then turned
-it into a quantum formula by three substitutions: amplitudes → transition probabilities,
-orbital frequencies → transition frequencies, and — the key move — the action derivative by a
-difference quotient,
+Ladenburg (1921) drew on Einstein's radiation theory to replace the amplitudes of the
+classical dispersion formula by Einstein transition probabilities and the number of dispersion
+electrons by the number of quantum jumps, producing a formula written in terms of transitions —
+for the ground state. Kramers (1924) generalized it. He derived a classical dispersion formula
+having the form of an action-derivative of an expression built from the amplitudes and
+frequencies of the induced oscillations, then turned it into a quantum formula by three
+substitutions: amplitudes → transition probabilities, orbital frequencies → transition
+frequencies, and the action derivative by a difference quotient,
 
   d / dJ  →  (1/h) Δ / Δn .
 
 Because in the large-n limit transition and orbital frequencies coincide and Δn = 1 is small
 against n, the difference quotient merges with the derivative, so the quantum formula reduces
-to the classical one for large n; Bohr's correspondence principle then licenses the leap of
-faith that it holds down to small n. The decisive structural feature, sharpened in the
-Kramers–Heisenberg dispersion analysis (1925): **the resulting formula depends only on the
-transitions between orbits — no single orbit appears in it anywhere.** The orbital quantities
-of the classical starting point survive in the formula only through the transition-indexed data
-the substitutions leave behind.
+to the classical one for large n; Bohr's correspondence principle then licenses applying it
+down to small n. A structural feature, sharpened in the Kramers–Heisenberg dispersion analysis
+(1925): the resulting formula depends only on the transitions between orbits — no single orbit
+appears in it. The orbital quantities of the classical starting point survive in the formula
+through the transition-indexed data the substitutions leave behind.
 
 **The Thomas–Reiche–Kuhn sum rule (1925).** Kuhn and Thomas independently derived the
 high-frequency limit of the Kramers dispersion formula: a sum over all transitions from a
 given state of the oscillator strengths equals a constant fixed by e, m, h. It is a relation
-purely among observable transition quantities.
+among observable transition quantities.
 
-**Where the old theory stands.** The honest assessment of the field: the orbit-based
-quantization condition ∮p dq = nh works for hydrogen and the Stark effect, fails for crossed
-fields, helium, and many-electron atoms; the choice of coordinates in which the condition is
-imposed changes the shape of the "orbit" even when it leaves the energy alone, exposing the
-orbit as an artifact; and an embarrassing empirical ambiguity recurs — the quantization gives
-the action only up to an additive constant, surfacing as the unresolved question of integer
-versus half-integer quantum numbers in band spectra and the anomalous Zeeman effect. The
-quantities that always come out right are the spectroscopic ones: line frequencies and line
-intensities, i.e. transition frequencies and (squared) transition amplitudes.
+**Where the old theory stands.** The orbit-based quantization condition ∮p dq = nh gives the
+hydrogen spectrum, the fine structure, and the Stark effect; for the hydrogen atom in crossed
+electric and magnetic fields, the helium atom, and many-electron atoms it is applied with mixed
+results. The choice of coordinates in which the condition is imposed changes the shape of the
+orbit while leaving the energy alone. The quantization gives the action up to an additive
+constant, surfacing as the open question of integer versus half-integer quantum numbers in
+band spectra and the anomalous Zeeman effect. The quantities the theory delivers cleanly are
+the spectroscopic ones: line frequencies and line intensities, i.e. transition frequencies and
+(squared) transition amplitudes.
 
 ## Baselines
 
@@ -119,27 +104,20 @@ These are the concrete schemes a new theory of the atom would be measured agains
 
 - **Bohr 1913 / Sommerfeld 1915–16 quantization.** Stationary states selected by ∮p dq = nh
   in action–angle variables; energies from the classical Hamiltonian on the quantized orbits;
-  line frequencies from ν = (W_i − W_f)/h. *Gap:* the whole computation runs on orbits, which
-  are unobservable and, for crossed fields and many electrons, give wrong or no results; and
-  it leaves the integer/half-integer quantization unresolved.
+  line frequencies from ν = (W_i − W_f)/h.
 
 - **Bohr correspondence principle.** Estimates transition frequencies and intensities by
   matching them to the harmonics and Fourier amplitudes A_α(n) of the classical orbit in the
-  large-n limit. *Gap:* qualitative and asymptotic — it tells you the *form* of the answer for
-  large n by analogy, but it is not a closed calculational scheme, and it still references the
-  orbit's Fourier series.
+  large-n limit; it gives the *form* of the answer for large n by analogy.
 
 - **Ladenburg (1921) dispersion.** Rewrites the classical dispersion formula with Einstein
-  transition probabilities replacing amplitudes, so the formula speaks of jumps, not
-  electrons. *Gap:* restricted to the ground state; not a general mechanics.
+  transition probabilities replacing amplitudes, so the formula speaks of jumps, for the
+  ground state.
 
 - **Kramers (1924) / Kramers–Heisenberg (1925) dispersion.** A quantum dispersion formula
   obtained by the transcription d/dJ → (1/h)Δ/Δn, expressed entirely in transition
-  frequencies and transition amplitudes, with no orbit appearing. *Gap:* it is a formula for
-  one phenomenon (scattering of light), not a mechanics — it does not by itself tell you how to
-  determine the transition amplitudes and frequencies of an arbitrary bound system from its
-  forces. But it is the template: it shows that an observable-only, transition-indexed
-  description is possible and consistent.
+  frequencies and transition amplitudes, with no orbit appearing. It is a formula for the
+  scattering of light, expressed in observable, transition-indexed quantities.
 
 ## Evaluation settings
 
@@ -169,8 +147,7 @@ The natural yardsticks for a candidate mechanics, all available before any new t
 
 The available computational scaffold is the classical Fourier bookkeeping for a periodic
 one-degree-of-freedom system, together with the equation of motion and the phase integral.
-Spectroscopy supplies line frequencies and line intensities, but how to compute with quantities
-indexed by lines is still open.
+Spectroscopy supplies line frequencies and line intensities.
 
 ```python
 import numpy as np

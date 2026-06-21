@@ -4,9 +4,9 @@ A trajectory-level diffusion planner is fixed. It diffuses whole state-action tr
 
 ## Prior art / Background / Baselines
 
-- **Autoregressive single-step dynamics models for planning (PETS, ensemble MB-RL).** Fit `ŝ_{t+1}=f(s_t,a_t)`, then plan by rolling it forward under candidate action sequences and scoring them with CEM or random shooting. Gap: the model is trained for single-step accuracy but used for multi-step rollouts, so error compounds over the horizon, and a strong optimizer exploits the off-manifold regions where the model is confidently wrong.
-- **Offline TD value learning (CQL, IQL, BCQ).** Estimate `Q*` with a Bellman backup that propagates value backward through offline data. Gap: function approximation, bootstrapping, and off-policy data combine to overestimate values on out-of-distribution actions.
-- **Sequence-model decision making (Decision Transformer, Trajectory Transformer).** Tokenize a trajectory and fit an autoregressive Transformer over interleaved states and actions, generating left-to-right conditioned on a target return. Gap: the action at each step must be produced before the future trajectory it influences, so actions are generated without access to future context and rollout error accumulates.
+- **Autoregressive single-step dynamics models for planning (PETS, ensemble MB-RL).** Fit `ŝ_{t+1}=f(s_t,a_t)`, then plan by rolling it forward under candidate action sequences and scoring them with CEM or random shooting.
+- **Offline TD value learning (CQL, IQL, BCQ).** Estimate `Q*` with a Bellman backup that propagates value backward through offline data.
+- **Sequence-model decision making (Decision Transformer, Trajectory Transformer).** Tokenize a trajectory and fit an autoregressive Transformer over interleaved states and actions, generating left-to-right conditioned on a target return.
 - **Denoising diffusion.** A forward process corrupts data to noise; a learned reverse process denoises it back. Training predicts the added noise at a random level, and sampling is iterative. The Gaussian reverse transitions can be tilted at each step, and known coordinates can be clamped by inpainting. This is the engine the substrate is built on.
 
 ## Fixed substrate / Code framework

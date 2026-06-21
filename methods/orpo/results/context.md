@@ -6,28 +6,15 @@ A pre-trained language model is not directly usable as an assistant. It must be 
 twice: first **supervised fine-tuning (SFT)** on demonstration data to teach the target
 domain and format, then **preference alignment** on pairwise data `(x, y_w, y_l)` — an
 input `x` with a chosen response `y_w` and a rejected response `y_l` — to teach it which
-of two plausible answers humans prefer. The dominant alignment recipes (RLHF, DPO) share
-two costs that this two-stage pipeline forces on you:
-
-1. **A separate frozen reference model.** Both RLHF and DPO measure how far the policy has
-   moved from the SFT checkpoint, so they keep a second, frozen copy of the model in memory
-   and run extra forward passes through it every step. For a multi-billion-parameter model
-   that is a large, unavoidable memory and FLOP tax.
-2. **A mandatory SFT warm-up phase.** Preference alignment is run *on top of* an
-   already-SFT'd model; the reference model *is* that SFT checkpoint. So you pay for two
-   training runs, not one.
-
-The precise goal is a single loss, applied in **one** stage directly to the pre-trained
-model, that simultaneously (1) does the domain adaptation that SFT does, (2) teaches the
-chosen/rejected preference, and (3) needs **no reference model and no separate warm-up** —
-so it is cheaper in both memory and compute than the two-stage methods, while at least
-matching their alignment quality.
+of two plausible answers humans prefer. Existing alignment recipes (RLHF, DPO) share a
+two-stage pipeline: an SFT warm-up phase followed by a preference-alignment phase that
+keeps a frozen reference model in memory. The question is how to design a preference loss
+that operates on pairwise data to align a language model with human preferences.
 
 ## Background
 
-**The SFT loss and what it cannot do.** SFT minimizes the causal-LM negative
-log-likelihood (NLL / cross-entropy) of the chosen response. For one example of length `m`
-over vocabulary `V`,
+**The SFT loss.** SFT minimizes the causal-LM negative log-likelihood (NLL / cross-entropy)
+of the chosen response. For one example of length `m` over vocabulary `V`,
 
 ```
 L = -(1/m) Σ_{k=1}^{m} log P(x, y^{(k)})
@@ -35,45 +22,37 @@ L = -(1/m) Σ_{k=1}^{m} log P(x, y^{(k)})
 ```
 
 where `y_i^{(k)}` is 1 iff token `i` is the label at position `k` and `p_i^{(k)}` is the
-model's probability for token `i`. The structural fact about this loss: the inner sum only
-touches the *label* token (the term survives only where `y_i = 1`); for every non-label
-token `y_i = 0`, so the loss neither rewards nor **penalizes** it. Cross-entropy is an
-excellent domain-adaptation signal but has no mechanism to push *down* the probability of
-any specific undesirable continuation.
+model's probability for token `i`. The inner sum only touches the *label* token (the term
+survives only where `y_i = 1`); for every non-label token `y_i = 0`.
 
-**The diagnostic phenomenon that motivates everything.** A pilot observation about plain
-SFT: fine-tune a model (OPT-350M) on the *chosen responses only* of a preference dataset
-(HH-RLHF) and track, batch by batch, the log-probability of the held-out *rejected*
-responses. The log-probability of the rejected responses rises
-**together** with that of the chosen responses — sometimes the rejected response ends up
-*more* likely than the chosen one. SFT moves the whole neighbourhood of the target domain
-up, including the disfavored styles, exactly because the NLL has no penalty term. This is
-the gap a single-stage alignment loss must close.
+**An observation on SFT behavior with preference data.** Fine-tuning a model (OPT-350M) on
+the *chosen responses only* of a preference dataset (HH-RLHF) and tracking, batch by batch,
+the log-probability of the held-out *rejected* responses shows that the log-probability of
+the rejected responses rises together with that of the chosen responses — sometimes the
+rejected response ends up more likely than the chosen one. SFT moves the whole neighbourhood
+of the target domain up, including the disfavored styles, because the NLL has no penalty term.
 
 **Unlikelihood training.** Prior work on degeneration (Welleck et al. 2019; Li et al. 2020)
 showed you can suppress unwanted continuations by *appending* a penalty: for an unwanted
 token set `C_recent` (e.g. recently emitted tokens, to stop repetition), add a term that
 penalizes the model for assigning them high probability, of the form `Σ log(1 - p_i)` over
-the unwanted tokens. The lesson carried forward is that a penalty *added to* the NLL,
-rather than a replacement for it, can curb undesired generation while leaving the main
-likelihood objective intact — but it required hand-crafting the unwanted-token set.
+the unwanted tokens. A penalty *added to* the NLL, rather than a replacement for it, can
+curb undesired generation while leaving the main likelihood objective intact.
 
 **Sequence likelihoods for pairwise data.** A preference trainer normally reduces the
 token-level causal-LM log-probabilities of each response to a scalar before comparing the
 chosen and rejected responses. The raw sum favors shorter continuations mechanically, while
-an average per valid token is comparable across different response lengths. Any single-stage
-preference loss has to decide how to reduce these token log-probabilities before forming
-the chosen-vs-rejected contrast.
+an average per valid token is comparable across different response lengths. Any preference
+loss has to decide how to reduce these token log-probabilities before forming the
+chosen-vs-rejected contrast.
 
 ## Baselines
 
 **RLHF with a reward model (Ziegler et al. 2019; Stiennon et al. 2020; Ouyang et al. 2022).**
 Fit a reward model `r(x, y)` from pairwise data under the Bradley-Terry model
 (maximize `log σ(r(x, y_w) − r(x, y_l))`), then optimize the policy with PPO to maximize the
-reward, regularized by a KL penalty to the SFT reference. It works at scale but is
-unstable: PPO is sensitive to many hyperparameters, the reward model can be exploited
-(reward over-optimization), and the pipeline carries a reward model *and* a reference
-policy. The cost it pays is the full apparatus of online RL plus two auxiliary models.
+reward, regularized by a KL penalty to the SFT reference. The pipeline carries a reward model
+and a reference policy, and uses online RL via PPO.
 
 **DPO — Direct Preference Optimization (Rafailov et al. 2023).** Removes the explicit
 reward model and PPO loop by reparametrizing the optimal RLHF reward as a log-ratio against
@@ -84,24 +63,16 @@ Bradley-Terry objective into a direct classification loss on the pairs:
 L_DPO = −log σ( β [ (log π_θ(y_w|x) − log π_ref(y_w|x)) − (log π_θ(y_l|x) − log π_ref(y_l|x)) ] )
 ```
 
-It is far more stable than PPO, but it still uses a **probability ratio relative to a frozen
-reference model** `π_ref`, so it inherits both two-stage costs: it needs an SFT warm-up to
-produce `π_ref`, and it keeps `π_ref` in memory and runs extra forward passes through it.
-Per batch, DPO requires four forward passes (chosen and rejected, through both the policy
-and the reference).
+DPO uses a **probability ratio relative to a frozen reference model** `π_ref`, and requires
+an SFT warm-up to produce `π_ref`. Per batch, DPO requires four forward passes (chosen and
+rejected, through both the policy and the reference).
 
-**IPO — Identity Preference Optimization (Azar et al. 2023).** Diagnoses that DPO's
-log-sigmoid objective can drive the policy to a near-deterministic preference and overfit
-when the empirical preference is clean; replaces the log-sigmoid with a squared loss that
-targets a finite margin, `( h − 1/(2β) )²` where `h` is the same reference-relative
-log-ratio difference. It regularizes DPO's tendency to push the margin to infinity, but it
-is still reference-based and two-stage.
+**IPO — Identity Preference Optimization (Azar et al. 2023).** Replaces the log-sigmoid
+with a squared loss that targets a finite margin, `( h − 1/(2β) )²` where `h` is the same
+reference-relative log-ratio difference. It is reference-based and two-stage.
 
-Across these, the common pattern of the prior art is a **probability-ratio** contrast
-between chosen and rejected, applied either against a frozen reference or as its own stage.
-Where they leave room: the contrast is built to run *after* domain adaptation, and the
-probability ratio's behavior, when used during SFT on a not-yet-adapted model, is not
-characterized.
+The common pattern of the prior art is a **probability-ratio** contrast between chosen and
+rejected, applied relative to a frozen reference.
 
 ## Evaluation settings
 

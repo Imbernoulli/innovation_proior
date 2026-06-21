@@ -4,15 +4,13 @@ Multivariate time series imputation under a fixed 25% random mask. A length-96 w
 
 ## Prior art / Background / Baselines
 
-These lines of work are the current background for temporal imputation; each has a real gap.
+- **Iterated / point-wise temporal models (RNNs, LSTMs).** They read the sequence one step at a time and carry a hidden state, filling gaps by rolling forward or bidirectionally through neighbours.
 
-- **Iterated / point-wise temporal models (RNNs, LSTMs).** They read the sequence one step at a time and carry a hidden state, filling gaps by rolling forward or bidirectionally through neighbours. Gap: the signal path from a distant observed point to a masked one is long, so information is forgotten through the recurrence, and they are slow.
+- **The Transformer forecasting stack (Informer, Autoformer, FEDformer).** Each variant introduces a different attention kernel — ProbSparse, auto-correlation with a decomposition block, a Fourier block — to reduce quadratic cost. The token is a single time step: one scalar or one channel-vector at time *t*.
 
-- **The Transformer forecasting stack (Informer, Autoformer, FEDformer).** Each variant introduces a different attention kernel — ProbSparse, auto-correlation with a decomposition block, a Fourier block — to reduce quadratic cost. The token is a single time step: one scalar or one channel-vector at time *t*. Gap: a single time step has little standalone meaning, so point-wise attention compares objects that carry weak signal, and the elaborate kernels are still costly to run.
+- **Seasonal-trend decomposition (classical STL, Autoformer's moving-average block).** It writes a window additively as a slow trend plus a residual; each piece is more regular than the sum.
 
-- **Seasonal-trend decomposition (classical STL, Autoformer's moving-average block).** It writes a window additively as a slow trend plus a residual; each piece is more regular than the sum. Gap: it is only a reparameterisation; it still needs a predictor behind it.
-
-- **Non-stationary normalisation (Non-stationary Transformer).** It centres and scales each window before the model and undoes the transform after, so the network sees only the window shape while level and drift are handled outside. Gap: in the masked setting the missing entries bias the per-window statistics, so the transform itself is uncertain.
+- **Non-stationary normalisation (Non-stationary Transformer).** It centres and scales each window before the model and undoes the transform after, so the network sees only the window shape while level and drift are handled outside.
 
 ## Fixed substrate / Code framework
 

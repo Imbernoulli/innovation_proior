@@ -18,19 +18,8 @@ is what the value function should be in the *multi-agent* case, where a subtlety
 single-agent analogue: the actor may only look at `o_i`, but training happens in a simulator or lab
 where the full global state — and every agent's observation — is available. A baseline used only during
 training is free to look at more than the actor can. So the precise problem is: **what should the
-team's value function condition on, and how should it be built, so that the advantage estimate it
-produces is low in variance and bias and the resulting on-policy update scales across cooperative tasks
-of widely varying difficulty and agent count?** This is a question about an architecture — the inputs
-and the network of the value function (the "critic") — and it is the design that determines whether a
-policy-gradient method is competitive in this setting at all.
-
-The stakes are set by a piece of prevailing wisdom that makes this question feel almost moot. By this
-time the consensus in both single-agent continuous control and multi-agent RL is that on-policy
-policy-gradient methods are markedly less sample-efficient than off-policy methods, and that the
-state of the art in cooperative MARL belongs to off-policy value-decomposition Q-learning and to
-off-policy centralized-critic actor-critics. A solution that makes a *simple on-policy* method
-competitive would therefore have to be carried almost entirely by getting this one architectural choice
-right.
+team's value function condition on, and how should it be built?** This is a question about an architecture — the inputs
+and the network of the value function (the "critic").
 
 ## Background
 
@@ -38,12 +27,11 @@ The setting is *centralized training with decentralized execution* (CTDE). Two e
 Fully *centralized* learning (Claus & Boutilier 1998) trains a single controller that emits the joint
 action of all agents; it does not respect the per-agent partial-observability constraint and its
 action space is the product `|A|^n`. Fully *decentralized* learning (Littman 1994) has each agent
-optimize its own reward independently; it scales but is unstable even in simple matrix games (Foerster
-et al. 2017) because every agent is a moving part of every other agent's environment. CTDE sits between
-them: the agents execute decentralized policies on `o_i`, but during training a centralized component
-may use global information that is unavailable at execution. The whole CTDE family is built on the
-observation that the partial-observability constraint binds only at *execution* time, so training is
-free to exploit the simulator's privileged access.
+optimize its own reward independently. CTDE sits between them: the agents execute decentralized
+policies on `o_i`, but during training a centralized component may use global information that is
+unavailable at execution. The whole CTDE family is built on the observation that the
+partial-observability constraint binds only at *execution* time, so training is free to exploit the
+simulator's privileged access.
 
 The on-policy machinery that a policy-gradient method in this setting would reuse is already mature in
 single-agent RL:
@@ -79,79 +67,57 @@ single-agent RL:
   whenever the running statistics change, so the network's *outputs are preserved exactly* across a
   normalization update while the *targets* are adaptively rescaled.
 
-Several motivating empirical facts about *existing* systems are on the table and are what a method here
-would have to reckon with. First, in single-agent continuous control the rise of off-policy SAC
-(Haarnoja et al. 2018) hardened the belief that policy gradients are sample-inefficient; benchmark
-studies in MARL (Papoudakis et al. 2021) reported that multi-agent policy-gradient methods such as COMA
-are beaten by off-policy MADDPG and QMIX by a clear margin on the particle-world environment and on the
-StarCraft Multi-Agent Challenge. Second, and pulling the other way, a decentralized independent-PPO
-study (de Witt et al. 2020) found that *purely local* PPO can reach high success rates on several hard
-SMAC maps — though still below QMIX, and only studied on SMAC. That tension — local PPO is
-surprisingly strong, yet centralized PPO using a particular global-state input is reported to do *worse*
-than local PPO — is a diagnostic clue: it points at the value function's *input* as the thing that can
-make or break the method. Third, value targets in some of these tasks genuinely span orders of
-magnitude (in the particle-world `Spread` task episode returns range from below −200 up to 0), so
-unnormalized value regression is observably unstable there. Fourth, in StarCraft maps the
-environment-provided global state and the agents' local observations carry overlapping but
-non-identical information: the global state contains agent/enemy positions, health, shield, and weapon
-cooldown, while the local observation additionally carries agent id, available movement and attack
-options, and relative distances to allies/enemies within a sight radius — features the environment
-global state omits.
+Several empirical facts about *existing* systems are on the table. In single-agent continuous control
+the rise of off-policy SAC (Haarnoja et al. 2018) established a strong sample-efficient baseline;
+benchmark studies in MARL (Papoudakis et al. 2021) reported that multi-agent policy-gradient methods
+such as COMA are beaten by off-policy MADDPG and QMIX by a clear margin on the particle-world
+environment and on the StarCraft Multi-Agent Challenge. A decentralized independent-PPO study
+(de Witt et al. 2020) found that *purely local* PPO can reach high success rates on several hard SMAC
+maps. Value targets in some of these tasks span orders of magnitude (in the particle-world `Spread`
+task, episode returns range from below −200 up to 0). In StarCraft maps the environment-provided
+global state and the agents' local observations carry overlapping but non-identical information: the
+global state contains agent/enemy positions, health, shield, and weapon cooldown, while the local
+observation additionally carries agent id, available movement and attack options, and relative
+distances to allies/enemies within a sight radius.
 
 ## Baselines
 
-These are the prior methods a new centralized value function would be measured against and would react
-to. Each is a real CTDE design with a concrete limitation.
+These are the prior methods a new centralized value function would be measured against.
 
 **MADDPG — per-agent centralized Q critic (Lowe et al. 2017).** Each agent `i` has a decentralized
 deterministic actor `μ_i(o_i)` and a *centralized action-value critic* `Q_i(x, a_1,…,a_n)` that takes
 the global information `x` and the joint action of all agents. Trained off-policy from a replay buffer.
 The centralized `Q_i` stabilizes learning because, from agent `i`'s viewpoint, the environment is
-stationary once the other agents' actions are given. **Limitation:** there is a separate critic per
-agent, and each critic's input includes the *joint action* of all `n` agents, so the input grows with
-`n` and the critic is coupled to every agent's current policy; the action-value formulation forces the
-critic to model the effect of the full action vector rather than just the state.
+stationary once the other agents' actions are given.
 
 **COMA — centralized critic with a counterfactual baseline (Foerster et al. 2018).** One centralized
 action-value critic `Q(s, A)` for the whole team, used to compute a per-agent *counterfactual
 advantage*: hold the other agents' actions fixed and marginalize agent `i`'s own action under its
 current policy, `A_i = Q(s,A) − Σ_{a'_i} π_i(a'_i|o_i) Q(s, (A_{−i}, a'_i))`. This isolates agent `i`'s
-contribution to the team return and so attacks the multi-agent credit-assignment problem directly.
-**Limitation:** it is still an action-value critic conditioning on the joint action; the counterfactual
-baseline requires evaluating the critic once per candidate action of agent `i`, and the method was
-reported to be outperformed by off-policy value-decomposition on the benchmarks above.
+contribution to the team return and so addresses the multi-agent credit-assignment problem directly.
 
 **VDN — additive value decomposition (Sunehag et al. 2018).** Represent the team action-value as a sum
 of per-agent utilities, `Q_tot(τ, A) = Σ_i Q_i(τ_i, a_i)`, each `Q_i` conditioning only on local
 information. The sum makes the team `argmax` decompose into per-agent `argmax`, giving decentralized
-greedy execution, and gradients flow into each `Q_i` from the shared team TD error. **Limitation:** the
-additive form is a strong restriction on the class of team value functions it can represent — it cannot
-capture interactions where one agent's best action depends on what another simultaneously does.
+greedy execution, and gradients flow into each `Q_i` from the shared team TD error.
 
 **QMIX — monotonic value decomposition (Rashid et al. 2018).** Relax VDN's sum to a learned *monotonic*
 mixing of the per-agent `Q_i`, where the mixing weights are produced by a hypernetwork conditioned on
 the global state and constrained non-negative. Monotonicity (`∂Q_tot/∂Q_i ≥ 0`) is enough to keep the
 per-agent and team `argmax` consistent while allowing a richer, state-dependent combination than a
-plain sum. This is the off-policy state of the art on SMAC. **Limitation:** the monotonicity constraint
-still bounds the representable class of team value functions; the method carries the full off-policy
-replay-and-target-network apparatus.
+plain sum. This is the off-policy state of the art on SMAC.
 
 **IPPO — independent PPO with a local value function (de Witt et al. 2020).** The fully decentralized
 point of the design space: every agent runs its own PPO with a value function `V(o_i)` that sees only
 the local observation, no global state and no other agents. Simple, scalable, and empirically strong on
-several hard SMAC maps. **Limitation:** by construction the value function cannot use any of the global
-information available at training time; in tasks where the value of a situation depends on teammates or
-on parts of the world the agent cannot observe, a local-only baseline is a higher-variance, more biased
-estimate of the team return than one that could see the whole state.
+several hard SMAC maps.
 
 **Existing global-state conventions.** Two ways of building a *centralized* value input were already in
 use. The *concatenation of local observations* (CL; used by Lowe et al. 2017) forms the global input by
 stacking all agents' local observations `(o_1,…,o_n)`; its dimensionality grows with the number of
-agents, and it can still omit genuinely global information that no single agent observes. The
-*environment-provided global state* (EP; used in much SMAC work following Foerster et al. 2017) feeds a
-single agent-agnostic global vector supplied by the environment; it is compact but, being the same for
-every agent, omits agent-specific local features (in SMAC: agent id, available actions, relative
-distances). Each of these is a usable centralized input that nonetheless leaves something on the floor.
+agents. The *environment-provided global state* (EP; used in much SMAC work following Foerster et al.
+2017) feeds a single agent-agnostic global vector supplied by the environment. Each of these is a
+concrete centralized input choice a method can adopt.
 
 ## Evaluation settings
 

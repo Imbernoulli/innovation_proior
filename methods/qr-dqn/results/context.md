@@ -3,26 +3,23 @@
 In reinforcement learning the *return* $Z^\pi=\sum_{t\ge0}\gamma^tR_t$ collected by following a
 policy $\pi$ is a random variable; classic value-based methods learn only its mean, the value
 $Q^\pi(x,a)=\mathbb{E}[Z^\pi(x,a)]$. A distributional approach instead learns the whole law of
-$Z^\pi$. The theory of that approach rests on one fact and one obstruction. The fact: the
-distributional Bellman operator
+$Z^\pi$. The theory of that approach rests on one fact: the distributional Bellman operator
 $\mathcal{T}^\pi Z(x,a)\overset{D}{=}R(x,a)+\gamma Z(x',a')$ is a $\gamma$-contraction in the
 *maximal Wasserstein* metric $\bar d_p(Z_1,Z_2)=\sup_{x,a}W_p(Z_1(x,a),Z_2(x,a))$ — Wasserstein
 being the metric that respects distances between outcomes and is well-behaved under the
-disjoint-support situations a Bellman update creates. The obstruction: the Wasserstein distance,
-viewed as a loss, *cannot in general be minimized by stochastic gradient descent from sampled
-transitions* — the expected gradient of the sample loss does not point at the true minimizer. So
-the metric the theory contracts in is precisely the one a sample-based learner cannot descend.
+disjoint-support situations a Bellman update creates.
 
-A discrete-distribution agent that achieves strong results sidesteps this by fixing a comb of
-support locations $z_1\le\cdots\le z_N$ over a predetermined interval, learning the *probabilities*
-on those atoms, *projecting* the Bellman target back onto the comb, and minimizing a KL
-divergence after projection. That works in practice but breaks the contract: it minimizes KL,
-not Wasserstein, so the contraction theory does not explain why it works, and it needs the support
-bounds $[V_{\min},V_{\max}]$ as domain knowledge plus a heuristic projection step. The precise
-question: is there a distributional RL algorithm, runnable in the online stochastic-approximation
-setting, that genuinely operates *end-to-end* on the Wasserstein metric — keeping the contraction
-guarantee while being trainable from single samples — and so removing the projection and the
-support hyperparameter?
+One known fact about the Wasserstein distance, when viewed as a loss, is that minimizing the
+*sample* loss does not in general yield the same minimizer as minimizing the population loss; that
+is, the expected gradient of the sample Wasserstein loss does not point at the true minimizer.
+
+A discrete-distribution agent that achieves strong results fixes a comb of support locations
+$z_1\le\cdots\le z_N$ over a predetermined interval, learns the *probabilities* on those atoms,
+*projects* the Bellman target back onto the comb, and minimizes a KL divergence after projection.
+
+The broad question is: how can one design a sample-based distributional RL algorithm that
+operates in the online stochastic-approximation setting and that connects to the Wasserstein
+contraction framework?
 
 # Background
 
@@ -46,11 +43,10 @@ disjoint supports. It was shown (C51 line; Bellemare et al., 2017) that $\bar d_
 value distributions and that $\mathcal{T}^\pi$ is a $\gamma$-contraction in it; its fixed point is
 $Z^\pi$.
 
-**The biased-gradient obstruction.** Bellemare et al. (2017, "Cramér distance") prove that for an
+**The biased-gradient result.** Bellemare et al. (2017, "Cramér distance") prove that for an
 empirical distribution $\hat Y_m=\frac1m\sum\delta_{Y_i}$ of samples from a Bernoulli $B$,
 $\arg\min_\mu\mathbb{E}_{Y_{1:m}}[W_p(\hat Y_m,B_\mu)]\ne\arg\min_\mu W_p(B,B_\mu)$: minimizing the
-*sample* Wasserstein loss converges to the wrong place. This is why a contraction in Wasserstein
-does not hand you a trainable algorithm.
+*sample* Wasserstein loss converges to a different point than minimizing the population Wasserstein loss.
 
 **Quantile regression (Koenker).** A method, standard in econometrics, for estimating a quantile
 of a distribution by stochastic approximation. For quantile level $\tau$, the *quantile regression
@@ -60,7 +56,7 @@ $\mathbb{E}_{\hat Z\sim Z}[\rho_\tau(\hat Z-\theta)]$ is the quantile $F_Z^{-1}(
 (Huber, 1964) $\mathcal{L}_\kappa(u)=\frac12u^2$ for $|u|\le\kappa$ and $\kappa(|u|-\frac12\kappa)$
 otherwise is the smooth-at-zero, robust-in-the-tails compromise between squared and absolute loss.
 
-**Function approximation can break contractions.** Tsitsiklis & Van Roy (1997): a Bellman update
+**Function approximation and contractions.** Tsitsiklis & Van Roy (1997): a Bellman update
 *composed with a projection onto an approximation space* may fail to be a contraction. So any
 parametric distributional method must show that the *projected* operator still contracts.
 
@@ -69,13 +65,13 @@ parametric distributional method must show that the *projected* operator still c
 **DQN (Mnih et al., 2015).** Convolutional $Q(x,\cdot;\theta)$ trained off-policy from replay by
 regressing the scalar Bellman target with a Huber loss (DQN's gradient-clipped squared error is a
 Huber loss with $\kappa=1$), RMSProp optimizer, periodically-copied target network,
-$\epsilon$-greedy behaviour. **Gap:** learns only the mean return.
+$\epsilon$-greedy behaviour.
 
 **Double DQN (van Hasselt et al., 2016).** Decouples action selection from evaluation in the
-target to reduce maximization bias. Still mean-only.
+target to reduce maximization bias.
 
 **Dueling architecture (Wang et al., 2016); Prioritized replay (Schaul et al., 2016).**
-Orthogonal improvements to credit assignment and sample reuse. Still mean-only.
+Orthogonal improvements to credit assignment and sample reuse.
 
 **C51 (Bellemare, Dabney & Munos, 2017).** The most direct distributional baseline. It models
 $Z(x,a)$ as a categorical distribution on a *fixed* comb $z_1\le\cdots\le z_N$
@@ -83,15 +79,11 @@ $Z(x,a)$ as a categorical distribution on a *fixed* comb $z_1\le\cdots\le z_N$
 (softmax logits). Applies a projection $\Phi$ that maps the shifted Bellman target
 $\mathcal{T}^\pi Z$ (whose atoms $r+\gamma z_j$ generally miss the comb) back onto the comb by
 assigning mass to the nearest support points in proportion to distance, then minimizes the KL
-divergence between projected target and prediction. **Gaps:** (i) it minimizes KL, not Wasserstein,
-so its strong performance is disconnected from the contraction theory; (ii) it requires the
-support bounds $[V_{\min},V_{\max}]$ as a hyperparameter and a uniform resolution; (iii) the
-projection step is needed precisely because fixed atoms create disjoint-support problems.
+divergence between projected target and prediction.
 
 **Parametric (Gaussian/Laplace) return models (Morimura et al., 2010).** Parameterize the value
 distribution by the mean and scale of a Gaussian or Laplace and minimize KL between target and
-prediction; used for risk-sensitive Q-learning. **Gap:** unimodal family; the Bellman operator is
-at best a non-expansion in KL, so guarantees are only asymptotic.
+prediction; used for risk-sensitive Q-learning.
 
 # Evaluation settings
 

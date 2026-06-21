@@ -5,12 +5,11 @@
 Place `n = 11` points in the closed unit square `[0,1]^2` so that the **minimum** triangle area —
 the smallest area over all `C(11,3) = 165` triples — is as **large** as possible. The designed
 object is a constructor that emits one concrete list of 11 points, scored by a single number: the
-exact minimum triangle area of that set (higher is better). One near-collinear trio makes a sliver
-of almost-zero area and, being the minimum, sets the whole score, so the task is to spread points so
-no three are ever nearly collinear.
+exact minimum triangle area of that set (higher is better). The minimum is set by whichever triple
+spans the smallest area.
 
-This rung asks the narrowest version of the question: what is the best *structured, parameter-free*
-configuration I can write down in closed form, with no search at all? It establishes the floor that
+This rung asks the narrowest version of the question: what *structured, parameter-free*
+configuration can be written down in closed form, with no search at all? It establishes the floor that
 every later searched method must beat.
 
 ## How the score is defined

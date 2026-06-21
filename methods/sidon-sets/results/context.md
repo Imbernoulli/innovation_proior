@@ -4,7 +4,7 @@
 
 Fix an integer `n`. We want the largest possible set `A ⊆ {1, 2, …, n}` with the property that all pairwise sums `a + b` (with `a ≤ b`, both in `A`) are distinct. Equivalently — since `a + b = c + d ⇔ a − c = d − b` — all pairwise *differences* `a − b` (`a ≠ b`) are distinct. Such a set is called a `B₂` set or a Sidon set; a finite Sidon set realized as integer marks on a line is a Golomb ruler.
 
-The question is quantitative: how large can `|A|` be as a function of `n`, and can we *exhibit* sets that achieve the maximum? A trivial counting fact (below) caps `|A|` at roughly `√(2n)`. The goal is a matching family of explicit sets of size on the order of `√n`, together with a tight upper bound so we know the constructions are essentially optimal. What makes this hard is that the constraint is global and combinatorial — checking it naively means inspecting all `Θ(|A|²)` pairs, and *searching* for large Sidon sets (the natural backtracking over candidate marks) blows up exponentially. A solution must produce a provably-Sidon set directly, without search.
+The question is quantitative: how large can `|A|` be as a function of `n`, and can we *exhibit* sets that achieve the maximum? A trivial counting fact (below) caps `|A|` at roughly `√(2n)`. The goal is a family of explicit sets of size on the order of `√n`, together with a tight upper bound.
 
 ## Background
 
@@ -14,7 +14,7 @@ The question is quantitative: how large can `|A|` be as a function of `n`, and c
 ```
 r(r−1)/2 ≤ n−1  ⇒  r ≤ √(2n) (1 + o(1)).
 ```
-This is the elementary ceiling: roughly `1.41 √n`. The interesting facts are (i) this can be sharpened to `√n + O(n^{1/4})`, and (ii) it can be matched from below by explicit sets of size `≈ √n`. Both the sharper ceiling and the matching constructions are the substance here.
+This is the elementary ceiling: roughly `1.41 √n`. The interesting facts are (i) this can be sharpened to `√n + O(n^{1/4})`, and (ii) it can be matched from below by explicit sets of size `≈ √n`.
 
 **Modular versus integer Sidon sets.** A set is *modular* Sidon in `Z/mZ` if its pairwise differences are distinct in `Z/mZ`. This is strictly stronger than integer-Sidon, because in `Z/mZ` the pair `(a, b)` contributes *two* differences `a − b` and `b − a = m − (a − b)`, all of which must be distinct. A modular-Sidon set in `Z/mZ` is automatically an integer-Sidon set once its elements are taken as representatives in `{0, …, m−1}`. The strongest possible modular object is a **perfect difference set**: a set `D ⊆ Z/mZ` whose `|D|(|D|−1)` ordered differences hit *every* nonzero residue *exactly once*. A perfect difference set of size `k` forces `k(k−1) = m − 1`, i.e. `m = k² − k + 1`, so it is automatically as dense as the counting bound allows.
 
@@ -22,15 +22,15 @@ This is the elementary ceiling: roughly `1.41 √n`. The interesting facts are (
 
 **Finite projective planes.** The plane `PG(2, q)` has `v = q² + q + 1` points and the same number of lines; every line contains `q + 1` points, and every two distinct points lie on exactly one common line (a `2-(v, q+1, 1)` design). It is built by projectivizing `F_q³`: points are the `1`-dimensional subspaces, lines the `2`-dimensional ones, `v = (q³ − 1)/(q − 1)`.
 
-**Quadratic residues.** Modulo an odd prime `p`, the squares `k²` form the quadratic residues. Writing `(k²)_p` for the unique representative of `k² mod p` in `{0, …, p−1}`, the map `k ↦ (k²)_p` is the elementary structure that an arithmetic construction will exploit, in place of the multiplicative structure of a field.
+**Quadratic residues.** Modulo an odd prime `p`, the squares `k²` form the quadratic residues. Writing `(k²)_p` for the unique representative of `k² mod p` in `{0, …, p−1}`, the map `k ↦ (k²)_p` relates the integer index `k` to its residue.
 
 ## Baselines
 
-**Exhaustive / backtracking search (the thing to beat).** The direct way to find a large Sidon set in `{1, …, n}` is to grow a set greedily or by backtracking, maintaining the set of already-used differences and rejecting any new mark that repeats one. This certifies optimality for small `n` and underlies the optimal-Golomb-ruler computations, but the search tree is exponential; it gives no formula, no asymptotic density, and no insight into *why* large Sidon sets exist. Any principled construction must avoid it entirely.
+**Exhaustive / backtracking search.** The direct way to find a large Sidon set in `{1, …, n}` is to grow a set greedily or by backtracking, maintaining the set of already-used differences and rejecting any new mark that repeats one. This certifies optimality for small `n` and underlies the optimal-Golomb-ruler computations, but the search tree is exponential.
 
-**The greedy (Mian–Chowla) sequence.** Take `1`, then repeatedly adjoin the smallest integer keeping the set Sidon. This is deterministic and needs no number theory, but it is provably *thin*: the `k`-th term grows faster than `k²` is forced to, so within `{1, …, n}` it yields far fewer than `√n` elements. It shows the counting ceiling is not automatically reached and motivates algebraic constructions.
+**The greedy (Mian–Chowla) sequence.** Take `1`, then repeatedly adjoin the smallest integer keeping the set Sidon. This is deterministic and needs no number theory; the `k`-th term grows faster than `k²`, so within `{1, …, n}` it yields far fewer than `√n` elements.
 
-**The elementary upper bound `r ≤ √(2n)`.** Derived above by counting positive differences against `{1, …, n−1}`. It pins the order of growth at `√n` but leaves a constant-factor gap (`1.41` versus the truth `1.00`), and it gives no construction.
+**The elementary upper bound `r ≤ √(2n)`.** Derived above by counting positive differences against `{1, …, n−1}`. It pins the order of growth at `√n`.
 
 ## Evaluation settings
 
@@ -67,4 +67,3 @@ def build_sidon_set(param):
     TODO: the index set that makes the Sidon property fall out algebraically."""
     pass
 ```
-The `build_sidon_set` slot is what the reasoning fills in — once as an arithmetic rule keyed on quadratic residues, and once (in two flavours) as the exponents picked out of a primitive element of an extension field.

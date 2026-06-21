@@ -1,10 +1,10 @@
 ## Research question
 
-White-box `L_inf` evasion: I have full access to a trained image classifier — parameters and gradients — a clean image it classifies correctly, and a strict per-pixel budget `eps = 2/255`. The only thing I design is the **attack procedure** that turns the clean batch into an adversarial batch inside that budget. The model, the data, and the scoring are fixed. The objective is to maximize attack success rate (ASR): the fraction of initially-correct samples pushed to a wrong prediction while every pixel stays within `eps` and the image stays in `[0,1]`. On these undefended classifiers, the larger `8/255` budget already saturates ASR, so the tighter `2/255` regime is where attack quality is measurable, especially on VGG where even strong attacks leave ASR below 1.
+White-box `L_inf` evasion: I have full access to a trained image classifier — parameters and gradients — a clean image it classifies correctly, and a strict per-pixel budget `eps = 2/255`. The only thing I design is the **attack procedure** that turns the clean batch into an adversarial batch inside that budget. The model, the data, and the scoring are fixed. The objective is to maximize attack success rate (ASR): the fraction of initially-correct samples pushed to a wrong prediction while every pixel stays within `eps` and the image stays in `[0,1]`. On these undefended classifiers, the larger `8/255` budget already saturates ASR, so the tighter `2/255` regime is where attack quality is measurable.
 
 ## Prior art / Background / Baselines
 
-- **Szegedy et al. (2014).** They cast adversarial examples as box-constrained minimization of `c·||r||_2 + loss_f(x + r, l)` and solve it per image with L-BFGS plus a line search over `c`. Gap: each image needs its own iterative constrained optimization, which is too slow to run at scale or to embed in a training loop.
+- **Szegedy et al. (2014).** They cast adversarial examples as box-constrained minimization of `c·||r||_2 + loss_f(x + r, l)` and solve it per image with L-BFGS plus a line search over `c`.
 
 ## Fixed substrate / Code framework
 

@@ -4,29 +4,23 @@ The goal is to learn a distribution over graphs and sample new ones that are sta
 indistinguishable from a training set — graphs with categorical node attributes (e.g. atom
 types) and categorical edge attributes (bond types, with "no edge" as one of the categories).
 The applications that drive the problem — molecule design, traffic and social-network modeling,
-program/code structure — all want a *one-shot* generator: produce a whole graph at once, rather
-than emitting it node-by-node in some chosen order. Two structural facts make this hard and are
-the crux of the whole problem.
+program/code structure — motivate a *one-shot* generator: produce a whole graph at once, rather
+than emitting it node-by-node in some chosen order. Two structural facts characterize the
+setting.
 
 First, **graphs are unordered**: the same graph has up to `n!` adjacency-matrix
-representations, one per node permutation. A learner that treats the adjacency matrix as a fixed
-array will waste capacity memorizing arbitrary orderings, and its likelihood — formally the sum
-of the likelihoods of all `n!` permutations — is intractable. So a good model must be
-*permutation equivariant* (its prediction permutes with its input) and must induce a
-permutation-*invariant* training signal, without resorting to data augmentation over random
-permutations or to an expensive graph-matching step at training time.
+representations, one per node permutation. The likelihood of a graph is formally the sum of the
+likelihoods of all `n!` permutations. A model that is *permutation equivariant* (its prediction
+permutes with its input) induces a permutation-*invariant* training signal.
 
 Second, **graphs are sparse and discrete**: a real graph has `O(n)` edges out of `O(n²)`
-possible, and node/edge attributes are categories, not real numbers. Whatever generative
-mechanism we choose has to respect that the objects are categorical and that the *structure*
-(which edges exist, how the cycles and connected components are arranged) is the thing we
-actually care about reproducing.
+possible, and node/edge attributes are categories, not real numbers. The generative mechanism
+works with objects that are categorical, and the *structure* (which edges exist, how the cycles
+and connected components are arranged) is the property to be reproduced.
 
-The precise target: a generative model that (1) is permutation equivariant with a permutation
-invariant loss; (2) trains within a fixed compute budget and samples valid undirected graphs;
-(3) does not collapse to or require an arbitrary node ordering; (4) reproduces the structural
-statistics (degree, clustering, orbit/substructure counts) of the data. Each existing family
-below achieves some of this; none does all of it cleanly at scale.
+The question is how to build a one-shot generator of undirected categorical graphs that trains
+within a fixed compute budget, does not depend on an arbitrary node ordering, and reproduces the
+structural statistics (degree, clustering, orbit/substructure counts) of the data.
 
 ## Background
 
@@ -70,60 +64,46 @@ distribution is uniform over the `K` classes (so it satisfies property 3). D3PM 
 absorbing-state (`[MASK]`) and structured transitions, and trains a hybrid loss that adds an
 auxiliary cross-entropy term predicting `x_0` to the variational bound.
 
-Two facts about the representational power of graph networks are also load-bearing, because the
-denoiser will be a graph network. Message-passing networks (MPNNs) and graph transformers are
+Two facts about the representational power of graph networks are relevant, because a graph
+denoiser would be a graph network. Message-passing networks (MPNNs) and graph transformers are
 bounded in expressivity: they are at most as discriminative as the 1-Weisfeiler-Leman test (Xu
-et al. 2018; Morris et al. 2019) and, concretely, **cannot count cycles or detect simple
-substructures** on their own (Chen et al. 2020). The known remedies are to either use a
-strictly more powerful (and far more expensive) architecture, or to **augment the input with
-features the network cannot compute itself** — substructure counts (Bouritsas et al. 2022) or
-spectral features of the graph Laplacian (Beaini et al. 2021; Chung 1997), which encode
-connectivity and global structure. Whether such augmentation is even *possible* depends on the
-generative mechanism, because the features must be computed on whatever intermediate object the
-model manipulates.
+et al. 2018; Morris et al. 2019) and, concretely, do not count cycles or detect simple
+substructures on their own (Chen et al. 2020). Two approaches address this: use a strictly more
+powerful architecture, or **augment the input with features the network cannot compute itself** —
+substructure counts (Bouritsas et al. 2022) or spectral features of the graph Laplacian (Beaini
+et al. 2021; Chung 1997), which encode connectivity and global structure. Such augmentation is
+computed on whatever object the model manipulates.
 
 ## Baselines
 
 These are the prior one-shot and diffusion-style graph generators a new method would be
-measured against and would react to.
+measured against.
 
 **Autoregressive generators (GraphRNN, You et al. 2018; GRAN, Liao et al. 2019).** Emit a graph
 node-by-node (or block-by-block), an RNN or graph-attention network predicting each new node's
 connections conditioned on the partial graph. They model rich structural dependencies and, with
-domain knowledge, reach strong validity on molecules. **Limitation:** they impose an arbitrary
-node *ordering* — the likelihood depends on the order, so they are not permutation invariant and
-typically train over sampled orderings; generation is inherently sequential.
+domain knowledge, reach strong validity on molecules. They impose a node *ordering* — the
+likelihood depends on the order — and train over sampled orderings; generation is sequential.
 
 **VAE generators (GraphVAE, Simonovsky & Komodakis 2018; Set2GraphVAE, Vignac & Frossard 2021;
 JT-VAE, Jin et al. 2018).** Encode a graph into a latent vector and decode a probabilistic
-adjacency tensor of fixed maximum size in one shot. **Limitation:** matching the decoded graph
-to the target requires solving a graph-matching/alignment problem (or an elaborate invariance
-construction), which is costly and a recurring source of difficulty; output size is capped.
+adjacency tensor of fixed maximum size in one shot. Matching the decoded graph to the target
+uses a graph-matching/alignment step or an invariance construction; output size is capped at the
+maximum.
 
 **Normalizing-flow generators (GraphNVP, Madhawa et al. 2019; MoFlow, Zang & Wang 2020;
 categorical flows, Lippe & Gavves 2020; GraphDF, Luo et al. 2021).** Invertible maps from a
-simple latent to graphs, exact likelihood. **Limitation:** the architecture is constrained to
-stay invertible with tractable Jacobian, which restricts the dependencies between nodes and
-edges the model can capture; performance trails autoregressive and motif-based methods.
+simple latent to graphs, with exact likelihood. The architecture stays invertible with a
+tractable Jacobian.
 
 **Continuous (Gaussian / score-based) graph diffusion (EDP-GNN, Niu et al. 2020; GDSS, Jo et al.
 2022).** Port diffusion to graphs by embedding the graph in a *continuous* space: one-hot node
 features and the adjacency matrix are treated as real tensors, additive Gaussian noise is
 applied, and a network learns the score `∇ log p_t` of the noised joint distribution; a reverse
 SDE/Langevin sampler generates. GDSS models nodes and edges jointly through a system of coupled
-SDEs. They achieve competitive results and inherit diffusion's training stability.
-**Limitation:** Gaussian noise turns the adjacency into a *dense* matrix of continuous values
-partway through the forward process. The graph stops being sparse, and the discrete structural
-notions the data is made of — whether an edge exists, the number of connected components, cycle
-and orbit counts — are no longer defined on the noised object. The denoiser sees a blurry dense
-tensor rather than a graph, and there is no sparse intermediate on which to read off graph
-descriptors. GDSS's joint SDE noise model is also non-factorized, hence complex. On larger
-graphs this continuous route degrades sharply.
-
-The shape of the gap: the diffusion recipe is the strongest generative paradigm available and is
-permutation-friendly, but every existing way of applying it to graphs first *continuizes* them
-and pays for it in lost sparsity and lost structure; the order-free, one-shot, structure-aware
-generator the problem asks for does not yet exist.
+SDEs. They achieve competitive results and inherit diffusion's training stability. Under Gaussian
+noise the adjacency becomes a dense matrix of continuous values partway through the forward
+process.
 
 ## Evaluation settings
 

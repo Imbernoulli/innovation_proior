@@ -5,22 +5,12 @@
 A decoder-only Transformer is a stack of identical blocks. The input tokens are embedded into
 `H_0`, and each block reads the previous hidden state `H_{n-1}`, runs self-attention and an
 MLP, and writes `H_n`. As the field pushes for capability through depth — scaling laws say
-keep adding layers — a concrete worry sharpens: **how well does the localized, token-level
+keep adding layers — a concrete question arises: **how well does the localized, token-level
 information present in the initial embeddings actually survive to the deep layers that make the
-final prediction?** The standard answer is "the residual stream carries it": every block adds
+final prediction?** The standard picture is "the residual stream carries it": every block adds
 its update to the running `H`, so `H_0` is, in principle, always one identity-path away. But
 that path is shared by everything — every block's output is summed into the same stream — so by
-the time the signal reaches layer 24 the raw token content has been written over many times.
-The goal a solution would have to meet: give deep layers genuine, undiluted access to the
-initial token-level information, **without** disturbing the abstract, sequence-level
-computation those deep layers have learned to do, and without blowing up parameters, memory,
-or compute (the change must be a cheap, modular intervention inside the block, not a new
-attention pass or a quadratic-in-depth bookkeeping scheme).
-
-This matters because there is mounting evidence that the deep layers are not, in fact, holding
-on to token-level information well, and that the failure shows up as concrete, measurable
-pathologies (below). If those pathologies trace back to lost early information, then restoring
-that information cheaply is a direct lever on model quality at fixed parameter count.
+the time the signal reaches layer 24 the raw token content has been processed many times.
 
 ## Background
 
@@ -34,7 +24,7 @@ inherited: shortcuts that give later layers direct access to earlier representat
 both optimization and information flow. The Transformer (Vaswani et al. 2017) wires one such
 shortcut around each attention and each MLP sublayer.
 
-**But deeper Transformers stopped paying off, and the diagnosis is over-smoothing.** Empirically
+**Over-smoothing in Transformers.** Empirically
 the gains from depth flatten and can reverse: a 32-layer ViT underperforms a 24-layer ViT
 (Zhou et al. 2021), and language-model gains shrink with further depth (Petty et al. 2024).
 The mechanism is over-smoothing: self-attention acts as a low-pass filter. Wang et al. (2022)
@@ -43,13 +33,13 @@ phenomenon in BERT from a graph-Laplacian view. Concretely, each attention layer
 token's representation by a convex combination (the softmax row) of all tokens' value vectors,
 which is a smoothing / averaging operation; iterate it through depth and token representations
 drift toward each other. The consequence: in deep layers, **sequence-level features dominate
-and token-level features are diluted**, exactly the loss the research question fears. A useful
+and token-level features are diluted**. A useful
 formal handle (the variational view of attention): a single self-attention update is one
 gradient-descent step that minimizes a nonlocal smoothing functional
 `J(u) = (1/2) ∬ ||u(x) - u(y)||² k(x,y) dx dy`, whose minimizer is a *constant* function — so
-repeated attention is a diffusion toward uniformity, and over-smoothing is its fixed point.
+repeated attention is a diffusion toward uniformity.
 
-**The pathologies that accompany lost early information.** Trained Transformers exhibit
+**Pathologies in trained Transformers.** Trained Transformers exhibit
 "attention sinks" (Xiao et al. 2024): a large fraction of attention mass collapses onto a few
 low-semantic tokens, typically the first token. The same sink tokens carry abnormally large
 *value-state norms* — "value-state drains" (Guo et al. 2024b) — and abnormally large
@@ -60,33 +50,24 @@ importance across depth reveals a "concentration → dispersion → concentratio
 heavy concentration in deep layers of large trained models (Llama-8B, Mistral-7B). And
 "Transformer layers as painters" (Sun et al. 2024b) reports that initial embeddings are highly
 localized and become abstract within the first few layers, with **low similarity between `H_0`
-and deep hidden states** — so naively re-adding `H_0` to a deep layer mixes two very different
-things.
+and deep hidden states**.
 
 **A first attempt to give deep layers more of the start: DenseFormer.** Pagliardini et al.
 (2024) add Depth-Weighted-Averaging: after each block, replace `H_n` by a learnable static
 weighted average of all previous outputs, `H_n = Σ_{i=0}^{n} λ_{n,i} H_i`, initialized to the
 identity (`λ_{n,n}=1`, rest 0). Notably, the *learned* coefficients confirm the worry: deeper
-layers assign larger weight to the initial embedding `H_0`. So the field has direct evidence
-that deep layers want early information — the open question is the right *carrier* for it.
+layers assign larger weight to the initial embedding `H_0`.
 
 ## Baselines
 
 **ResNet / DenseNet shortcuts (He 2016; Huang 2016, 2017).** Identity and dense skip
 connections on the hidden state. Core idea: `H_n = H_{n-1} + f(H_{n-1})` (ResNet), or `H_n`
-reads all previous `H_i` (DenseNet). Gap: these operate on the *hidden state* `H`, the thing
-that is *already* over-smoothed; adding more hidden-state shortcuts re-injects representations
-that have themselves been through the smoothing filter, and (DenseNet) summing dissimilar
-shallow and deep hidden states perturbs what the deep layer is computing.
+reads all previous `H_i` (DenseNet).
 
 **DenseFormer (Pagliardini et al. 2024).** `H_n = Σ_{i=0}^{n} λ_{n,i} H_i`, learnable static
 `λ`, identity init. Core idea: let each block read a learned mixture of all prior block
 outputs, so `H_0` is reachable with its own learned weight rather than only through the summed
-residual. Gap: it averages whole *hidden states*. Because `H_0` (localized) and a deep `H_n`
-(abstract) have low similarity, directly summing them into the stream that feeds Q, K, and V
-alters the *attention distribution* that the deep layer has learned for abstract mixing — it
-changes how tokens attend, not just what is carried. It also keeps `O(N²)` connection
-coefficients and must retain every prior hidden state.
+residual.
 
 **NeuTRENO (Nguyen et al. 2023).** Starts from the variational view: since a self-attention
 update is a descent step on the smoothing functional `J(u)` and `J`'s minimizer is constant,
@@ -100,19 +81,11 @@ layer's value vectors `v^0` yields, per token `i`,
 u(i) = Σ_j softmax(k_i·k_j/√d) v(j)  +  λ̃ (v^0(i) - v(i)),
 ```
 i.e. add `λ(V_1 - V_n)` to each layer's attention output (default `λ=0.4`). Core idea:
-re-supply the un-smoothed first-layer value to fight diffusion. Gap: the correction is added to
-the attention *output* `U_n`, so `V_1` is injected *raw* — it is not processed by the current
-layer's attention weighting at all — and the correction is the *signed difference* `V_1 - V_n`,
-which simultaneously adds `V_1` and subtracts the current `V_n`, so the strength of the early
-signal and the suppression of the layer's own value are tied to one coefficient; the method is
-correspondingly sensitive to the choice of `λ`, helping only over a narrow range.
+re-supply the un-smoothed first-layer value to fight diffusion.
 
 **KV-sharing methods (MQA, Shazeer 2019; GQA, Ainslie et al. 2023; CLA, Brandon et al. 2024).**
 Reduce the inference KV cache by sharing keys and values across query heads (MQA/GQA) or across
-layers (CLA). Core idea: store fewer K/V tensors. Gap: they always couple keys and values
-together, and they are about *cache size*, not about information flow — they do not address
-over-smoothing or restore early token information; CLA's cross-layer sharing of *both* K and V
-ties the attention pattern across layers, costing accuracy.
+layers (CLA). Core idea: store fewer K/V tensors.
 
 ## Evaluation settings
 

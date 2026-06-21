@@ -9,20 +9,8 @@ graph-convolution layers, each node mixes its features with its neighbors', and 
 layers every node carries a representation of its local structural neighborhood. But a
 classifier needs one fixed-size vector per *graph*, not a variable-size bag of node vectors.
 The operation that turns the node set into that fixed vector — the graph-level **readout**, or
-**pooling** — is where the difficulty lives, and it is far less settled than graph convolution
-itself.
-
-The precise goal is a pooling mechanism that simultaneously: (1) maps a graph of any size to a
-fixed-size embedding and is invariant to the (arbitrary) ordering of its nodes; (2) uses
-**both** the node features *and* the graph topology to decide what to keep, rather than
-treating the nodes as an unordered feature bag; (3) builds a **hierarchical**, multi-scale
-summary — coarsen, then coarsen again — the way CNN pooling builds a pyramid, because flat
-one-shot aggregation throws away the structural composition that distinguishes graphs; (4) is
-trainable end-to-end with the rest of the network; (5) costs a *reasonable* amount of time and
-memory — ideally staying sparse, linear in nodes-plus-edges rather than quadratic in nodes;
-and (6) has a parameter count that does **not** grow with the size of the graphs, so the same
-module works on a 30-node molecule and a 5000-node protein. Each existing pooling method below
-hits a subset of these; none hits all six. Closing that gap is the problem.
+**pooling** — is where the open questions live. How do we best aggregate a variable-size set of
+node embeddings, together with the graph topology, into a single fixed-size graph embedding?
 
 ## Background
 
@@ -48,20 +36,16 @@ neural message passing. The recurring fact to hold onto: the normalized adjacenc
 already computed inside every convolution layer, and it is precisely what injects topology
 into a per-node quantity.
 
-The pooling side is thinner, and the field sorts the attempts into three families. **Topology-
-based** coarsening (Graclus, Dhillon et al. 2007, used as the pooling module in Defferrard
-et al. 2016) clusters nodes using the equivalence between a spectral-clustering objective and
-weighted kernel k-means, avoiding eigendecomposition — but it looks only at graph structure
-and ignores node features, and it is a fixed pre-processing step, not learned for the task.
+The pooling side is an active area, and the field sorts the attempts into three families.
+**Topology-based** coarsening (Graclus, Dhillon et al. 2007, used as the pooling module in
+Defferrard et al. 2016) clusters nodes using the equivalence between a spectral-clustering
+objective and weighted kernel k-means, avoiding eigendecomposition.
 **Global** pooling collapses all node embeddings at once into a graph vector: Set2Set (Vinyals
 et al. 2015) uses an LSTM with attention to produce an order-invariant set embedding; SortPool
 (Zhang et al. 2018) sorts nodes by their structural role (Weisfeiler-Lehman-style colors) and
 feeds the sorted sequence to a 1-D convolution. **Hierarchical** pooling — the newest family —
 coarsens the graph in stages so the network learns multi-scale structure, the way CNN pooling
-does. The motivating observation across this literature is empirical and structural: flat
-global readouts "do not learn hierarchical representations which are crucial for capturing
-structural information of graphs," and a single mean/max/sum over all nodes weights an
-uninformative leaf node exactly like a hub that determines the graph's class.
+does.
 
 Two background facts about *learned selection* are load-bearing. First, the **attention /
 self-attention** idea (Bahdanau et al. 2014; Vaswani et al. 2017): produce a per-element
@@ -87,13 +71,7 @@ A^{(l+1)} = S^{(l)T} A^{(l)} S^{(l)},   X^{(l+1)} = S^{(l)T} Z^{(l)},
 ```
 
 so every node is *softly* assigned to all `n_{l+1}` clusters and the next adjacency is a dense
-contraction of the current one. **Gaps:** the assignment matrix is dense, and `S^T A S`
-produces a *dense* coarsened adjacency, so storage is quadratic, O(k|V|^2). The number of next-
-layer clusters `n_{l+1}` is fixed when the model is built, which makes the parameter count
-depend on the (maximum) number of nodes in the dataset, and forces one cluster size onto
-graphs whose sizes span orders of magnitude — on a dataset where node counts run from 30 to
-5748, a fixed 10% cluster size that suits the median graph blows most graphs *up* rather than
-down. Out-of-memory failures appear once the pooling ratio exceeds 0.5.
+contraction of the current one.
 
 **gPool / Graph U-Nets (Gao & Ji, ICML 2019), and the sparse hierarchical classifier of
 Cangea et al. (2018).** A *sparse* hierarchical pooler that drops the dense assignment matrix
@@ -108,32 +86,22 @@ A^{(l+1)} = A^{(l)}(idx, idx),                  # index the sparse adjacency, ke
 X^{(l+1)} = X̃ ⊙ (ỹ 1_C^T).                      # gate the kept features by the sigmoid score
 ```
 
-This fixes DiffPool's complexity: indexing the adjacency keeps it sparse, storage is
-O(|V|+|E|), and because the only learned object is the fixed-length vector `p`, the parameter
-count is independent of graph size. The gate `sigmoid(y(idx))` multiplied into the kept
-features is what lets gradient reach `p` at all — the hard `rank`/`idx` step is non-
-differentiable, and without the multiplicative gate `p` produces purely discrete outputs and
-never trains. **Gap:** the score `y_i = x_i · p / ||p||` is a function of node `i`'s own
-feature vector and nothing else — the adjacency matrix never enters the score. Two nodes with
-identical features but completely different roles in the graph receive identical scores; the
-graph topology does not affect which nodes are kept. A pooler advertised as a graph operation
-decides what to keep while structurally blind to the graph.
+Indexing the adjacency keeps it sparse, storage is O(|V|+|E|), and because the only learned
+object is the fixed-length vector `p`, the parameter count is independent of graph size. The
+gate `sigmoid(y(idx))` multiplied into the kept features is what lets gradient reach `p` at
+all — the hard `rank`/`idx` step is non-differentiable, and without the multiplicative gate
+`p` produces purely discrete outputs and never trains.
 
 **SortPool (Zhang et al., AAAI 2018).** Sorts nodes by Weisfeiler-Lehman-style structural
 roles into a canonical order, truncates/pads to a fixed length `K`, and applies a 1-D
-convolution over the sorted node sequence. **Gap:** a single flat global readout — it imposes
-one linear order and pools once, with no hierarchical coarsening, so structural composition
-above the level of the sort key is not represented.
+convolution over the sorted node sequence.
 
 **Set2Set (Vinyals et al., 2015), as used in the MPNN framework (Gilmer et al. 2017).** An
 LSTM with content-based attention reads the node-embedding set over a fixed number of
-processing steps and emits an order-invariant graph embedding. **Gap:** also a single global
-readout with no coarsening; it summarizes the whole node set at once and cannot build a multi-
-scale hierarchy.
+processing steps and emits an order-invariant graph embedding.
 
 **Topology-only coarsening (Graclus, Dhillon et al. 2007).** Clusters nodes from structure
-alone, no eigenvectors, used as a fixed pooling module. **Gap:** ignores node features
-entirely and is not learned for the downstream task.
+alone, no eigenvectors, used as a fixed pooling module.
 
 ## Evaluation settings
 
@@ -172,8 +140,6 @@ vector `[N_total]` tags each node with its graph id so that batched, per-graph r
 (`global_add_pool`, `global_mean_pool`, `global_max_pool`) are available. The pieces that
 already exist are the convolution operator, these batched global reductions, and the top-k /
 adjacency-indexing utilities for sparse selection; the loss and training loop are unchanged.
-What is *not* settled is the readout itself — how to decide what to keep and how to build the
-graph vector — so that is the one empty slot.
 
 ```python
 import torch

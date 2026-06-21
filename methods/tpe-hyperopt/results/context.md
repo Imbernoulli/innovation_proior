@@ -5,23 +5,20 @@
 Models like deep belief networks, stacked denoising autoencoders, and convolutional nets have
 anywhere from ten to fifty hyper-parameters — learning rates, layer sizes, pre-processing choices,
 penalties, contrastive-divergence schedules — and their performance depends sharply on getting
-these right. The trouble is threefold. First, each trial is *expensive*: a single hyper-parameter
-configuration has to be turned into a fully trained model and evaluated, which can take hours, so
-the budget is tens to a few hundred trials, not thousands. Second, the configuration space is
-*heterogeneous*: some variables are continuous (a learning rate), some ordinal (number of hidden
-units), some categorical (which pre-processing). Third, and most distinctively, the space is
-*tree-structured* (conditional): a variable like "number of units in the 2nd layer" is only
-well-defined when a parent variable, "number of layers," takes a value that makes a 2nd layer
-exist. An optimizer here must not only choose values for variables but simultaneously decide
-*which* variables are even in play for a given configuration.
+these right. Each trial is *expensive*: a single hyper-parameter configuration has to be turned
+into a fully trained model and evaluated, which can take hours, so the budget is tens to a few
+hundred trials, not thousands. The configuration space is *heterogeneous*: some variables are
+continuous (a learning rate), some ordinal (number of hidden units), some categorical (which
+pre-processing). The space is also *tree-structured* (conditional): a variable like "number of
+units in the 2nd layer" is only well-defined when a parent variable, "number of layers," takes a
+value that makes a 2nd layer exist. An optimizer must not only choose values for variables but
+simultaneously decide *which* variables are even in play for a given configuration.
 
-The precise goal: find a configuration with low validation loss in as few trials as possible,
-over a space that is mixed-type and conditionally structured, using the information from every
-trial already run. A method that ignores its own history (re-sampling blindly), or that cannot
-represent the conditional structure, or that needs a global optimizer over an opaque criterion in
-ten-plus dimensions, is the wrong tool. Because hyper-parameter search has been mostly a human
-art, making it a formal, automatic outer loop of the learning process is itself part of the
-problem — reproducibility and scientific progress depend on it.
+The goal: find a configuration with low validation loss in as few trials as possible, over a
+space that is mixed-type and conditionally structured, using the information from every trial
+already run. Because hyper-parameter search has been mostly a human art, making it a formal,
+automatic outer loop of the learning process is itself part of the problem — reproducibility and
+scientific progress depend on it.
 
 ## Background
 
@@ -77,35 +74,24 @@ The field state and the load-bearing pieces a solution rests on:
 The prior methods a new optimizer would be measured against or built upon:
 
 - **Grid search and manual / grid-assisted search.** Enumerate a grid of configurations (or have a
-  human steer a grid-assisted search), train and evaluate each. The gaps: grid search is
-  exponential in the number of hyper-parameters and wastes trials along insensitive axes; manual
-  search does not scale, is unreproducible, and cannot exploit a cluster's parallelism
-  systematically.
+  human steer a grid-assisted search), train and evaluate each.
 
 - **Random search** (Bergstra & Bengio 2012). Draw configurations from the generative prior over
   the space and evaluate them. It beats grid search because it never wastes resolution on
   irrelevant coordinates, and it matches careful manual tuning of neural nets within a few dozen
-  trials. Its gap: it is *memoryless* — it never uses the losses it has already observed to steer
-  future draws — so on harder problems (deep belief networks on certain datasets) it converges
-  slowly or plateaus below what careful search reaches. The information in the history is thrown
-  away.
+  trials.
 
 - **Gaussian-process / kriging SMBO with EI** (the DACE/EGO line: Jones, Schonlau & Welch 1998;
   Mockus 1978 for EI). Model `p(y | x)` directly as a Gaussian process — a prior over functions
   closed under sampling, so the posterior given `H` is again a GP with closed-form mean and
   variance. The posterior mean and variance give EI a closed form, and the next point is the EI
   maximizer. The GP supplies both a prediction and an honest, data-scarcity-aware uncertainty,
-  which is exactly what EI needs. Its gaps in *this* setting: the GP fit costs `O(|H|^3)`; the EI
-  surface is multimodal and must be globally optimized over a ten-plus-dimensional mixed space,
-  which calls for evolutionary / EDA / CMA-ES machinery and restarts; and the tree-structured
-  conditional space does not fit one GP — it has to be carved into groups with an independent GP
-  per group, an awkward retrofit. Modeling `p(y | x)` over a conditional space is the friction.
+  which is exactly what EI needs.
 
 - **Probability-of-improvement and entropy criteria.** Score a candidate by `P(Y(x) < y*)`
   (Kushner 1964) or by the expected reduction in entropy of the minimizer's location. Probability
-  of improvement counts *whether* you improve, not by how much, so it over-exploits near the
-  incumbent; entropy criteria are principled but heavier to evaluate. EI is preferred as intuitive
-  and well-behaved.
+  of improvement counts *whether* you improve, not by how much; entropy criteria are principled
+  but heavier to evaluate. EI is preferred as intuitive and well-behaved.
 
 ## Evaluation settings
 

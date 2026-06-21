@@ -8,21 +8,21 @@ E_pi[f] = integral f(q) pi(q) dq
 
 by averaging over a Markov chain whose stationary distribution is `pi`.
 
-The difficulty is not just that the integral is high dimensional. In high dimension, probability mass is concentrated in a narrow typical region that balances density against volume. The mode alone is not representative, and the far tails have large volume but tiny density. Useful computation has to spend nearly all evaluations inside that typical region.
+The integral is high dimensional. In high dimension, probability mass is concentrated in a narrow typical region that balances density against volume: the mode alone is not representative, and the far tails have large volume but tiny density. The question is how to build a Markov transition for `pi` that moves efficiently through that typical region using the available log density and its gradient.
 
 ## Background
 
 The canonical-distribution view turns density evaluation into energy evaluation. If a density is proportional to `exp(-U(q))`, then adding any constant to `U` changes only the unknown normalizer, not the distribution. This is why a Markov-chain method can work from energy differences or density ratios rather than from a normalized density.
 
-Classical mechanics supplies a useful vocabulary for coherent motion. A mechanical state has positions `q` and momenta `p`, and a total energy
+Classical mechanics supplies a vocabulary for coherent motion. A mechanical state has positions `q` and momenta `p`, and a total energy
 
 ```text
 H(q, p) = U(q) + K(p)
 ```
 
-where `U` is potential energy and `K` is kinetic energy. The associated equations of motion preserve the total energy, are reversible, and preserve phase-space volume. The volume-preservation fact matters for any corrected Markov proposal because a non-unit Jacobian would otherwise have to appear in the acceptance ratio.
+where `U` is potential energy and `K` is kinetic energy. The associated equations of motion preserve the total energy, are reversible, and preserve phase-space volume.
 
-Numerical simulation of these equations introduces another constraint. A naive integrator can drift away from the intended energy surface, which would make long simulated trajectories unreliable. Existing mechanics practice therefore favors reversible, volume-preserving discretizations because they keep numerical error controlled rather than allowing systematic drift.
+Numerical simulation of these equations is done with discretized integrators. Existing mechanics practice favors reversible, volume-preserving discretizations, which keep numerical energy error controlled over a simulated trajectory.
 
 ## Baselines
 
@@ -34,17 +34,17 @@ The more general Markov-chain correction allows an arbitrary proposal density `Q
 min(1, pi(q') Q(q | q') / (pi(q) Q(q' | q)))
 ```
 
-so unknown normalizing constants cancel. This suggests a broad design space: a proposal can be complicated, directed, or deterministic in an augmented space, provided the reverse move and any volume change can be accounted for.
+so unknown normalizing constants cancel. A proposal can be complicated or directed, provided the reverse move and any volume change can be accounted for.
 
-The weakness of simple random proposals is diffusion. To keep acceptance high, the proposal scale must be comparable to the narrowest direction of the typical region. But then motion along broad directions grows like the square root of the number of accepted moves. In high dimension, most undirected proposals point outward from the typical region and are rejected unless the step size is made small.
+Simple random proposals move by diffusion. To keep acceptance high, the proposal scale is set comparable to the narrowest direction of the typical region, and motion along broad directions accumulates as a random walk over accepted moves.
 
-Coordinate-wise conditional updates solve the acceptance problem when conditionals are available, but they still move through the joint space one narrow local adjustment at a time. In strongly coupled or differently scaled continuous targets, that leaves broad directions to be explored by slow accumulated drift.
+Coordinate-wise conditional updates apply when conditionals are available, updating the joint space one local conditional adjustment at a time.
 
 ## Evaluation Settings
 
 The natural controlled tests are smooth continuous densities where both the density and gradient are available: correlated multivariate Gaussians, anisotropic Gaussians with one narrow and one broad direction, and higher-dimensional independent Gaussian products with a range of scales. These reveal whether a transition diffuses slowly or moves coherently across broad directions.
 
-In real statistical applications, the same setting appears in posterior simulation for models with many continuous parameters. The transition should be judged by effective sample size per gradient evaluation, acceptance probability, autocorrelation time, robustness to scale differences, and whether independent chains explore the same typical region.
+In real statistical applications, the same setting appears in posterior simulation for models with many continuous parameters. The transition is judged by effective sample size per gradient evaluation, acceptance probability, autocorrelation time, robustness to scale differences, and whether independent chains explore the same typical region.
 
 ## Code Framework
 
@@ -76,3 +76,5 @@ sample_chain = function (U, grad_U, step_size, n_steps, q0, n_iter)
   chain
 }
 ```
+</content>
+</invoke>

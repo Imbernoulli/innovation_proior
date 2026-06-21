@@ -7,24 +7,13 @@ vector of `m` conflicting objectives `f(x) = (f_1(x), …, f_m(x))`. Because the
 conflict, there is no single best `x`; instead there is a *set* — the Pareto-optimal set, all
 `x` for which no other decision vector improves one objective without worsening another. An
 evolutionary algorithm is run once and must return a good finite *approximation* of that whole
-set. That makes the goal itself implicitly bi-objective in a second sense: the returned set
-must be **close to** the true front (convergence) *and* **well spread along it** with the
-extremes retained (diversity). The precise problem is to design the two selection mechanisms a
-population-based search needs — *mating selection* (which individuals reproduce) and
-*environmental selection* (which individuals survive into the next generation and into a
+set. The returned set should be close to the true front (convergence) and well spread along it
+with the extremes retained (diversity). The question is how to design the two selection
+mechanisms a population-based search needs — *mating selection* (which individuals reproduce)
+and *environmental selection* (which individuals survive into the next generation and into a
 bounded elite archive) — so that the surviving set is simultaneously converged, uniformly
 spread, and inclusive of the boundary trade-offs, on problems with two and three or more
 objectives.
-
-Two structural difficulties make this hard. First, the natural quality signal — Pareto
-dominance — is only a *partial* order: many individuals are mutually nondominated and the
-relation cannot rank them at all. With three or more objectives this is the common case rather
-than the exception, so a fitness based on dominance alone leaves most of the population tied
-and the search loses its sense of direction. Second, keeping the elite archive at a fixed,
-manageable size requires throwing members away, and the obvious diversity-driven ways of doing
-that tend to discard precisely the extreme (boundary) trade-offs that a good spread most needs
-to keep. A solution has to assign a *fine-grained* scalar fitness that ranks even mutually
-nondominated individuals, and reduce a too-large archive without sacrificing its extremes.
 
 ## Background
 
@@ -42,9 +31,7 @@ The load-bearing concepts:
 - **Pareto dominance.** For a minimization problem, `a` dominates `b` (`a ≻ b`) iff `a` is no
   worse in every objective and strictly better in at least one. Dominance is a partial order:
   two individuals that each win on a different objective are *indifferent*. The nondominated
-  individuals within a set form its current trade-off front. The central limitation, knowable
-  before any new method, is that this order is thin: the more objectives, the more pairs are
-  indifferent, and a fitness that only reads off dominance rank degenerates to many ties.
+  individuals within a set form its current trade-off front.
 
 - **Mating vs. environmental selection.** Modern EMO splits selection in two. The pool at each
   generation is ranked (mating selection, usually randomized via tournaments) and, separately,
@@ -54,11 +41,9 @@ The load-bearing concepts:
 - **External archive / elitism.** An archive holds a representation of the best nondominated
   front seen so far. A member is removed only if a solution dominating it is found or if the
   archive overflows and its region is overcrowded. Being copied into the archive is the only
-  way an individual survives many generations rather than by chance, so the archive is what
-  prevents losing parts of the front to random drift. Two sub-problems come with it: how to
-  rank when most members are indifferent, and how to shrink it when it overflows.
+  way an individual survives many generations rather than by chance.
 
-- **Density / niching.** When dominance cannot discriminate, a secondary signal must measure how
+- **Density / niching.** When dominance cannot discriminate, a secondary signal can measure how
   *crowded* the neighborhood of an individual is, so that selection can prefer individuals in
   sparse regions and spread the population over the front. Two families exist by this time: a
   per-objective, sort-based crowding measure (used in NSGA-II), and a hyper-grid / histogram
@@ -67,19 +52,6 @@ The load-bearing concepts:
   density at a point is a decreasing function of the distance to its `k`-th nearest data point;
   it adapts the bandwidth to the local density and its standard smoothing choice is `k` equal to
   about the square root of the sample size.
-
-Diagnostic facts about the prior art that set up the problem:
-
-- A strength-based scheme that assigns the same fitness to all individuals dominated by the same
-  set of archive members cannot tell them apart; in the extreme where the archive holds a single
-  individual, every population member receives the same rank regardless of how they relate to
-  each other, and selection pressure collapses toward random search.
-- Reducing an over-full archive by clustering (merging members and keeping cluster
-  representatives) shrinks the set while roughly preserving its shape, but it tends to drop the
-  outermost solutions — exactly the boundary trade-offs a good spread needs.
-- When most individuals in a generation are mutually indifferent — very likely with more than
-  two objectives — the partial order yields almost no information, so density information is
-  required to guide the search at all.
 
 ## Baselines
 
@@ -93,12 +65,7 @@ strength `S(i) ∈ [0,1)` equal to the number of population members it dominates
 divided by `N + 1`, and this `S(i)` is also its fitness. A population member `j` then gets
 fitness `F(j) = 1 + Σ_{i ∈ P̄, i ≽ j} S(i)` — one plus the strengths of the archive members that
 cover it. Fitness is minimized, so archive members (small `S`) are always fitter than population
-members, giving elitism. **Gaps:** (1) only archive members carry strength, so two population
-members covered by the *same* archive set get *identical* fitness no matter how they relate — and
-when the archive collapses to one member, all population members tie and selection pressure
-vanishes; (2) density information enters only through clustering of the archive, not into the
-fitness of the population; (3) the clustering that bounds the archive tends to remove the
-extreme solutions, and the archive size drifts over time rather than staying fixed.
+members, giving elitism.
 
 **NSGA-II (Deb, Agrawal, Pratap, and Meyarivan 2000).** Sorts the combined
 parent+offspring pool into nondomination fronts `F_1, F_2, …` (front index = rank), then within
@@ -107,18 +74,13 @@ member the normalized gap between its two neighbors, summed over objectives, wit
 boundary members of each objective set to infinity so they are always kept. The
 crowded-comparison operator prefers a lower rank, and within equal rank prefers the larger
 crowding distance (the less crowded individual). The next generation is filled front by front,
-the last partial front sorted by crowding distance. Complexity `O(m N^2)`. **Gaps:** the
-crowding distance is a *per-objective, sort-based* quantity defined only relative to neighbors
-along each axis and only within a single front; it is not a metric density of the point cloud,
-and it is not combined with a dominance-strength signal into one scalar.
+the last partial front sorted by crowding distance. Complexity `O(m N^2)`.
 
 **PESA — Pareto Envelope-based Selection Algorithm (Corne, Knowles, and Oates 2000).** Mating
 selection acts only on an archive that stores (a subset of) the current nondominated set. Its
 density measure is a **histogram / hyper-grid** technique: the objective space is divided into
 cells and members are sampled inversely to how crowded their cell is. Offspring are checked for
-inclusion in the archive after each generational cycle. **Gaps:** the grid-based density is
-coarse and depends on the chosen cell resolution; the archive may be only partially filled,
-giving a variable number of mating candidates.
+inclusion in the archive after each generational cycle.
 
 ## Evaluation settings
 
@@ -146,10 +108,9 @@ The natural yardsticks already in use at the time:
 The method plugs into a generic multi-objective evolutionary loop that already exists. The data
 representation (real or bit vectors), the variation operators (a bounded simulated-binary
 crossover and a bounded polynomial mutation), and the dominance relation on fitness tuples are
-all standard library pieces. What is *not* settled is how to turn the dominance partial order
-into a usable scalar ranking, how to pick parents, and how to prune the combined pool back to a
-fixed size while keeping it converged, spread, and inclusive of its extremes. Those are the
-empty slots.
+all standard library pieces. The open design questions are how to turn the dominance partial
+order into a usable scalar ranking, how to pick parents, and how to prune the combined pool
+back to a fixed size.
 
 ```python
 from copy import deepcopy
@@ -225,6 +186,6 @@ def evolve(strategy, population, evaluate, n_gen):
     return population
 ```
 
-The `vary` hook is fixed library machinery (bounded SBX + polynomial mutation); the open work is
-entirely in `select` and `survive` — the scalar fitness, the parent selection, and the
-fixed-size reduction.
+The `vary` hook is fixed library machinery (bounded SBX + polynomial mutation); the work is
+in `select` and `survive` — the scalar fitness, the parent selection, and the fixed-size
+reduction.

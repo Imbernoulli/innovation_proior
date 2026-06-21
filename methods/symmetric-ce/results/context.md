@@ -4,15 +4,11 @@
 
 Modern deep networks have millions of parameters and need large labelled datasets, but
 labels collected at scale — by crowdsourcing, web scraping, or surrounding-text heuristics —
-are routinely wrong for a sizeable fraction of examples. The precise problem is to train an
-accurate classifier when a known-but-unidentified portion of the *training* labels have been
-flipped to incorrect classes, while the *test* set is clean. A solution must recover a
-classifier whose accuracy on clean data is close to what it would be without corruption, and
-it should do so without an architectural overhaul, without auxiliary clean data, and without a
-known noise-transition matrix — those are exactly the resources practitioners usually lack.
-What makes this hard is that high-capacity networks can fit arbitrary labels: given enough
-epochs they will eventually memorize the corrupted targets, so the objective itself must be
-shaped so that the corrupted targets exert less pull than the clean ones.
+are routinely wrong for a sizeable fraction of examples. The problem is to train an
+accurate classifier when a portion of the *training* labels have been flipped to incorrect
+classes, while the *test* set is clean. A solution should recover a classifier whose accuracy
+on clean data is close to what it would be without corruption, without an architectural
+overhaul, without auxiliary clean data, and without a known noise-transition matrix.
 
 ## Background
 
@@ -26,8 +22,7 @@ ell_ce = - sum_{k=1}^K q(k|x) log p(k|x) = - log p(y|x)    (single label y).
 
 CE is the maximum-likelihood objective and, via the identity `KL(q||p) = H(q,p) - H(q)` with
 `H(q)` constant for a fixed label distribution, minimizing CE is minimizing the KL divergence
-`KL(q||p)` from the observed label distribution `q` to the prediction `p`. This is exactly the
-issue under noise: it fits `p` toward `q` whether or not `q` is correct.
+`KL(q||p)` from the observed label distribution `q` to the prediction `p`.
 
 Several diagnostic findings about how networks behave under label noise were established before
 any robust-loss design. Zhang et al. (ICLR 2017, "Understanding deep learning requires
@@ -36,30 +31,25 @@ in practice they fit clean, easy patterns first and only later memorize the wron
 labels — a *memorization* effect. Arpit et al. (ICML 2017) corroborated this: networks learn
 simple shared patterns early and overfit corrupted labels late. Ma et al. (ICML 2018) framed
 the same arc as subspace-dimensionality compression followed by expansion. The standard read
-of these results was that label-noise damage is essentially *overfitting* to the noisy labels,
-and so a robust method should suppress late-stage memorization.
+of these results was that label-noise damage is essentially *overfitting* to the noisy labels.
 
 There is also a more refined, per-class picture available from simply watching class-wise test
 accuracy during CE training. Even with perfectly clean labels, the per-class accuracy curves
 span a wide band throughout training: some classes ("easy") converge fast, others ("hard")
 lag — a *class-biased* learning dynamic, attributable to intrinsic differences in how
 separable each class's patterns are. When labels are corrupted, this band widens sharply: easy
-classes reach high accuracy and then begin to drop (overfitting the noise), while hard classes
-plateau far below their clean-label ceiling and never get there. On the clean *portion* of a
-hard class, the network's average confidence on the correct class can sit around 0.5 with
-several percent of mass leaking to visually-similar classes, and the hard classes contribute
-far fewer true positives at every stage. In other words, alongside late overfitting on easy
-classes there is persistent *under-learning* of hard classes, and the under-learning is the
-larger drag on overall accuracy because the easy-class accuracy drop from overfitting is
-comparatively small. This class-wise diagnosis is what any candidate fix has to grapple with.
+classes reach high accuracy and then begin to drop, while hard classes plateau far below their
+clean-label ceiling. On the clean *portion* of a hard class, the network's average confidence
+on the correct class can sit around 0.5 with several percent of mass leaking to
+visually-similar classes, and the hard classes contribute far fewer true positives at every
+stage.
 
 A separate, theory-side background concerns *which loss functions are inherently tolerant to
 label noise*, independent of the architecture or any noise estimate. Ghosh, Kumar & Sastry
 (AAAI 2017) formalized noise-tolerance through risk minimization: write the clean risk
 `R(f) = E_{x,y} L(f(x), y)` and the noisy risk `R^eta(f) = E_{x,yhat} L(f(x), yhat)` at noise
 rate `eta`; `L` is *noise-tolerant* if the global minimizer of `R^eta` is also a global
-minimizer of `R`. Their central lemma is that a loss is robust when it is **symmetric**, by
-which they mean it satisfies, for some constant `C`,
+minimizer of `R`. Their central lemma identifies a sufficient condition: for some constant `C`,
 
 ```
 sum_{i=1}^{K} L(f(x), i) = C    for all x and all classifiers f.
@@ -73,13 +63,9 @@ R^eta(f) = (1-eta) R(f) + (eta/(K-1)) ( C - R(f) )
 ```
 
 which is an increasing affine function of `R(f)` whenever `eta < (K-1)/K = 1 - 1/K`, so it has
-the same argmin as `R(f)` — robustness, distribution-free. The catch is that CE is *not*
-symmetric: `sum_k -log p_k` depends on `p` and is unbounded, so it carries no such guarantee.
+the same argmin as `R(f)` — robustness, distribution-free.
 
-Two more facts complete the picture. First, the probability simplex puts a hard
-ceiling on how much any single coordinate can move per step, so a bounded, saturating loss
-gives small gradients to the very examples (low-confidence, hard ones) that most need a push.
-Second, label smoothing (Szegedy et al. 2016; Pereyra et al. 2017) — replacing one-hot targets
+Label smoothing (Szegedy et al. 2016; Pereyra et al. 2017) — replacing one-hot targets
 with `(1-epsilon)` on the true class and `epsilon/(K-1)` spread elsewhere — is a known way to
 damp over-confident predictions and ease overfitting.
 
@@ -88,19 +74,12 @@ damp over-confident predictions and ease overfitting.
 These are the prior approaches a new objective would be measured against and would react to.
 
 **Cross entropy (standard ERM).** Train with `ell_ce = -log p(y|x)` directly on the (possibly
-corrupted) labels. Fast, well-conditioned gradients, the default everywhere. **Limitation:**
-it is non-symmetric in the Ghosh sense and carries no noise-tolerance guarantee; under
-corruption it eventually memorizes the flipped labels, and — as the class-wise diagnosis shows
-— it simultaneously *under-learns* hard classes, never bringing them close to their
-clean-label accuracy.
+corrupted) labels. Fast, well-conditioned gradients, the default everywhere.
 
 **Mean Absolute Error / `L1` loss (Ghosh et al. 2017).** Use `ell_mae = sum_k |p(k|x) -
 q(k|x)|`. For a one-hot label this is `(1 - p_y) + sum_{k!=y} p_k = 2(1 - p_y)`. Summed over
 classes it equals the constant `sum_i ell_mae(f(x), i) = 2(K-1)`, independent of `x` and `f`, so
-MAE *is* symmetric and hence provably noise-tolerant for `eta < 1 - 1/K`. **Limitation:** its
-gradient with respect to the logit of the true class is proportional to `p_y(1 - p_y)`, which
-vanishes both when `p_y` is near 0 and near 1; training stalls — convergence is slow and hard
-examples (small `p_y`) get almost no learning signal exactly when they need it.
+MAE satisfies the Ghosh condition and is provably noise-tolerant for `eta < 1 - 1/K`.
 
 **Generalized Cross Entropy / `L_q` (Zhang & Sabuncu, NeurIPS 2018).** Interpolate between CE
 and MAE with a Box-Cox transform of the true-class probability,
@@ -110,31 +89,19 @@ ell_q = (1 - p(y|x)^q) / q,    q in (0, 1].
 ```
 
 As `q -> 0` this tends to CE (good gradients, fast convergence); at `q = 1` it is `1 - p_y`,
-i.e. MAE up to scale (robust but slow). A single `q` tunes the trade-off, and the loss behaves
-like a `p`-weighted MAE that down-weights low-confidence (likely-noisy) examples.
-**Limitation:** one scalar must simultaneously set how fast the model fits *and* how robust it
-is — there is no way to keep CE's convergence on a hard-to-fit dataset while independently
-dialing robustness; and the design still frames the goal as "make CE behave more like MAE,"
-a single-axis compromise rather than two complementary forces.
+i.e. MAE up to scale. A single `q` tunes the trade-off, and the loss behaves
+like a `p`-weighted MAE that down-weights low-confidence examples.
 
 **Bootstrapping (Reed et al., ICLR-WS 2015).** Replace the target with a convex mix of the
 observed label and the model's own prediction: soft variant target `beta*q + (1-beta)*p`, hard
 variant uses the one-hot of `argmax p`; then take CE against that target. The idea is that as
-the model becomes competent its prediction can correct a wrong label. **Limitation:** it leans
-on the model's current (possibly wrong, possibly already over-confident on noise) prediction
-with a fixed mixing weight `beta`, and it is aimed at the overfitting story; it offers no
-mechanism that specifically rescues the under-learned hard classes, and no noise-tolerance
-guarantee.
+the model becomes competent its prediction can correct a wrong label.
 
 **Loss correction with a noise-transition matrix (Forward/Backward, Patrini et al. 2017).**
 Multiply predictions (or the loss) by an estimated class-to-class noise matrix `T`.
-**Limitation:** needs an accurate `T`, which is generally unavailable and hard to estimate;
-performance hinges on a quantity practitioners do not have.
 
 **Label Smoothing Regularization (Szegedy 2016; Pereyra 2017).** CE against softened targets.
-Eases over-confidence and some overfitting. **Limitation:** under noise it still leaves the
-hard classes significantly under-learned — softening the target does not add the missing
-learning signal those classes need.
+Eases over-confidence and some overfitting.
 
 ## Evaluation settings
 
@@ -155,8 +122,8 @@ The natural yardsticks for a label-noise objective:
   fixed epoch milestones; simple augmentation (shift, horizontal flip) on CIFAR.
 - **Metrics and diagnostics.** Clean-test classification accuracy; per-class test-accuracy
   curves over training (to read class-biased dynamics); prediction confidence on the clean
-  portion of a class and per-class true-positive counts (to read under-learning); t-SNE 2D
-  embeddings of penultimate-layer features (to read representation quality).
+  portion of a class and per-class true-positive counts; t-SNE 2D embeddings of
+  penultimate-layer features.
 
 ## Code framework
 

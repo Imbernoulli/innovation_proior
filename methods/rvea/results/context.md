@@ -11,26 +11,10 @@ decision maker does not want the whole, often infinite, PF; they want a *finite,
 spread, well-converged* set of representative trade-offs from a single run, both **close to**
 the true PF (convergence) and **well distributed along it** (diversity).
 
-The specific regime that makes this hard is *many*-objective optimization: `M` larger than
-three. Two things that work cleanly for two or three objectives both deteriorate sharply as
-`M` grows. First, the comparison that drives the population toward the front — Pareto
-dominance — almost stops discriminating: in a high-dimensional objective space the fraction of
-pairs that are mutually non-dominated rises fast with `M`, so even early in the search most of
-the population is incomparable and the pressure toward the PF weakens. Second, the population
-spreads very thinly across the high-dimensional objective space, so the density-estimation
-devices that keep two- and three-objective populations diverse (crowding distance, `k`-nearest-
-neighbour density, adaptive grids) lose their footing. On top of this, with a limited
-population it becomes impractical to cover the entire PF as `M` grows, so being able to target
-a chosen region of the front, or simply distribute a fixed budget of solutions evenly, matters
-more than it did at two or three objectives.
-
-The precise goal is a single algorithm that simultaneously: (1) sustains useful selection
-pressure toward the PF even when the whole population is mutually non-dominated; (2) keeps the
-approximation evenly distributed in a high-dimensional objective space without a density device
-that degrades with `M`; (3) handles objectives whose ranges differ by orders of magnitude
-(badly-scaled or asymmetric fronts) without destabilizing convergence; (4) does so at a
-per-generation cost that does not explode with `M`; and (5) avoids a brittle diversity knob that
-has to be re-tuned for every problem and objective count.
+The specific regime of interest is *many*-objective optimization: `M` larger than three. How
+should an evolutionary algorithm approximate the Pareto front in this regime, where a fixed
+population budget must be distributed across a high-dimensional objective space and the
+objectives may differ by orders of magnitude in scale?
 
 ## Background
 
@@ -42,19 +26,16 @@ concepts:
 - **Pareto dominance and the partial order.** `x` dominates `y` iff `f_i(x) <= f_i(y)` for
   all `i` and strictly for at least one. Dominance is the bedrock comparison in multi-objective
   EAs, but it is only a *partial* order: two points can be mutually non-dominated and hence
-  incomparable. A diagnostic observed repeatedly about dominance-based methods is exactly this
-  — as the number of objectives grows, the proportion of mutually non-dominated candidate
-  solutions in a finite population approaches one even at an early stage of the search, so
-  dominance can no longer separate individuals and the convergence pressure it is supposed to
-  supply collapses. This is the headline reason conventional MOEAs degrade on many-objective
-  problems.
+  incomparable. As the number of objectives grows, the proportion of mutually non-dominated
+  candidate solutions in a finite population rises toward one even at an early stage of the
+  search, so dominance can separate fewer and fewer individuals.
 
 - **Diversity in high-dimensional objective space is sparse.** Since the PF of most continuous
   MOPs is a piecewise-continuous manifold, an EA with a fixed population can only return a
   representative *sample* of it. For `M = 2` or `3` the PF is a curve or a surface and keeping
   the sample evenly spread is relatively easy. As `M` grows the candidate solutions sit very
-  sparsely in the objective space and the density-based diversity machinery widely used in
-  MOEAs (e.g. crowding distance in NSGA-II) loses resolution.
+  sparsely in the objective space and density-based diversity machinery widely used in MOEAs
+  (e.g. crowding distance in NSGA-II) has finer resolution requirements.
 
 - **Decomposition and scalarization — the classical theory.** A cornerstone of traditional
   (non-evolutionary) multi-objective optimization: a complex MOP can be divided into a number
@@ -62,13 +43,12 @@ concepts:
   the MOP is decomposed into a group of single-objective problems through a *scalarization*
   attached to a weight vector `w = (w_1, ..., w_M)`, `w_i >= 0`, `sum_i w_i = 1`. The standard
   aggregation functions, with their classical properties:
-  - **Weighted sum:** `g^ws(x | w) = sum_i w_i f_i(x)`. Simple, but minimizing a weighted sum
+  - **Weighted sum:** `g^ws(x | w) = sum_i w_i f_i(x)`. Simple; minimizing a weighted sum
     reaches only the supported Pareto points exposed by supporting hyperplanes of the
-    attainable objective set; points in a nonconvex region of the PF are unreachable.
+    attainable objective set.
   - **Tchebycheff:** `g^te(x | w, z*) = max_i { w_i |f_i(x) - z*_i| }`, with the ideal point
     `z*_i = min_{x in X} f_i(x)`. Sweeping `w` can in principle trace the whole PF, convex or
-    not, but the distribution of the resulting points along the PF can become uneven as `M`
-    grows.
+    not.
   - **Penalty-based boundary intersection (PBI; Zhang & Li 2007).** With the normalized
     direction `u = w / ||w||`, decompose the displacement of an objective vector from the
     reference point into a component *along* the line and a component *off* it:
@@ -85,9 +65,8 @@ concepts:
   subspaces inside which selection happens.
 
 - **Performance-indicator selection (IBEA, SMS-EMOA, HypE).** A separate family that ranks
-  solutions by the contribution to a set-quality indicator, most often the hypervolume. It is
-  not subject to the dominance partial-order problem, but the indicator computation (the
-  hypervolume in particular) becomes prohibitively expensive as `M` grows.
+  solutions by the contribution to a set-quality indicator, most often the hypervolume. The
+  indicator computation (the hypervolume in particular) grows in cost as `M` grows.
 
 - **Evenly spread reference directions (Das & Dennis simplex-lattice).** The standard way to
   place vectors uniformly: take every vector `u_i` whose components come from
@@ -135,48 +114,28 @@ multi-objective EA of its era. From parents `P_t` of size `N` it breeds offsprin
 applies fast non-dominated sorting into fronts `F_1, F_2, ...`, and fills the next population
 front by front; the last front that does not fit is truncated by **crowding distance** (per
 objective, sort the front, give extremes infinite distance, give each interior point the summed
-normalized neighbour gap), keeping the most isolated. **Gap:** selection rests on a *partial*
-order, so once the population is dominated by mutually non-dominated points — which happens
-almost immediately as `M` grows — dominance no longer separates individuals and the push toward
-the PF rests entirely on the crowding tie-break, a density heuristic that itself loses
-resolution in a high-dimensional objective space.
+normalized neighbour gap), keeping the most isolated.
 
 **SPEA2 (Zitzler, Laumanns & Thiele, EUROGEN 2001 / TIK-Report 103).** Strength-based fitness
 plus a `k`-nearest-neighbour density estimate (`k = sqrt(N + |archive|)`) with an external
-archive. **Gap:** same family limitation — dominance plus a bolt-on density device; the
-partial-order weakening and the density estimator's degradation in many dimensions persist.
+archive.
 
 **MOEA/D-PBI (Zhang & Li, *IEEE TEC* 11(6), 2007).** Decomposes the MOP into `N` scalar
 sub-problems on evenly spread weight vectors and optimizes them cooperatively through a
 neighbourhood structure; with the PBI aggregation `g^pbi = d_1 + theta · d_2` each sub-problem
-balances a convergence term `d_1` against a diversity term `theta · d_2`. **Gap:** the balance
-is governed by a *single fixed* scalar `theta`, and the diversity term is a *Euclidean*
-perpendicular distance `d_2`; there is no setting of `theta` that works well across different
-problems and different numbers of objectives, and a Euclidean off-line distance is unbounded
-and grows with the magnitude of the objective values, so it does not normalize cleanly as the
-objective dimension and the objective scales vary. The same fixed setting also has to serve
-both early and late generations, whose selection needs are not identical.
+balances a convergence term `d_1` against a diversity term `theta · d_2`.
 
 **NSGA-III (Deb & Jain, *IEEE TEC* 18(4), 2014).** Reference-point niching layered on
 dominance for many-objective problems. Each generation it estimates the ideal point and the
 extreme points, builds the intercepts, and **normalizes the objectives** onto the unit
 hyperplane; it then associates each solution with its nearest reference line by perpendicular
 distance and niches to preserve diversity, with non-dominated sorting still doing the
-convergence work. **Gap:** the per-generation *objective normalization* is tied to a
-dominance-based ranking, where monotone rescaling of each objective preserves the partial
-order. It is not a neutral operation for metric comparisons in objective space: a
-transformation that maps, say, the translated vectors `(0.1, 2)` and `(1, 10)` to `(0.1, 0.2)`
-and `(1, 1)` preserves the dominance relation but shrinks the gap between them from `8.0` to
-`1.2`; repeating such a transformation every generation as the scales drift makes metric
-comparisons depend on a moving coordinate system.
+convergence work.
 
 **MOEA/D-M2M (Liu, Gu & Zhang, *IEEE TEC* 18(3), 2014) and IM-MOEA (Cheng, Jin & Narukawa,
 2015).** The decomposition-into-subspaces line: M2M partitions the PF into segments by
 direction vectors, each segment a sub-MOP solved within its own subspace; IM-MOEA partitions
 the objective space with reference vectors and builds inverse models inside each subspace.
-**Gap:** they establish that partitioning the objective space and selecting within each
-subspace is a workable structure, but they leave open *what scalar criterion* should pick the
-survivor inside a subspace so that convergence and diversity are balanced as `M` grows.
 
 ## Evaluation settings
 

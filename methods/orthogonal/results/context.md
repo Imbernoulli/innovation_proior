@@ -11,10 +11,7 @@ grow with depth.
 The goal is a data-independent initialization rule for a freshly constructed
 network. It may use only the parameter shapes and the existing module types. It
 must not use a calibration batch, pretrain on the data, change the architecture,
-change the optimizer, or alter the loss. The rule should put the network in a
-starting regime where forward activations and backward gradients survive many
-layers, and where the iteration count needed for learning is not controlled by an
-exponential depth penalty.
+change the optimizer, or alter the loss.
 
 ## Background
 
@@ -22,68 +19,54 @@ The standard variance-propagation analysis treats a layer with fan-in `n` and
 i.i.d. weights of variance `Var[W]`. Near initialization, a forward signal picks
 up a factor about `n Var[W]` per layer, and the back-propagated gradient picks up
 the corresponding fan-out factor. Across depth `d`, a gradient variance contains
-a product like `(n Var[W])^{d-i}`. This explains why small fixed-variance
-initializations fail in deep networks, and why scaled rules such as the Glorot
-and Bengio compromise `Var[W] = 2/(n_in + n_out)` were useful: they try to keep
-the per-layer average scale close to one in both directions.
+a product like `(n Var[W])^{d-i}`. Scaled rules such as the Glorot and Bengio
+compromise `Var[W] = 2/(n_in + n_out)` try to keep the per-layer average scale
+close to one in both directions.
 
-That average-scale criterion is incomplete. A matrix can preserve the expected
-norm of a typical random vector while still stretching some directions and
-crushing others. For an `N x N` Gaussian matrix with entries of variance `1/N`,
-`E[v^T W^T W v] = v^T v`, but its squared singular values have a
-Marchenko-Pastur spread rather than being all equal. In a product of many
-independent matrices, the full singular spectrum, not only the mean squared
-norm, determines which error directions remain visible to early layers.
+For an `N x N` Gaussian matrix with entries of variance `1/N`,
+`E[v^T W^T W v] = v^T v`. Its squared singular values follow a Marchenko-Pastur
+distribution. In a product of many independent matrices the full singular
+spectrum, not only the mean squared norm, shapes which directions are propagated
+through depth.
 
-Deep linear networks provide a tractable place to isolate this issue. Although
-their input-output map is a single linear transformation, the gradient descent
-dynamics in the layer weights are nonlinear because every layer's gradient
-contains the product of all the other layers. For whitened inputs, the
-input-output correlation matrix can be decomposed by SVD, and learning can be
-studied mode by mode. The error surface of a linear network has no spurious local
-minima: the non-global critical points are saddles, and the stable solution is
-the best low-rank approximation of the input-output correlation. Slow training
-therefore reflects dynamics and initialization, not bad local minima.
+Deep linear networks provide a tractable place to study these dynamics. Although
+their input-output map is a single linear transformation, gradient descent in the
+layer weights is nonlinear because every layer's gradient contains the product of
+all other layers. For whitened inputs, the input-output correlation matrix can be
+decomposed by SVD, and learning can be studied mode by mode. The error surface of
+a linear network has no spurious local minima: the non-global critical points are
+saddles, and the stable solution is the best low-rank approximation of the
+input-output correlation.
 
 Greedy layer-wise unsupervised pretraining was the strongest practical answer to
 deep optimization difficulty in this period. In a linear autoencoder, pretraining
 amounts to learning principal directions of the input distribution before
 supervised fine-tuning. Its advantage is optimization speed: it can place the
 subsequent supervised problem closer to a well-aligned, high-strength starting
-regime. Its cost is that it requires data and an extra training phase.
+regime. It requires data and an extra training phase.
 
 Standard linear-algebra and tensor primitives are available in the software
 substrate: matrix factorizations for analysis, tensor views for reshaping
-parameters, and in-place parameter fills. At the initialization hook, however,
-the only permitted operation is to write parameter values in place before
-training starts.
+parameters, and in-place parameter fills. At the initialization hook, the only
+permitted operation is to write parameter values in place before training starts.
 
 ## Baselines
 
 **Small fixed-std Gaussian.** Draw every weight independently from a zero-mean
 Gaussian with a small standard deviation such as `0.01`. It is simple and
-data-free. Its limitation is that the composite scale of the end-to-end map
-shrinks or grows exponentially with depth unless the per-layer scale happens to
-be exactly right.
+data-free.
 
 **Scaled Gaussian / Glorot-style variance matching.** Choose the variance so that
 a typical signal has preserved squared norm in expectation; for a square
 `N x N` layer, use entries with variance `1/N`, and for unequal fan-in/fan-out
-use a compromise such as `2/(n_in + n_out)`. This fixes the average
-explosion/vanishing calculation. Its limitation is that it controls only an
-average norm, not the spread of gains across directions, so products of many
-layers can still become highly anisotropic.
+use a compromise such as `2/(n_in + n_out)`.
 
 **Greedy unsupervised pretraining.** Train layers as autoencoders, then
 fine-tune on the supervised task. It can speed optimization by aligning the
-network with important input directions before supervised training. Its
-limitation is that it is not a pure initialization rule: it needs the training
-data, additional objectives, and extra optimization before the actual task.
+network with important input directions before supervised training.
 
 **Second-order or Hessian-free optimization.** Use a more powerful optimizer to
-move through flat or ill-conditioned regions. Its limitation is that it changes
-the training algorithm and its per-step cost, while the initialization itself can
-still control how quickly useful directions become learnable.
+move through flat or ill-conditioned regions.
 
 ## Evaluation settings
 

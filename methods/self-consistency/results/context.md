@@ -4,41 +4,33 @@ The goal is to improve the reasoning accuracy of a frozen large language model t
 
 ## Research question
 
-Chain-of-thought prompting (Wei et al., 2022) gets a large language model to generate a series of intermediate natural-language reasoning steps before its answer, substantially improving multi-step reasoning. But it is decoded **greedily**: the model produces a *single* reasoning path, taking the most-probable token at each step, and reads the answer off that one path.
+Chain-of-thought prompting (Wei et al., 2022) gets a large language model to generate a series of intermediate natural-language reasoning steps before its answer, substantially improving multi-step reasoning. As used, it decodes **greedily**: the model produces a *single* reasoning path, taking the most-probable token at each step, and reads the answer off that one path.
 
-That single-path greedy decode is fragile. Greedy decoding is prone to repetition and to getting stuck in a locally-optimal-but-globally-wrong line of reasoning; and any one sampled generation is at the mercy of a single mistake in a single step. A reasoning problem usually has a *fixed* correct answer but *many* valid ways to reach it — and a model that makes an error on one path may well reach the right answer on another. Committing to one path throws away that redundancy.
-
-The precise problem: given a frozen model and chain-of-thought prompting, replace the single greedy decode with a decoding procedure that exploits the multiplicity of reasoning paths to land on the right answer more often — while staying entirely unsupervised, training-free, and usable off the shelf, with no verifier or re-ranker to train.
-
-What a solution must achieve:
-- **No additional training, annotation, verifier, or fine-tuning** — a pure decoding-time method on top of an existing prompted model.
-- **Robustness to a single faulty reasoning step** — one bad path should not determine the answer.
-- **A principled way to combine many paths** that does not require knowing which path is "correct."
-- Compatibility with the **fixed-answer** structure of reasoning tasks (the final answer comes from a small set), and with standard sampling algorithms.
+A reasoning problem usually has a *fixed* correct answer but *many* valid ways to reach it. The open question: given a frozen model and chain-of-thought prompting, how might one design a decoding procedure that exploits this multiplicity of reasoning paths — staying entirely unsupervised, training-free, and usable off the shelf?
 
 ## Background
 
-**Chain-of-thought prompting (the immediate ancestor).** Prepend a few `⟨question, chain of thought, answer⟩` exemplars to a frozen model; it then generates its own intermediate reasoning steps before answering. This unlocks multi-step reasoning at large model scale and needs no training. As originally used, it decodes **greedily** — one reasoning path per question. *Limitation that opens the door:* a single path is fragile; the method does nothing to exploit the fact that the same answer can be reached many ways.
+**Chain-of-thought prompting (the immediate ancestor).** Prepend a few `⟨question, chain of thought, answer⟩` exemplars to a frozen model; it then generates its own intermediate reasoning steps before answering. This unlocks multi-step reasoning at large model scale and needs no training. As originally used, it decodes **greedily** — one reasoning path per question.
 
-**Why a problem admits many reasoning paths.** A well-known idea about human problem-solving: tasks that require deliberate, analytical thinking typically admit *several* distinct lines of reasoning that all reach the same correct conclusion, and the harder the problem, the more such diverse paths exist. If multiple different ways of thinking converge on the same answer, one is more confident the answer is right. This is a fact about the structure of reasoning problems, not about any model — it is the intuition a decoding method could exploit.
+**Why a problem admits many reasoning paths.** A well-known idea about human problem-solving: tasks that require deliberate, analytical thinking typically admit *several* distinct lines of reasoning that all reach the same correct conclusion, and the harder the problem, the more such diverse paths exist. If multiple different ways of thinking converge on the same answer, one is more confident the answer is right. This is a fact about the structure of reasoning problems, not about any model.
 
-**Sampling vs. greedy decoding.** Reasoning tasks have fixed answers, so the field defaults to greedy (or beam) decoding, treating generation as a search for the single best output. Open-ended text generation, by contrast, routinely uses stochastic decoding — temperature sampling, top-k sampling, nucleus (top-p) sampling — to produce *diverse* outputs. These samplers are standard, drop-in tools. The unexploited observation: even when the desired answer is fixed, *diversity in the reasoning process* (not the answer) may be useful.
+**Sampling vs. greedy decoding.** Reasoning tasks have fixed answers, so the field defaults to greedy (or beam) decoding, treating generation as a search for the single best output. Open-ended text generation, by contrast, routinely uses stochastic decoding — temperature sampling, top-k sampling, nucleus (top-p) sampling — to produce *diverse* outputs. These samplers are standard, drop-in tools.
 
-**A latent-variable view of generation.** A chain-of-thought generation can be read as a reasoning path `r` (a sequence of tokens) followed by a final answer `a` that the path produces, `r → a`. The model defines a joint distribution `P(r, a | prompt, question)`. If `r` is treated as a latent nuisance variable that exists only to reach `a`, then the quantity of interest is the marginal over reasoning paths, `P(a | prompt, question) = Σ_r P(r, a | prompt, question)` — and that marginal can be estimated by sampling `(r, a)` pairs and aggregating their answers. This marginalization framing is the conceptual seed for combining paths.
+**A latent-variable view of generation.** A chain-of-thought generation can be read as a reasoning path `r` (a sequence of tokens) followed by a final answer `a` that the path produces, `r → a`. The model defines a joint distribution `P(r, a | prompt, question)`. If `r` is treated as a latent nuisance variable that exists only to reach `a`, then the quantity of interest is the marginal over reasoning paths, `P(a | prompt, question) = Σ_r P(r, a | prompt, question)` — and that marginal can be estimated by sampling `(r, a)` pairs and aggregating their answers.
 
-**Calibration of these models.** A relevant empirical property: large language models are not well-calibrated on these reasoning generations — the model's own probability for a correct full solution is often close to its probability for a wrong one, which is precisely why prior work resorted to *training* separate verifiers/re-rankers to judge solution quality. Any aggregation that leans on the model's raw sequence probabilities has to contend with this.
+**Calibration of these models.** A relevant empirical property: large language models are not well-calibrated on these reasoning generations — the model's own probability for a correct full solution is often close to its probability for a wrong one, which is why prior work has used trained verifiers/re-rankers to judge solution quality.
 
 ## Baselines
 
-**Greedy chain-of-thought decoding (the direct comparison).** CoT prompting with a single greedy decode; the answer is read from the one generated path. *Gap:* fragile to a single error, prone to repetition and local optima, and ignores the redundancy of multiple valid paths.
+**Greedy chain-of-thought decoding (the direct comparison).** CoT prompting with a single greedy decode; the answer is read from the one generated path.
 
-**Sample-and-rank.** Sample multiple generations, then pick the one with the highest model-assigned (sequence) probability. *Gap:* relies on the model's poorly-calibrated probabilities to identify the best solution; ranking by likelihood does not track correctness well.
+**Sample-and-rank.** Sample multiple generations, then pick the one with the highest model-assigned (sequence) probability.
 
-**Beam search.** Decode multiple high-probability sequences via beam search and take the top. *Gap:* still a likelihood-driven search for *one* output; beams tend to be near-duplicates, giving little genuine reasoning diversity, and on these tasks it can degrade fluency/diversity.
+**Beam search.** Decode multiple high-probability sequences via beam search and take the top.
 
-**Trained verifier / re-ranker.** Train an auxiliary model on labeled data to score candidate solutions and re-rank them (used in prior math-word-problem work). *Gap:* requires additional human annotation and a separate training run — exactly the supervised machinery a frozen prompting method wants to avoid.
+**Trained verifier / re-ranker.** Train an auxiliary model on labeled data to score candidate solutions and re-rank them (used in prior math-word-problem work).
 
-**Ensembling multiple models.** Train several models (or several prompts) and aggregate their outputs. *Gap:* needs multiple trained models or carefully engineered diverse prompts; heavier than a method working over a single frozen model.
+**Ensembling multiple models.** Train several models (or several prompts) and aggregate their outputs.
 
 ## Evaluation settings
 

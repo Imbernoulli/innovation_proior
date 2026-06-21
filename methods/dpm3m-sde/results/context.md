@@ -6,18 +6,16 @@ Diffusion probabilistic models produce excellent images, and the technique that 
 competitive with — and often better than — GANs on fidelity and prompt alignment is *guided
 sampling*: at sampling time the network output is steered by a classifier gradient or by a
 classifier-free combination of a conditional and an unconditional prediction, with a scalar
-*guidance scale* `s` controlling how hard the steering is. Large `s` is what gives sharp,
-prompt-faithful, photorealistic images, so practitioners use it routinely.
+*guidance scale* `s` controlling how hard the steering is. Large `s` gives sharp, prompt-faithful,
+photorealistic images, so practitioners use it routinely.
 
 Sampling means reversing a noising process by running the network many times in sequence. The
-dominant guided sampler, DDIM, is reliable but needs on the order of 100 to 250 sequential
-network evaluations to converge — far too slow for interactive text-to-image use. Dedicated
-high-order ODE solvers cut *unconditional* sampling to 10–20 evaluations, so the obvious move is
-to use them for guided sampling too. The precise problem: given an already-trained diffusion
-model (which we may not retrain), generate high-quality *guided* samples in as few sequential
-network evaluations as possible — on the order of 15–20 — and the solver must be **training-free**
-(plug onto any pre-trained model), must not produce worse images than the slow DDIM it replaces,
-and must remain well-behaved at the large guidance scales that practitioners actually use.
+dominant guided sampler, DDIM, needs on the order of 100 to 250 sequential network evaluations to
+converge. Dedicated high-order ODE solvers run *unconditional* sampling in 10–20 evaluations. The
+question: given an already-trained diffusion model (which we may not retrain), how do we generate
+high-quality *guided* samples in as few sequential network evaluations as possible — on the order
+of 15–20 — with a sampler that plugs onto any pre-trained model without further training and stays
+well-behaved at the large guidance scales practitioners use?
 
 ## Background
 
@@ -46,10 +44,9 @@ PF-ODE:       dx_t/dt = f(t) x_t + (g^2(t)/(2 sigma_t)) eps_theta(x_t, t),
 ```
 
 solved from `t = T` down to `t = 0`, with `f(t) = d log alpha_t / dt` and
-`g^2(t) = d sigma_t^2/dt - 2 (d log alpha_t/dt) sigma_t^2`. Discretizing the SDE is intrinsically
-costly: each step injects fresh Brownian noise and the step size is capped by that randomness
-(Kloeden & Platen 1992), so SDE samplers need many steps; the ODE has no noise term and in principle
-tolerates much larger steps.
+`g^2(t) = d sigma_t^2/dt - 2 (d log alpha_t/dt) sigma_t^2`. The SDE injects fresh Brownian noise at
+each step and its step size is capped by that randomness (Kloeden & Platen 1992); the ODE has no
+noise term and tolerates larger steps.
 
 **The exponential-integrator structure of the ODE.** The PF-ODE right-hand side is *semi-linear*:
 a linear term `f(t) x` welded to the nonlinear network term. Variation-of-constants solves the
@@ -68,31 +65,28 @@ The exponential-integrator people define the functions `phi_0(z) = e^z`,
 Taylor monomials of the network against the exponential weight; these are the standard building
 blocks for high-order solvers of semi-linear ODEs.
 
-**Guided-sampling instability — the diagnostic findings.** Two observations about *existing*
-high-order solvers, made with the pre-trained guided models, set up the problem:
+**Behavior of high-order solvers under guidance — the diagnostic findings.** Two observations about
+*existing* high-order solvers, made with the pre-trained guided models:
 
-1. *Large guidance scales destabilize high-order solvers.* For a large guidance scale (e.g.
-   `s = 8.0`) on a guided ImageNet 256x256 model at a tight budget (~15 evaluations), the existing
-   high-order ODE solvers built on the noise-prediction model — DPM-Solver of order 2 and 3, DEIS,
-   PNDM — produce visibly degraded images, *worse* than first-order DDIM, and the degradation grows
-   with the solver order. Guidance multiplies both the model output and its derivatives by a large
-   factor; high-order solvers lean on those (high-order) derivatives, so the amplification shrinks
-   their convergence radius and they would need far smaller steps to converge, which the tight
-   budget forbids.
+1. *Large guidance scales and high-order solvers.* For a large guidance scale (e.g. `s = 8.0`) on a
+   guided ImageNet 256x256 model at a tight budget (~15 evaluations), the existing high-order ODE
+   solvers built on the noise-prediction model — DPM-Solver of order 2 and 3, DEIS, PNDM — produce
+   visibly degraded images relative to first-order DDIM, with the degradation growing with the
+   solver order. Guidance multiplies both the model output and its derivatives by a large factor,
+   and high-order solvers use those high-order derivatives.
 
-2. *Train-test mismatch.* Image data lives in a bounded interval (`[-1, 1]`). A large guidance scale
+2. *Bounded data range.* Image data lives in a bounded interval (`[-1, 1]`). A large guidance scale
    pushes the conditional noise prediction away from the true noise, so the converged clean image
    `x_0` falls outside the bound and renders as saturated, unnatural output (Saharia et al. 2022).
    Saharia et al. observed that *thresholding* — clipping the predicted clean image back into the
-   bound at each step — counteracts this, but a clip can only be applied to a quantity that is itself
-   an estimate of the clean image.
+   bound at each step — counteracts this; a clip applies to a quantity that is itself an estimate of
+   the clean image.
 
-**Stochasticity as error correction.** Separately, Karras et al. (2022) reported that purely
-deterministic sampling can yield *worse* perceptual quality than sampling that re-injects a
-controlled amount of noise at each step: the added randomness, removed by the next denoising step,
-acts like a Langevin correction that pushes the trajectory back toward the data manifold and
-cancels accumulated discretization error. This makes "how much noise to re-inject per step" a knob
-worth having rather than something to eliminate.
+**Stochasticity in sampling.** Karras et al. (2022) reported that purely deterministic sampling can
+yield different perceptual quality from sampling that re-injects a controlled amount of noise at
+each step: the added randomness, removed by the next denoising step, acts like a Langevin
+correction that pushes the trajectory toward the data manifold and can cancel accumulated
+discretization error. "How much noise to re-inject per step" is thus a knob one can expose.
 
 ## Baselines
 
@@ -104,33 +98,30 @@ form carries a stochasticity parameter `eta >= 0`,
 x_{t_i} = alpha_{t_i} x_theta(...) + sqrt(sigma_{t_i}^2 - eta^2) eps_theta(...) + eta * z,   z ~ N(0, I),
 ```
 
-with `eta = 0` deterministic and larger `eta` injecting more noise. Reliable and, importantly,
-*stable* under large guidance scales. **Gap:** first order only; needs ~100–250 steps; offers no
-route to higher order and no high-order error analysis.
+with `eta = 0` deterministic and larger `eta` injecting more noise. It is first order, is stable
+under large guidance scales, and typically runs at ~100–250 steps.
 
 **DPM-Solver (Lu et al. 2022).** The high-order exponential-integrator solver built on the
 noise-prediction ODE solution above: Taylor-expand `eps_theta` in `lambda`, integrate against
 `e^{-lambda}` term by term to get an order-`k` method `DPM-Solver-k` (k network calls per step,
 singlestep), with DDIM (`eta = 0`) the first-order case. Reaches ~10–20 steps for *unconditional*
-sampling. **Gap:** it is formulated on the noise model `eps_theta`; for *guided* sampling at large
-scale it is one of the unstable solvers in finding (1) above, and because it never forms an estimate
-of the clean image, thresholding cannot be applied to keep its output bounded (finding (2)).
+sampling. It is formulated on the noise model `eps_theta` and is one of the order-2/3 solvers in
+finding (1) above.
 
 **DEIS (Zhang & Chen 2022).** Another exponential-integrator solver, *multistep* in flavor (it
 reuses past network evaluations, Adams–Bashforth style, instead of inserting fresh intermediate
-evaluations within a step), Taylor-expanding `eps_theta` in `t`. Strong unconditionally. **Gap:**
-same noise-model formulation; same guided-sampling instability at large scale.
+evaluations within a step), Taylor-expanding `eps_theta` in `t`. Strong unconditionally; also
+formulated on the noise model.
 
 **Ancestral / SDE samplers (Ho et al. 2020; Song et al. 2020).** Discretizations of the reverse
-SDE. Excellent quality but slow — randomness caps the step size, so they need many steps to converge.
+SDE. The injected randomness caps the step size, so they run at many steps.
 
-**Thresholding (Ho et al. 2020; Saharia et al. 2022).** A fix for the bounded-data problem, not a
-solver: clip the predicted clean image (static clipping to `[-1, 1]`, or dynamic clipping by a
-per-step percentile) so out-of-range pixels are pulled back in. It needs a clean-image estimate to
-clip, so it composes only with a solver that produces one.
+**Thresholding (Ho et al. 2020; Saharia et al. 2022).** A post-step operation, not a solver: clip
+the predicted clean image (static clipping to `[-1, 1]`, or dynamic clipping by a per-step
+percentile) so out-of-range pixels are pulled back in. It operates on a clean-image estimate.
 
-**Karras / EDM schedule (Karras et al. 2022).** Not a solver but the natural time grid: place the
-sampling noise levels as `sigma_i = (sigma_max^{1/rho} + (i/(N-1))(sigma_min^{1/rho} -
+**Karras / EDM schedule (Karras et al. 2022).** Not a solver but a time grid: place the sampling
+noise levels as `sigma_i = (sigma_max^{1/rho} + (i/(N-1))(sigma_min^{1/rho} -
 sigma_max^{1/rho}))^rho`, with `rho = 7`, then append `sigma = 0`. The power warp concentrates more
 of the budget at low noise, where the per-step truncation error is largest.
 
@@ -142,11 +133,10 @@ guidance scales (e.g. 0 through 8). Latent-space and pixel-space text-to-image m
 Diffusion / latent diffusion; pixel-space cascaded models) with classifier-free guidance at the
 guidance scales practitioners use (e.g. 7.5). Sample quality is measured by Fréchet Inception
 Distance (FID, lower is better) against a reference set, and by prompt alignment via a CLIP score
-(higher is better). The cost axis — the whole point — is the number of sequential network
-evaluations (NFE); a fast guided sampler is judged by the FID it reaches at a fixed small NFE,
-especially in the 10–20 range. The model weights, the prompt set, the guidance scale, the NFE
-budget, and the metric computation are all held fixed across solvers; only the per-step update and
-its time/noise grid vary.
+(higher is better). The cost axis is the number of sequential network evaluations (NFE); a fast
+guided sampler is judged by the FID it reaches at a fixed small NFE, especially in the 10–20 range.
+The model weights, the prompt set, the guidance scale, the NFE budget, and the metric computation
+are all held fixed across solvers; only the per-step update and its time/noise grid vary.
 
 ## Code framework
 

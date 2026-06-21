@@ -5,10 +5,9 @@ is at once **flexible** (capable of representing complex, possibly multimodal de
 **tractable** (an exact, cheap-to-evaluate density and a cheap learning algorithm). The specific
 emphasis is on tasks where the density itself is the object of interest — likelihood-free
 inference, learned priors and proposals, surrogate models — so the estimator must, for *any*
-externally provided datapoint x, return the exact p(x) in a single fast pass on a GPU, not via a
-D-step sequential loop. The open question: can we take one of the two flexible-and-tractable
-families we already have and make it markedly more flexible *without* losing the one-pass exact
-density?
+externally provided datapoint x, return the exact p(x) in a single fast pass on a GPU. The open
+question: how can existing flexible-and-tractable neural density estimators be extended or
+composed to achieve greater expressiveness?
 
 # Background
 
@@ -24,11 +23,10 @@ properties survive composition, so a flow can be deepened by stacking copies of 
 **Autoregressive estimators and the order problem.** The Real-valued Neural Autoregressive Density
 Estimator (RNADE; Uria et al. 2013) models each conditional as a mixture of Gaussians or Laplacians
 with a linear hidden-state update; LSTM-based variants (Theis & Bethge 2015; van den Oord et al.
-2016) update the hidden state more flexibly. A structural weakness of all of them is *order
-sensitivity*: the chosen variable ordering matters, and for a given conditional family one order
-may represent a density exactly while another cannot — yet which of the factorially many orders is
-best is unknown a priori. Training over random orders and ensembling predictions (Uria et al. 2014;
-Germain et al. 2015) is one mitigation.
+2016) update the hidden state more flexibly. The chosen variable ordering matters for all of them,
+and the chosen conditional family may represent a density exactly under one order and not another.
+Training over random orders and ensembling predictions (Uria et al. 2014; Germain et al. 2015) is
+one approach.
 
 **The sequential-evaluation bottleneck and masking.** A straightforward recurrent autoregressive
 model updates a hidden state once per variable, so computing p(x) of a D-dimensional vector costs D
@@ -51,9 +49,8 @@ matrices (Rippel & Adams 2013; Ballé et al. 2016) leaves a Jacobian determinant
 general. Planar and radial flows (Rezende & Mohamed 2015) and Inverse Autoregressive Flow (IAF;
 Kingma et al. 2016) have tractable Jacobians by construction but were built for *variational
 inference*: they can efficiently evaluate the density of *their own samples* but not of an
-externally provided datapoint, which makes them awkward for density estimation. NICE (Dinh et al.
-2014) and its successor Real NVP (Dinh et al. 2017) have tractable Jacobians and are usable for
-density estimation.
+externally provided datapoint. NICE (Dinh et al. 2014) and its successor Real NVP (Dinh et al.
+2017) have tractable Jacobians and are usable for density estimation.
 
 **The realization that links the two families.** Kingma et al. (2016) pointed out that an
 autoregressive model, *viewed as a data generator*, is a differentiable transformation of an
@@ -68,32 +65,24 @@ rescaling. Real NVP used it between its coupling layers and found it sped up and
 
 **RNADE / recurrent autoregressive models.** p(x) = ∏_i p(x_i | x_{1:i-1}) with mixture-of-Gaussian
 conditionals (Uria et al. 2013) or LSTM hidden states. *Math/algorithm:* exact per-dimension
-log-likelihood; flexibility comes from rich conditionals. *Gaps:* sequential D-step evaluation in
-the recurrent form (GPU-unfriendly), and sensitivity to the variable order.
+log-likelihood; flexibility comes from rich conditionals.
 
 **MADE (Germain et al. 2015).** A masked feedforward autoencoder computing all conditional
 parameters in one pass. *Math/algorithm:* binary masks enforce the autoregressive property; with a
-single-Gaussian conditional per dimension it is a one-pass exact density estimator. *Gap:* a single
-MADE with single-Gaussian conditionals has *unimodal* conditionals, so its expressiveness is
-limited; one fixed order is baked in.
+single-Gaussian conditional per dimension it is a one-pass exact density estimator.
 
 **Inverse Autoregressive Flow (IAF; Kingma et al. 2016).** A flow whose layer is the affine
 autoregressive recursion x_i = u_i·exp(α_i) + μ_i with μ_i, α_i computed from the *random numbers*
 u_{1:i-1} (via a MADE). *Math/algorithm:* because each conditioner reads earlier u's, the whole u→x
-map runs in one parallel pass, so IAF can sample and score its own samples in one pass. *Gap for
-density estimation:* to score an external x it must first invert to recover u, which is a D-step
-sequential recursion — efficient only for the variational-inference use where it scores its own
-samples.
+map runs in one parallel pass, so IAF can sample and score its own samples in one pass.
 
 **Real NVP (Dinh et al. 2017) / NICE (Dinh et al. 2014).** A flow of *coupling layers*: split the
 vector at index d, copy x_{1:d} = u_{1:d}, and affinely transform the rest,
 x_{d+1:D} = u_{d+1:D} ⊙ exp(α) + μ with α, μ functions of u_{1:d}; NICE is the α = 0 (additive,
 volume-preserving) special case. *Math/algorithm:* the Jacobian is triangular with the copied block
 giving an identity diagonal, so the log-det is Σα over the transformed block; permuting which
-elements are copied across layers mixes all coordinates. *Strength:* both sampling and density run in
-one forward pass. *Gap:* each coupling layer leaves a whole block untouched and only conditions the
-transformed block on the copied block — strictly less flexible than scaling/shifting *every*
-coordinate as a function of *all* previous ones.
+elements are copied across layers mixes all coordinates. Both sampling and density evaluation run in
+one forward pass.
 
 # Evaluation settings
 

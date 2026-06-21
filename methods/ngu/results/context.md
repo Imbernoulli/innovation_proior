@@ -1,52 +1,34 @@
 # Research question
 
-Reinforcement learning maximizes expected return, which works when rewards are dense enough that a
-stochastic policy stumbles into them, but collapses on the hard-exploration games — Montezuma's
-Revenge, Pitfall!, Private Eye — where rewards are hundreds of steps apart and a plain agent on the
-extrinsic reward almost never sees one. The standard remedy adds an intrinsic bonus $i_t$ to the
-extrinsic reward $e_t$, $r_t=e_t+\beta i_t$, with $i_t$ large in *novel* states. Every novelty
-bonus in use shares one structural property: it is a *transient* signal that **vanishes** as the
-agent gathers experience. That is exactly what you want for pushing the frontier outward once, and
-exactly what you do *not* want for *maintaining* exploration: after the bonus on a region has
-decayed, nothing pulls the agent back through it, even when traversing it again is the only way to
-reach the next undiscovered area. The precise problem: design an exploration bonus that keeps an
-agent covering new ground on the hardest games without dying out as the environment becomes
-familiar, and do so without (as the noisy-TV literature shows) being fooled into paying novelty for
-variation the agent's actions cannot influence — all while not sacrificing performance on
-dense-reward games, where any persistent exploratory drive baked into a single value function would
-permanently distort the policy.
+Reinforcement learning maximizes expected return. When rewards are dense the standard stochastic
+policy finds them readily, but on hard-exploration games — Montezuma's Revenge, Pitfall!, Private
+Eye — rewards are hundreds of steps apart. The standard remedy adds an intrinsic bonus $i_t$ to the
+extrinsic reward $e_t$, giving $r_t=e_t+\beta i_t$, with $i_t$ large in novel states. How should
+that intrinsic bonus be designed to sustain exploration across the hardest sparse-reward games while
+also working in distributed, large-scale RL?
 
 # Background
 
-**Exploration bonuses and the vanishing-novelty limitation.** Augmenting sparse extrinsic reward
-$e_t$ with an intrinsic $i_t$ that is large in novel states is the dominant approach
-(Bellemare et al. 2016; Pathak et al. 2017; Burda et al. 2018). The shared failure mode is that as
-the agent becomes familiar with the environment the bonus disappears and learning is driven by the
-extrinsic reward alone — sensible if the extrinsic reward is now reachable, but on the hardest games
-the agent must keep *re-traversing* already-seen regions to extend its frontier, and a vanished
-bonus gives it no reason to. Matching the decay rate of the bonus to the learning speed so that
-exploration neither dies too early nor wastes effort requires careful, brittle calibration
-(Ostrovski et al. 2017; Ecoffet et al. 2019).
+**Exploration bonuses.** Augmenting sparse extrinsic reward $e_t$ with an intrinsic $i_t$ that is
+large in novel states is the dominant approach (Bellemare et al. 2016; Pathak et al. 2017;
+Burda et al. 2018). As the agent gains experience, the bonus $i_t$ typically decreases on visited
+regions and is driven primarily by less-familiar areas.
 
 **Count-based bonuses.** In a tabular MDP a principled bonus is a decreasing function of the
 visitation count $n_t(s)$, e.g. $1/\sqrt{n_t(s)}$ (Strehl & Littman 2008), with regret guarantees.
 In high-dimensional image spaces almost every state is seen at most once, so raw counts are useless
 and must be generalized — *pseudo-counts* derive surrogate counts from a learned density model
-(Bellemare et al. 2016), giving "counts" to unseen-but-similar states, at the cost of a heavy
-density model that is awkward to scale.
+(Bellemare et al. 2016), giving "counts" to unseen-but-similar states.
 
 **Prediction-error / random-distillation bonuses.** A cheaper family sets $i_t$ to the error of a
 model on a self-supervised prediction problem about the agent's transitions — forward dynamics
-(Pathak et al. 2017) or distilling a fixed random target network (Burda et al. 2018, RND). RND in
-particular uses a frozen random network $g:\mathcal{O}\to\mathbb{R}^k$ and a trained predictor
+(Pathak et al. 2017) or distilling a fixed random target network (Burda et al. 2018, RND). RND
+uses a frozen random network $g:\mathcal{O}\to\mathbb{R}^k$ and a trained predictor
 $\hat g$ minimizing $\|\hat g(x)-g(x)\|^2$; the error is high on observations unlike the training
-data, so it marks *global, lifelong* novelty, and it is cheap (two forward passes) and trivially
-parallel. But because the predictor is optimized by gradient descent over *all* of training, its
-error changes only slowly and *monotonically decreases* on a region once visited — it is a
-lifelong, not a within-episode, signal, and it too vanishes.
+data, marking *global, lifelong* novelty. It is cheap (two forward passes) and trivially parallel.
 
 **The controllable-state representation (inverse dynamics).** A forward-prediction bonus computed
-on raw pixels is captured by unpredictable-but-irrelevant variation (TV static, moving leaves):
+on raw pixels is affected by unpredictable-but-irrelevant variation (TV static, moving leaves):
 pixels mix what the agent controls, what affects it, and irrelevant noise. Pathak et al. (2017)
 showed how to learn a feature map $f$ that keeps only *action-relevant* content by a self-supervised
 *inverse-dynamics* task: from two consecutive observations $x_t,x_{t+1}$, recover the action $a_t$
@@ -78,32 +60,24 @@ POMDP; a known remedy is to feed the quantities that make the reward non-station
 
 **The Random Disco Maze diagnostic.** A $21\times21$ gridworld where the wall colors are re-sampled
 randomly every step, so the agent almost never sees the same pixel-state twice. The setting isolates
-the failure mode a novelty signal has to avoid: raw-observation novelty is overwhelmed by irrelevant
-color churn, so a pixel-keyed bonus can pay the agent for standing still while the world changes
-around it. The diagnostic is scored by the fraction of distinct grid positions the agent visits.
+how a novelty signal responds to irrelevant color churn; raw-observation novelty is overwhelmed by
+that churn, while a bonus keyed to controllable state is not. The diagnostic is scored by the
+fraction of distinct grid positions the agent visits.
 
 # Baselines
 
 **PPO / value-based RL on extrinsic reward only (Schulman et al. 2017; Mnih et al. 2015).** Explore
-via a stochastic policy and entropy. **Gap:** under very sparse reward the advantage is almost
-always zero; on the hardest games the agent finds no positive reward at all.
+via a stochastic policy and entropy.
 
 **Forward-dynamics curiosity in a controllable-state space (Pathak et al. 2017, ICM).** Bonus = the
 forward-model error $\frac{\eta}{2}\|\hat f(s_{t+1})-f(s_{t+1})\|^2$ in an inverse-dynamics feature
-space. **Gap:** noise-robust, but the bonus still *vanishes* as the forward model masters a
-transition, so it maintains exploration only as long as there is unmastered controllable dynamics
-nearby, and reduces to undirected exploration once that runs out.
+space, noise-robust by design.
 
 **Random Network Distillation (Burda et al. 2018, RND).** Bonus = distillation error against a
-frozen random target; cheap, scalable, a strong lifelong/global novelty detector. **Gap:** it is a
-slow, *lifelong* signal — its error on a region only ever decreases across training, it has *no
-within-episode memory*, so once global novelty has decayed the agent has no drive to re-traverse a
-region, and (because a single value function trained on $e_t+\beta i_t$ permanently mixes in the
-exploratory bias) it cannot be cleanly switched off to exploit.
+frozen random target; cheap, scalable, a strong lifelong/global novelty detector.
 
 **Pseudo-count exploration (Bellemare et al. 2016).** A density-model count bonus; strong on
-Montezuma's Revenge. **Gap:** the density model is heavy and harder to scale, and the count is
-lifelong — same vanishing-novelty issue.
+Montezuma's Revenge.
 
 # Evaluation settings
 

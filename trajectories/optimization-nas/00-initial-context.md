@@ -4,11 +4,11 @@ NAS-Bench-201 contains 15,625 architectures, but the search budget is only **30 
 
 ## Prior art / Background / Baselines
 
-- **Grid / manual search.** Enumerate a Cartesian product of design choices, or hand-tune by intuition. Gap: exact only in one or two dimensions; the number of joint configurations grows exponentially with the number of cell edges (5^6 = 15,625 here), and manual search is neither reproducible nor analyzable.
+- **Grid / manual search.** Enumerate a Cartesian product of design choices, or hand-tune by intuition. Grid search is exact in one or two dimensions; the number of joint configurations grows exponentially with the number of cell edges (5^6 = 15,625 here).
 
-- **Reinforcement-learning controllers (Zoph and Le, 2017).** An LSTM emits an architecture token by token and is updated with policy gradient toward higher validation scores. Gap: requires training a second network, its own schedule and greediness knobs, tightly coupled workers, and many queries.
+- **Reinforcement-learning controllers (Zoph and Le, 2017).** An LSTM emits an architecture token by token and is updated with policy gradient toward higher validation scores.
 
-- **GP-based Bayesian optimization (NASBOT, Kandasamy et al., 2018).** Model observed `(arch, acc)` pairs and pick the next query to maximize expected progress. Gap: needs a bespoke kernel on labeled DAGs (NASBOT builds an optimal-transport distance) and GP inference scales cubically with observations.
+- **GP-based Bayesian optimization (NASBOT, Kandasamy et al., 2018).** Model observed `(arch, acc)` pairs and pick the next query to maximize expected progress. NASBOT builds an optimal-transport distance as a kernel over labeled DAGs.
 
 ## Fixed substrate / Code framework
 
@@ -28,12 +28,12 @@ Exactly one region is editable — the `NASOptimizer` class in `naslib/custom_na
 
 The optimizer must maintain `self.best_arch` so the returned architecture is the one it most wants tested.
 
-The starting point is the scaffold default: **uniform random sampling**, tracking the best-by-validation architecture seen. Each method replaces exactly this class and nothing else.
+The starting point is the scaffold default shown below. Each method replaces exactly this class and nothing else.
 
 ```python
 # EDITABLE region of naslib/custom_nas_search.py (lines 163-234) — default fill
 class NASOptimizer:
-    """Sample-efficient NAS search strategy (default: uniform random sampling).
+    """Sample-efficient NAS search strategy (default scaffold).
 
     Helpers provided by the fixed loop:
         random_architecture()              -> list[int]  (random valid arch)

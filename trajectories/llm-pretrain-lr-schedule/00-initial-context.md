@@ -1,12 +1,12 @@
 ## Research question
 
-Pretrain a GPT-2 Medium language model (24 layers, 16 heads, d=1024, ~355M params) on FineWeb. The model, the data stream, AdamW, the batch construction, and the total update budget are frozen. The only free lever for the final validation loss is the **learning-rate schedule** — the function `get_lr` the training loop calls every iteration. The design target is the *shape* of that schedule over the 12,030 iterations of the run: how the rate is warmed up, held, and decayed. Nothing else in the pipeline may be changed.
+Pretrain a GPT-2 Medium language model (24 layers, 16 heads, d=1024, ~355M params) on FineWeb. The model, the data stream, AdamW, the batch construction, and the total update budget are frozen. The only free lever for the final validation loss is the **learning-rate schedule** — the function `get_lr` the training loop calls every iteration. The design target is the *shape* of that schedule over the 12,030 iterations of the run. Nothing else in the pipeline may be changed.
 
 ## Prior art / Background / Baselines
 
-- **Step decay.** Hold the rate constant, then multiply it by a fixed factor (e.g. ×0.1) at hand-picked epoch boundaries. Observed limitation: the drop points and factors are discrete, per-run hyperparameters, and the abrupt jumps jolt the optimizer instead of easing the rate down.
-- **Cosine annealing.** Replace the staircase with a smooth cosine curve over a fixed cycle length `T`. The single-cycle, no-restart version — warmup, then one cosine descent to a floor near 10% of the peak — is what large-model pretraining currently uses. Observed limitation: the curve is welded to `T`; when `T` does not equal the run length `S`, final loss worsens (`T < S` decays too early and loses summed rate, `T > S` stops while the rate is still high and overestimates intermediate-checkpoint loss). The horizon must be fixed in advance, so runs cannot be cleanly extended and intermediate checkpoints are never converged.
-- **Cosine with warm restarts.** Reset the rate to its peak at the end of each cycle and decay again, optionally snapshotting for an ensemble. Observed limitation: in single-horizon LLM pretraining the rewarming spikes spend budget on re-exploration and introduce instability; the method targets ensembling and multimodality, not one long run.
+- **Step decay.** Hold the rate constant, then multiply it by a fixed factor (e.g. ×0.1) at hand-picked epoch boundaries.
+- **Cosine annealing.** Replace the staircase with a smooth cosine curve over a fixed cycle length `T`. The single-cycle, no-restart version — warmup, then one cosine descent to a floor near 10% of the peak — is what large-model pretraining currently uses. The horizon `T` must be fixed in advance.
+- **Cosine with warm restarts.** Reset the rate to its peak at the end of each cycle and decay again, optionally snapshotting for an ensemble.
 
 ## Fixed substrate / Code framework
 

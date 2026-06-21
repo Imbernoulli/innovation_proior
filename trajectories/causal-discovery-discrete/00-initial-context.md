@@ -4,12 +4,12 @@ Recover the causal structure behind purely observational, integer-coded discrete
 
 ## Prior art / Background / Baselines
 
-These are the main existing approaches for learning Bayesian-network structure from discrete observational data. Each has a concrete observed limitation.
+These are the main existing approaches for learning Bayesian-network structure from discrete observational data.
 
-- **Marginal-likelihood scoring (Cooper & Herskovits 1992; Heckerman, Geiger & Chickering 1995).** The score ranks a network by integrating CPT parameters out against a Dirichlet prior, yielding a closed-form, decomposable sum of per-node family scores. Gap: a score is not a search procedure, and enumerating all DAGs is already infeasible at modest node counts.
-- **Maximum-weight spanning-tree search (Chow & Liu 1968).** For the special case of at most one parent per node, the optimal structure is a polynomial-time spanning tree. Gap: real domains require several parents per node, and the general problem with two or more parents is NP-hard.
-- **K2: greedy parent selection from a known ordering.** Fix a topological order and let each node choose its best-scoring predecessors; acyclicity is then guaranteed. Gap: observational data provide no such order, and a mistaken order learns reversed arcs.
-- **Constraint-based search (PC; Spirtes, Glymour & Scheines 2000).** Start from a complete graph, remove edges with conditional-independence tests, orient colliders, and propagate orientations. Gap: each edge decision is a hard yes/no from a single test, and with large conditioning sets the contingency tables become too sparse for a reliable answer, so errors cascade.
+- **Marginal-likelihood scoring (Cooper & Herskovits 1992; Heckerman, Geiger & Chickering 1995).** The score ranks a network by integrating CPT parameters out against a Dirichlet prior, yielding a closed-form, decomposable sum of per-node family scores.
+- **Maximum-weight spanning-tree search (Chow & Liu 1968).** For the special case of at most one parent per node, the optimal structure is a polynomial-time spanning tree.
+- **K2: greedy parent selection from a known ordering.** Fix a topological order and let each node choose its best-scoring predecessors; acyclicity is then guaranteed.
+- **Constraint-based search (PC; Spirtes, Glymour & Scheines 2000).** Start from a complete graph, remove edges with conditional-independence tests, orient colliders, and propagate orientations.
 
 ## Fixed substrate / Code framework
 

@@ -2,17 +2,9 @@
 
 We want a reinforcement-learning algorithm that trains humanoid control policies — whole-body
 locomotion and dexterous manipulation, continuous actions clipped to `[-1, 1]`, tens to a few
-hundred action dimensions — both *fast in wall-clock time* and *capable*, on a single GPU. The
-pain that makes this urgent is iteration speed: in the HumanoidBench suite even strong RL
-algorithms fail to solve many tasks after 48 hours of training, and reward design in robotics
-is inherently iterative (shape reward → retrain → inspect gait → reshape), so each retrain that
-takes a day or more throttles the whole research loop. A usable algorithm therefore has to
-clear two bars at once. It must be *sample-efficient enough* to reach good policies without an
-astronomical number of environment steps, and *time-efficient enough* that those steps and the
-gradient updates over them finish in hours, not days — and it must stay *stable* across a range
-of tasks while doing so. The harder, unstated bar is simplicity: a method that only an expert
-can implement and tune will not actually accelerate the field even if it is fast in a benchmark
-table.
+hundred action dimensions — on a single GPU, within a wall-clock budget measured in hours. The
+broad question is how to train such policies on a fixed budget of environment steps and gradient
+updates: what actor, what critic, and what update objectives reach high return under that budget.
 
 The concrete target setting (the one we are measured on): three HumanoidBench locomotion tasks
 — `h1hand-stand-v0`, `h1hand-walk-v0`, `h1hand-run-v0` — a fixed budget of 100,000 gradient
@@ -22,29 +14,24 @@ budget, gets the highest mean episode return.
 
 ## Background
 
-**The two camps of deep RL for control, and why neither alone fits.** By this time the
-practitioner default for training deployable simulation policies is Proximal Policy
-Optimization (PPO; Schulman et al. 2017). PPO is *on-policy*: it learns from rollouts of the
-current policy and throws them away after each update. With massively parallel simulation —
-thousands of environments stepping on a GPU — PPO collects enormous batches of fresh on-policy
-data per iteration and learns behaviors very fast in wall-clock terms (Heess et al. 2017;
-Hwangbo et al. 2019). But being on-policy, it is *not sample-efficient*: it cannot reuse past
-experience, which makes it awkward to fine-tune from real-world interaction or to initialize
-from demonstrations (Hester et al. 2018).
+**The two camps of deep RL for control.** By this time the practitioner default for training
+deployable simulation policies is Proximal Policy Optimization (PPO; Schulman et al. 2017). PPO
+is *on-policy*: it learns from rollouts of the current policy and discards them after each
+update. With massively parallel simulation — thousands of environments stepping on a GPU — PPO
+collects large batches of fresh on-policy data per iteration and learns behaviors fast in
+wall-clock terms (Heess et al. 2017; Hwangbo et al. 2019).
 
 The other camp is *off-policy* RL, which keeps a replay buffer and reuses every transition many
 times. A recent sample-efficiency line (SR-SAC, D'Oro et al. 2023; BBF, Schwarzer et al. 2023;
 BRO, Nauman et al. 2024; TD-MPC2, Hansen et al. 2023; Simba, Lee et al. 2024) pushes the
-update-to-data ratio high and reaches strong returns from few environment steps — but at the
-cost of algorithmic complexity and long wall-clock training, because high-UTD off-policy
-learning is unstable and has to be propped up with architectural stabilizers (LayerNorm,
-residual blocks, hyperspherical normalization) and extra machinery.
+update-to-data ratio high and reaches strong returns from few environment steps, using
+architectural stabilizers (LayerNorm, residual blocks, hyperspherical normalization) and
+related machinery.
 
-**The deadly triad.** The instability these stabilizers fight has a name: the combination of
-*bootstrapping* (targets built from the network's own predictions), *function approximation*
-(a neural net Q), and *off-policy* learning (training on data from an older policy) can make
-value learning diverge (Sutton & Barto 2018). It is the central obstacle to making off-policy
-RL both aggressive and stable.
+**The deadly triad.** The combination of *bootstrapping* (targets built from the network's own
+predictions), *function approximation* (a neural net Q), and *off-policy* learning (training on
+data from an older policy) is known to be able to make value learning diverge (Sutton & Barto
+2018).
 
 **Distributional value learning.** Bellemare, Dabney & Munos (2017) argued for learning the
 full distribution of the return `Z(s,a)`, not only its mean `Q = E[Z]`. The distributional
@@ -75,67 +62,52 @@ deterministic actor `μ_φ` and critic `Q_θ`, `∇_φ J = E_{s∼ρ}[ ∇_a Q_�
 2016) made this work with neural nets via a replay buffer, slow-moving (soft-updated) target
 networks `θ' ← τθ + (1-τ)θ'`, additive exploration noise on the deterministic action, and
 input normalization to cope with observation coordinates that live on very different physical
-scales. A documented failure mode of this scalar-critic, single-critic setup is *value
-overestimation*: bootstrapping through a `max`/`argmax`-like target systematically inflates
-`Q`, and the inflated value is then chased by the policy.
+scales.
 
 ## Baselines
 
 **DDPG (Lillicrap et al. 2016).** Actor-critic for continuous control. Critic trained by
 Bellman regression `L(θ) = E[(Q_θ(s,a) - y)^2]`, `y = r + γ Q_{θ'}(s', μ_{φ'}(s'))`; actor by
 the deterministic policy gradient above; both with soft-updated targets and a replay buffer;
-Gaussian (or Ornstein–Uhlenbeck) exploration noise. *Limitation:* a single scalar critic
-bootstrapped off its own target overestimates value, and the actor amplifies that error by
-maximizing the inflated `Q`; training is brittle and sensitive to hyperparameters.
+Gaussian (or Ornstein–Uhlenbeck) exploration noise.
 
-**TD3 (Fujimoto, van Hoof & Meger 2018).** Three modifications to DDPG that directly target the
-overestimation and the actor–critic coupling. (1) *Clipped Double Q-learning*: maintain two
-critics `Q_{θ1}, Q_{θ2}` and form the shared target with the minimum,
+**TD3 (Fujimoto, van Hoof & Meger 2018).** Three modifications to DDPG. (1) *Clipped Double
+Q-learning*: maintain two critics `Q_{θ1}, Q_{θ2}` and form the shared target with the minimum,
 `y = r + γ min_{i=1,2} Q_{θ'_i}(s', π_{φ'}(s') + ε)`, which upper-bounds the more biased
 estimate by the less biased one. Since a noisy high-variance estimate is more likely to be
-penalized by the minimum, this target also biases learning toward more reliable value estimates.
-(2) *Target policy smoothing*: add clipped noise to
-the target action, `ε ∼ clip(N(0, σ̃), -c, c)`, so the target averages the critic over a small
-neighborhood of the chosen action — a regularizer that stops the policy from exploiting sharp,
-spurious peaks in the approximate critic. (3) *Delayed policy updates*: update the actor and the
-target networks only every `d` critic updates, a two-timescale scheme that lets the critic
-settle before each policy step. *Limitation:* TD3's deterministic actor explores poorly on its
-own — a single additive-noise behavior policy gives thin, low-diversity data — and in its
-original single-environment, modest-batch, scalar-critic form it is sample- and wall-clock-hungry
-on high-dimensional humanoid tasks.
+penalized by the minimum, this target biases learning toward more reliable value estimates.
+(2) *Target policy smoothing*: add clipped noise to the target action,
+`ε ∼ clip(N(0, σ̃), -c, c)`, so the target averages the critic over a small neighborhood of the
+chosen action — a regularizer over sharp peaks in the approximate critic. (3) *Delayed policy
+updates*: update the actor and the target networks only every `d` critic updates, a
+two-timescale scheme that lets the critic settle before each policy step. TD3's actor is
+deterministic, with exploration supplied by additive noise on the chosen action.
 
 **SAC (Haarnoja et al. 2018).** Off-policy actor-critic with a stochastic (maximum-entropy)
-policy; the entropy bonus drives exploration and tends to be robust. *Limitation:* maximizing
-action entropy is hard in very high-dimensional action spaces (whole-body humanoids), where it
-can destabilize training; and in its standard form it inherits the same wall-clock cost as
-single-environment off-policy methods.
+policy; the entropy bonus drives exploration and tends to be robust.
 
 **PPO (Schulman et al. 2017).** On-policy clipped policy-gradient; the fast, robust default
-for parallel-sim policy training. *Limitation:* on-policy, so no experience reuse — not
-sample-efficient, and ill-suited to fine-tuning from logged or real-world interaction or to
-demo initialization.
+for parallel-sim policy training. Being on-policy, it learns from current-policy rollouts and
+discards them after each update.
 
 **PQL (Li et al. 2023).** Showed off-policy RL can be fast *and* sample-efficient by scaling
 through massively parallel simulation, large batches, and a distributional critic, with per-env
-mixed exploration and n-step returns. *Limitation:* its core mechanism — three *asynchronous*
-parallel processes (a data-collecting actor, a policy learner, a value learner) with explicit
-inter-process update-frequency ratios to balance them — carries heavy implementation
-complexity, which has held back adoption even though the underlying scaling insight is sound.
+mixed exploration and n-step returns. Its mechanism runs three *asynchronous* parallel processes
+(a data-collecting actor, a policy learner, a value learner) with explicit inter-process
+update-frequency ratios to balance them.
 
 **High-UTD off-policy methods (BRO, Simba, SR-SAC, TD-MPC2).** Reach strong sample efficiency
-by doing many gradient updates per environment step. *Limitation:* aggressive UTD makes the
-deadly triad bite, so they require architectural stabilizers and added machinery, and they tend
-to be slow in wall-clock time and complex to reproduce.
+by doing many gradient updates per environment step, using architectural stabilizers and added
+machinery to support the high update-to-data ratio.
 
 ## Evaluation settings
 
 - **HumanoidBench** (Sferrazza et al. 2024): simulated humanoid whole-body locomotion and
-  manipulation, including dexterous-hand tasks; the natural capability yardstick, and the suite
-  on which strong RL had been failing within 48 hours. The target tasks here are the three
-  locomotion environments `h1hand-stand-v0`, `h1hand-walk-v0`, `h1hand-run-v0`.
+  manipulation, including dexterous-hand tasks; the capability yardstick. The target tasks here
+  are the three locomotion environments `h1hand-stand-v0`, `h1hand-walk-v0`, `h1hand-run-v0`.
 - **IsaacLab** (Mittal et al. 2023) and **MuJoCo Playground** (Zakka et al. 2025): GPU-native
   massively-parallel suites with humanoid and dexterous control, including rough terrain and
-  domain randomization; the natural wall-clock-efficiency yardsticks against PPO.
+  domain randomization; the wall-clock-efficiency yardsticks against PPO.
 - **Protocol.** Continuous actions clipped to `[-1, 1]`; observation normalization (running
   mean/variance); deterministic policy at evaluation (`actor(obs)` with no exploration noise);
   performance = mean episode return over evaluation rollouts. For the target setting: 100,000

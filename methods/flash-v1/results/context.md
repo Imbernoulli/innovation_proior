@@ -10,26 +10,20 @@ S = Q K^T  in R^{N x N},   P = softmax(S)  (row-wise),   O = P V  in R^{N x d}.
 ```
 
 The cost grows quadratically in `N`: the score matrix `S` and the probability matrix `P` are
-each `N x N`. On the long sequences people increasingly want — language models at 1K-16K tokens,
-document classification, the long-range-arena tasks — that quadratic factor dominates both memory
-and runtime, and it is the single thing standing between current Transformers and longer context.
-The precise problem is to compute attention **exactly** (the same mathematical function, within
-floating-point tolerance, with no approximation) while making it both **faster in wall-clock time**
-and **lower in memory** than the standard implementation, on real GPU hardware. A solution has to
-confront two facts at once:
-softmax couples an entire row of `S` (the denominator sums over all `N` keys), and the backward
-pass conventionally needs the `N x N` matrices `S, P` to form gradients. Anything that has to read
-or write an `N x N` matrix to slow memory will be bottlenecked by that traffic, no matter how few
-arithmetic operations it does.
+each `N x N`. People increasingly want long sequences — language models at 1K-16K tokens,
+document classification, the long-range-arena tasks — and the question is how to compute attention
+**exactly** (the same mathematical function, within floating-point tolerance, with no
+approximation) on real GPU hardware as `N` grows. Two facts shape the setting: softmax couples an
+entire row of `S` (the denominator sums over all `N` keys), and the backward pass conventionally
+uses the `N x N` matrices `S, P` to form gradients.
 
 ## Background
 
-**The standard implementation and why it is slow.** The textbook attention kernel materializes
-`S = Q K^T` to GPU high-bandwidth memory (HBM), reads it back to compute `P = softmax(S)`, writes
-`P` to HBM, then reads `P` and `V` to compute `O = P V`. Often `N >> d` (GPT-2: `N = 1024`,
-`d = 64`), so the `N x N` traffic dwarfs everything else. The softmax, masking, and dropout that
-sit on `S`/`P` are elementwise and reduction operations — they do little arithmetic per byte
-moved.
+**The standard implementation.** The textbook attention kernel materializes `S = Q K^T` to GPU
+high-bandwidth memory (HBM), reads it back to compute `P = softmax(S)`, writes `P` to HBM, then
+reads `P` and `V` to compute `O = P V`. Often `N >> d` (GPT-2: `N = 1024`, `d = 64`), so the
+`N x N` tensors are large relative to the inputs. The softmax, masking, and dropout that sit on
+`S`/`P` are elementwise and reduction operations, doing little arithmetic per byte moved.
 
 **The GPU memory hierarchy and the roofline.** A modern GPU (A100) has 40-80 GB of HBM at
 1.5-2.0 TB/s and only about 192 KB of on-chip SRAM per streaming multiprocessor (108 of them),
@@ -38,23 +32,21 @@ many orders of magnitude smaller in size. A kernel loads from HBM into registers
 and writes back to HBM. The roofline / arithmetic-intensity view (Williams et al. 2009) classifies
 an operation as **compute-bound** (limited by FLOPs — large matrix multiplies, big convolutions)
 or **memory-bound** (limited by HBM traffic — elementwise activation/dropout, reductions like
-sum/softmax/layernorm). Across GPU generations compute throughput has outpaced memory bandwidth,
-so more and more operations are memory-bound. Attention, dominated by its softmax and its `N x N`
-reads/writes, is memory-bound: profiling the standard kernel shows the time goes into moving the
-`N x N` matrices across the HBM bus, not into the matmuls.
+sum/softmax/layernorm). Across GPU generations compute throughput has outpaced memory bandwidth, so
+more and more operations are memory-bound. Profiling the standard attention kernel shows the time
+goes into moving the `N x N` matrices across the HBM bus, dominated by its softmax and its `N x N`
+reads/writes.
 
 **Kernel fusion** is the standard cure for memory-bound work: if several operations touch the same
 data, load it once into SRAM, do all the operations there, and write once — instead of round-trips
-to HBM between each op. Compilers fuse chains of elementwise ops automatically. But for *training*
-there is a catch: the intermediate values are needed again in the backward pass, so naive fusion
-still writes them to HBM, which erases most of the benefit for attention's `N x N` intermediates.
+to HBM between each op. Compilers fuse chains of elementwise ops automatically. In *training*, the
+intermediate values are also needed again in the backward pass, so naive fusion writes them to HBM.
 
 **The IO-complexity lens.** A classical way to reason about memory-bound algorithms is to count
 reads and writes between fast and slow memory rather than FLOPs (Aggarwal & Vitter 1988, the
 input/output complexity model; also the working-set, data-locality, and roofline traditions). This
-model has guided database joins, image-processing pipelines, and dense linear algebra (BLAS). It
-has not been widely applied inside deep-learning kernels, in part because high-level frameworks
-(PyTorch, TensorFlow) expose no fine-grained control over memory movement.
+model has guided database joins, image-processing pipelines, and dense linear algebra (BLAS). High-
+level frameworks (PyTorch, TensorFlow) expose no fine-grained control over memory movement.
 
 **Numerically stable and online softmax.** For a vector `x in R^B`, softmax is computed in the
 "safe" form that subtracts the row maximum before exponentiating, because `e^{x}` overflows to
@@ -87,37 +79,30 @@ backward pass, one can store a subset and recompute the rest during backprop (Gr
 
 ## Baselines
 
-These are the prior approaches a new attention method is measured against and reacts to.
+These are the prior approaches a new attention method is measured against.
 
 **Standard (dense, exact) attention.** The three-step `S = QK^T`, `P = softmax(S)`, `O = PV`
 pipeline above, implemented as separate kernels (often with masking fused into softmax, e.g.
-Megatron-LM, Shoeybi et al. 2019). It is exact and uses heavily optimized dense matmuls.
-**Limitation:** it materializes the `N x N` matrices `S` and `P` in HBM, so it costs `O(N^2)`
-memory and `Theta(Nd + N^2)` HBM accesses; because the softmax/elementwise steps are memory-bound,
-the `N x N` traffic dominates wall-clock time, and the quadratic memory caps the sequence length.
+Megatron-LM, Shoeybi et al. 2019). It is exact and uses heavily optimized dense matmuls. It
+materializes the `N x N` matrices `S` and `P` in HBM, costing `O(N^2)` memory and
+`Theta(Nd + N^2)` HBM accesses.
 
 **Approximate attention (sparse and low-rank).** A large family trades exactness for asymptotically
 cheaper compute: hashing/sparsity (Reformer, Kitaev et al. 2020; routing/Smyrf), low-rank or
 kernel-feature approximations (Linformer, Wang et al. 2020; Performer, Choromanski et al. 2020;
 linear attention, Katharopoulos et al. 2020), and hybrids (Longformer, Beltagy et al. 2020;
-BigBird, Zaheer et al. 2020; Scatterbrain). These reduce FLOPs to near-linear in `N`.
-**Limitation:** they change the function (quality cost), and — the decisive point — many show
-**no wall-clock speedup** over standard attention at common sequence lengths, because they optimize
-FLOP count, which does not track wall-clock time for a memory-bound operation, and they leave the
-memory-access overhead in place. They have not gained wide adoption.
+BigBird, Zaheer et al. 2020; Scatterbrain). These reduce FLOPs to near-linear in `N` by changing
+the attention function.
 
 **Lazy-softmax / chunked exact attention with reduced memory footprint (Rabe & Staats 2021;
-Jang et al. 2019).** This line keeps attention *exact* and attacks **memory footprint**. The move
+Jang et al. 2019).** This line keeps attention *exact* and reduces **memory footprint**. The move
 is to defer the `1/sum` division to the very end (distributive law) and process keys/values
 incrementally: maintain a running unnormalized output `v*` and running normalizer `s*`, plus a
 running max `m*` for stability, renormalizing `v*` and `s*` by `e^{m* - m_i}` whenever a new score
 raises the max. This needs only `O(1)` memory per query (`O(log n)` / `O(sqrt n)` in practice on a
-TPU) and is exact. **Limitation:** it targets the *total amount of memory*, not the *number of
-memory accesses* — its HBM traffic is still quadratic, so on a GPU it is about the same speed as
-standard attention or slightly slower; it summarizes each block into a separate temporary output
-and only combines them at the end, so it keeps one partial output per block; and for the backward
-pass it relies on gradient checkpointing, recomputing both the attention matrix and each block's
-temporary output, which trades speed for the memory saving.
+TPU) and is exact. It summarizes each block into a temporary output and combines them at the end,
+and for the backward pass uses gradient checkpointing, recomputing the attention matrix and each
+block's temporary output.
 
 ## Evaluation settings
 

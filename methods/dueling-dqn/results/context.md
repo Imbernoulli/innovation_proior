@@ -4,20 +4,15 @@ We want an agent that learns to act in high-dimensional, pixel-based environment
 Atari 2600 suite is the standard testbed) purely from raw frames and a scalar reward,
 using a single architecture and a single set of hyper-parameters across dozens of diverse
 games. The dominant approach is to learn an action-value function with a deep network and
-act greedily with respect to it. The open question we take up is *architectural*: almost
-all of the recent progress in this setting has come from better learning algorithms
-(better targets, better replay, better exploration) bolted onto a generic feed-forward
-network. Could the *network itself* be shaped to fit the structure of value-based control,
-so that it learns faster and generalizes better — while keeping exactly the same
-input/output interface, so that every existing learning algorithm can drive it unchanged?
+act greedily with respect to it. Recent progress in this setting has come largely from
+the learning algorithm — better targets, better replay, better exploration — driving a
+generic feed-forward network. We take up the *architectural* side: how to design the
+network that maps a state to one value per action.
 
 Concretely, the value-based network is asked to output one number per action for every
 state. In many states the return is overwhelmingly determined by *where you are*, not
 *what you do next* — most of the action values in a state are nearly equal, and only the
-small differences between them matter for the policy. A generic single-stream network does
-not obviously exploit this regularity, and we want any reshaping to leave the learning
-algorithm and the input/output interface untouched and to require no extra supervisory
-signal.
+small differences between them matter for the policy.
 
 ## Background
 
@@ -43,15 +38,14 @@ maintained a single advantage function. Advantage functions also have a long his
 policy gradients (Sutton et al. 2000), where they appear as a variance-reduced baseline,
 most recently estimated online to reduce policy-gradient variance (Schulman et al. 2015).
 
-**The diagnostic observation that sets up the problem.** In many states the choice of
-action has essentially no effect on the immediate dynamics — e.g. in a driving game,
-steering only matters when a collision is imminent; the rest of the time every action leads
-to nearly the same outcome. In such states the per-action values are nearly equal and only
-the state value carries information. Yet a bootstrapping algorithm relies on an accurate
-state value at *every* state. A generic network with one output per action has no built-in
-way to learn the shared state value once; it must rediscover roughly the same value at each
-output, and the shared notion is only nudged through whichever single action was sampled in
-a given update.
+**State structure in value-based control.** In many states the choice of action has
+essentially no effect on the immediate dynamics — e.g. in a driving game, steering only
+matters when a collision is imminent; the rest of the time every action leads to nearly
+the same outcome. In such states the per-action values are nearly equal and only the state
+value carries information. A bootstrapping algorithm relies on an accurate state value at
+*every* state. In a generic network with one output per action, each output carries its
+own value estimate, and a TD update touches the output for whichever single action was
+sampled in that update.
 
 ## Baselines
 
@@ -64,23 +58,21 @@ is a separate *target network* whose parameters are frozen for a fixed number of
 periodically copied from the online network (this freezing is what makes the bootstrapped
 regression stable). Updates are computed on minibatches drawn uniformly from an
 *experience-replay* buffer of past transitions (s,a,r,s'), which re-uses data and
-decorrelates consecutive samples. Gap: the network is a generic single stream; it carries
-no structure reflecting that the state value is shared across actions, so it relearns each
-action's value independently and updates the shared value only through the sampled action.
+decorrelates consecutive samples. The network is a generic single stream: the conv encoder
+feeds one fully-connected stream that emits |A| action values.
 
 **Double DQN (DDQN; van Hasselt et al. 2015).** In the DQN target the same network both
 *selects* the maximizing action and *evaluates* it, which biases values upward
 (over-estimation; van Hasselt 2010). DDQN decouples the two: the online network picks the
 action and the target network scores it,
-y^{DDQN} = r + γ Q(s', argmax_{a'} Q(s',a';θ); θ⁻). Otherwise identical to DQN. Gap: a
-better learning target, but the same generic single-stream architecture.
+y^{DDQN} = r + γ Q(s', argmax_{a'} Q(s',a';θ); θ⁻). Otherwise identical to DQN, including
+the generic single-stream architecture.
 
 **Prioritized experience replay (Schaul et al. 2015).** Instead of sampling the replay
 buffer uniformly, sample transitions with high expected learning progress more often,
 using absolute TD-error as a proxy. Built on top of DDQN, this improved both learning speed
-and final quality across the suite. Gap: an algorithmic/sampling improvement, again
-orthogonal to the network architecture — and a natural thing a new architecture would need
-to *combine* with rather than replace.
+and final quality across the suite. It is a sampling-side change to the learning algorithm,
+leaving the network architecture unchanged.
 
 ## Evaluation settings
 

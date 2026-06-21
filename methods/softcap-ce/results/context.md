@@ -5,105 +5,68 @@ budget, and find a loss-layer modification that lowers validation cross-entropy 
 downstream language ability relative to plain next-token cross-entropy. The only thing that may
 change is the function that turns the model's final logits `(B, T, V)` and the targets `(B, T)`
 into a scalar training loss — the architecture, tokenizer, data pipeline, optimizer, and learning-rate
-schedule are all frozen. So the question is narrow and sharp: holding everything else fixed, is there
-a better-behaved objective at the softmax/cross-entropy boundary than the textbook one?
-
-The pressure comes from a structural fact about cross-entropy with hard one-hot targets. The loss for
-a single position is `−log softmax(z)_y = −z_y + logsumexp(z)`, where `z ∈ R^V` are the logits and `y`
-the target index. Minimizing this drives `z_y` up and the rest down without bound: the infimum is only
-approached as `z_y − max_{j≠y} z_j → +∞`. There is no finite minimizer. Left unchecked, the network is
-rewarded for ever-larger logit gaps — ever more confident predictions — which is exactly the wrong
-incentive for a model that must generalize and must run in low numerical precision. A good modification
-would damp this runaway confidence without distorting which token the model prefers, and would do so in
-a way that keeps gradients well-behaved throughout the long training run.
+schedule are all frozen. So the question is: holding everything else fixed, is there a different
+objective at the softmax/cross-entropy boundary than the textbook one?
 
 ## Background
 
 The default objective for autoregressive LM pretraining is per-token cross-entropy over the vocabulary,
-computed from the final-layer logits via a softmax. Three facts about this layer set up the problem.
+computed from the final-layer logits via a softmax. Three facts about this layer set up the setting.
 
-**Cross-entropy has no finite optimum and rewards confidence.** As above, `−z_y + logsumexp(z)` is
-decreasing in the gap between the target logit and the rest, with no finite stationary point. On
-separable or near-separable data this manifests as logit magnitudes that grow throughout training. The
-phenomenon is well known from the calibration literature: deep classifiers trained to convergence on
-one-hot targets become badly over-confident, assigning probabilities far higher than their empirical
-accuracy warrants. Calibration and numerical stability are related but not identical: a model can have
-reasonable probability gaps while still carrying large absolute logits, and the arithmetic only sees the
-numbers it is asked to exponentiate.
+**Cross-entropy and logit growth.** The loss for a single position is `−z_y + logsumexp(z)`, where
+`z ∈ R^V` are the logits and `y` the target index. Minimizing this drives `z_y` up and the rest down:
+the infimum is only approached as `z_y − max_{j≠y} z_j → +∞`. The phenomenon is well known from the
+calibration literature: deep classifiers trained to convergence on one-hot targets become over-confident,
+assigning probabilities far higher than their empirical accuracy warrants.
 
-**Low-precision arithmetic makes large logits actively dangerous.** Modern training runs in mixed
-precision: weights in float32, matmuls and activations in bfloat16. bfloat16 keeps 7 mantissa bits
-against float32's 23, so within any binade its roundoff error is about `2^16 ≈ 65,536×` larger, and —
-because a fixed number of mantissa bits spans each `[2^k, 2^{k+1})` — *larger numbers carry larger
-absolute roundoff*. The softmax/cross-entropy path is the worst place for this: it exponentiates. A
-small perturbation of a large logit becomes a large multiplicative perturbation of a probability. The
-standard illustration: ten logits at 128 and one at 128.5, in bfloat16, where the 0.5 gap rounds away
-after the max-subtraction in softmax — the target probability swings from ≈0.142 to ≈0.091, a 36%
-change, purely from roundoff. Analogous failures occur in float32 once logits are large enough.
-Uncontrolled logit growth and low precision together are a recipe for training instability, and the
-larger the model and vocabulary, the more exponentials there are to destabilize.
+**Low-precision arithmetic and large logits.** Modern training runs in mixed precision: weights in
+float32, matmuls and activations in bfloat16. bfloat16 keeps 7 mantissa bits against float32's 23, so
+within any binade its roundoff error is about `2^16 ≈ 65,536×` larger, and larger numbers carry larger
+absolute roundoff. The softmax/cross-entropy path exponentiates: a small perturbation of a large logit
+becomes a large multiplicative perturbation of a probability. The standard illustration: ten logits at
+128 and one at 128.5, in bfloat16, where the 0.5 gap rounds away after the max-subtraction in softmax —
+the target probability swings from ≈0.142 to ≈0.091, a 36% change, purely from roundoff.
 
-**Bounding a quantity smoothly vs. hard-clipping it has very different optimization consequences.** A
-long line of stabilization work constrains activations or gradients — gradient-norm clipping for exploding
-gradients, weight normalization, normalization layers. But a hard activation clamp zeroes the gradient
-outside the allowed interval: the very coordinates that are most out of range stop receiving a learning
-signal, and the clamp introduces a non-smooth kink. Hard update clipping is different mechanically, but
-when made tight it similarly discards part of the optimizer's intended step. Empirically, update clipping
-tight enough to stabilize a large sparse-expert model was found to wreck its quality, while a smooth
-z-loss penalty on router logits stabilized the model without that quality loss. So if one wants to
-constrain logits, the *shape* of the constraint — smooth and everywhere-differentiable vs. hard and
-flat-outside — is itself load-bearing.
+**Smooth vs. hard constraints on activations.** A long line of stabilization work constrains activations
+or gradients — gradient-norm clipping for exploding gradients, weight normalization, normalization layers.
+A hard activation clamp zeroes the gradient outside the allowed interval. Hard update clipping is
+different mechanically. Empirically, update clipping tight enough to stabilize a large sparse-expert
+model was found to wreck its quality, while a smooth z-loss penalty on router logits stabilized the
+model without that quality loss.
 
 ## Baselines
 
-The prior loss-layer / logit-control methods a new objective is measured against and reacts to.
+The prior loss-layer / logit-control methods a new objective is measured against.
 
 **Plain next-token cross-entropy (the default).** `L = −(1/N) Σ log softmax(z^{(i)})_{y_i}` over all
 non-ignored positions, `z` the final logits, computed in PyTorch as
 `F.cross_entropy(logits.view(-1,V), targets.view(-1), ignore_index=-1)`. Core idea: maximum likelihood
-of the next token. **Gap:** as established above, it has no finite minimizer and actively pushes logit
-magnitudes upward, producing over-confidence and, in low precision, instability — it imposes no control
-whatsoever on how large a logit may become.
+of the next token.
 
 **Label smoothing (Szegedy, Vanhoucke, Ioffe, Shlens, Wojna 2015).** Replace the hard one-hot target by
 a softened target with mass `1−ε` on the correct class and `ε/(V−1)` on each other class (typical
 `ε≈0.1`); the loss becomes cross-entropy against this softened distribution. Core idea: stop demanding
 probability 1 on the target, so the optimizer no longer chases an infinite logit gap; the implied optimal
 gap between the correct logit and each non-target becomes finite, `log((1−ε)(V−1)/ε)`. This improves
-calibration and generalization. **Gap:** it acts on the *target*
-distribution, not on the logits themselves. It removes the *incentive* for one particular gap to diverge
-but places no bound on the absolute scale of the logits, and it does not address the low-precision
-roundoff problem, which depends on logit magnitude rather than on the target. It also uniformly
-redistributes mass to every vocabulary item including clearly impossible ones.
+calibration and generalization.
 
 **Logit / softmax z-loss (Mesh-TensorFlow softmax z-loss; router z-loss, Zoph et al. 2022; final-logit
 z-loss popularized in PaLM, Chowdhery et al. 2022).** Add an auxiliary penalty on the log-partition
 function: `L_z = (1/B) Σ_i (logsumexp(z^{(i)}))²`, total loss `L_CE + c_z·L_z` with `c_z≈1e-3`–`1e-4`.
 Core idea: `logsumexp(z) ≈ max_j z_j` for peaked logits, so squaring and penalizing it pushes the whole
-logit vector toward small magnitude, directly targeting the low-precision-roundoff failure (large numbers
-into exp). It is used as a smooth stabilizer where hard update-clipping can be too destructive. **Gap:**
-it is a *soft, global* penalty added
-to the objective, with its own coefficient to tune and its own gradient mixed into every step; it nudges
-logits to be small *on average* but enforces no hard bound on any individual logit, and it perturbs the
-loss value itself (the reported number is `L_CE + c_z·L_z`, not the modeling loss alone).
+logit vector toward small magnitude. It is used as a smooth stabilizer where hard update-clipping can be
+too destructive.
 
 **Logit clipping with a tanh activation (Bello, Pham, Le, Norouzi, Bengio 2016).** In a pointer-network
 / attention setting, replace the raw attention logits `u` feeding a softmax by `softmax(C·tanh(u))`,
 where `C` "controls the range of the logits and hence the entropy" of the resulting distribution; in
 their TSP experiments, clipping logits to `[−10, 10]` this way "helps with exploration and yields
 marginal performance gains." Core idea: pass logits through a smooth bounded squashing function before
-the softmax so they cannot run away, smoothly rather than by truncation. **Gap:** the form `C·tanh(u)`
-has slope `C` at the origin, so the same constant that sets the range also rescales small logits and acts
-as a temperature/entropy knob. It was used on attention scores in a small RL model, not as a final
-output-logit objective for large-scale LM pretraining.
+the softmax so they cannot run away, smoothly rather than by truncation.
 
 **Hard logit clamp / hard update clipping (`clamp`; Adafactor update clipping).** Constrain a quantity by
 hard truncation: for logits, `torch.clamp(z, −s, s)`; for optimizer updates, cap the update norm. Core
-idea: enforce an exact bound. **Gap:** a logit clamp has derivative 0 outside `[−s, s]` and 1 inside, with
-a kink at the boundary — out-of-range coordinates receive no gradient through the loss-layer map. Tight
-update clipping has a different derivative story, but it was observed to stabilize a large model only at
-a catastrophic loss of quality. Both cases make the hardness of the constraint costly, motivating smooth
-constraints over hard ones.
+idea: enforce an exact bound.
 
 ## Evaluation settings
 

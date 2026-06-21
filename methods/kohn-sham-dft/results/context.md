@@ -29,12 +29,9 @@ particles in the observable universe. This is an exponential wall: wavefunction
 methods give superb results for small molecules (H₂, light atoms) and become
 impossible for large molecules, solids, biomolecules.
 
-The precise goal: find a *complete and in-principle-exact* reformulation of
-ground-state electronic structure whose central variable has a number of
-components that does **not** grow with N, together with a computational scheme
-based on it that is accurate enough for real chemistry and materials — recovering
-the binding and shell structure that the cheap density-only theories of the day
-could not.
+The broad question is how to make ground-state electronic structure calculations
+tractable for large systems and materials while retaining accuracy sufficient for
+real chemistry.
 
 ## Background
 
@@ -71,17 +68,13 @@ antisymmetry / the Pauli principle) and correlation.
 **Motivating empirical facts about the cheap theories (knowable before any new
 method).** Two diagnostic observations frame the problem:
 - A theory that models the *kinetic* energy by a purely local function of the
-  density gives qualitatively useful total energies for atoms but **predicts no
-  chemical binding at all** — dissociated atoms always come out lower in energy
-  than the molecule. The defect is traced specifically to the kinetic-energy term.
+  density gives qualitatively useful total energies for atoms but predicts no
+  chemical binding at all — dissociated atoms always come out lower in energy
+  than the molecule. The structural difference relative to the theories below is
+  specifically how the kinetic energy is handled.
 - The self-consistent single-particle theory that instead computes the kinetic
   energy from orbitals (Laplacians of one-electron wavefunctions) binds atoms far
-  better and reproduces atomic shell structure. The only structural difference
-  between the two is *how the kinetic energy is treated*.
-
-These two facts together point at the kinetic energy as the term whose crude local
-modeling is fatal — but they do not, by themselves, say how to repair it within a
-density-only framework.
+  better and reproduces atomic shell structure.
 
 **The uniform electron gas as a reference.** The homogeneous interacting electron
 gas of density n is the one many-body system whose energetics are essentially
@@ -99,13 +92,7 @@ total energy entirely as a functional of n(r):
 with C_F = (3/10)(3π²)^{2/3} ≈ 2.871 (atomic units), the kinetic-energy density of
 a *uniform* gas applied *locally*; Dirac adds a local exchange term −C_x ∫ n^{4/3}.
 Minimizing over n at fixed N gives a single closed equation for n(r). Core idea:
-the gas-kinetic-energy density evaluated at the local density. **Gap:** the local
-n^{5/3} kinetic functional is badly wrong wherever the density varies on the scale
-of the Fermi wavelength — i.e. everywhere chemistry happens. Concretely, within
-Thomas–Fermi no molecule is stable: the energy of the assembled molecule never
-falls below that of the separated atoms, so the theory describes no bonds. It is a
-density-only theory that is exact in form but useless for valence physics, and the
-breakdown sits in the kinetic term.
+the gas-kinetic-energy density evaluated at the local density.
 
 **Hartree (Hartree 1928).** Treat each electron as moving in the average potential
 of the nucleus and of the mean density of the others:
@@ -113,40 +100,20 @@ of the nucleus and of the mean density of the others:
   n(r) = Σ_{j=1}^{N} |φ_j(r)|²  (sum over the N lowest states),
 solved self-consistently: guess n, build v_H, solve for the φ_j, recompute n,
 iterate. Core idea: a *self-consistent single-particle* picture in which the
-kinetic energy is computed honestly from the orbitals. It binds atoms much better
-than Thomas–Fermi precisely because of this honest kinetic energy. **Gap:** it
-omits antisymmetry (no exchange) and correlation entirely, and it is introduced as
-a physically reasonable *ansatz* with no derivation tying it to the exact
-ground-state energy — there is no statement of what quantity it is the
-approximation *to*.
+kinetic energy is computed honestly from the orbitals.
 
 **Hartree–Fock (Fock 1930, Slater 1930).** Restrict the trial Ψ to a single Slater
 determinant of orbitals and minimize ⟨Φ|H|Φ⟩. This yields self-consistent
 single-particle equations like Hartree's but with an extra **non-local** exchange
 term — an integral operator with kernel built from Σ_k φ_k*(r′) φ_k(r)/|r − r′|.
-Core idea: exact treatment of exchange via the determinant. **Gap:** (i) by
-construction it contains *no correlation* — it is the best *single-determinant*
-energy and nothing beyond; (ii) the exchange operator is non-local, making the
-equations substantially more expensive to solve than Hartree's; (iii) it still
-carries unfavorable scaling for large systems.
+Core idea: exact treatment of exchange via the determinant.
 
-**Slater Xα (Slater 1951).** Replace Hartree–Fock's costly non-local exchange by a
+**Slater Xα (Slater 1951).** Replace Hartree–Fock's non-local exchange by a
 *local* exchange potential obtained by averaging the exchange interaction over the
 Fermi sphere of the local-density gas:
   v_x^{Xα}(r) = −3 α (3/8π · n(r))^{1/3}  (atomic units),
 with α an adjustable parameter; Slater took α = 1, the value from averaging over
-the *entire* Fermi sphere. Core idea: a cheap local stand-in for exchange. **Gap:**
-the coefficient α is fixed by an averaging *choice* rather than by any variational
-or energy-minimizing principle, so it is uncontrolled; and correlation is still
-absent. Different reasonable averages give different α, with no internal criterion
-to prefer one.
-
-The common situation: there is an exact-in-form density-only theory whose kinetic
-term is fatally crude (Thomas–Fermi), and there are orbital-based single-particle
-schemes whose kinetic energy is good but which are either incomplete (Hartree),
-non-local and correlation-free (Hartree–Fock), or rest on an unjustified constant
-(Slater Xα). None of them is simultaneously exact in principle, cheap, and bound
-to a variational statement of the true energy.
+the *entire* Fermi sphere. Core idea: a cheap local stand-in for exchange.
 
 ## Evaluation settings
 

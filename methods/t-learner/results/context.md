@@ -26,12 +26,8 @@ confounds the treatment effect with the differences between who-gets-treated and
 On top of these, `tau` can vary across the covariate space in arbitrarily complex, nonlinear
 ways, and we do not know its functional form in advance.
 
-A solution has to (1) be honest about confounding rather than comparing raw group means; (2)
-capture a heterogeneous, possibly highly nonlinear effect surface without a parametric form
-assumed up front; (3) work with whatever supervised-learning machinery happens to fit the data
-at hand (trees, forests, boosting, linear models, nets), since no single regression method
-dominates across problems; and (4) come with some guarantee — at least a convergence-rate
-statement — so we know it is consistent and how fast it improves with sample size.
+The question is how to estimate `tau(x)` from observational `(X, W, Y^obs)` triples using
+flexible supervised regression methods.
 
 ## Background
 
@@ -103,14 +99,6 @@ E[ || muhat_N - mu ||^2 ] <= sigma^2 / k  +  c L^2 (k/N)^{2/d},
 a bias-variance split (variance `~ sigma^2/k` from averaging `k` neighbors, bias `~ L^2 (k/N)^{2/d}`
 from the neighbors' distance), minimized at `k ~ N^{2/(2+d)}` to give the `N^{-2/(2+d)}` rate.
 
-**The diagnostic about pooling.** A recurring empirical observation about existing tree/forest
-approaches that fold the treatment indicator in as just another covariate: when the treatment
-assignment is a weak predictor of the outcome relative to the other covariates, a forest will
-frequently *fail to split on it at all*. Trained on data where the covariates strongly predict
-the response and `W` only weakly does, the trees split on `W` over only a small fraction of the
-covariate support, so the implied treatment-effect estimate is pulled toward zero. This is a
-failure mode of putting `W` on the same footing as the covariates.
-
 ## Baselines
 
 **Single pooled response model (the "S" approach), with BART or regression trees (Hill 2011;
@@ -122,21 +110,13 @@ muhat(x, w) ~ E[Y^obs | X = x, W = w],     tauhat_S(x) = muhat(x, 1) - muhat(x, 
 ```
 
 One model, all the data; the learner decides on its own how much the outcome depends on `W`.
-**Limitation:** because `W` is given no special status, a flexible learner can downweight or
-entirely ignore it — a forest may rarely split on `W`, a lasso may drop it — which shrinks the
-estimated effect toward zero. Where the true effect is genuinely sparse or null this pooling
-helps, but where the effect is real and structured it is systematically attenuated, and the
-single fit cannot let the two response surfaces have qualitatively different shapes.
 
 **Virtual-twins / predicted-twin differencing (Foster, Taylor & Ruberg 2011; Foster 2013).**
 Fit a model (originally a random forest, also studied with linear regression) and, for each
 unit, predict the outcome of its hypothetical treated "twin" and control "twin," then difference
 them per unit and regress or threshold that difference to find subgroups with enhanced effect.
 This makes the heterogeneous-effect question concrete as a difference of predicted potential
-outcomes. **Limitation:** as originally posed it is tied to particular base learners and to a
-subgroup-discovery goal (find a region of enhanced effect) rather than to estimating the whole
-effect surface with a rate guarantee, and the analysis was carried out case by case per base
-learner rather than as a general recipe.
+outcomes.
 
 **Recursive partitioning for causal effects / causal trees (Athey & Imbens 2016).** Build a
 single tree whose leaves are chosen to capture treatment-effect heterogeneity: modify the CART
@@ -144,16 +124,11 @@ splitting criterion so it targets the mean-squared error of the *effect* within 
 than of the outcome, and use *honest* estimation — one subsample to choose the partition, an
 independent subsample to estimate the leaf-level effects — so the leaf effect estimates are
 unbiased and admit valid confidence intervals even with many covariates. The leaf effect is the
-treated-minus-control mean within the leaf. **Limitation:** it is committed to a single
-tree-structured partition of the covariate space, so its expressiveness and its accuracy are
-those of one CART-style model; it does not let an arbitrary, possibly very different supervised
-learner be slotted in for each arm, and its rate is bounded by what one honest tree can do.
+treated-minus-control mean within the leaf.
 
 **Transformed-outcome regression (Athey & Imbens 2016; Tian et al. 2014).** Build a single
 re-weighted/transformed response `Y^*` (using the propensity score) whose conditional mean is
-`tau(x)`, then regress `Y^*` on `X` directly. **Limitation:** the transformation divides by
-`e(x)(1-e(x))`, so when the propensity is near 0 or 1 the transformed outcome has very large
-variance and becomes an unstable default under weak overlap.
+`tau(x)`, then regress `Y^*` on `X` directly.
 
 ## Evaluation settings
 

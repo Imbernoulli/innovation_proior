@@ -14,22 +14,16 @@ true maximum remains open.
 ## Prior art / Background / Baselines
 
 - **Hadamard's bound.** For any real matrix with entries in `[−1,1]`, `|det| ≤ n^{n/2}`,
-  attained exactly when rows are mutually orthogonal. *Gap:* attainable only for `n = 1, 2` and
-  `n ≡ 0 (mod 4)`; for `n = 29` it is unreachable, so it gives only a loose ceiling far above
-  any achievable `±1` determinant.
+  attained exactly when rows are mutually orthogonal. Attainable for `n = 1, 2` and `n ≡ 0 (mod 4)`.
 - **Barba / Ehlich / Wojtas residue-class bounds.** Sharper upper bounds keyed to `n mod 4`. For
   `n ≡ 1 (mod 4)`, Barba's bound is `|det| ≤ √(2n−1)·(n−1)^{(n−1)/2}`, which at `n = 29` equals
-  `2^28 · 7^12 · 369.94…`. *Gap:* equality would require a `±1` matrix `R` with
-  `RRᵀ = (n−1)I + J`, a Gram structure that does not exist at `n = 29`; the record falls short,
-  so the bound is a ceiling, not a construction.
+  `2^28 · 7^12 · 369.94…`. Equality would require a `±1` matrix `R` with `RRᵀ = (n−1)I + J`.
 - **Paley / Jacobsthal quadratic-residue construction.** For a prime `q ≡ 1 (mod 4)`, the
   Legendre-symbol matrix `Q_{ij} = χ(i−j)` is symmetric with `QQᵀ = qI − J`, and `R = Q + I` is a
-  computable `±1` matrix. *Gap:* it is a fixed symmetric design; at `q = 29` its determinant
-  (`m = 49`) is far below the record.
+  computable `±1` matrix. At `q = 29` its determinant multiplier is `m = 49`.
 - **Computer search for maximal determinants.** The best known values for non-Hadamard orders
-  come from large-scale search over Gram matrices and `±1` configurations. *Gap:* the record at
-  `n = 29` (`m = 320`) is the output of dedicated search infrastructure and is only conjectured
-  optimal; reproducing it from scratch in a single constructor is not expected.
+  come from large-scale search over Gram matrices and `±1` configurations. The record at
+  `n = 29` (`m = 320`) is attributed to Orrick and Solomon.
 
 ## Fixed substrate / Code framework
 

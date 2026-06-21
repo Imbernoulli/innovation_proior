@@ -37,9 +37,9 @@ the other. Two kinds of fragmentation are distinguished:
   because of per-block bookkeeping, alignment to (typically) 8-byte boundaries, or a minimum
   block size. It is easy to measure: it is determined the instant the block is placed.
 - *External fragmentation* — the heap as a whole holds enough free bytes to satisfy a
-  request, but no single contiguous free block is large enough. This is the hard one: it
-  depends on the entire past history of requests and on the allocator's placement decisions,
-  and because blocks cannot be moved, it cannot be undone after the fact.
+  request, but no single contiguous free block is large enough. This depends on the entire
+  past history of requests and on the allocator's placement decisions, and because blocks
+  cannot be moved, it cannot be undone after the fact.
 
 A well-known illustration: allocate several small blocks, free every other one, then request
 a block twice the size of one of the holes. The freed bytes total more than enough, but
@@ -78,10 +78,7 @@ introduces two enabling ideas that the field still rests on:
 **Empirical guidance on policy.** Large surveys of allocator behavior on real program traces
 (Wilson, Johnstone, Neely, and Boles, "Dynamic Storage Allocation: A Survey and Critical
 Review," 1995) report that best-fit policies — in various exact and approximate forms — tend
-to produce the *least* fragmentation across real workloads, more than first-fit or next-fit.
-This is the load-bearing empirical fact: it is worth paying to approximate best-fit, but a
-literal best-fit that scans every free block is too slow. The tension between "best-fit wins
-on space" and "scanning everything loses on time" is the gap the design must close.
+to produce the least fragmentation across real workloads, more than first-fit or next-fit.
 
 **Free-block organizations.** How free blocks are tracked determines how fast placement is:
 - *Implicit list* — every block (free or allocated) carries a size header; the allocator
@@ -97,29 +94,24 @@ on space" and "scanning everything loses on time" is the gap the design must clo
 ## Baselines
 
 - **Trivial bump allocator.** `malloc` returns the next sequential address and bumps a
-  pointer; `free` is a no-op. The fastest possible allocator, and useless: it never reclaims,
-  so any long-running program exhausts memory. It frames the extreme of throughput with zero
-  utilization — the thing every real allocator must beat on space.
+  pointer; `free` is a no-op. The fastest possible allocator: it never reclaims, so any
+  long-running program exhausts memory. It frames the extreme of throughput with zero
+  utilization.
 
 - **Implicit-list, first-fit, with boundary-tag coalescing.** Headers on every block;
   `malloc` linearly scans from the heap start for the first free block that fits, splitting
   the remainder; `free` flips the allocated bit and, using boundary tags, merges with the
   physically adjacent free neighbors in O(1). Correct and compact, and it shows boundary-tag
-  coalescing in its simplest form. Its gap: every allocation is O(total blocks) because the
-  search walks allocated blocks too — unacceptable when the heap is large and mostly full.
+  coalescing in its simplest form.
 
 - **Explicit free list, first-fit, LIFO insertion.** Only free blocks are linked, via
   pointers stored in their payloads, so allocation scans O(free blocks) instead of all
-  blocks — much faster when memory is mostly in use. Newly freed blocks are spliced to the
+  blocks — faster when memory is mostly in use. Newly freed blocks are spliced to the
   list head (LIFO: constant-time, but studies suggest worse fragmentation than inserting in
-  address order). Its gap: a single list still mixes all sizes, so first-fit on it neither
-  approximates best-fit nor bounds the search length; the list can grow long and a small
-  request may walk past many ill-fitting large blocks.
+  address order).
 
 - **Buddy system.** Power-of-two blocks with O(1) address-mask coalescing — very fast.
-  Its gap: rounding every request up to a power of two wastes up to nearly half of each
-  block to internal fragmentation, losing the utilization battle on size distributions that
-  aren't near powers of two.
+  Every request rounds up to a power of two.
 
 ## Evaluation settings
 

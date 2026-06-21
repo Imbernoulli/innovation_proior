@@ -1,18 +1,16 @@
 ## Problem Setting
 
-KKT conditions address constrained optimization problems of the form
+Constrained optimization problems take the form
 
 $$
 \min_x f(x)\quad\text{s.t.}\quad h_i(x)=0,\ i=1,\ldots,m,\qquad g_j(x)\le 0,\ j=1,\ldots,p.
 $$
 
-The pre-KKT difficulty is not that constraints are unknown, but that the candidate optimum can lie on a boundary where the usual unconstrained condition $\nabla f(x^\star)=0$ is false. At a boundary point the objective may still want to decrease in a direction that the feasible set blocks. A useful optimality test must therefore account for both the objective's local slope and the local geometry of the active constraints.
+A candidate optimum can lie on a boundary where the usual unconstrained condition $\nabla f(x^\star)=0$ does not hold. An optimality test must account for both the objective's local slope and the local geometry of the active constraints.
 
 ## Baseline Before the Method
 
-Without KKT, a typical workflow is case-based: guess which boundary face contains the optimum, reduce the problem there, then separately check feasibility and compare candidates. Equality-constrained Lagrange multipliers already give a cleaner rule, $\nabla f+\sum_i\nu_i\nabla h_i=0$, but inequalities add the hard part: only constraints active at $x^\star$ should matter, and the method must say which ones those are without enumerating every active set by hand.
-
-This is the conceptual shift KKT supplies. Instead of "try boundary cases until one works," it writes the boundary decision into the equations themselves through nonnegative multipliers and complementary slackness.
+A typical workflow is case-based: guess which boundary face contains the optimum, reduce the problem there, then separately check feasibility and compare candidates. Equality-constrained Lagrange multipliers give a cleaner rule, $\nabla f+\sum_i\nu_i\nabla h_i=0$, but inequalities require a way to handle which constraints are active at $x^\star$ without enumerating every active set by hand.
 
 ## KKT Certificate
 
@@ -39,5 +37,3 @@ Complementary slackness gives the mechanics its switch: an inactive inequality h
 ## Why It Matters
 
 KKT compresses constrained optimality into one reusable local language. It explains boundary optima geometrically, gives algorithms a target residual to drive to zero, and connects primal variables to economically meaningful shadow prices. The multipliers say how sensitive the optimum is to relaxing constraints, while the complementarity equations identify which constraints are binding.
-
-Its limits are also part of the context. KKT needs constraint qualifications for necessity; without them, a local optimum can fail to have KKT multipliers. In nonconvex problems, KKT points are candidates rather than guarantees. The method's power is therefore not that every KKT point is automatically best, but that it provides the standard local certificate for how a constrained optimum must look.

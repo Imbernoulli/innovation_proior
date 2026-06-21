@@ -19,15 +19,6 @@ from no knowledge of the transitions or rewards, and *exploring* the game by pla
 bounded number of episodes, how many episodes are needed to find an approximate Nash
 equilibrium — and what is the unavoidable minimum?
 
-A solution must do three things at once that single-agent learning does not. It must measure
-performance against the *best response to whatever policy is currently deployed* (an adaptive
-opponent), not against a fixed target; it must handle the fact that the opponent's action
-affects both the reward *and* the next state, so the opponent shapes exploration itself; and it
-must, in the end, output deployable policies and not merely numbers. The goal is a self-play algorithm with a
-sublinear, ideally $\tilde O(\sqrt{T})$, regret against best responses, and a matching
-sample-complexity (PAC) guarantee for $\epsilon$-approximate Nash, under no structural
-assumption on the game and no access to a simulator.
-
 ## Background
 
 **Zero-sum Markov games (stochastic games), Shapley 1953.** Shapley introduced the model:
@@ -56,19 +47,15 @@ Hu & Wellman 2003 Nash-Q; Hansen et al. 2013; Filar & Vrieze) solves Markov game
 the model *known*, or in the *asymptotic* limit of infinite data. Nash-Q in particular performs
 the model-free update
 $Q_h(s,a,b)\leftarrow(1-\alpha)Q_h(s,a,b)+\alpha(r_h+V_{h+1}(s_{h+1}))$ and then sets $V$ by the
-*Nash value* of the per-state matrix game. These give no finite-sample, exploration-aware
-guarantee: they assume the data already covers the state space.
+*Nash value* of the per-state matrix game.
 
 **Non-asymptotic Markov-game results, under restrictions.** Wei et al. 2017 give a self-play
-upper-confidence method but assume that, whatever one player does, the other can reach every
-state — a reachability assumption that defuses the exploration problem. Jia et al. 2019 and
-Sidford et al. 2019 give near-optimal sample complexity for *turn-based* games but assume a
-**simulator** (generative model) that returns a sample transition for any queried
-$(s,a,b)$; with a simulator, uniform querying already explores. R-max (Brafman & Tennenholtz
-2002) makes no such assumption and has guarantees against adversarial opponents, but its
-guarantee compares the *deployed* pair to the *Nash value* — a weaker statement than regret
-against the per-episode best response, and it does not yield a self-play regret bound in this
-setting.
+upper-confidence method that assumes that, whatever one player does, the other can reach every
+state — a reachability assumption. Jia et al. 2019 and Sidford et al. 2019 give near-optimal
+sample complexity for *turn-based* games assuming a **simulator** (generative model) that
+returns a sample transition for any queried $(s,a,b)$. R-max (Brafman & Tennenholtz 2002)
+makes no such assumption and provides guarantees against adversarial opponents; its
+guarantee compares the *deployed* pair to the *Nash value*.
 
 **Single-agent optimistic RL — the template.** In a single-agent episodic MDP, the
 exploration-exploitation problem is solved by *optimism in the face of uncertainty*. UCBVI
@@ -87,33 +74,23 @@ statistically independent of that sample — the property that keeps its state-d
 **Adversarial-MDP / no-regret learning.** A separate line learns against adversarial *reward*
 sequences in an MDP (Zimin & Neu 2013; Rosenberg & Mansour 2019; Jin et al. 2019). In a Markov
 game the opponent perturbs the *transition* as well as the reward, so these do not transfer; and
-they learn a best response to the adversary, not a Nash equilibrium. The natural idea —
-run two no-regret learners against each other and average — is on the table as an approach a new
-method would have to either use or rule out.
+they learn a best response to the adversary, not a Nash equilibrium.
 
 ## Baselines
 
 - **UCBVI (Azar et al. 2017)** — single-agent optimistic value iteration; bonus-augmented
   empirical Bellman backup; $Q^{\mathrm{up}}\ge Q^\star$ invariant; $\tilde O(\sqrt{H^2SAT})$.
-  *Gap*: built for a single agent — there is no second player, and "greedy" is well-defined only
-  because the per-state object is a vector, not a matrix.
 - **Q-learning + UCB (Jin et al. 2018)** — model-free, online, $\alpha_t=(H+1)/(H+t)$,
   bonus $\beta_t=c\sqrt{H^3\iota/t}$, $\tilde O(\sqrt{H^3SAT})$, $S$-linear via sample
-  independence. *Gap*: single agent; its greedy policy and value guarantee are the same statement
-  in an MDP, where a near-optimal value estimate comes with a near-optimal greedy policy.
+  independence.
 - **Nash-Q / minimax-Q (Hu & Wellman 2003; Littman 1994)** — model-free Markov-game updates
-  that set $V$ to the per-state Nash/minimax value. *Gap*: asymptotic / data-already-covers-state
-  assumptions; no exploration bonus, no finite-sample regret, and a single $Q$ estimate carries no
-  uncertainty quantification to drive exploration for either player.
+  that set $V$ to the per-state Nash/minimax value.
 - **Wei et al. 2017; Jia et al. 2019 / Sidford et al. 2019** — finite-sample self-play / turn-based
-  results. *Gap*: a global reachability assumption, or a simulator — both remove the
-  exploration challenge that the general setting forces.
+  results under a global reachability assumption, or a simulator.
 - **R-max (Brafman & Tennenholtz 2002)** — no structural assumption, guarantees vs adversarial
-  opponents. *Gap*: bounds the deployed pair against the *Nash value*, not against the
-  per-episode best response, so it does not give a $\sqrt{T}$ self-play regret here.
+  opponents; bounds the deployed pair against the *Nash value*.
 - **Two no-regret learners against each other** — the obvious decoupled approach: average the
-  iterates to get a near-Nash pair. *Gap (to be probed)*: requires each learner to achieve
-  no-regret against an *adversarial* opponent, whose policy can be non-Markovian.
+  iterates to get a near-Nash pair.
 
 ## Evaluation settings
 

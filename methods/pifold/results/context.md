@@ -8,8 +8,7 @@ input is the backbone geometry of a protein chain: for each residue there are co
 The map from backbone to sequence is not one-to-one. Homologous proteins can preserve the same
 fold while changing many residues, so the useful learning target is a conditional distribution
 over residue identities rather than a unique inverse. The practical model has to use local
-and nonlocal geometric constraints, stay invariant to global rotation and translation, and
-avoid a decoding path whose latency grows by taking one residue-generation step after another.
+and nonlocal geometric constraints and stay invariant to global rotation and translation.
 
 ## Background
 
@@ -44,18 +43,12 @@ system, and edge orientation features encode the frame-to-frame rotation.
 There are two broad ways to build rotation-aware protein models. One route constructs
 rotation-invariant scalar features first and then uses ordinary graph neural network layers.
 The other route keeps geometric vectors as vectors in `R^3` and uses equivariant operators so
-the network itself preserves the rotation structure. The scalar route is simple and works
-with mature graph layers, but it depends heavily on whether the feature builder exposes
-enough of the backbone geometry. The vector route carries geometry more directly, but it
-requires specialized vector-valued layers.
+the network itself preserves the rotation structure.
 
 Decoding is another key choice. Autoregressive models factorize
 `p(S | X) = product_t p(s_t | s_<t, X)`, so each residue prediction can condition on earlier
-residue choices. That captures sequence dependencies, but generation has a sequential
-bottleneck: for a chain of length `L`, the decoder has to take `L` ordered steps. Parallel
-decoders avoid that bottleneck by predicting all residues from the structure-conditioned
-embeddings at once, but then the structural encoder has to carry more of the dependency
-modeling burden.
+residue choices. Parallel decoders predict all residues from the structure-conditioned
+embeddings at once.
 
 ## Baselines
 
@@ -64,36 +57,28 @@ Structured Transformer / GraphTrans establishes the residue-graph template. It b
 attention in a structural encoder, and decodes with an autoregressive Transformer. The
 attention score is query-key-value attention: a query comes from the center node, keys and
 values are built from neighbor and edge information, and the score is a scaled dot product.
-Its limitations are the thin node features used by the early graph template and the
-length-dependent autoregressive decoder.
 
 MLP and CNN approaches cover the older non-graph baselines. MLP models can be very fast
-because each residue is predicted from engineered local descriptors, but they do not pass
-messages through the residue contact graph. CNN models can learn from local 2D or 3D grids
-around residues, but they require grid construction or per-residue coordinate normalization,
-which makes the geometric pipeline heavier.
+because each residue is predicted from engineered local descriptors. CNN models can learn
+from local 2D or 3D grids around residues.
 
 GVP represents the equivariant-vector route. It keeps scalar and vector channels together
 and updates them with geometric vector perceptrons: vector norms can feed scalar channels,
 and vector outputs transform predictably under rotation. This gives a principled way to
-process geometry without reducing everything to scalar features first. The tradeoff is a
-specialized vector-valued architecture rather than a plain invariant-feature graph network.
+process geometry without reducing everything to scalar features first.
 
 GCA adds global information to local graph message passing. Local neighborhoods capture
-contacts, but some residue preferences depend on the broader protein context. Full
-self-attention over the whole protein can provide that context, yet it has quadratic cost in
-the number of residues, which is unattractive for long chains.
+contacts, and some residue preferences depend on the broader protein context. GCA addresses
+this with full self-attention over the whole protein.
 
 AlphaDesign contributes a simplified graph transformer and a partially parallel decoder. Its
 graph layer scores neighbor importance with an MLP over endpoint and edge representations
 instead of only a query-key dot product, and it adds bond-angle node features on top of the
-dihedral-angle template. Its decoder predicts in parallel and then corrects, so it reduces
-some sequential cost but still keeps an iterative generation procedure.
+dihedral-angle template.
 
-ProteinMPNN shows the value of updating both node and edge representations in a message
-passing encoder. Its edge features include rich pairwise geometry over backbone atoms and a
-virtual `CB` construction, and its decoder is order-agnostic but still autoregressive. It
-therefore strengthens the encoder side while keeping a length-dependent generation process.
+ProteinMPNN updates both node and edge representations in a message passing encoder. Its
+edge features include rich pairwise geometry over backbone atoms and a virtual `CB`
+construction, and its decoder is order-agnostic but still autoregressive.
 
 ## Evaluation settings
 
@@ -104,8 +89,7 @@ are commonly broken out for all chains, short chains, and single-chain proteins.
 
 Generalization is also checked on TS50 and TS500, two curated native-structure benchmark
 sets. Long-chain inference speed can be measured by generating a fixed collection of long
-proteins on one GPU, because this is where sequential decoders pay their largest latency
-cost.
+proteins on one GPU.
 
 The two main metrics are:
 

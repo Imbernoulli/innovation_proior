@@ -11,14 +11,8 @@ architectures at once. With classifiers moving into security-critical systems (a
 face recognition, malware detection), this is a real vulnerability, and it also signals that the
 models are not learning the underlying concept in a robust way.
 
-The hard part is not building *a* defense — many had been proposed — but knowing what a defense
-*guarantees*. Each existing method defends against one specific known attack; none lets you say "no
-perturbation within this allowed set can fool the model." You can never be certain a given attack
-found the worst-case input, nor that a given defense rules out a whole *class* of attacks. The goal
-is therefore a training objective whose meaning is precise: a single quantity such that driving it
-small *provably* leaves no admissible perturbation able to change the prediction, plus a training
-procedure that can actually drive that quantity small on deep networks at scale, and an attack
-strong enough to be trusted as the yardstick for measuring robustness.
+The question is how to train a classifier that is reliably accurate under adversarial perturbations
+within a fixed budget, together with a way to measure and compare robustness across methods.
 
 ## Background
 
@@ -26,8 +20,8 @@ The phenomenon was discovered by Szegedy et al. (2014, *Intriguing properties of
 using box-constrained L-BFGS one can find, for almost any correctly classified image, a tiny additive
 perturbation that flips the label, and the same perturbed image transfers across models trained on
 different data. They already observed that *training on a mixture of adversarial and clean examples
-regularizes the model* — but generating those examples with L-BFGS was too expensive to use as an
-inner loop, so adversarial training was not practical.
+regularizes the model* — generating those examples with L-BFGS was too expensive to use as an
+inner loop, so adversarial training was not practical at the time.
 
 Goodfellow et al. (2015) reframed the cause. Their **linear explanation**: for a weight vector `w`
 and perturbation `η`, the activation shifts by `wᵀη`; under the constraint `||η||_∞ ≤ ε` the worst
@@ -52,47 +46,32 @@ for any new method:
   under a one-step `ℓ_∞` attack collapses to single digits. The vulnerability is the rule, not a
   tail event.
 - Models adversarially trained against a *one-step* attack become robust to that attack but remain
-  broken by slightly more sophisticated *iterative* attacks (Tramèr et al. 2017): one-step
-  robustness does not imply real robustness.
+  vulnerable to iterative attacks (Tramèr et al. 2017): one-step robustness does not imply
+  robustness to stronger adversaries.
 - One-step adversarial training can induce **label leaking** (Kurakin et al. 2017): the one-step
-  adversary produces such a restricted, predictable set of perturbed inputs that the network overfits
-  to them, scoring high on those exact adversarial points while gaining no robustness to stronger
-  attacks and sometimes losing clean accuracy.
+  adversary produces a restricted, predictable set of perturbed inputs that the network overfits to.
 - On ImageNet, larger-capacity networks were observed to tolerate adversarial training better
   (Kurakin et al. 2017), hinting that model capacity matters for robustness.
 
 ## Baselines
 
 **Standard ERM training.** Minimize `E_{(x,y)}[L(θ,x,y)]` with SGD. State of the art on clean
-accuracy. **Gap:** says nothing about inputs off the data manifold; the resulting classifier is
-confidently wrong on imperceptibly perturbed inputs, and its clean test accuracy is no indicator of
-its behavior under perturbation.
+accuracy.
 
 **Fast Gradient Sign Method and FGSM adversarial training (Goodfellow et al. 2015).** Generate an
 adversarial example in one step by moving every pixel along the sign of the input gradient,
 `x_adv = x + ε·sign(∇_x L(θ,x,y))`, and train on an objective that mixes clean and adversarial loss,
 `J̃(θ,x,y) = α·J(θ,x,y) + (1-α)·J(θ, x + ε·sign(∇_x J)),` with `α = 0.5`. Cheap enough to run inside
-the training loop, and it does improve robustness to one-step attacks. **Gap:** the single step is a
-*linearization* of the loss in the `ℓ_∞` ball — valid only where the loss is nearly linear, which is
-not the whole ball for the `ε` of interest; iterative adversaries still find much higher-loss points
-the one-step adversary misses, so FGSM-trained models are broken by stronger attacks, and the
-restricted set of one-step examples invites label-leaking overfitting.
+the training loop, and it improves robustness to one-step attacks.
 
 **Defensive distillation, feature squeezing, and adversarial-example detectors (Papernot et al.
 2016; Xu et al. 2018; Carlini & Wagner 2017).** A family of defenses that either smooth the model's
-output surface, reduce input precision, or add a detector that flags suspicious inputs. **Gap:**
-each is built and evaluated against *particular* attacks and offers no statement about a whole class
-of perturbations. The structural problem is the absence of a guarantee — there is no quantity whose
-smallness certifies that *no* allowed perturbation works.
+output surface, reduce input precision, or add a detector that flags suspicious inputs. Each is built
+and evaluated against specific attacks.
 
 **Min-max formulations with a weak inner solver (Huang et al. 2015; Shaham et al. 2018).** These
-already wrote the defense as a worst-case (min-max) objective. **Gap:** they treated the inner
-worst-case search as essentially intractable and used only one-step adversaries to approximate it,
-and they evaluated robustness only against FGSM — an unreliable yardstick (one report claims 70%
-accuracy at `ε = 0.7`, but any adversary allowed to move each pixel by more than `0.5` can turn any
-image into a uniform gray field and fool every classifier, so the number is meaningless). The
-worst-case objective was on the table; what was missing was evidence that its inner problem can be
-solved well in practice and a trustworthy way to measure the result.
+formulated the defense as a worst-case (min-max) objective and used one-step adversaries to
+approximate the inner worst-case search, evaluating robustness against FGSM.
 
 ## Evaluation settings
 

@@ -6,8 +6,6 @@ Fix a finite ground set $[n] = \{1, 2, \dots, n\}$ and look at its power set $2^
 
 The question is purely extremal: **how large can an antichain in $2^{[n]}$ be?** Write $w(n)$ for the maximum possible $|\mathcal{F}|$. We want $w(n)$ exactly — a closed form — together with a characterization of *which* families attain it.
 
-Why it matters. This is the most basic quantitative fact about the subset-containment order, and it is the seed of an entire subject (extremal set theory). A clean answer would say precisely how much "incomparable information" the subset lattice can hold, and the method that yields it tends to generalize to many neighboring extremal problems (intersecting families, shadows, profiles of set systems). The difficulty is that an antichain can mix subsets of many different sizes, so naive size-by-size counting does not immediately bound the total.
-
 ## Background
 
 **The subset lattice as a graded poset.** Partition $2^{[n]}$ into $n+1$ *layers* (or *levels*) by cardinality: layer $k$ is $\binom{[n]}{k}$, the set of all $k$-element subsets, of which there are $\binom{n}{k}$. Containment only ever goes up in cardinality, so any single layer $\binom{[n]}{k}$ is automatically an antichain: two distinct $k$-sets are never nested. This gives an immediate **lower bound** $w(n) \ge \max_k \binom{n}{k}$.
@@ -16,7 +14,6 @@ Why it matters. This is the most basic quantitative fact about the subset-contai
 $$
 w(n) \ \ge\ \binom{n}{\lfloor n/2 \rfloor}.
 $$
-The whole problem is whether this lower bound is the truth — whether a cleverly *mixed* antichain, drawing sets from several layers at once, can ever beat the single best layer.
 
 **Shadows and shades.** For a family $\mathcal{A}$ of $k$-sets, its **(lower) shadow** $\partial \mathcal{A}$ is the family of all $(k-1)$-sets contained in some member of $\mathcal{A}$; dually its **(upper) shade** is the family of all $(k+1)$-sets containing some member. Counting incidences between a layer and the layer just below it is a standard tool: each $k$-set has exactly $k$ subsets of size $k-1$, and each $(k-1)$-set is contained in exactly $n-(k-1)$ sets of size $k$. These incidence counts let one compare the size of a family to the size of its shadow, and they are the classical handle on "how a family spreads across adjacent layers."
 
@@ -24,26 +21,25 @@ The whole problem is whether this lower bound is the truth — whether a cleverl
 
 **Permutations of $[n]$.** There are $n!$ linear orderings of the ground set — a basic counted object always available to a combinatorial argument, and a natural thing to count against when a quantity built out of factorials needs an interpretation.
 
-**Diagnostic facts about mixed antichains.** Small cases show mixing is real but constrained. For $n=2$: layers have sizes $1,2,1$; the largest antichain is $\{\{1\},\{2\}\}$, size $2 = \binom{2}{1}$, and any attempt to add $\emptyset$ or $\{1,2\}$ breaks incomparability. For $n=3$: layer sizes $1,3,3,1$; one can take all three $2$-sets (size $3$) or all three $1$-sets, but a mix like $\{\{1\},\{2,3\}\}$ is an antichain of size only $2$ and cannot be grown to beat $3$. The recurring observation: **whenever you place a set of size $k$ into an antichain, you forfeit all of its subsets and all of its supersets**, and the bookkeeping of that forfeiture across many sizes is exactly what makes the mixed problem hard to bound directly.
+**Diagnostic facts about mixed antichains.** Small cases show mixing is real but constrained. For $n=2$: layers have sizes $1,2,1$; the largest antichain is $\{\{1\},\{2\}\}$, size $2 = \binom{2}{1}$, and adding $\emptyset$ or $\{1,2\}$ breaks incomparability. For $n=3$: layer sizes $1,3,3,1$; one can take all three $2$-sets (size $3$) or all three $1$-sets, but a mix like $\{\{1\},\{2,3\}\}$ is an antichain of size only $2$. The recurring observation: whenever you place a set of size $k$ into an antichain, you forfeit all of its subsets and all of its supersets, and the bookkeeping of that forfeiture across many sizes shapes how a mixed antichain can grow.
 
 ## Baselines
 
 These are the approaches on the table for pinning $w(n)$.
 
-**1. Layer-by-layer counting.** Let $a_k$ be the number of size-$k$ sets in an antichain $\mathcal{F}$, so $|\mathcal{F}| = \sum_k a_k$ with $a_k \le \binom{n}{k}$. Bounding each $a_k$ separately gives $|\mathcal{F}| \le \sum_k \binom{n}{k} = 2^n$, which is uselessly weak — it ignores the interaction *between* layers entirely. The gap it leaves: it never uses the antichain condition to couple the $a_k$ across different $k$, so it cannot see why you can't be large in every layer at once.
+**1. Layer-by-layer counting.** Let $a_k$ be the number of size-$k$ sets in an antichain $\mathcal{F}$, so $|\mathcal{F}| = \sum_k a_k$ with $a_k \le \binom{n}{k}$. Bounding each $a_k$ separately gives $|\mathcal{F}| \le \sum_k \binom{n}{k} = 2^n$ — a bound that treats each layer independently, without using the antichain condition to couple the $a_k$ across different $k$.
 
-**2. The shadow / compression method.** Take an antichain and try to push all of its mass toward the middle layer without shrinking it. Concretely, replace the top-layer members (those of size $k > n/2$) by their lower shadow, and the bottom-layer members by their upper shade, repeating until everything sits in the middle. Using the incidence counts above, one shows the shadow of a family in a sufficiently high layer is at least as large as the family — so each replacement does not decrease the count and keeps the family an antichain — and after finitely many steps the family lives in a single middle layer, where its size is at most $\binom{n}{\lfloor n/2\rfloor}$. This is a genuine, complete route to the bound. Its costs: it requires a sharp shadow-size lemma with a delicate boundary case at $k$ near $(n+1)/2$; it proceeds by an induction over the replacement steps with careful verification that the antichain property survives each step; and it only ever yields the size bound $|\mathcal{F}| \le \binom{n}{\lfloor n/2\rfloor}$ as an inequality between integers, giving no extra structural information for free. It is heavy machinery for a one-number answer.
+**2. The shadow / compression method.** Take an antichain and push all of its mass toward the middle layer without shrinking it. Concretely, replace the top-layer members (those of size $k > n/2$) by their lower shadow, and the bottom-layer members by their upper shade, repeating until everything sits in the middle. Using the incidence counts above, one shows the shadow of a family in a sufficiently high layer is at least as large as the family — so each replacement does not decrease the count and keeps the family an antichain — and after finitely many steps the family lives in a single middle layer, where its size is at most $\binom{n}{\lfloor n/2\rfloor}$.
 
-**3. Chain covers of the lattice.** Try to partition all of $2^{[n]}$ into disjoint chains (towers $S_0 \subset S_1 \subset \cdots$). If $2^{[n]}$ splits into $t$ disjoint chains, then any antichain meets each chain at most once, so $|\mathcal{F}| \le t$. This reduces the problem to "how few chains can cover the cube," but constructing an explicit economical chain partition is itself a nontrivial combinatorial construction, and absent such a construction this route gives no number at all. The gap: it converts the question into another existence problem rather than resolving it.
+**3. Chain covers of the lattice.** Try to partition all of $2^{[n]}$ into disjoint chains (towers $S_0 \subset S_1 \subset \cdots$). If $2^{[n]}$ splits into $t$ disjoint chains, then any antichain meets each chain at most once, so $|\mathcal{F}| \le t$. This reduces the problem to "how few chains can cover the cube," and an explicit economical chain partition yields the bound directly.
 
 ## Evaluation settings
 
 This is a theorem, so the "evaluation" is mathematical adequacy, judged against fixed yardsticks rather than data:
 
 - **Sanity on small $n$.** The claimed formula must reproduce the exhaustively checkable cases: $n=0$ ($w=1$), $n=1$ ($w=1$), $n=2$ ($w=2$), $n=3$ ($w=3$), $n=4$ ($w=6=\binom{4}{2}$).
-- **Tightness.** The upper bound on $w(n)$ must match the layer lower bound $\binom{n}{\lfloor n/2\rfloor}$ — an inequality that does not meet the construction is only half an answer.
+- **Tightness.** The upper bound on $w(n)$ must match the layer lower bound $\binom{n}{\lfloor n/2\rfloor}$.
 - **Equality characterization.** A complete answer also says *which* antichains are extremal, not merely how big they can be.
-- **Robustness / generality.** A proof is judged partly by how cheaply it extends — to weighted versions, to the dual intersecting-family problems, and to the "profile" inequalities relating the $a_k$ — so a self-contained argument with few moving parts is preferred over one that needs a special construction or a delicate induction.
 
 ## Code framework
 
