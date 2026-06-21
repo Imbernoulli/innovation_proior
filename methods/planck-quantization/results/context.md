@@ -104,43 +104,4 @@ A candidate law is judged by whether a single functional form fits the short-wav
 the long-wave linear-in-$T$ rise, and the finite $T^4$ total simultaneously, with frequency-independent
 universal constants.
 
-## Code framework
 
-A small numerical scaffold can test any candidate single-resonator mean energy $U(\nu,T)$: build the
-spectrum from the mode bridge, compare the two empirical limits, and check the finite total. The
-scaffold uses the mode bridge $u=(8\pi\nu^2/c^3)U$, the thermodynamic relation $1/T=dS/dU$, and
-numerical integration over frequency. The unresolved slot is the law $U(\nu,T)$ itself.
-
-```python
-import numpy as np
-
-# Mode/resonator bridge: u = (8 pi nu^2 / c^3) * U.
-def spectral_density(U_of_nu_T, nu, T):
-    c = 2.998e10  # cm/s, CGS
-    U = U_of_nu_T(nu, T)          # mean energy of one resonator at (nu, T)
-    return (8 * np.pi * nu**2 / c**3) * U
-
-# Mean energy of a single resonator.
-def mean_energy(nu, T):
-    # TODO: U(nu, T)
-    pass
-
-# Thermodynamic check: 1/T = dS/dU.
-def inverse_temperature(S_of_U, U, dU=1e-30):
-    return (S_of_U(U + dU) - S_of_U(U - dU)) / (2 * dU)   # dS/dU = 1/T
-
-# Finite-total-energy check.
-def total_energy_density(U_of_nu_T, T, nu_max=1e16, n=200000):
-    nu = np.linspace(1.0, nu_max, n)
-    u = spectral_density(U_of_nu_T, nu, T)
-    return np.trapz(u, nu)        # must be finite and scale as T^4
-
-# Limit checks.
-def must_recover_long_wave_linear_in_T():
-    # small nu / large T : u -> 8 pi nu^2 k T / c^3   (linear in T)
-    pass
-
-def must_recover_short_wave_exponential():
-    # large nu / small T : u -> exponential fall-off
-    pass
-```

@@ -1,0 +1,46 @@
+# Changelog
+
+- `methods/planet/results/context.md:3` rebuilt the research question around pixel-only POMDP control and learned dynamics without naming the target method.
+- `methods/planet/results/context.md:27` replaced answer-stage details with pre-method latent SSM and filtering-background requirements.
+- `methods/planet/results/context.md:55` rebuilt baselines around PILCO, E2C/RCE, PETS, World Models, and latent sequence models with their gaps.
+- `methods/planet/results/context.md:78` purified evaluation setup by removing seed episodes, action noise, action-repeat constants, free nats, and target-specific protocol details.
+- `methods/planet/results/context.md:94` replaced the scaffold with generic dynamics/objective/action-choice slots, leaving RSSM, overshooting, and CEM wiring out of context.
+- `methods/planet/results/reasoning.md:22` re-derived the one-step ELBO with the correct reconstruction-minus-`KL(q || p)` sign.
+- `methods/planet/results/reasoning.md:28` added reward as an analogous log-likelihood term and fixed the Gaussian half-squared-error convention.
+- `methods/planet/results/reasoning.md:32` reconstructed the deterministic-belief plus stochastic-state RSSM from the two failure cases.
+- `methods/planet/results/reasoning.md:47` rebuilt MPC/CEM reasoning, including action clipping, single first-action execution, and per-step reset.
+- `methods/planet/results/reasoning.md:49` separated the primary algorithm's CEM mean-absolute scale formula from the canonical Google code's variance refit.
+- `methods/planet/results/reasoning.md:51` reconciled primary-source collection cadence `C=100` with canonical-code `collect_every=5000` and batch-size step increments.
+- `methods/planet/results/reasoning.md:63` corrected the $d$-step predictive bound with action conditioning and the open-loop state in the KL expectation.
+- `methods/planet/results/reasoning.md:73` downgraded the data-processing relation from proof to expectation-level conjecture.
+- `methods/planet/results/reasoning.md:84` recorded posterior stop-gradient for overshooting distances and canonical default overshooting scale zero.
+- `methods/planet/results/reasoning.md:86` fixed code-faithfulness details: RSSM state fields, posterior-through-prior structure, `max(0, KL - 3)`, reward scale 10, and 5-bit dequantizing preprocessing.
+- `methods/planet/results/reasoning.md:88` replaced the old PyTorch-style code with a canonical-code-shaped RSSM/loss/CEM sketch.
+- `methods/planet/results/answer.md:31` restated the filtering ELBO with correct sign and KL direction.
+- `methods/planet/results/answer.md:43` restated latent overshooting as a latent-space KL regularizer over $d=1,\ldots,D$.
+- `methods/planet/results/answer.md:59` qualified the data-processing statement as conjectured expectation-level motivation.
+- `methods/planet/results/answer.md:68` restored planning constants `H=12`, `J=1000`, `K=100`, `I=10` and per-step re-planning.
+- `methods/planet/results/answer.md:77` documented the CEM refit difference between primary algorithm text and canonical Google code.
+- `methods/planet/results/answer.md:84` restored source hyperparameters: latent size 30, 200-unit GRU, Adam constants, batch shape, free nats, seed episodes, action noise, and action repeats.
+- `methods/planet/results/answer.md:91` added canonical-code checks for preprocessing, RSSM fields, posterior structure, feature concatenation, loss scales, activations, and head defaults.
+- `methods/planet/results/answer.md:99` corrected free nats to `max(0, KL - 3)`, not `max(KL, 3)`.
+- `methods/planet/results/answer.md:105` replaced the final code artifact with a parse-checked canonical-code-shaped sketch.
+- `methods/planet/notes/source_matrix.md:5` added primary source records for the PMLR PDF, arXiv source tarball, and local TeX.
+- `methods/planet/notes/source_matrix.md:6` added VAE and Deep Kalman Filter variational-inference ancestors.
+- `methods/planet/notes/source_matrix.md:8` added VRNN as the recurrent stochastic-latent ancestor.
+- `methods/planet/notes/source_matrix.md:9` added E2C as visual latent-control ancestor and recorded its scalability/partial-observability gap.
+- `methods/planet/notes/source_matrix.md:10` added World Models as the staged VAE/MDN-RNN/control baseline.
+- `methods/planet/notes/source_matrix.md:11` added PETS as the CEM/MPC probabilistic-dynamics ancestor.
+- `methods/planet/notes/source_matrix.md:12` added Buesing et al. DSSM as the close latent-state RL model ancestor.
+- `methods/planet/notes/source_matrix.md:13` added Amos et al. awareness models as the overshooting ancestor.
+- `methods/planet/notes/source_matrix.md:14` added DeepMind Control Suite as evaluation-source evidence.
+- `methods/planet/notes/source_matrix.md:15` added a third-party explainer record.
+- `methods/planet/notes/source_matrix.md:16` added self-account evidence and search-log linkage.
+- `methods/planet/notes/source_matrix.md:17` added canonical Google code evidence and the code-specific corrections it supports.
+- `methods/planet/refs/self_accounts/search_log.md:5` recorded retrieved author/project self-account pages.
+- `methods/planet/notes/discovery_synthesis.md:29` documented math corrections for ELBO signs, reward likelihood, overshooting KL conditioning, and the conjecture downgrade.
+- `methods/planet/notes/discovery_synthesis.md:51` documented code-faithfulness corrections against canonical Google code.
+- `methods/planet/notes/discovery_synthesis.md:77` documented posterior-leak, hindsight, scaffold, and voice corrections.
+- `methods/planet/notes/synthesis.md:21` replaced stale synthesis notes with the corrected ELBO, overshooting, and code-grounding summary.
+- `methods/planet/results/.codex_review.json:3` replaced the stale errored review marker with an explicit `codex_reviewed:false`, `outcome:"not_run"` record.
+- `methods/planet/notes/strict_check_output.txt:1` recorded strict checker, in-frame lint, structural, JSON, and code-block parse verification.

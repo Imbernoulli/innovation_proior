@@ -71,9 +71,9 @@ to be re-trained on the same data.
 - β_S (=.01): entropy bonus; ε=.2 PPO clip; vfcoef=.5; γ=.999; λ=.95; nstep=256; nminibatch=8 (policy
   phase); aux minibatches per epoch per N_π = 16 (aux_mbsize=4); lr=aux_lr=5e-4 Adam; 100M steps;
   4 workers × 64 envs; reward normalization yes; no LSTM, no frame stack.
-- arch: "dual" (default, separate nets ~2× params), "detach" (single net, detach value grad at last
-  shared layer during policy phase, full grad in aux phase → recovers most benefit at 1× params),
-  "shared" (plain shared net = PPO-like baseline).
+- arch: "dual" (default, separate nets ~2× params), "detach" (single net; archived code statically
+  detaches the true-value path from the shared features, while the aux value head trains those features
+  during aux), "shared" (plain shared net = PPO-like baseline).
 - KL-penalty variant: replace L^clip with L^KL = Ê[−Â_t·r_t + β_π·KL(π_old,π_θ)], β_π=1 fixed; performs
   ~same as clipping in PPG (rewards normalized so returns ~unit variance, so clipping less critical).
 
@@ -92,17 +92,21 @@ to be re-trained on the same data.
   phase is pure supervised regression onto fixed targets → stable, no moving target.
 - single policy epoch E_π=1: isolating value training reveals the policy gains ~nothing from extra
   epochs; PPO's apparent need for 3 epochs is really under-trained value.
-- detach variant: if memory matters, one net + detach value grad at the last shared layer during the
-  policy phase gives the no-interference property at 1× params (full grad flows in the aux phase).
+- detach variant: if memory matters, one net + detach the true-value path at the shared representation
+  gives the no-interference property at 1× params; in the archived implementation this detach is static,
+  so the aux value head is the branch that trains shared features during the aux phase.
 - replay buffer NOT for off-policy policy improvement: only to refit value targets and train features;
   PPG stays on-policy for the policy.
 
 ## Canonical implementation (openai/phasic-policy-gradient — CONFIRMED)
-ppg.py PhasicValueModel (arch dual/detach/shared; pi_enc + vf_enc; pi_head + aux_vf_head;
+ppg.py PhasicValueModel (arch dual/detach/shared; pi_enc + optional vf_enc; pi_head + aux_vf_head;
 compute_aux_loss = {vf_aux: ½(vpredaux−vtarg)², vf_true: ½(vpredtrue−vtarg)²}; aux_train adds
-pol_distance = KL(oldpd, pd)); ppo.py compute_gae + compute_losses (clip pg + negent + vf); train.py
-name2coef={"pol_distance": beta_clone=1, "vf_true": vf_true_weight=1}, n_pi=32, n_aux_epochs=6, lr=5e-4,
-ImpalaEncoder. impala_cnn.py = the encoder.
+pol_distance = KL(oldpd, pd) and sums named losses with coefficients). ppo.py compute_gae + compute_losses:
+adv normalized after GAE; clipped policy loss is max(−adv·ratio, −adv·clamp); entropy enters as
+−entcoef·entropy; optional KL penalty is 0.5·(logratio²); value loss is vfcoef·MSE, with vfcoef=.5.
+ppo.learn uses one optimizer for pi+vf when n_epoch_pi == n_epoch_vf and split optimizers/loops when
+they differ. train.py name2coef={"pol_distance": beta_clone=1, "vf_true": vf_true_weight=1}, n_pi=32,
+n_aux_epochs=6, lr=5e-4, ImpalaEncoder. impala_cnn.py = the encoder.
 
 ## Scaffold ↔ code correspondence
 Final code fills: dual encoder model with policy head + true value head + auxiliary value head; GAE;
@@ -112,9 +116,9 @@ policy-phase/aux-phase outer alternation every N_π. Scaffold = generic on-polic
 shared/dual encoder, GAE, a PPO update stub, and an empty "auxiliary phase" stub + the outer loop stub.
 
 ## Self-derivation checks
-- L^clip min(rÂ, clip(r,1−ε,1+ε)Â): pessimistic (max of the two negated losses in code:
-  pg=max(−Âr, −Â·clip)). ✓ code: pg_losses=max(−adv·ratio, −adv·clamp).
-- GAE: δ_t=r+γV(s')−V(s); Â=Σ(γλ)^l δ; V̂targ=V+Â. ✓ code compute_gae.
+- L^clip min(rÂ, clip(r,1−ε,1+ε)Â): pessimistic in maximization; in minimized code it is
+  pg=max(−Âr, −Â·clip). ✓ code: pg_losses=max(−adv·ratio, −adv·clamp).
+- GAE: δ_t=r+γV(s')−V(s); Â=Σ(γλ)^l δ; V̂targ=V+Â; implementation normalizes Â before the policy loss. ✓
 - aux L^joint = ½Ê[(V_θπ−V̂targ)²] + β_clone·KL(π_old,π_θ); L^aux is the aux head's value MSE. ✓
 - aux phase also optimizes L^value (true value head) on B. ✓ (vf_true in compute_aux_loss)
 - N_π large (infrequent aux) good; E_π=1; E_aux≈6; β_clone=1. ✓ all in train.py defaults.

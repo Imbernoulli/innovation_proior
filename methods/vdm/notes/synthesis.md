@@ -55,8 +55,9 @@ Two sub-problems:
     L^MC² (since E[L^MC²]=L²+Var, and L² is η-independent, ∇_η E[L^MC²]=∇_η Var). Compute via d/dSNR of loss
     times d SNR/dη — no second backprop. Also low-discrepancy/antithetic sampling of t.
 11. Fourier features: recon model p(x|z_0) is weak; fine-scale detail burden on x̂. At low noise q(z_t)
-    sharply peaked (discrete 8-bit data). Append sin/cos(2^n π z) channels (n=7,8) so net can fit fine detail.
-    Lets SNR_max go high (log-SNR ≈ 13.3 vs DDPM ≈ 8). Helps likelihood a lot; doesn't help autoregressive.
+    sharply peaked (discrete 8-bit data). Paper formula appends sin/cos(2^n π z) channels for n=7,8.
+    Public code uses Base2FourierFeatures(start=6, stop=8) with multiplier 2π, giving the same two frequencies
+    2^7π and 2^8π. Lets SNR_max go high (log-SNR ≈ 13.3 vs DDPM ≈ 8). Helps likelihood a lot.
 12. Numerical stability: discrete loss has exp(γ(t)−γ(s))−1 → use expm1; σ²_{t|s} via −expm1(softplus diff).
     Allows fp32 where DDPM needed fp64.
 13. Reconstruction loss: p(x_i|z_0,i) ∝ q(z_0,i|x_i) normalized over 256 values; closed-form discretized Gaussian.
@@ -72,7 +73,10 @@ Two sub-problems:
 - No up/down-sampling in U-Net, deeper, drop attention except middle → likelihood-tuned, less overfit.
 
 ## Code grounding
-google-research/vdm (JAX/Flax). model_vdm.py: VDM.__call__ computes loss_recon, loss_klz, loss_diff
-(T==0 continuous via jvp of gamma → γ'(t)·MSE/2; T>0 discrete via expm1(g_t−g_s)). NoiseSchedule_NNet =
-DenseMonotone with abs(weights). EncDec.decode = discretized-Gaussian logits over vocab. Base2FourierFeatures
-start=6 stop=8. sample(): ancestral with c=−expm1(g_s−g_t).
+google-research/vdm (JAX/Flax), commit dc27b98a554f65cdc654b800da5aa1846545d41b. model_vdm.py:
+VDM.__call__ computes loss_recon, loss_klz, loss_diff (T==0 continuous via jvp of gamma → γ'(t)·MSE/2;
+T>0 discrete via expm1(g_t−g_s)). It samples z_t as sqrt(1-sigmoid(g_t))*f + sqrt(sigmoid(g_t))*eps.
+NoiseSchedule_NNet = DenseMonotone with abs(weights); public configs also use learnable_scalar. EncDec.decode =
+discretized-Gaussian logits over vocab. Base2FourierFeatures start=6 stop=8 with 2π multiplier. sample():
+ancestral with c=−expm1(g_s−g_t). Public train loop optimizes summed BPD and does not implement a separate
+squared-loss variance-gradient path for the schedule interior.

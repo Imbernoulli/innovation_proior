@@ -1,129 +1,109 @@
 # The Natural Policy Gradient
 
-## Problem
+## Core Move
 
-Maximize the average reward η(θ) = Σ_{s,a} ρ^π(s) π(a;s,θ) R(s,a) of a stochastic policy
-π(a;s,θ) by adjusting θ. The vanilla policy-gradient update Δθ = α ∂η/∂θ is **non-covariant**:
-it implicitly measures step length by the Euclidean norm Σ(dθᵢ)² in arbitrarily-chosen
-coordinates, so the "steepest ascent" direction changes when the policy is reparameterized, and
-the rule is even dimensionally inconsistent. The fix must keep the ascent direction a property of
-the *policy distribution*, not of the parameter labels — without losing sample-estimability.
+A vanilla policy-gradient step treats parameter coordinates as Euclidean:
 
-## Key idea
+`Delta theta = alpha grad eta(theta)`.
 
-Steepest ascent under a metric G is **G⁻¹∇η** (maximize ∇η·dθ subject to dθᵀG dθ = ε²). The
-objective lives on the manifold of policy distributions, whose unique reparameterization-invariant
-metric — equal to the local Hessian of the KL divergence — is the **Fisher information**. Average
-the per-state Fisher matrices by the stationary distribution and step along the resulting
-**natural gradient**. Two facts make it land:
+That is steepest ascent only under the arbitrary metric `G = I`. A policy is a distributional object, so the step should instead be steepest under a metric that measures local change in the policy distributions. For a probability family, that metric is the Fisher information, equivalently the local second-order form of KL divergence.
 
-1. With **compatible** function approximation (the critic's features are the policy's score), the
-   natural gradient equals the critic's least-squares weight vector w̄ — nothing extra to compute.
-2. A natural-gradient step scales each action's probability by its compatible-critic (advantage)
-   value, moving the policy toward the **greedy** action; in the limit it performs one step of
-   approximate policy iteration.
+## Construction
 
-## The construction
+For an ergodic average-reward MDP with differentiable stochastic policy `pi(a|s,theta)`,
 
-**Exact gradient (policy gradient theorem).** With no state-distribution term, hence estimable
-from rollouts:
+`eta(theta) = sum_{s,a} rho^pi(s) pi(a|s,theta) R(s,a)`.
 
-    ∇η(θ) = Σ_{s,a} ρ^π(s) ∇π(a;s,θ) Q^π(s,a),   ψ(s,a) := ∇log π(a;s,θ) = ∇π/π.
+The policy-gradient theorem gives
 
-**Steepest ascent under a metric.** Maximize η(θ+dθ) s.t. dθᵀG(θ)dθ = ε². The Lagrangian
-stationarity condition is ∇η − λGdθ = 0, hence dθ = (1/λ)G⁻¹∇η.
+`g(theta) = grad eta(theta) = sum_{s,a} rho^pi(s) grad pi(a|s,theta) Q^pi(s,a)`.
 
-**Fisher metric on the policy manifold.** Per-state Fisher and its ρ^π-average:
+Define the score
 
-    F_s(θ) = E_{a∼π}[ ψ(s,a) ψ(s,a)ᵀ ],     F(θ) = E_{s∼ρ^π}[ F_s(θ) ].
+`psi(s,a) = grad log pi(a|s,theta)`.
 
-F is positive semidefinite, positive definite when the score features span the parameter space,
-invariant to reparameterization, and locally equals the Hessian of
-D_KL(π_θ ‖ π_{θ+dθ}) = ½ dθᵀ F dθ + O(dθ³).
+For each state, use the Fisher metric of the conditional action distribution:
 
-**Natural gradient.**   ∇̃η(θ) = F(θ)⁻¹ ∇η(θ), using a pseudoinverse or small ridge if F is
-singular.  (Reduces to ∇η exactly when F = I.)
+`F_s(theta) = E_{a~pi(.|s,theta)}[psi(s,a) psi(s,a)^T]`.
 
-**Compatible critic.** f(s,a;w) = wᵀψ(s,a). Compatibility (∂f/∂w = ∇π/π) keeps the gradient exact
-when f replaces Q^π. For Gibbs π ∝ exp(θᵀφ_sa), ψ_sa = φ_sa − Σ_b π(s,b)φ_sb (mean-zero ⇒ f
-approximates the advantage A^π = Q^π − V^π).
+Average those per-state metrics by the current stationary distribution:
 
-### Theorem 1 (natural gradient = compatible critic weights)
+`F(theta) = E_{s~rho^pi}[F_s(theta)]`
 
-Let w̄ minimize ε(w) = Σ_{s,a} ρ^π(s) π(a;s,θ) (wᵀψ(s,a) − Q^π(s,a))². For nonsingular F,
-**w̄ = ∇̃η(θ)**.
+`= sum_{s,a} rho^pi(s) pi(a|s,theta) psi(s,a) psi(s,a)^T`.
 
-*Proof.* ∂ε/∂w = 0 gives Σ ρ^π π ψ(ψᵀw̄ − Q^π) = 0, i.e.
-[Σ ρ^π π ψψᵀ] w̄ = Σ ρ^π π ψ Q^π. The right side is Σ ρ^π ∇π Q^π = ∇η (since πψ = ∇π); the left
-bracket is E_{ρ^π}[E_π[ψψᵀ]] = F. Hence F w̄ = ∇η, so w̄ = F⁻¹∇η = ∇̃η when the metric solve is
-well-defined. ∎
+The natural policy-gradient direction is the metric steepest-ascent direction:
 
-### Theorem 2 (greedy improvement, exponential family)
+`v = F(theta)^{-1} g(theta)`,
 
-For π ∝ exp(θᵀφ_sa) with w̄ minimizing the approximation error, let
-π_∞(a;s) = lim_{α→∞} π(a;s, θ + α∇̃η(θ)). Then π_∞(a;s) ≠ 0 **iff** a ∈ argmax_{a'} f(s,a';w̄).
+using a pseudoinverse or ridge-regularized solve when the score covariance is singular.
 
-*Proof.* f(s,a;w̄) = ∇̃η(θ)ᵀψ_sa and ψ_sa = φ_sa − E_π[φ] with E_π[φ] independent of a, so
-argmax_a f = argmax_a ∇̃η(θ)ᵀφ_sa. After the step π ∝ exp(θᵀφ_sa + α∇̃η(θ)ᵀφ_sa); as α→∞ the
-second term dominates, concentrating mass on argmax_a ∇̃η(θ)ᵀφ_sa = argmax_a f(s,a;w̄). ∎
+## Compatible Critic Theorem
 
-(The vanilla gradient under α→∞ selects only a *better* action, f(a) > E_{a'}f(a'), not the best.)
+Let the compatible critic be
 
-### Theorem 3 (local move toward the best action, general policy)
+`f(s,a;w) = w^T psi(s,a)`.
 
-For θ' = θ + α∇̃η(θ):   **π(a;s,θ') = π(a;s,θ)(1 + α f(s,a;w̄)) + O(α²).**
+Fit it by minimizing
 
-*Proof.* Δθ = αw̄ (Thm 1). π(a;s,θ') = π + (∂π/∂θ)ᵀΔθ + O(Δθ²) = π(1 + ψᵀΔθ) + O(Δθ²)
-= π(1 + αψᵀw̄) + O(α²) = π(1 + α f(s,a;w̄)) + O(α²). ∎
+`sum_{s,a} rho^pi(s) pi(a|s,theta) (w^T psi(s,a) - Q^pi(s,a))^2`.
 
-Initial improvement is guaranteed whenever ∇η ≠ 0 and the metric used for the solve is positive
-definite: dη/dα|₀ = ∇η·∇̃η = ∇ηᵀF⁻¹∇η > 0.
+The normal equations are
 
-### Why F is not the Hessian (and why that is acceptable)
+`[sum rho^pi pi psi psi^T] w = sum rho^pi pi psi Q^pi`.
 
-    ∇²η(θ) = Σ_{sa} ρ^π(∇²π Q^π + ∇π∇Q^πᵀ + ∇Q^π∇πᵀ).
+The left side bracket is `F(theta)`. The right side is `g(theta)` because `pi psi = grad pi`. Therefore
 
-F = Σ_{sa} ρ^π ∇π∇πᵀ/π contains none of the value-coupled terms, so F ≠ ∇²η: the natural gradient
-is **not** Newton's method and is not asymptotically second-order efficient (unlike natural
-gradient in parameter estimation, where Fisher → Hessian and the Cramér–Rao bound is attained).
-But ∇²η is objective curvature, not a metric; for maximization it can be indefinite far from a
-maximum, and its useful local picture near a maximum is negative curvature. The Fisher is instead a
-positive metric after restricting to the nondegenerate score subspace or adding a ridge, so F⁻¹∇η is
-a robust, covariant ascent direction with guaranteed local improvement under that metric; conjugate
-methods are preferable only near the optimum.
+`F(theta) w = g(theta)`,
 
-## Algorithm
+so the compatible critic weights are exactly the natural policy-gradient direction:
+
+`w = v = F(theta)^{-1} g(theta)`.
+
+## Greedy-Improvement Link
+
+For an exponential-family policy
+
+`pi(a|s,theta) proportional to exp(theta^T phi_sa)`,
+
+the compatible score is `psi(s,a) = phi_sa - E_pi[phi_s.]`. The centered term is independent of the action being maximized, so
+
+`argmax_a f(s,a;w) = argmax_a w^T phi_sa`.
+
+After stepping `theta' = theta + alpha v`,
+
+`pi(a|s,theta') proportional to exp(theta^T phi_sa + alpha v^T phi_sa)`.
+
+As `alpha -> infinity`, probability concentrates exactly on actions maximizing the compatible critic. For general smooth policies,
+
+`pi(a|s,theta + alpha v) = pi(a|s,theta)(1 + alpha f(s,a;w)) + O(alpha^2)`.
+
+So the update locally scales action probabilities by the compatible critic's advantage-like value and, in the exponential-family limit, performs the greedy move suggested by approximate policy iteration.
+
+## Not Newton
+
+The Fisher matrix here is not the Hessian of average reward. The reward Hessian contains value-coupled terms:
+
+`grad^2 eta = sum_{s,a} rho^pi(s)(grad^2 pi Q^pi + grad pi grad Q^pi^T + grad Q^pi grad pi^T)`.
+
+The Fisher metric contains only policy score outer products. It is chosen because it measures local policy-distribution displacement and is invariant to reparameterization, not because it approximates the objective curvature. This is why the insight is more than recombining policy gradients with second-order optimization.
+
+## Reference Step
 
 ```python
-import numpy as np
-
-def natural_policy_gradient_step(policy, mdp, eps=1e-2, ridge=1e-3):
-    # 1. Differential value and exact gradient (policy gradient theorem).
-    Q = estimate_value(policy, mdp)                 # Q^π under average reward
-    m = policy.theta.shape[0]
-    grad = np.zeros(m); F = np.zeros((m, m))
+def natural_policy_gradient_step(policy, mdp, q_value, epsilon=1e-2, ridge=1e-8):
+    grad = 0.0
+    fisher = 0.0
     for s in mdp.states:
         rho = mdp.stationary_prob(s, policy)
         for a in mdp.actions:
-            psi = policy.score(s, a)                # ψ = ∇log π = ∇π/π (compatible features)
-            p   = policy.prob(s, a)
-            grad += rho * p * psi * Q(s, a)         # Σ ρ^π ∇π Q
-            F    += rho * p * np.outer(psi, psi)    # Σ ρ^π π ψψ^T  = Fisher metric
-    F += ridge * np.eye(m)                          # regularized positive metric if F is singular
+            p = policy.prob(s, a)
+            psi = policy.score(s, a)
+            grad += rho * p * psi * q_value(s, a)
+            fisher += rho * p * outer(psi, psi)
 
-    # 2. Natural gradient = compatible-critic weights w̄ (Theorem 1): solve F w̄ = ∇η.
-    nat = np.linalg.solve(F, grad)                  # ∇̃η = F^{-1} ∇η = w̄
-
-    # 3. Equal-KL line search: ½ α^2 ∇η^T F^{-1} ∇η = ε.
-    denom = grad @ nat
-    alpha = 0.0 if denom <= 0 else np.sqrt(2.0 * eps / denom)
-
-    # 4. Covariant step; positive metric ⇒ guaranteed initial improvement; moves toward greedy action.
-    policy.theta = policy.theta + alpha * nat
+    direction = solve(fisher + ridge * I, grad)
+    step = sqrt(2 * epsilon / dot(grad, direction))
+    policy.theta = policy.theta + step * direction
     return policy
 ```
-
-The natural policy gradient is the policy-search direction that is covariant (independent of the
-policy's parameterization), reduces to the vanilla gradient when the Fisher metric is the
-identity, coincides with the compatible critic's weight vector, and — taken to the limit — moves
-the policy toward the greedy action, i.e. performs one step of approximate policy iteration.

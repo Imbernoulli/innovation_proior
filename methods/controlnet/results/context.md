@@ -1,156 +1,82 @@
 # Context
 
-## Research question
+## Research Question
 
-Large text-to-image diffusion models produce visually stunning images from a text prompt, but text is
-a weak handle on *spatial* composition: precisely specifying a layout, a human pose, an object shape,
-or an edge structure through words alone is hard, and matching a specific mental image usually takes
-many cycles of editing the prompt, inspecting the result, and re-editing. The natural fix is to let a
-user supply an additional *image* that directly specifies the desired composition — an edge map, a
-depth map, a pose skeleton, a segmentation map, surface normals, a scribble — and condition the
-generation on it.
+Large text-to-image diffusion models can generate high-quality images from a prompt, but text is a weak handle on spatial composition. It is hard to describe an exact layout, pose, object silhouette, edge structure, depth pattern, or segmentation mask purely in words, so matching a user's intended image often turns into repeated prompt editing and inspection.
 
-Learning such a conditional control end-to-end is the hard part, and the difficulty is a data
-mismatch. The pretrained text-to-image model was trained on billions of image-text pairs; the largest
-datasets for a *specific* spatial condition (depth, pose, normals) are around 100k examples — tens of
-thousands of times smaller. Directly finetuning, or continuing to train, the huge pretrained model on
-such a small condition-specific dataset risks **overfitting** to the small set and **catastrophic
-forgetting** of the billions-of-images prior that made the model good in the first place. The precise
-question: **how can a new spatial conditioning control be added to a large, frozen, pretrained
-text-to-image diffusion model — learned from a small condition-specific dataset — without degrading or
-forgetting the pretrained model's quality and capabilities?** A solution would need to learn from little
-data, keep the original model intact (so nothing is forgotten), and add the new control without
-disturbing the deep features the pretrained model already relies on.
+The useful interface is an additional image-valued condition: an edge map, depth map, human-pose skeleton, segmentation map, normal map, scribble, or line drawing that directly specifies the spatial structure. The hard part is learning that new control in an end-to-end way. The general text-to-image model has been trained on billions of image-text pairs, while a dataset for one specific condition type may contain only tens or hundreds of thousands of pairs. A direct update of the large model on such a small condition-specific dataset risks overfitting the new data and damaging the broad visual prior that made the model useful.
+
+The question is therefore: how can a pretrained text-to-image diffusion model be given a new spatial image condition, learned from far less data than the original model saw, while preserving the original model's visual quality and text alignment?
 
 ## Background
 
-The field state (early text-to-image diffusion era): large latent-diffusion text-to-image models are
-the state of the art, and a large literature on *finetuning* pretrained networks without destroying
-them is directly relevant. The load-bearing concepts:
+The starting point is a latent text-to-image diffusion model. A denoiser `epsilon_theta` learns to predict the noise `epsilon` added to a clean latent `z_0`, using a loss of the form `E[||epsilon - epsilon_theta(z_t, t, c_t)||_2^2]`, where `t` is the diffusion timestep and `c_t` is a text condition. Stable Diffusion performs this denoising in a compressed latent space: a `512 x 512` image corresponds to a much smaller latent grid, commonly `64 x 64`, and a U-Net with an encoder, middle block, and skip-connected decoder predicts the noise. Text is encoded separately, typically through a CLIP text encoder, and timesteps are embedded through a time encoder.
 
-- **Latent text-to-image diffusion (the model being controlled).** A diffusion model learns to reverse
-  a gradual noising process: a denoiser `ε_θ` is trained to predict the noise added to a noisy image,
-  minimizing `E[‖ε − ε_θ(z_t, t, c_t)‖²]` over noise levels `t`. Latent diffusion (Rombach et al.,
-  2021) runs this in a compressed *latent* space — a VQ-GAN-like encoder (Esser et al., 2021) maps a
-  `512×512` pixel image to a `64×64` latent — which stabilizes and cheapens training. The architecture
-  is a U-Net (Ronneberger et al., 2015): an encoder, a middle block, and a skip-connected decoder, with
-  text prompts encoded by a CLIP text encoder (Radford et al., 2021) and timesteps by a positional time
-  encoder. Stable Diffusion is a large-scale instance.
+Several older ideas shape the design space. Finetuning all weights gives the new condition maximum access to the model, but it is the most exposed to overfitting and forgetting. Parameter-efficient adaptation instead restricts what can change: adapters add small modules, LoRA learns low-rank weight updates, and additive or side-tuning methods keep a base network unchanged while training an auxiliary branch. These approaches suggest that protecting the pretrained model matters, but a complex spatial condition may require more capacity than a very small adapter or low-rank update can provide.
 
-- **Catastrophic forgetting and overfitting under finetuning.** Continuing to train a large model on a
-  small new dataset tends to overfit and to overwrite the broad prior — the model "forgets" what it
-  knew. The literature shows this can be mitigated by *restricting* the trainable parameters: limiting
-  their number or rank, or freezing the original weights entirely.
-
-- **Weight initialization.** How a layer's weights are initialized strongly affects training. Gaussian
-  initialization is the usual safe default; initializing a layer to zero is generally considered riskier,
-  since zero-initialized layers in a normal network suffer symmetry problems and can fail to learn (zero
-  weights give zero gradients and never move). Non-Gaussian initialization schemes appear across diffusion
-  training (Nichol et al., 2021) and GAN training (ProGAN/StyleGAN, Noise2Noise).
+Initialization is another constraint. New modules inserted into a trained network can inject random activations into internal features before they have learned anything. Standard random initialization is useful for ordinary networks, but a connector into a high-quality pretrained generator must not disturb the generator at the start of training.
 
 ## Baselines
 
-The prior finetuning/control strategies a new method would be measured against and reacts to:
+The natural alternatives are:
 
-- **Direct finetuning / continued training.** Simply keep training the pretrained model (optionally all
-  weights) on the new condition. *Gap:* overfitting, mode collapse, and catastrophic forgetting on
-  small condition datasets.
+- **Direct finetuning.** Continue training the pretrained diffusion model on `(image, text, condition)` triples. This gives full capacity but risks overfitting, mode collapse, and catastrophic forgetting in small-data condition regimes.
+- **Image-to-image translation.** Train a conditional GAN or diffusion model from a condition image to an output image. This can learn strong mappings, but it does not directly reuse a large text-to-image prior.
+- **Adapters.** Insert small trainable modules into a frozen model. This is efficient, but shallow adapters may be too weak for in-the-wild spatial conditions with high-level semantics.
+- **Low-rank adaptation.** Learn low-rank updates to selected weights. This is parameter efficient, but the low-rank restriction may be too tight for rich spatial control.
+- **Side or additive branches.** Train an auxiliary branch and combine it with a base model. This protects the base model, but the combination rule and branch capacity determine whether the branch can provide detailed spatial information.
+- **Mask/token or attention-based spatial control.** Encode spatial inputs as tokens or modify attention layers. These methods can work for specific grounding formats, but they are less direct as a general image-condition interface.
 
-- **HyperNetwork (Ha et al., 2017).** Train a small network to *predict the weights* of a larger one;
-  applied to restyle Stable Diffusion's outputs. *Gap:* changes global behavior (e.g. style), not
-  designed to inject a precise spatial control while fully preserving the base model.
+## Evaluation Settings
 
-- **Adapters (Houlsby et al., 2019; ViT-Adapter; and the concurrent T2I-Adapter, Mou et al., 2023).**
-  Freeze the pretrained model and insert small new module layers to customize it for a new task;
-  T2I-Adapter adapts Stable Diffusion to external conditions. *Gap:* the added adapter is a small,
-  shallow module — limited capacity for in-the-wild conditioning images with complex shapes and diverse
-  high-level semantics.
+A convincing method should be tested with a large pretrained latent diffusion model such as Stable Diffusion v1.5 or v2.1, under several condition types: Canny edges, Hough or M-LSD lines, HED edges, user scribbles, human pose, semantic segmentation, depth, normal maps, and line drawings. It should handle single conditions, multiple simultaneous conditions, and prompts ranging from empty to complete or conflicting.
 
-- **Additive learning / Side-Tuning (Zhang et al., 2020).** Freeze the original model and add a small
-  side branch, linearly blending the frozen model's output with the side network's output via a
-  *predefined* blending-weight schedule. *Gap:* the blend schedule is hand-set rather than learned, and
-  the side branch is a small network trained from scratch rather than reusing the pretrained model.
+The data-size regime matters because the method is motivated by condition-specific datasets that are much smaller than the text-to-image pretraining set. Evaluation should therefore include small datasets below `50k` examples and larger datasets above `1m`, along with practical training-resource measurements.
 
-- **LoRA (Hu et al., 2021).** Learn low-rank offsets to the weights, exploiting that adaptation lives in
-  a low intrinsic-dimensional subspace; prevents forgetting by limiting rank. *Gap:* a low-rank weight
-  delta is a strong restriction; a complex spatial control may need a deeper, more customized branch.
+Useful metrics include FID for distributional quality, CLIP text-image score, aesthetic score, condition reconstruction metrics where available, human preference studies, and ablations that separate branch capacity, connector initialization, prompt dropping, and condition strength.
 
-- **Image-to-image translation (pix2pix, Isola et al., 2017; CycleGAN; Palette; PITI).** Conditional
-  GANs/diffusion that learn a condition→image mapping. *Gap:* trained from scratch (or with a generic
-  pretraining), so they do not reuse a billions-of-images text-to-image prior, and need more data.
+## Code Framework
 
-- **Spatial control of diffusion (MakeAScene; SpaText; GLIGEN, Li et al., 2023).** Encode masks into
-  tokens or learn new parameters in the attention layers for grounded/spatial generation. *Gap:*
-  typically condition-type-specific and modify the base model's internals rather than wrapping a frozen
-  model with a protective, reusable control branch.
-
-## Evaluation settings
-
-The benchmarks, conditions, metrics, and protocol that form the natural yardstick:
-
-- **Base model.** A large pretrained latent text-to-image diffusion model (Stable Diffusion v1.5 /
-  v2.1, same U-Net), held fixed.
-
-- **Conditioning types.** A wide set of spatial conditions, each from an off-the-shelf detector:
-  Canny edges, Hough / M-LSD lines, HED soft edges, user scribbles, human pose keypoints, ADE20k
-  semantic segmentation, depth maps, surface normals, and cartoon line drawings — tested with a single
-  condition, with multiple composed conditions, and with or without text prompts.
-
-- **Dataset-size regimes.** Robustness is judged across small (`<50k`) to large (`>1m`) condition
-  datasets, and feasibility on modest hardware (a single consumer GPU).
-
-- **Metrics.** Fréchet Inception Distance (FID) over generated `512×512` image sets to measure
-  distribution distance; CLIP text-image score and CLIP aesthetic score; human user studies; and
-  ablations over the control-branch design.
-
-## Code framework
-
-The available substrate is a frozen pretrained latent-diffusion U-Net (encoder, middle, skip-connected
-decoder) with its native noise-prediction training loss, plus the standard finetuning toolbox. What is
-missing is the *architecture* of the added control branch: how to build a trainable branch for the new
-conditioning input, and how to connect it back into the frozen model without degrading the pretrained
-features.
+The available substrate is a pretrained latent-diffusion U-Net and its native noise-prediction objective. The open implementation problem is how to construct a trainable condition path and how to connect that path into the U-Net without destabilizing the pretrained features.
 
 ```python
 import torch
 import torch.nn as nn
 
 class PretrainedDiffusionUNet(nn.Module):
-    # frozen text-to-image latent diffusion U-Net: encoder, middle, skip-connected decoder.
-    # predicts the noise eps added to a noisy latent z_t given (t, text c_t).
+    # Text-to-image latent diffusion U-Net: input blocks, middle block, output blocks.
+    # It predicts the noise epsilon added to z_t from timestep t and text condition c_t.
     def __init__(self): ...
     def forward(self, z_t, t, c_t): ...
 
-base = PretrainedDiffusionUNet()
-for p in base.parameters():
-    p.requires_grad = False          # locked: preserve the prior, no gradient/memory in this branch
-
 class ConditionEncoder(nn.Module):
-    # map a 512x512 conditioning image (edge/depth/pose/...) to a latent-resolution feature
+    # Map a pixel-space condition image into features compatible with the latent U-Net.
     def __init__(self):
         super().__init__()
-        self.net = None              # small conv stack, 512x512 -> 64x64
+        self.net = None
     def forward(self, c_image):
         pass
 
-class ControlBranch(nn.Module):
-    # TODO: a trainable branch that reads the conditioning input and feeds back into the frozen base
-    #       without degrading its pretrained features.
-    def __init__(self, base_encoder, condition_encoder):
+class SpatialControlBranch(nn.Module):
+    # TODO: decide which pretrained weights, if any, are reused; decide which base weights update;
+    # TODO: decide where condition features enter the U-Net and how the connector is initialized.
+    def __init__(self, base_unet, condition_encoder):
         super().__init__()
         self.cond_enc = condition_encoder
-        # TODO
     def forward(self, z_t, t, c_t, c_image):
         pass
 
 def diffusion_loss(eps, eps_pred):
-    return ((eps - eps_pred) ** 2).mean()   # native noise-prediction objective, reused unchanged
+    return ((eps - eps_pred) ** 2).mean()
 
-def train_step(z0, t, c_t, c_image, opt):
-    # add noise to z0 -> z_t; predict eps with base + control branch; L2 on the noise
-    pass
+def train_step(z0, t, c_t, c_image, model, opt, alpha_bar):
+    eps = torch.randn_like(z0)
+    z_t = alpha_bar[t].sqrt() * z0 + (1 - alpha_bar[t]).sqrt() * eps
+    eps_pred = model(z_t, t, c_t, c_image)
+    loss = diffusion_loss(eps, eps_pred)
+    opt.zero_grad()
+    loss.backward()
+    opt.step()
+    return loss
 ```
 
-This harness has a frozen diffusion model and its native loss, but the control branch — how to build it
-and how to wire it back into the frozen base without degrading the pretrained features — is the open
-problem.

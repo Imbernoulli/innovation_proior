@@ -1,117 +1,107 @@
 # Context
 
-## Research question
+## Research Question
 
-Masked language modeling has made Transformer pretraining in NLP both scalable and simple: randomly mask a fraction of the input tokens, ask the model to reconstruct them from context, and the resulting representations transfer everywhere. The crux of that recipe is a *tokenizer* — WordPiece — that first splits text into semantically meaningful pieces, so that "predict the masked token" is a well-posed classification problem over a vocabulary whose entries already carry meaning.
+Masked language modeling made Transformer pretraining simple: hide some input tokens, predict their identities from bidirectional context, and transfer the resulting encoder. The hidden assumption is that language already has a tokenizer. WordPiece turns text into a finite set of units, so "predict the missing token" is a classification problem over meaningful labels rather than a regression problem over raw characters.
 
-The question is whether the same paradigm can train Vision Transformers. The analog is masked image modeling (MIM): mask a fraction of the image patches and reconstruct them. But there is no obvious visual vocabulary. The crux of MIM is therefore a *visual tokenizer* that turns a (masked) patch into a supervisory target. A solution has to settle two coupled difficulties:
+Vision Transformers expose an analogous sequence structure. A 224x224 image with 16x16 patches becomes a sequence of 196 patch tokens plus a class token. The natural question is whether the same local-token pretraining idea can work for images: mask some patches, infer what belongs there, and use the learned encoder for recognition and dense prediction.
 
-1. **Where do semantic visual targets come from?** Lingual tokens inherit semantics for free from word-frequency statistics. Image patches do not — pixels are continuous and a patch is semantically ambiguous. Empirically, semantic structure in images only emerges by *bootstrapping*: training a network to make two distorted views of the same image agree. So a semantically meaningful visual tokenizer seems to require its own representation-learning run.
+The difficulty is not masking. The difficulty is the target. Raw pixels are continuous, local, and overloaded with high-frequency detail. A 16x16 patch may contain texture, object part, background, or an ambiguous mixture. A BERT-like image objective therefore needs a visual tokenizer: something that maps each patch to a target distribution with enough abstraction to teach semantics, while still being tied to local image structure.
 
-2. **Must the tokenizer be a separate, pre-built stage?** In the one prior MIM approach that works, the tokenizer is trained first and then frozen, so MIM becomes a multi-stage pipeline with an extra dataset and a fixed off-the-shelf tokenizer.
-
-A good method would give a BERT-style local-token objective for ViTs, with a tokenizer that is semantically meaningful, jointly learnable in one stage, and adaptable to whatever data is at hand.
+The hard design question is whether that tokenizer must be a separate pretrained object. An offline tokenizer can make masked image modeling possible, but it adds a preprocessing stage, fixes the tokenizer architecture and data distribution, and may encode reconstruction detail rather than the semantic regularities desired from a representation learner. The desired method would keep the BERT-like local objective while making the visual targets semantic, learnable in the same training run, and adaptable to the current image domain.
 
 ## Background
 
-**Masked language modeling.** BERT (Devlin et al. 2019) masks ~15% of WordPiece tokens and predicts them from the bidirectional context with a cross-entropy classification loss over the vocabulary. This scales to large models and corpora and became the default for language. The pretext task is well-posed precisely because the tokenizer produces a finite vocabulary of meaningful units.
+**Masked language modeling.** BERT samples token positions after WordPiece tokenization, replaces selected positions with a masking/noising policy, and predicts the original vocabulary ids. The model only pays the masked-token loss on selected positions. This is a bidirectional pretraining objective because the Transformer can use both left and right context to infer each missing token.
 
-**Bootstrapping visual semantics from views.** A family of self-supervised methods learns image representations by enforcing invariance across two augmented views of the same image while preventing collapse. Contrastive variants (instance discrimination, MoCo, SimCLR) use negatives; BYOL and SimSiam use an asymmetric predictor and a momentum/stop-gradient target; SwAV and DINO enforce that the per-image output distribution over a set of prototypes be simultaneously sharp (confident) and uniform across the batch. The recurring empirical fact is that *high-level* semantics in images do not come from raw pixels — they emerge progressively through this view-agreement bootstrapping.
+**Vision Transformer patch tokens.** A ViT embeds non-overlapping image patches, prepends a `[CLS]` token, adds positional embeddings, and processes the sequence with self-attention. The `[CLS]` representation is typically used for image-level classification, while the patch tokens preserve local spatial information that can be useful for dense tasks.
 
-**Masked prediction in images.** Predicting masked image content has been attempted by directly regressing raw pixels (inpainting, masked-patch prediction). This is observed to waste capacity on high-frequency detail and to yield weak semantic representations under frozen-feature evaluation. The reframing that helped was to predict *discrete tokens* instead of pixels, turning reconstruction into classification and removing the pressure to model every high-frequency detail.
+**Masked image modeling.** A visual masked-token objective replaces selected patch embeddings with a learned `[MASK]` embedding and asks the encoder output at those positions to recover a target. If the target is raw pixels, the task can reward low-level reconstruction. If the target is a discrete visual token, the task becomes a classification problem closer to MLM, but then the quality of the visual tokenizer becomes load-bearing.
 
-**Knowledge distillation.** A student matches a teacher's softened output distribution by minimizing the cross-entropy between the two softmax distributions. It is the generic template into which both the discrete-token MIM loss and the view-agreement loss can be cast.
+**Self-distillation in vision.** Methods such as BYOL and DINO train a student view to match a teacher view without labels. In DINO, teacher and student share architecture; the teacher is an exponential moving average of the student; the loss is cross-entropy between teacher and student softmax outputs from the `[CLS]` token. Collapse is controlled by centering the teacher logits with a moving average and sharpening them with a low teacher temperature. Multi-crop training sends global and local crops to the student, but only global crops to the teacher.
 
-**Empirical observations about existing tokenizers (diagnostic).** When a frozen discrete VAE is used as the MIM tokenizer and one evaluates the *quality of its patch tokens* directly, the tokens carry mostly low-level texture and little high-level semantics (a few percent k-NN accuracy when its tokens are treated as features). In contrast, a network trained by view-agreement bootstrapping produces patch features that are far more semantic. And a pure masked-patch objective with no view-agreement component yields representations that are nearly useless under frozen-feature evaluation — semantics barely emerge from masking alone. These observations frame the problem: the *target* in MIM must itself be semantically meaningful, and that meaning has to come from somewhere other than the raw patches.
+**Knowledge distillation.** A student can be trained against a teacher probability distribution rather than a hard label. The teacher distribution is turned into a target with softmax, often with a temperature. Cross-entropy from teacher distribution to student distribution transfers more information than a single hard class id when the target is ambiguous.
 
 ## Baselines
 
-**BEiT (Bao et al. 2021).** MIM with an offline tokenizer. A discrete VAE from DALL-E is pretrained on a large external dataset, then frozen; it maps each of the 196 patches of a 224×224 image (16×16 patches, 14×14 grid) to one of K = 8192 discrete visual-token ids. BEiT applies blockwise masking (~40% of patches, contiguous blocks with a minimum block size and random aspect ratio), feeds the corrupted image to a ViT, and predicts the masked patches' visual-token ids with a softmax cross-entropy:
-`max Σ_x E_M [ Σ_{i∈M} log p(z_i | x^M) ]`,
-equivalently a one-hot distillation `-Σ_i m_i · P_φ(x_i)^T log P_θ(x̂_i)`, with φ the frozen dVAE and P_φ(x_i) a one-hot over K classes. Gaps: the dVAE tokens capture only low-level detail; the tokenizer is offline, with a fixed architecture and an extra dataset, so it is not adaptable to new domains; and one-hot discretization is a poor fit for semantically ambiguous patches.
+**Pixel or low-level reconstruction.** Early masked-patch objectives can regress pixels or simple patch statistics. They are easy to define, but they put pressure on the model to reproduce short-range texture and color instead of forming semantic categories.
 
-**DINO (Caron et al. 2021).** Self-distillation with no labels, operating on the *global* image. Two augmented views u, v of an image pass through a student and a teacher that share architecture: a backbone f (ViT) plus a projection head h, emitting a K-dimensional distribution from the `[CLS]` token. The loss is the cross-entropy between teacher and student distributions, symmetrized over the two views:
-`L_[CLS] = -P_θ'^[CLS](v)^T log P_θ^[CLS](u)`.
-The teacher parameters θ' are an exponential moving average of the student θ (momentum λ on a cosine schedule from 0.996 to 1). Collapse is prevented by two opposing operations applied to the teacher output: *centering* — subtract an EMA of the teacher's batch-mean output, `c ← m·c + (1−m)·mean(teacher out)` — which stops any single dimension from dominating but pushes toward uniform; and *sharpening* — a low teacher temperature τ_t — which pushes the opposite way. Student temperature τ_s = 0.1; teacher temperature warmed 0.04 → 0.07. The head is a 3-layer MLP (hidden 2048, GELU) with an ℓ₂-normalized bottleneck (dim 256) and a weight-normalized final layer to K = 65536, batch-norm-free. Gap as a tokenizer: DINO only models the global `[CLS]` token; it never produces per-patch targets, so it does not give a BERT-style local objective.
+**BEiT-style masked image modeling.** BEiT makes image masking closer to BERT by using an offline discrete VAE tokenizer. The original image is tokenized into a 14x14 grid of visual-token ids from an 8192-entry vocabulary. The corrupted patch sequence goes through a ViT, and the model predicts the original visual-token id at masked positions. BEiT uses blockwise masking, roughly 40 percent of patches, so the model cannot rely only on immediate neighboring pixels.
 
-**Hinton-style knowledge distillation (2015).** Train a student to reproduce a teacher's class-probability distribution by minimizing cross-entropy between softened softmaxes. The classic setup assumes a fixed, externally supplied teacher.
+**DINO-style global self-distillation.** DINO uses two global crops and optional local crops. The student sees all crops; the EMA teacher sees global crops. For each teacher global crop, the student is trained to match its centered and sharpened `[CLS]` distribution on the other crops. This gives strong global image representations, but by itself it does not define a target for each masked patch.
 
-**Multi-crop augmentation (SwAV/DINO).** Sample 2 global crops (224²) and several local crops (96²); local crops go only to the student. Consistently improves view-agreement methods. It is a known training ingredient that any new global-plus-local method would want to inherit.
+**Multi-crop augmentation.** SwAV and DINO show that using multiple views of different resolutions can improve self-supervised learning. The usual pattern is two high-resolution global crops and several lower-resolution local crops. Local crops are useful for view agreement, but a local crop has fewer patch tokens and less surrounding context, so applying a patch reconstruction objective to every local crop is not automatically well-posed.
 
-## Evaluation settings
+## Evaluation Settings
 
-- **Pretraining data:** ImageNet-1K (1.28M images, 1000 classes) and the larger ImageNet-22K.
-- **Frozen-feature evaluation:** k-nearest-neighbor classification and linear probing on the frozen backbone features (sweeping k and the linear learning rate respectively), following the DINO protocol.
-- **Fine-tuning:** end-to-end fine-tuning on ImageNet-1K (BEiT recipe: AdamW, layer-wise learning-rate decay), reporting top-1 accuracy.
-- **Semi-supervised:** unsupervised-pretrain then supervised-fine-tune with 1% and 10% of labels.
-- **Unsupervised classification:** clustering metrics — accuracy (ACC), adjusted Rand index (ARI), normalized mutual information (NMI), Fowlkes–Mallows index (FMI).
-- **Dense downstream:** COCO object detection and instance segmentation with Cascade Mask R-CNN (AP^b, AP^m); ADE20K semantic segmentation with a linear head and with UPerNet (mIoU). Multi-scale training for detection.
-- **Transfer:** fine-tune on CIFAR-10/100, iNaturalist 2018/2019, Flowers, Cars.
-- **Architectures:** ViT-S/16, ViT-B/16, ViT-L/16, Swin-T; 224 input, patch size 16 → 196 patch tokens.
+- **Pretraining data:** ImageNet-1K and, for larger-scale runs, ImageNet-22K.
+- **Backbones:** ViT-S/16, ViT-B/16, ViT-L/16, and Swin variants; 224x224 inputs with 16x16 ViT patches give 196 patch tokens.
+- **Frozen-feature evaluation:** k-nearest-neighbor classification and linear probing on frozen representations, following the DINO protocol.
+- **Fine-tuning:** end-to-end ImageNet fine-tuning with ViT/BEiT-style optimizer settings, including layer-wise learning-rate decay where applicable.
+- **Label-efficient and unsupervised evaluation:** fine-tuning with 1 percent and 10 percent of ImageNet labels, plus clustering metrics such as ACC, ARI, NMI, and FMI.
+- **Dense transfer:** COCO object detection and instance segmentation with Cascade Mask R-CNN, and ADE20K semantic segmentation with a linear head or UPerNet.
+- **General transfer and robustness:** transfer to smaller classification datasets and stress tests involving occlusion, background change, patch dropping, or corruptions.
 
-## Code framework
+## Code Framework
 
-The primitives that already exist: a ViT/Swin backbone that emits a `[CLS]` token and per-patch tokens, an MLP projection head, a momentum (EMA) teacher built by copying-then-EMA-updating the student, multi-crop data augmentation, AdamW with a cosine learning-rate/weight-decay schedule, and the centering+sharpening cross-entropy used for view-agreement on the `[CLS]` token. The slots below are what a local-token masked objective would have to fill in.
+The available pieces are a ViT/Swin backbone that emits `[CLS]` and patch tokens, a DINO-style projection head, a student/teacher training loop with EMA teacher updates, multi-crop augmentation, blockwise patch masking, AdamW with cosine schedules, and a centered/sharpened cross-entropy used for self-distillation.
 
 ```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# --- backbone: emits [CLS] token and patch tokens; supports masking ---
-class Backbone(nn.Module):                  # ViT / Swin (exists)
+
+class Backbone(nn.Module):
     def __init__(self, embed_dim, ...):
         super().__init__()
-        self.mask_token = nn.Parameter(torch.zeros(1, embed_dim))  # learnable [MASK]
-        # ... patch embed, pos embed, cls token, transformer blocks ...
+        self.mask_token = nn.Parameter(torch.zeros(1, embed_dim))
+        # patch embedding, position embedding, class token, transformer blocks
 
-    def apply_mask(self, x, mask):
-        # TODO: replace embeddings at masked positions with mask_token
+    def apply_mask(self, patch_embeddings, mask):
+        # replace selected patch embeddings with mask_token
         pass
 
     def forward(self, x, mask=None, return_all_tokens=False):
-        # TODO: tokenize -> (optionally) apply_mask -> transformer
-        #       return cls token and (optionally) all patch tokens
+        # return either the class token or the full [CLS] + patch-token sequence
         pass
 
-# --- projection head: MLP + L2-bottleneck + weight-normed last layer ---
-class ProjectionHead(nn.Module):            # DINO-style head (exists)
+
+class ProjectionHead(nn.Module):
     def __init__(self, in_dim, out_dim, nlayers=3, hidden_dim=2048, bottleneck_dim=256):
         super().__init__()
-        # ... MLP -> L2 normalize -> weight_norm Linear to out_dim ...
+        # MLP -> l2-normalized bottleneck -> weight-normalized final layer
 
-    def forward(self, x):
-        # TODO: produce the projection output(s) the local-token objective needs
+    def forward(self, tokens):
+        # map class and/or patch tokens to logits over a target vocabulary
         pass
 
-# --- masking: how to choose which patches to hide ---
-def sample_mask(num_patches):
-    # TODO: choose masked positions (the masking strategy is a design choice)
+
+def sample_mask(num_patches, ratio):
+    # choose which patch positions are hidden
     pass
 
-# --- the self-supervised objective ---
-class Loss(nn.Module):
-    def __init__(self, out_dim, ...):
+
+class DistillationLoss(nn.Module):
+    def __init__(self, out_dim, student_temp=0.1, center_momentum=0.9):
         super().__init__()
-        self.register_buffer("center", torch.zeros(1, out_dim))    # [CLS] center
-        # TODO: any additional state the patch-level target needs
+        self.student_temp = student_temp
+        self.center_momentum = center_momentum
+        self.register_buffer("center", torch.zeros(1, out_dim))
 
-    def H(self, s, t, center, tau_s, tau_t):
-        # known: centering+sharpening cross-entropy for the teacher target
-        t = t.detach()
-        s = F.softmax(s / tau_s, dim=-1)
-        t = F.softmax((t - center) / tau_t, dim=-1)
-        return -(t * torch.log(s)).sum(dim=-1)
+    def cross_entropy(self, student_logits, teacher_logits, center, teacher_temp):
+        teacher = F.softmax((teacher_logits.detach() - center) / teacher_temp, dim=-1)
+        student = F.log_softmax(student_logits / self.student_temp, dim=-1)
+        return -(teacher * student).sum(dim=-1)
 
-    def forward(self, student_out, teacher_out, mask, epoch):
-        # known: global view-agreement term on the [CLS] token
-        # TODO: the local masked-token term -- what is the teacher target
-        #       for a masked patch, and how is it produced?
+    def forward(self, student_outputs, teacher_outputs, masks, epoch):
+        # decide which tokens are matched, which view supplies the target,
+        # and whether local-token and global-token losses share machinery
         pass
 
-# --- training step ---
-def train_step(images, masks, student, teacher, head_s, head_t, loss_fn, opt, m):
-    # TODO: feed masked view(s) to student, clean view(s) to teacher,
-    #       compute loss, backprop into student, EMA-update teacher
+
+def train_step(images, masks, student, teacher, loss_fn, optimizer, ema_momentum):
+    # run the selected student and teacher views, compute the self-supervised
+    # loss, update the student by gradient descent, then update the teacher by EMA
     pass
 ```

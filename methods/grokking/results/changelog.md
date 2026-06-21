@@ -1,0 +1,22 @@
+# Changelog
+
+- `methods/grokking/results/context.md:1` rewrote the context into exactly five pre-method `##` sections with no target-method name.
+- `methods/grokking/results/context.md:13` reframed the experimental requirement as post-interpolation measurement without leaking the discovered phenomenon.
+- `methods/grokking/results/context.md:25` kept the scaffold pure and changed the scoring placeholder to right-hand-side loss/accuracy.
+- `methods/grokking/results/reasoning.md:7` corrected the objective from "answer token only" to right-hand-side scoring, including the official shifted-sequence EOS detail.
+- `methods/grokking/results/reasoning.md:13` removed paper-as-artifact wording while preserving the distinction from double descent.
+- `methods/grokking/results/reasoning.md:19` made the primitive-root equivalence explicit for both multiplication/addition and division/subtraction.
+- `methods/grokking/results/reasoning.md:29` removed later mechanistic-analysis hindsight from the original in-frame reconstruction.
+- `methods/grokking/results/answer.md:5` enumerated every operation case from the primary appendix, including modular division's nonzero denominator and all three `S_5` variants.
+- `methods/grokking/results/answer.md:27` corrected the training recipe, budgets, warmup, betas, weight decay, and the special Adam/no-decay `10^6` modular-division run.
+- `methods/grokking/results/answer.md:49` replaced the approximate PyTorch sketch with the canonical OpenAI implementation contract: EOS-wrapped rows, shifted inputs/targets, RHS loss, division rendering, transformer details, and custom AdamW signs.
+- `methods/grokking/notes/source_matrix.md:21` updated the self-account row to reflect the 2026-06-18 official-code re-check.
+- `methods/grokking/notes/source_matrix.md:22` added `openai/grok` commit `3d64b1d8c1d595dd8ebdb7771998823f1b14c7b3` as the canonical implementation authority.
+- `methods/grokking/notes/source_matrix.md:23` demoted `neel-alex/grokking` to secondary reproduction evidence because it diverges from the official code in implementation details.
+- `methods/grokking/notes/discovery_synthesis.md:25` corrected the objective description to right-hand-side scoring and separated paper settings from the official code objective.
+- `methods/grokking/notes/discovery_synthesis.md:63` added code-faithfulness notes for the official repository, data iterator, division convention, `S_5` convention, transformer architecture, and custom AdamW signs.
+- `methods/grokking/refs/self_accounts/search_log.md:3` marked the self-account/code search log as updated on 2026-06-18.
+- `methods/grokking/refs/self_accounts/search_log.md:28` replaced the stale "no official implementation" conclusion with the fetched OpenAI repository and commit.
+- `methods/grokking/code/openai-grok-metadata.json:1` recorded the official repository URL, commit, fetch date, and role.
+- `methods/grokking/results/.codex_review.json:1` replaced stale review metadata with a truthful current manual-audit record and independent-review-not-run status.
+- `methods/grokking/notes/strict_check_output.txt:1` recorded the passing strict checker, leakage scan, JSON validation, and official-code parse check.

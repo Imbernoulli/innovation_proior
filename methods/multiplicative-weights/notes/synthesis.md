@@ -1,8 +1,10 @@
-# Synthesis — Multiplicative Weights Update
+# Legacy Synthesis — Multiplicative Weights Update
+
+This orientation note is superseded by `notes/source_matrix.md` and `notes/discovery_synthesis.md` for strict evidence. The mandatory ancestor/background grounding is the full-read primary source plus the full-read Freund-Schapire source recorded there.
 
 ## Source grounding
 - Primary survey: Arora, Hazan, Kale, "The Multiplicative Weights Update Method: A Meta-Algorithm and Applications," Theory of Computing 8(1):121-164, 2012. PDF read pages 1-28 (refs/mw-survey.pdf). This is the META survey; in-frame we re-derive the method, not cite this paper.
-- Ancestors (cite by author/year, prior art): Littlestone & Warmuth, "The Weighted Majority Algorithm," Inf. Comput. 108(2):212-261, 1994 — deterministic WM, factor-2 mistake bound. Freund & Schapire 1997, JCSS 55:119-139 — Hedge (exp factor) + AdaBoost, removes factor 2 via randomization. Plotkin, Shmoys, Tardos 1995 — packing/covering LP framework, width ρ. von Neumann 1928 minimax. Garg-Könemann (width reduction). Hannan 1957 / Kalai-Vempala (FTPL). Winnow (Littlestone 1988).
+- Strict ancestor evidence: Freund & Schapire 1997, JCSS 55:119-139 — Hedge (exp factor) + AdaBoost, removes factor 2 via randomization. Deterministic weighted-majority background is retained only as summarized in the full-read primary source. Plotkin, Shmoys, Tardos 1995 — packing/covering LP framework, width ρ. von Neumann 1928 minimax. Garg-Könemann (width reduction). Hannan 1957 / Kalai-Vempala (FTPL). Winnow (Littlestone 1988).
 - Code: github.com/j2kun/mwua — generic MWUA (gains form w_i *= 1+η·reward_i) and LP solver (linear-programming/linear.py) reducing LP to experts game with oracle + binary search. Jeremy Kun blog (jeremykun.com 2017/02/27) for LP-as-game intuition.
 
 ## The pain point / research question
@@ -37,7 +39,7 @@ With |m_i|≤1, Σ|m_i|≤T, optimize η = sqrt(ln n / T): regret ≤ 2 sqrt(T l
 Update w_i^(t+1) = w_i^(t) exp(-η m_i^(t)). Uses exp(-ηx) ≤ 1-ηx+η²x² for |ηx|≤1. Bound:
   Σ_t m^(t)·p^(t) ≤ Σ_t m_i^(t) + η Σ_t (m^(t))²·p^(t) + ln(n)/η. The η-term depends on algorithm's own distribution, not best decision.
 
-## Weighted Majority deterministic ancestor (Theorem 1.1)
+## Weighted Majority deterministic background (Theorem 1.1)
 Init w_i=1; on each mistake by expert i, w_i ← (1-η)w_i; predict weighted majority. Bound M^(T) ≤ 2(1+η) m_i^(T) + 2 ln(n)/η — factor 2 unavoidable for any DETERMINISTIC alg. Proof: each algorithm mistake means ≥ half the weight was on wrong side, so Φ drops by ≥ (1-η/2): Φ^(t+1) ≤ Φ^(t)(1/2 + (1-η)/2) = Φ^(t)(1-η/2). Induction Φ^(T+1) ≤ n(1-η/2)^{M}; and Φ ≥ w_i = (1-η)^{m_i}; combine with -ln(1-η) ≤ η+η². The factor 2 is removed by randomizing (predict up w.p. proportional to weight) — that's exactly MW with sampling.
 
 ## Gains version (Theorem 2.5)
@@ -67,6 +69,6 @@ Decisions = training samples S, |S|=N. Round t: present distribution p^(t) on sa
 - Cost = "how well constraint satisfied" (counterintuitive): we DECREASE weight on penalty; a well-satisfied constraint should get low weight so the algorithm focuses adversarial effort on the violated/hard constraints. The oracle then must satisfy the weighted-average constraint, which forces progress on the currently-hardest constraints.
 
 ## In-frame discipline
-- Never name "Arora-Hazan-Kale" or "the survey/this paper." DO cite Littlestone-Warmuth 1994, Freund-Schapire 1997, Plotkin-Shmoys-Tardos 1995, von Neumann 1928, Hannan 1957 as prior art ancestors.
+- Never name "Arora-Hazan-Kale" or "the survey/this paper." Cite Freund-Schapire 1997, Plotkin-Shmoys-Tardos 1995, von Neumann 1928, and Hannan 1957 only where they are grounded in retrieved evidence for the strict artifact.
 - The method name "Multiplicative Weights Update" may appear in answer.md as the thing being built.
 - Code grounded in j2kun/mwua: gains form w_i *= (1+η reward_i), draw ∝ weights, LP solver via oracle+binary search.

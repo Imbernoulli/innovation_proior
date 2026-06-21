@@ -16,7 +16,7 @@ Use **attention** as the set primitive: attention is permutation-*invariant* in 
 - **SAB (Set Attention Block)** = `MAB(X, X)`: self-attention within the set; encodes pairwise interactions, stack for higher-order. Cost `O(n²)`. Permutation equivariant.
 - **ISAB (Induced Set Attention Block)** — `m` trainable **inducing points** `I ∈ R^{m×d}` give a low-rank bottleneck:
   `H = MAB(I, X) ∈ R^{m×d}`  (inducing points summarize the set, invariant in `X`),  `ISAB_m(X) = MAB(X, H) ∈ R^{n×d}`  (set reads back, equivariant in `X`). Cost `O(nm)`.
-- **PMA (Pooling by Multihead Attention)** — `k` trainable **seed** vectors `S ∈ R^{k×d}` attend over the encoded set: `PMA_k(Z) = MAB(S, rFF(Z))`, a learnable content-dependent pooling producing `k` vectors. Use `k=1` usually; for `k` correlated outputs (e.g. clustering) follow with `SAB(PMA_k(Z))` to model explaining-away among them.
+- **PMA (Pooling by Multihead Attention)** — `k` trainable **seed** vectors `S ∈ R^{k×d}` attend over the encoded set: `PMA_k(Z) = MAB(S, rFF(Z))`, a learnable content-dependent pooling producing `k` vectors. The canonical implementation omits the leading `rFF(Z)` because the preceding block already ends in a row-wise feed-forward layer. Use `k=1` usually; for `k` correlated outputs (e.g. clustering) follow with `SAB(PMA_k(Z))` to model explaining-away among them.
 
 ## Architecture
 
@@ -26,9 +26,9 @@ Use **attention** as the set primitive: attention is permutation-*invariant* in 
 ## Properties
 
 - **Permutation invariance:** equivariant encoder composed with invariant PMA decoder.
-- **Universal approximation of permutation-invariant functions.** Mean is softmax attention with a zero query (`softmax(0)` is uniform); the decoder can express power-means `((1/n)Σ z_i^p)^{1/p}` (front/back `rFF` realize `z↦z^p`, `z↦z^{1/p}`, `h=d` one-dim heads each compute a mean); PMA can express sum-pooling (seed `s=0`, `ω = 1+f` with `f(0)=0` ⇒ all weights `1`). Setting `W^O = 0` in every SAB/ISAB collapses the encoder to instance-wise `rFF(X)`; then the decoder realizes `rFF(sum(rFF(·)))`, which is universal (Zaheer et al. 2017). Attention is not needed for universality but is what makes interaction-heavy tasks learnable in practice.
+- **Universal approximation of permutation-invariant functions.** Mean is softmax attention with a zero query (`softmax(0)` is uniform). Power means are obtained by using a zero seed, front/back `rFF` maps `z -> z^p` and `u -> u^{1/p}`, and one-dimensional heads whose logits are forced uniform by a zero query projection and zero bias. Exact sum pooling uses the broader attention activation family, not default softmax: choose `ω(t)=1+f(t)` with `f(0)=0`, so a zero seed gives every value weight `1` and returns `Σ_i z_i`. Suppressing the attention contribution in every SAB/ISAB collapses the encoder to an instance-wise row-wise map; then the decoder realizes `rFF(sum(rFF(·)))`, which is universal (Zaheer et al. 2017). The code below is the canonical softmax implementation used in practice; the exact sum construction is the expressivity argument for the wider block family.
 
-**Defaults (canonical implementation):** hidden dim 64–256, `num_heads = 4` (8 for the counting task), `num_inds = 16/32/64`, `num_seeds = k` (1 for classification/max; 4–6 for clustering), Adam lr `10⁻³`–`10⁻⁴` with decay. rFF = a single `Linear`+ReLU residual; the leading `rFF(Z)` inside the decoder's PMA is often dropped since the previous block already ends in a feed-forward.
+**Defaults (canonical implementation):** hidden dim 64–256, `num_heads = 4` (8 for the counting task), `num_inds = 16/32/64`, `num_seeds = k` (1 for classification/max; 4–6 for clustering), Adam lr `10⁻³`–`10⁻⁴` with decay. rFF = a single `Linear`+ReLU residual; the leading `rFF(Z)` inside PMA is dropped. The official module accepts arbitrary set length per tensor call but has no padding-mask argument for mixed-length padded batches.
 
 ## Code
 

@@ -1,68 +1,26 @@
 ## Research question
 
-Decoder-only LLM inference is bottlenecked, in the long-context large-batch regime, by the
-key/value cache rather than the weights: every past token leaves a key vector and a value vector in
-every layer, the cache grows linearly in batch times sequence length, and each decode step streams
-the whole thing out of HBM while the compute cores idle. The one lever that shrinks bytes-per-element
-without dropping tokens or retraining is **quantization** of the running K/V tensors. The single
-thing being designed here is the **quantization policy** — the bit allocation, the grouping axis, the
-asymmetric ranges and zero-points, the full-precision residual window, and the optional prefill-time
-observation — that preserves benchmark output quality while reducing the effective KV footprint.
-Everything else (the model, the decode replay loop, the workloads, the scoring) is fixed.
+Decoder-only LLM inference in the long-context large-batch regime is bottlenecked by the key/value cache. Every past token leaves a key vector and a value vector in every layer, the cache grows linearly in batch size and sequence length, and each decode step streams the whole cache from HBM while the compute cores idle. Quantization of the running K/V tensors is the one lever that reduces bytes-per-element without dropping tokens or retraining. The design object is the **quantization policy** — bit width, grouping axis, asymmetric ranges and zero-points, residual window, and any prefill-time observation — that preserves benchmark output quality while shrinking the effective KV footprint. Everything else (the model, the decode replay loop, the workloads, the scoring) is fixed.
 
-## Prior art before the first rung
+## Prior art / Background / Baselines
 
-The cache is a *streaming* object: keys and values arrive one token at a time during decode and get
-appended to a tensor whose length keeps growing. That single fact forecloses most of the
-quantization literature and sets up the family the first rung reacts to.
+Most quantization methods assume a static tensor; the KV cache is a streaming object that grows one token at a time during decode. That constraint rules out much of the PTQ literature and defines the baseline family.
 
-- **Optimization-based PTQ (GPTQ, Frantar et al. 2022; OBQ/OBC, Frantar & Alistarh 2022).** Solve a
-  per-layer reconstruction problem with second-order error feedback — accurate, but they re-solve an
-  optimization over a whole weight matrix. Gap: the cache changes every decode step, so re-fitting
-  anything per step is hopeless; only a cheap, local primitive survives.
-- **Group-wise round-to-nearest (FlexGen, Sheng et al. 2023).** The streaming-feasible primitive:
-  per group take min/max, set zero-point `z = min`, scale `s = (max − min)/(2^B − 1)`, round
-  `(x − z)/s` into `[0, 2^B − 1]`, dequantize `q·s + z`. No calibration, runs on a single token.
-  FlexGen applies it uniformly, per-token, 4-bit. Gap: uniform low-bit RTN is fine at 4-bit and falls
-  off a cliff at 2-bit, and it spends bits flat — it has nothing to say about *where* (which axis,
-  which layer) the precision should go.
-- **Outlier-aware quantization (LLM.int8(), Dettmers et al. 2022; SmoothQuant, Xiao et al. 2023).**
-  Transformer activations carry persistent large-magnitude channels; the key cache `X·W_K` inherits
-  them, the value cache does not. Gap: the diagnosis is about *which axis* confines outlier error,
-  not yet a streaming cache policy.
+- **Optimization-based PTQ (GPTQ, OBQ).** Solves a per-layer reconstruction problem with second-order error feedback. Gap: re-solving an optimization over the whole cache every decode step is too expensive; only cheap, local primitives are viable.
+- **Group-wise round-to-nearest (FlexGen).** Per group takes min/max, sets zero-point and scale, and rounds each element into `[0, 2^B − 1]`, running on a single token without calibration. Gap: uniform low-bit RTN is adequate at 4-bit but collapses at 2-bit, and it spends the same number of bits everywhere regardless of the tensor region.
+- **Outlier-aware quantization (LLM.int8(), SmoothQuant).** Notes that transformer activations carry persistent large-magnitude channels that propagate into the key cache. Gap: the diagnosis points to sensitive axes, but it does not yet yield a streaming cache quantization policy.
 
-The four baselines below are quantization policies on a *common tensor-level interface*; the
-contribution is always the policy, never a backend or a paper repository.
+These baselines are quantization policies on a common tensor-level interface; the contribution is the policy, not a backend or repository.
 
-## The fixed substrate
+## Fixed substrate / Code framework
 
-A deterministic greedy-decode replay harness over Hugging Face `Transformers` is frozen and must not
-be touched. It loads `Qwen/Qwen2.5-3B-Instruct` (36 layers), runs the benchmark prompts, and at each
-decode step after prefill it **snapshots the real KV tensors, hands them to the editable quantizer,
-restores the quantized cache, and advances generation**. Prefill itself is lossless — the exact
-prompt K/V flow forward; only the cached copy is quantized. The harness owns: dataset loading
-(LongBench-E, NeedleBench/NIAH, GSM8K), prompt templates, generation limits, the parser, the score
-definitions, and a 4096-token reference-span efficiency accountant (`estimate_policy_efficiency`).
-It also exposes, for a policy that wants prefill statistics, a query-observer hook that captures
-post-RoPE query states per layer.
+A deterministic greedy-decode replay harness over Hugging Face `Transformers` is frozen and must not be touched. It loads `Qwen/Qwen2.5-3B-Instruct` (36 layers), runs the benchmark prompts, and after each prefill step snapshots the real KV tensors, hands them to the editable quantizer, restores the quantized cache, and advances generation. Prefill is lossless; only the cached copy is quantized. The harness owns dataset loading (LongBench-E, NeedleBench/NIAH, GSM8K), prompt templates, generation limits, the parser, the score definitions, and a 4096-token reference-span efficiency accountant (`estimate_policy_efficiency`). It also exposes a query-observer hook that captures post-RoPE query states per layer for policies that want prefill statistics.
 
-## The editable interface
+## Editable interface
 
-Exactly one region is editable — the `AdaptiveKVQuantizer` class in `custom_quant_eval.py` (lines
-41–172). Every method on the ladder is a fill of this same contract. The harness calls, per example:
-`reset_request(request_meta, budget_state)`; then `needs_prefill_qkv_observer() -> bool` and (if true)
-`observe_prefill_qkv(layer_id, query_states, key_states, value_states, attention_meta)` with
-`query_observation_position() -> str` selecting pre/post-RoPE; then per decode step, per layer,
-`quantize_key(layer_id, key_states, cache_meta) -> tensor | (tensor, avg_bits)` and
-`quantize_value(...)`; and for the hardware-independent footprint,
-`estimate_bits(layer_id, kv_kind, seq_len, head_dim, cache_meta) -> float`. `key_states` and
-`value_states` have shape `[batch, heads, seq_len, head_dim]`, and a `quantize_*` return **must be a
-tensor of the identical shape** (it is fake-quant: quantize-then-dequantize back to the model's
-dtype). There is no algorithm enum and no backend selector — grouping, asymmetric ranges,
-zero-points, per-layer presets, residual retention, and memory accounting all live inside this class.
+Only the `AdaptiveKVQuantizer` class in `custom_quant_eval.py` (lines 41–172) is editable. The harness calls, per example: `reset_request(request_meta, budget_state)`; then `needs_prefill_qkv_observer()` and, if true, `observe_prefill_qkv(layer_id, query_states, key_states, value_states, attention_meta)` with `query_observation_position()` selecting pre/post-RoPE; then per decode step and layer, `quantize_key(layer_id, key_states, cache_meta)` and `quantize_value(...)`; and for the hardware-independent footprint, `estimate_bits(layer_id, kv_kind, seq_len, head_dim, cache_meta)`. `key_states` and `value_states` have shape `[batch, heads, seq_len, head_dim]`, and a `quantize_*` return must be a tensor of the identical shape (fake-quant: quantize-then-dequantize back to the model dtype). There is no algorithm enum or backend selector — grouping, asymmetric ranges, zero-points, per-layer presets, residual retention, and memory accounting all live inside this class.
 
-The starting point is the scaffold default: a single global 4-bit policy, key per-channel, value
-per-token, group size 32, a tail residual window. Each baseline replaces this class wholesale.
+The starting point is the scaffold default: a single global 4-bit policy, key per-channel, value per-token, group size 32, and a tail residual window. Each baseline replaces this class wholesale.
 
 ```python
 # EDITABLE region of custom_quant_eval.py (lines 41-172) -- default fill
@@ -175,15 +133,4 @@ class AdaptiveKVQuantizer:
 
 ## Evaluation settings
 
-Five workloads on the shared public text-benchmark protocol, all scored 0–100, single seed `{42}`:
-`longbench_hotpotqa` (LongBench-E `hotpotqa_e`, QA F1), `longbench_passage_retrieval`
-(`passage_retrieval_en_e`, retrieval score), `longbench_repobench` (`repobench-p_e`, code
-similarity), `needlebench_niah` (RULER/NeedleBench-style exact-phrase retrieval over public essay
-text), and `gsm8k` (`openai/gsm8k` main test, exact-answer accuracy after numeric normalization).
-The parser reads, per workload, a `final_score` (quality), an `effective_kv_bits` (the quantizer's
-average bits per cached element), a `kv_compression_ratio` (`16 / effective_kv_bits`, FP16 reference),
-and a diagnostic `runtime_seconds` that does **not** enter the score. Each workload score is a
-weighted mean of quality (weight 6, bounded-power vs the best current baseline) and KV efficiency
-(weight 4, bounded-power on compression ratio with 4× as the reference and 8× as the bound); the task
-score is the geometric mean across the five workloads. `effective_kv_bits` is computed at a fixed
-4096-token reference span, so efficiency is hardware-independent.
+Five workloads on the shared public text-benchmark protocol, all scored 0–100, single seed `{42}`: `longbench_hotpotqa` (LongBench-E `hotpotqa_e`, QA F1), `longbench_passage_retrieval` (`passage_retrieval_en_e`, retrieval score), `longbench_repobench` (`repobench-p_e`, code similarity), `needlebench_niah` (RULER/NeedleBench-style exact-phrase retrieval over public essay text), and `gsm8k` (`openai/gsm8k` main test, exact-answer accuracy after numeric normalization). The parser reads, per workload, a `final_score` (quality), an `effective_kv_bits` (the quantizer's average bits per cached element), a `kv_compression_ratio` (`16 / effective_kv_bits`, FP16 reference), and a diagnostic `runtime_seconds` that does not enter the score. Each workload score is a weighted mean of quality (weight 6, bounded-power vs the best current baseline) and KV efficiency (weight 4, bounded-power on compression ratio with 4× as the reference and 8× as the bound); the task score is the geometric mean across the five workloads. `effective_kv_bits` is computed at a fixed 4096-token reference span, so efficiency is hardware-independent.

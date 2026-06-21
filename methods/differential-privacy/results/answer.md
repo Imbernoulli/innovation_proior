@@ -63,7 +63,7 @@ with the symmetric lower bound. ∎ Iterating, k mechanisms with losses ε₁,�
 
 **Group privacy.** An ε-DP mechanism is (kε)-DP for any group of k individuals. *Proof:* for x, y differing in k records, chain a path x = x₀, …, x_k = y of single-row changes; applying the neighbor bound k times gives Pr[M(x)∈S] ≤ e^{kε} Pr[M(y)∈S]. ∎ The guarantee degrades linearly in group size — exactly the desired behavior.
 
-## Reference implementation
+## Implementation
 
 ```python
 import numpy as np

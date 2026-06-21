@@ -1,46 +1,38 @@
-Let me state the goal sharply before reaching for any architecture. I have a large pretrained text-to-image diffusion model that makes beautiful images from a prompt, but text barely lets me control *where* things go — layout, pose, shape, the exact edges. I want to feed it an extra *image* — an edge map, a depth map, a pose skeleton, a segmentation — that pins down the spatial composition, and learn that conditional control end to end. The thing standing in the way isn't the idea, it's the data. The base model saw billions of image-text pairs; the biggest dataset I can get for a specific condition like depth or pose is on the order of a hundred thousand examples — tens of thousands of times smaller. So whatever I do has to learn a new control from a tiny dataset while sitting on top of a model trained on an enormous one.
+I start with the failure mode rather than with a module. I have a text-to-image diffusion model whose prior is valuable precisely because it was trained at huge scale, and I want to teach it a new spatial input from a much smaller paired dataset. If I keep training all of its weights on that smaller dataset, the new control may fit, but the broad prior can be overwritten. So the first requirement is separation: the old model should continue to provide the generative prior while the new parameters learn the condition.
 
-The obvious thing — keep training the big model on my small conditioned dataset — is exactly the thing that breaks. With that little data the model overfits the new condition and, worse, it *forgets*: the billions-of-images prior that made it good gets overwritten, and I'm left with a model that's both narrow and degraded. So direct finetuning is out. The whole literature on finetuning-without-destroying says the same fix in different words: don't let the new task rewrite the original weights — restrict what's trainable, or freeze the original outright. Take that seriously: I will *lock* the entire pretrained model. Its weights never change. Then by construction it cannot forget anything, and as a bonus I don't even have to backprop through it or store its activations' gradients — the locked branch is free at training time.
+The simplest way to guarantee that separation is to keep the production model's weights fixed. That removes the forgetting path completely. But freezing the old model creates the next problem: a small condition module may not have enough capacity to read complicated edges, poses, depth maps, or segmentations and translate them into the internal language of the U-Net. A thin adapter or low-rank update protects the base, but the spatial input can carry high-level semantics, so I need a strong branch rather than a token gesture.
 
-But if the original model is frozen, where does the new capacity come from? It has to come from new, trainable parameters. The cheap options each have a ceiling. A small inserted adapter module, or a low-rank weight delta, is *shallow* — it has limited capacity to absorb in-the-wild conditioning images with complex shapes and high-level semantics. A spatial control like "follow this depth map" or "match this pose" might genuinely need a deep, powerful feature extractor to read the condition. So I don't want a thin bolt-on; I want a deep trainable branch. And I have a deep, powerful, *already-trained* feature extractor sitting right there: the encoder of the frozen model itself. So instead of training a deep branch from scratch on my tiny dataset — which would overfit — I'll *clone the pretrained encoder into a trainable copy* and use that as the backbone for the new control. The copy starts from the pretrained weights, so it already knows how to extract rich image features; my small dataset only has to *adapt* it to the new conditioning input, not teach it vision from nothing. The locked original preserves the prior; the trainable copy, seeded from that same prior, is the strong backbone that learns the control.
+The pretrained U-Net already contains a strong encoder. If I copy the encoder-side blocks and the middle block into a trainable branch, the new branch starts with useful image features instead of random features. The small condition dataset then adapts a pretrained representation instead of teaching a deep representation from scratch. The original path stays fixed and preserves the prior; the copied path supplies capacity.
 
-Now the dangerous part: how do I connect the trainable copy back into the locked model? At the start of training the copy's adaptation is random — whatever I add into the frozen model's deep features is, initially, *noise*. And the frozen model's deep features are precisely the valuable thing I'm trying to protect. If I wire the random branch in with ordinary (say Gaussian-initialized) connections, the first forward pass dumps random activations into the middle of a finely-tuned billion-image model, the first backward pass sends large random gradients everywhere, and I've corrupted the very features I locked the model to preserve. The fragile moment is *initialization*. I need the connection to start as a complete *no-op* — adding exactly zero — so that at step zero the combined model is bit-for-bit the original model, and only *grows* the influence of the new branch as training earns it.
+Now I have a more delicate problem. A copied branch is trainable, and the condition encoder feeding it starts untrained. If I connect that branch into the fixed U-Net with ordinary random weights, the first forward pass injects random features into a model whose internal activations already have a tuned meaning. The connector has to begin as an exact no-op. A `1 x 1` convolution whose weight and bias are both zero has exactly that property: no matter what feature tensor enters it, its output is zero at initialization.
 
-So initialize the connecting layers to output zero. Concretely, connect the trainable copy to the locked block through a "zero convolution": a `1×1` convolution with *both* its weight and its bias initialized to zero. Let me write the block. The original block is `y = F(x; Θ)` with locked `Θ`, taking a feature map `x` to `y`. I clone it to a trainable copy `F(·; Θ_c)`, feed the copy the external conditioning vector `c` (through a zero conv), and add the copy's output back into `y` (through a second zero conv). Using two zero-convolution instances `Z(·; Θ_z1)` and `Z(·; Θ_z2)`:
+For a trained block `F(x; Theta) = y`, I make a trainable copy `F(.; Theta_c)` and use two zero convolutions, one on the condition path and one on the copied block's output:
 
-    y_c = F(x; Θ) + Z( F( x + Z(c; Θ_z1); Θ_c ); Θ_z2 ).
+    y_c = F(x; Theta) + Z(F(x + Z(c; Theta_z1); Theta_c); Theta_z2).
 
-Check the initial step. Both zero convs have zero weight and zero bias, so each `Z(·)` evaluates to `0`. The inner one gives `Z(c; Θ_z1) = 0`, so the copy receives `F(x + 0; Θ_c) = F(x; Θ_c)`; the outer one wraps that in `Z(·; Θ_z2) = 0`. Hence
+At initialization, both zero convolutions output zero. The inner one gives `Z(c; Theta_z1) = 0`, so the copied block receives `x`, not a random condition perturbation. The outer one gives `Z(F(x; Theta_c); Theta_z2) = 0`, so the combined block outputs `F(x; Theta)`. The full controlled block is therefore identical to the original block at step zero, while the copied branch remains a functional pretrained backbone.
 
-    y_c = F(x; Θ) + 0 = y.
+The apparent objection is that zero-initialized layers are supposed not to learn. I check the derivative directly. For one output channel of a `1 x 1` convolution, write `y = W x + b`; for a scalar simplification, `y = w x + b`. The local derivatives are `dy/dw = x`, `dy/dx = w`, and `dy/db = 1`. If `g = dL/dy`, then
 
-At initialization this block is *exactly* the original block. No random noise reaches the deep features of either the locked model or the trainable copy at the start — both are protected. And notice a second thing the inner zero conv buys me: because `Z(c; Θ_z1) = 0`, the trainable copy at init sees only the real input `x`, not the (random) condition, so the copy is *fully functional* — it behaves exactly like the pretrained encoder it was cloned from. That's what makes it a genuine strong backbone from step one rather than a randomly-perturbed encoder.
+    dL/dw = g x,
+    dL/db = g,
+    dL/dx = w g.
 
-There's a glaring objection I have to answer, because it sounds fatal: if the output connection starts at zero and adds nothing, and a zero-initialized layer is famously a layer that *can't learn* (the classic symmetry problem — zero weights give zero gradients and never move), then how does this thing ever start training? If the new branch contributes nothing and never moves off zero, I've built an elaborate identity function. So let me actually compute the gradient at the first step and see whether the zero conv is stuck.
+With `w = 0`, the input gradient is zero on the first backward pass, so the copied branch and the inner condition-side zero convolution do not yet receive gradient through that output connector. But the weight gradient is not zero when the upstream loss gradient `g` and the connector input `x` are nonzero. Here `g` is supplied by the normal diffusion loss of the still-functioning model, and `x` is supplied by the copied pretrained block. After one optimizer step the output connector's weights can become nonzero; after that, `dL/dx = w g` also becomes nonzero and gradients can flow into the copied branch and then into the condition-side connector. The path opens from the outside in.
 
-Take a zero conv in isolation — a `1×1` conv, which on the activations is just `y = w·x + b` (broadcast over space), with `w = 0`, `b = 0` at init. The local partials are `∂y/∂w = x`, `∂y/∂x = w`, and `∂y/∂b = 1`. The loss gradient flowing back to the weight is
+The convolutional case is the same argument with sums over batch and spatial positions: each connector weight gets a sum of upstream-gradient times input-activation products, while the input gradient is multiplication by the transpose of the current connector weights. Zero weights block the input gradient at the first step, but they do not block the connector's own weight or bias gradients. There is no sign flip or missing constant in the argument; the connector starts closed, then learns its way open.
 
-    ∂L/∂w = (∂L/∂y) · x.
+I then place the branch where the U-Net can actually use it. Stable Diffusion's decoder consumes encoder features through skip connections, and the middle block sits at the bottleneck. So the trainable copy should produce one zero-convolved control tensor for each encoder-side skip and one for the middle block. The frozen U-Net runs its encoder and middle normally, then adds the middle control to the bottleneck and adds the skip controls to the corresponding decoder skips. This steers denoising without changing the base weights.
 
-Look at the two factors. The upstream gradient `∂L/∂y` is *not* zero: the loss is computed from the full model output, and the full model output is non-trivial because the *locked* branch `F(x; Θ)` produces a real, nonzero `y` and hence a real loss — the loss signal flows back through the addition into this conv with a nonzero `∂L/∂y`. The other factor, `x`, is the *input* to this zero conv, which is the trainable copy's output `F(x; Θ_c)` — and that's nonzero too, because (as I just argued) the copy receives the real input `x` and is fully functional. So `∂L/∂w = (∂L/∂y)·x ≠ 0` even though `w = 0`. The crucial point: the gradient on the weight depends on the *input* and the *loss*, not on the weight's own value. The classic "zero weights can't learn" failure happens in a homogeneous network where *everything* is zero so every gradient vanishes; here the locked pretrained branch keeps the forward output and the loss alive, and the cloned-pretrained copy keeps the input alive, so the zero conv's weight gets a real gradient and moves off zero after a single step.
+The condition image still has to enter at the right resolution. I need an encoder `E` that maps an image-space condition `c_i` into a feature condition `c_f = E(c_i)` compatible with the latent U-Net. Conceptually this can be a small convolutional encoder trained jointly with the control branch. In the concrete U-Net path I use interleaved convolutions and nonlinearities to downsample the `512 x 512` hint to the latent grid, then end with a zero-initialized projection so the hint does not perturb the copied branch at the start.
 
-Trace what happens to the *other* gradients at that first step, because the order matters. The gradient into the conv's input is `∂L/∂x = (∂L/∂y)·w`, and with `w = 0` this is `0` at step one — so the trainable copy and the *inner* zero conv `Z_z1` receive no gradient yet. And the bias gradient `∂L/∂b = ∂L/∂y ≠ 0`. So at the very first step, only the outer zero conv's parameters move. But once they've moved, `w ≠ 0`, and now `∂L/∂x = w·(∂L/∂y)` is nonzero — so from the second step onward gradient flows back through the outer zero conv into the trainable copy and the inner zero conv, and the whole control branch begins to learn. The network bootstraps itself off zero: the outer connection opens first, then the path behind it lights up. (And the gradients aren't symmetric across channels/positions — `x` varies — so the weights diversify rather than collapsing to a single value.)
+The training objective does not need a new term. The base diffusion model already learns by predicting the added noise:
 
-This predicts a specific training signature, and it's worth naming because it's reassuring rather than alarming: since the connection starts at zero and adds no noise, the model's image quality is *always* high (it's never worse than the original model), and the control doesn't fade in gradually — at some step the branch has grown enough that the model *abruptly* starts following the conditioning image. A sudden switch, not a slow ramp.
+    L = E_{z_0, t, c_t, c_f, epsilon ~ N(0, I)} [||epsilon - epsilon_theta(z_t, t, c_t, c_f)||_2^2].
 
-Now wire this into the actual diffusion model. The base is a latent-diffusion U-Net: an encoder, a middle block, and a skip-connected decoder, where the decoder reads encoder features through the skip connections. I make a trainable copy of the *encoder blocks and the middle block*, feed it the conditioning input, and add its outputs — each through a zero convolution — *into the decoder's skip connections and the middle block*. That's the right place because the decoder is exactly where the model consumes encoder features, so injecting the control there steers what the decoder reconstructs. The locked encoder/decoder need no gradients, so the whole thing is cheap — a modest bump in memory and time over training the base model alone, since I only backprop through the copied encoder and the zero convs.
+I reuse that objective and optimize the condition branch and zero connectors. Dropping the text prompt to the empty string for half of training examples has a clear purpose: it prevents the model from treating the condition as a weak hint beside a strong text label, and forces the condition branch to carry spatial semantics by itself.
 
-One more piece: the conditioning image and the model's working resolution don't match. The base diffusion runs in a compressed latent space — `512×512` pixel images live as `64×64` latents — but my condition (an edge map, a depth map) arrives at full `512×512`. So I need a small encoder to bring the condition down to the `64×64` latent resolution before it enters the control branch. A tiny convolutional network does it: four convolution layers with `4×4` kernels and stride `2`, each halving the spatial resolution, with a channel-growing stack `16, 32, 64, 128` and ReLU, compressing the image-space condition `c_i` into a feature-space conditioning vector `c_f = E(c_i)` at the latent grid size. It's initialized normally (Gaussian) and trained jointly with everything else — it's a fresh small module, not part of the protected backbone, so it doesn't need the zero-init treatment.
-
-The training objective changes not at all. The base diffusion model is trained to predict the noise added to a noisy latent: given a clean latent `z_0`, add noise to get `z_t` at step `t`, and learn `ε_θ` to predict the noise. With the conditions — timestep `t`, text prompt `c_t`, and the new task condition `c_f` — the loss is
-
-    L = E_{z_0, t, c_t, c_f, ε ∼ N(0, I)} [ ‖ ε − ε_θ(z_t, t, c_t, c_f) ‖₂² ].
-
-I just reuse this exact objective to finetune the control branch — no new loss, no auxiliary term. The minimal-change principle again: lock the model, add a protected branch, train with the model's own loss.
-
-A small but important training trick: I randomly replace half the text prompts with the empty string during training. Why — because if the prompt is always present, the model can lean on the text and treat the conditioning image as a secondary hint, and then it never learns to read spatial semantics *from the condition itself*. Dropping the prompt half the time forces the control branch to recognize the content of the conditioning image (the edges, the pose, the depth) and use it to drive generation, so that the condition becomes a genuine, self-sufficient control rather than a decoration on top of the text.
-
-Let me write the core architecture as real code, mirroring how this attaches to a Stable-Diffusion-style U-Net.
+Writing the core out as code makes the wiring concrete: a `zero_module` that zeroes every parameter, a copied encoder that emits one zero-convolved control per skip plus one for the middle, a small downsampling hint encoder ending in a zero projection, and a training step that reuses the diffusion loss while dropping the prompt half the time.
 
 ```python
 import torch
@@ -48,22 +40,21 @@ import torch.nn as nn
 import copy
 
 def zero_module(module):
-    # initialize a layer's parameters to zero -> it outputs zero until trained
+    # zero every parameter -> the module outputs 0 until training moves it
     for p in module.parameters():
         nn.init.zeros_(p)
     return module
 
-class ConditionEncoder(nn.Module):
-    # 512x512 condition image -> 64x64 feature, matching the SD latent resolution.
-    # fresh small net (Gaussian init), trained jointly; not part of the protected backbone.
+class HintEncoder(nn.Module):
+    # downsample the 512x512 condition image to the latent grid; final projection starts at zero
     def __init__(self, in_ch=3, out_ch=320):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Conv2d(in_ch, 16, 4, 2, 1), nn.ReLU(True),   # 512 -> 256
-            nn.Conv2d(16, 32, 4, 2, 1),    nn.ReLU(True),   # 256 -> 128
-            nn.Conv2d(32, 64, 4, 2, 1),    nn.ReLU(True),   # 128 -> 64
-            nn.Conv2d(64, 128, 4, 2, 1),   nn.ReLU(True),   # 64  -> 32  (further encoded to the latent grid)
-            zero_module(nn.Conv2d(128, out_ch, 3, padding=1)),  # final projection starts at zero
+            nn.Conv2d(in_ch, 16, 3, 1, 1), nn.SiLU(),
+            nn.Conv2d(16, 32, 3, 2, 1),    nn.SiLU(),   # stride-2
+            nn.Conv2d(32, 96, 3, 2, 1),    nn.SiLU(),   # stride-2
+            nn.Conv2d(96, 256, 3, 2, 1),   nn.SiLU(),   # stride-2
+            zero_module(nn.Conv2d(256, out_ch, 3, padding=1)),
         )
     def forward(self, c_image):
         return self.net(c_image)
@@ -71,55 +62,40 @@ class ConditionEncoder(nn.Module):
 class ControlNet(nn.Module):
     def __init__(self, sd_unet):
         super().__init__()
-        # locked, production-ready base model: never trained -> preserves the prior, no grad/memory.
-        self.locked = sd_unet
+        self.locked = sd_unet                                  # frozen prior, no grad
         for p in self.locked.parameters():
             p.requires_grad = False
-
-        # trainable copy of the base ENCODER + middle block: a strong pretrained backbone for control.
-        self.control_encoder = copy.deepcopy(sd_unet.encoder_blocks)
+        self.control_encoder = copy.deepcopy(sd_unet.encoder_blocks)   # trainable copy
         self.control_middle  = copy.deepcopy(sd_unet.middle_block)
-        for p in self.control_encoder.parameters(): p.requires_grad = True
-        for p in self.control_middle.parameters():  p.requires_grad = True
-
-        self.cond_enc = ConditionEncoder(out_ch=sd_unet.model_channels)
-        # one zero conv per injection point (each encoder block output + the middle block)
+        self.hint_enc = HintEncoder(out_ch=sd_unet.model_channels)
         self.zero_convs = nn.ModuleList([
             zero_module(nn.Conv2d(ch, ch, 1)) for ch in sd_unet.block_channels
-        ])
-        self.middle_zero_conv = zero_module(nn.Conv2d(sd_unet.middle_channels, sd_unet.middle_channels, 1))
+        ])                                                     # one per skip
+        self.middle_zero_conv = zero_module(nn.Conv2d(sd_unet.middle_channels,
+                                                      sd_unet.middle_channels, 1))
 
     def forward(self, z_t, t, c_t, c_image):
-        # encode the condition to latent resolution and add it to the input of the control branch
-        guided = self.cond_enc(c_image)                       # Z(c; .)=0 at init via the zero-conv tail
-        h = z_t + guided
-
-        # run the TRAINABLE COPY of the encoder; collect a zero-conv'd output at each block
+        h = z_t + self.hint_enc(c_image)                       # hint adds 0 at init
         controls, x = [], h
         for block, zconv in zip(self.control_encoder, self.zero_convs):
             x = block(x, t, c_t)
-            controls.append(zconv(x))                         # at init each zconv outputs 0 -> y_c = y
-        x = self.control_middle(x, t, c_t)
-        mid_control = self.middle_zero_conv(x)
-
-        # run the LOCKED base; ADD the (zero-conv'd) control into the decoder skips and middle block
+            controls.append(zconv(x))                          # each is 0 at init -> y_c = y
+        mid_control = self.middle_zero_conv(self.control_middle(x, t, c_t))
         return self.locked.decode_with_control(z_t, t, c_t, controls, mid_control)
 
 def diffusion_loss(eps, eps_pred):
-    # the base model's own noise-prediction objective, reused unchanged
-    return ((eps - eps_pred) ** 2).mean()
+    return ((eps - eps_pred) ** 2).mean()                      # native objective, reused
 
 def train_step(z0, t, c_t, c_image, model, opt, alpha_bar):
-    # add noise: z_t = sqrt(a_bar) z0 + sqrt(1-a_bar) eps
     eps = torch.randn_like(z0)
     z_t = alpha_bar[t].sqrt() * z0 + (1 - alpha_bar[t]).sqrt() * eps
-    # 50% of the time drop the text prompt -> force the condition to carry the spatial semantics
-    if torch.rand(()) < 0.5:
+    if torch.rand(()) < 0.5:                                   # drop the prompt half the time
         c_t = model.empty_prompt(c_t.size(0))
-    eps_pred = model(z_t, t, c_t, c_image)
-    loss = diffusion_loss(eps, eps_pred)
-    opt.zero_grad(); loss.backward(); opt.step()             # only the control branch + zero convs update
+    loss = diffusion_loss(eps, model(z_t, t, c_t, c_image))
+    opt.zero_grad(); loss.backward(); opt.step()               # only the copy + zero convs move
     return loss
 ```
 
-The causal chain: I want to add a spatial control to a huge text-to-image model but the condition data is tiny, so direct finetuning would overfit and catastrophically forget; I lock the pretrained model to preserve its prior (and to make training cheap, no gradient through it), and get the new capacity from a *trainable copy of its own encoder*, so the control branch starts as a strong pretrained backbone rather than something learned from scratch; I connect that branch back into the frozen model through zero convolutions — `1×1` convs with zero weight and bias — so at initialization the combined model is exactly the original (`y_c = y`) and no random noise touches the protected deep features; the worry that a zero-initialized layer can't learn turns out to be unfounded once I compute `∂L/∂w = (∂L/∂y)·x`, which is nonzero because the locked branch keeps the loss alive and the cloned copy keeps the input alive, so the connection grows off zero (the outer conv moves first, then the path behind it), producing the abrupt switch-on of control; I attach the copy's outputs to the decoder skip connections and middle block of the latent-diffusion U-Net, bring the `512×512` condition down to the `64×64` latent grid with a small jointly-trained encoder, and finetune with the model's native noise-prediction loss while dropping the prompt half the time to force the condition to carry the spatial semantics. What I'd want to validate next: that this learns diverse controls — edges, depth, pose, segmentation — from small datasets without degrading the base model's image quality.
+At inference, classifier-free guidance introduces another case distinction. The standard form is `epsilon_prd = epsilon_uc + beta_cfg (epsilon_c - epsilon_uc)`. A control condition can be present in both branches or only in the conditional branch, and the 13 control connections can be scaled to tune condition strength. That is an inference-strength mechanism, not a change to the training loss or the zero-convolution derivation.
+
+The design is now coherent: keep the old model fixed, copy enough pretrained encoder capacity to learn the new control, connect the copy through zero-output adapters so the initial network is exactly the old one, let the zero connectors learn because their own gradients depend on live inputs and live loss, and train with the original diffusion objective while sometimes removing the text shortcut.

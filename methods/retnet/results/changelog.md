@@ -1,0 +1,43 @@
+# RetNet Strict Rereview Changelog
+
+- `methods/retnet/results/context.md:71` Corrected the diagnostic cost statement: Transformer inference now has \(O(N)\) per-step decode work with an \(O(N)\) KV cache, while quadratic cost is assigned to the full attention map used in long-sequence training.
+- `methods/retnet/results/reasoning.md:19` Rechecked the diagonalization step and kept the absorbed-basis derivation explicit before scalarizing \(\gamma\).
+- `methods/retnet/results/reasoning.md:31` Corrected the sign-sensitive scalar-\(\gamma\) form to keep \(K_m e^{im\theta}\) under the dagger, matching the primary source.
+- `methods/retnet/results/reasoning.md:33` Added the implementation interpretation: same-direction real RoPE rotations are faithful because the dot product supplies the transpose/conjugate relative phase.
+- `methods/retnet/results/reasoning.md:35` Kept the parallel representation's key factor as \(\overline{\Theta}\) and retained both \(D_{nm}\) cases.
+- `methods/retnet/results/reasoning.md:65` Rewrote the chunkwise derivation with separate key local index \(j'\) and query local index \(j\), fixing the paper's overloaded local-index notation.
+- `methods/retnet/results/reasoning.md:79` Added boundary-distance checks for the chunkwise exponents: \((B-1-j')+(j+1)=B+j-j'\).
+- `methods/retnet/results/reasoning.md:91` Aligned the normalization discussion with the canonical stabilized paths: score scaling, row-normalized decay, clamped row-magnitude scaling, recurrent scale tracking, and chunkwise scale alignment.
+- `methods/retnet/results/reasoning.md:117` Replaced the old illustrative relative-position code with TorchScale-shaped `RetNetRelPos`, including recurrent, parallel, and chunkwise branches.
+- `methods/retnet/results/reasoning.md:177` Replaced `nn.GroupNorm` with per-head `RMSNorm(head_dim, elementwise_affine=False)` in the code artifact.
+- `methods/retnet/results/reasoning.md:203` Replaced the bare recurrent update with `prev_key_value` plus `scale` and square-root scale factors.
+- `methods/retnet/results/reasoning.md:222` Added chunkwise `inner_scale`, `cross_scale`, and `all_scale` alignment to match the canonical reference implementation.
+- `methods/retnet/results/answer.md:26` Corrected the final method equation to the source's scalar-\(\gamma\) form with \(K_m e^{im\theta}\) under conjugate transpose.
+- `methods/retnet/results/answer.md:34` Restated the parallel form with \(K=(XW_K)\odot\overline{\Theta}\) and the exact \(D_{nm}\) causal/decay cases.
+- `methods/retnet/results/answer.md:52` Rewrote the chunkwise form with query index \(j\), key index \(j'\), \(\zeta_{j'}=\gamma^{B-1-j'}\), and \(\xi_j=\gamma^{j+1}\).
+- `methods/retnet/results/answer.md:68` Distinguished the paper default \(\gamma=1-2^{-5-\mathrm{arange}(0,h)}\) from the large-model log-spaced experimental range.
+- `methods/retnet/results/answer.md:84` Added the paper-vs-code normalization distinction: paper GroupNorm per head, TorchScale RMSNorm per head.
+- `methods/retnet/results/answer.md:89` Added the maintained-code architecture caveat: RMSNorm pre-norm, GLU FFN, DeepNorm scaling, and value/gate projection to the configured value dimension.
+- `methods/retnet/results/answer.md:96` Grounded the code artifact in Microsoft TorchScale commit `4d1e0e82e5adf86dd424f1463192635b73fc8efc`.
+- `methods/retnet/results/answer.md:117` Added the full `RetNetRelPos` branch behavior, including chunkwise `inner_mask`, `cross_decay`, `query_inner_decay`, and `value_inner_decay`.
+- `methods/retnet/results/answer.md:178` Replaced the previous standalone class with a TorchScale-shaped `MultiScaleRetention` core.
+- `methods/retnet/results/answer.md:194` Corrected per-head normalization to `RMSNorm(self.head_dim, elementwise_affine=False)`.
+- `methods/retnet/results/answer.md:205` Corrected recurrent code to use `prev_key_value`, `scale`, and square-root scaling rather than a bare `gamma * prev + kv`.
+- `methods/retnet/results/answer.md:224` Corrected chunkwise code to include inner/cross scale alignment before combining the two paths.
+- `methods/retnet/notes/synthesis.md:31` Rebuilt the derivation notes around the primary recurrence, diagonalization, scalar-\(\gamma\) formula, and conjugate sign convention.
+- `methods/retnet/notes/synthesis.md:63` Recorded the chunkwise local-index correction and exponent check.
+- `methods/retnet/notes/synthesis.md:75` Added the canonical TorchScale commit and file-level implementation mapping.
+- `methods/retnet/notes/synthesis.md:85` Documented the recurrent scale buffer and square-root scale factors.
+- `methods/retnet/notes/synthesis.md:88` Documented chunkwise `kv_scale`, `cross_scale`, and `all_scale` alignment.
+- `methods/retnet/notes/synthesis.md:98` Recorded the math, code-faithfulness, leak/scaffold, and voice review findings.
+- `methods/retnet/notes/source_matrix.md:5` Added the primary RetNet source artifacts and evidence role.
+- `methods/retnet/notes/source_matrix.md:6` Added load-bearing ancestor sources for Transformer, Linear Transformer, RoPE, xPos, S4, H3, Hyena, and RWKV.
+- `methods/retnet/notes/source_matrix.md:14` Added the third-party RetNet survey as an explainer source.
+- `methods/retnet/notes/source_matrix.md:15` Added TorchScale as the canonical implementation source.
+- `methods/retnet/refs/self_accounts/search_log.md:3` Added the required author self-account search log and documented that no separate author technical retrospective was found.
+- `methods/retnet/notes/discovery_synthesis.md:5` Recorded the completed evidence bundle.
+- `methods/retnet/notes/discovery_synthesis.md:16` Recorded the math audit: recurrence, sign convention, mask cases, and chunkwise exponent cases.
+- `methods/retnet/notes/discovery_synthesis.md:48` Recorded the code-faithfulness audit and the fixes made to the answer/reasoning code artifacts.
+- `methods/retnet/notes/discovery_synthesis.md:66` Recorded the posterior-leak, scaffold-purity, and in-frame voice review.
+- `methods/retnet/results/.codex_review.json:4` Replaced the stale `errored` review marker with an explicit `not_run` independent-review marker.
+- `methods/retnet/notes/strict_check_output.txt:1` Recorded that `scripts/check_strict_method.py` is absent in this checkout and listed the manual structural checks run instead.

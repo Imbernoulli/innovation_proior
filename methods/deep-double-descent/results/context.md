@@ -1,160 +1,29 @@
-# Context: reconciling model size, training time, and test error
+## Classical Capacity Picture
 
-## Research question
+The inherited statistical picture says that generalization is controlled by choosing a hypothesis class with the right amount of capacity. If the class is too small, empirical risk stays high because the model underfits. If the class is too large, empirical risk can be driven down by fitting idiosyncrasies of the sample, and test risk rises. This produces the familiar U-shaped curve: increasing complexity helps, then hurts.
 
-There is a contradiction at the heart of how the field thinks about model complexity and
-generalization. Classical statistical learning theory and the lived experience of deep learning
-practitioners give opposite advice about whether bigger models, longer training, and more data help
-or hurt — and both have strong empirical support in their own regimes. The question is whether these
-competing intuitions can be unified into a single coherent picture of *test error as a function of
-complexity*, and if so, what the right notion of "complexity" is.
+That picture also shapes training practice. Early stopping, regularization, and explicit model selection are treated as ways to avoid the region where the model can fit too much. The point where train error approaches zero looks like the warning line: after that, the conventional expectation is that the learner has crossed into overfitting.
 
-Concretely: is there one axis along which test error behaves predictably across model size, training
-time, regularization, and dataset size simultaneously — one that explains both the classical
-"larger is worse past a threshold" U-curve and the modern "larger is better" experience, and that
-locates *where* increasing complexity flips from helpful to harmful? A satisfying answer would also
-have to put pressure on the shared assumptions: whether training time behaves like a complexity knob,
-and whether the usual "more data always helps" rule can fail near the fitting transition.
+## Modern Interpolation Tension
 
-## Background
+Deep learning practice does not fit that story cleanly. Standard networks can have far more parameters than training samples, can be trained until the training set is fit nearly perfectly, and can still perform well on new examples. Zhang, Bengio, Hardt, Recht, and Vinyals made the tension sharper by showing that the same broad families can fit random labels, so the capacity to memorize the finite sample is real rather than merely theoretical.
 
-**The classical bias–variance tradeoff.** Classical statistical learning theory (Hastie et al.) holds
-that as model complexity rises, bias falls but variance grows; past a threshold the variance term
-dominates and test error increases. So test error vs. complexity is U-shaped, and the prescription is
-"don't make the model too big" and "stop training before you overfit." Conventional wisdom: *larger
-models are worse* once you pass the sweet spot, and early stopping helps.
+This creates an explanatory problem. A static capacity measure that says the class is rich enough to fit arbitrary labels is too blunt: it cannot by itself distinguish the real-label run that generalizes from the random-label run that does not. Nor can it explain why explicit regularizers are helpful in some cases but not necessary in others.
 
-**The modern over-parameterized regime.** Deep networks routinely have far more parameters than
-training samples — enough to fit even randomly-labeled data (Zhang et al. 2016) — yet they generalize
-well, and across vision and language, *larger models are better* (the consistent experience behind
-AlexNet, Inception, GPipe, GPT). Training all the way to zero training error often improves test
-performance rather than harming it. This directly contradicts the classical U-curve.
+## Prior Second-Descent Evidence
 
-**The point both camps share.** Classical statisticians and deep learning practitioners agree on one
-thing: *more data is always better*. Any complete account of the complexity–error relationship will
-have to say whether even this holds universally.
+Before the present reconstruction, Belkin, Hsu, Ma, and Mandal had already proposed a broader risk curve. They argued that the textbook U-shape is only the part before the interpolation threshold. In random features, decision-tree ensembles, and small neural networks, test risk can rise near the point where the training set is just fit, then decrease again as the function class becomes richer.
 
-**The interpolation threshold and "double descent."** The reconciling observation (Belkin et al.
-2019, building on earlier high-dimensional analyses — Opper; Advani & Saxe; the "jamming" transition
-of Spigler et al. and Geiger et al.) is that the classical U-curve is only the *first half* of the
-story. As model complexity increases, test error follows the classical U up to the point where the
-model is just barely able to *interpolate* the training data (reach ≈0 training error) — the
-*interpolation threshold* — and then, as complexity increases *further* into the over-parameterized
-regime, test error *descends again*. The full curve is therefore "double descent": down, up to a peak
-at the interpolation threshold, then down again. Belkin et al. demonstrated this for decision trees,
-random features, and small two-layer networks with ℓ2 loss on MNIST/CIFAR. The diagnostic limitation
-of this prior framing is that it is organized entirely around the *number of parameters* and shown
-mostly on simple models — it does not address modern deep networks trained with SGD, nor the roles of
-training time, data augmentation, or regularization, which are not "parameters" but plainly affect
-how a model fits.
+That earlier framing changes the meaning of interpolation. It is no longer automatically the end of generalization; it is a boundary between a classical under-parameterized regime and a modern interpolating regime. But the evidence and abstraction are still organized mainly around model size or number of parameters.
 
-**Mechanism from linear models.** In the tractable case of linear least-squares / random-feature
-regression (Belkin et al.; Hastie et al.; Bartlett et al.; Mei & Montanari; Muthukumar et al.), the
-peak at the interpolation threshold is understood: when the number of samples equals the model
-dimension there is essentially a *unique* interpolating solution, which is highly sensitive to noise
-and mis-specification; in the over-parameterized regime there are many interpolating solutions, and
-the minimum-norm one (which gradient descent from zero finds) generalizes well. The peak appears even
-without label noise whenever the model family mis-specifies the true distribution.
+## Missing Axes
 
-**Random Fourier Features (Rahimi & Recht 2008).** A random-feature model — a two-layer network whose
-first layer is a fixed random map of width d and whose second layer is trained with MSE — is the
-clean analytic testbed: a single scalar (the width d) sets its size, and the regression is solvable in
-closed form.
+Modern training procedures have several knobs that plainly change fitting behavior without changing the nominal architecture. Training for more epochs can let the same model fit examples it could not fit early in training. Data augmentation can make the fitting task harder. Weight decay and other regularizers can make interpolation harder or easier. The optimizer and learning-rate schedule can also move the point where train error reaches zero.
 
-## Baselines
+Any account that uses parameter count alone therefore leaves a gap. It may describe a model-size sweep, but it does not explain whether a fixed large network should show a similar transition over training time, or why changing data augmentation or label noise should move the test-error peak.
 
-The prior accounts of the complexity–error relationship that a unified view must subsume or correct:
+## Experimental Ingredients
 
-- **Bias–variance U-curve (classical).** Test error U-shaped in the number of parameters; complexity
-  helps then hurts. Gap: only describes the *under*-parameterized side; it predicts monotone harm
-  past the threshold, contradicting the over-parameterized regime where error descends again.
+The available ingredients are standard: width-scaled ResNet18s and five-layer CNNs for CIFAR-10/CIFAR-100, width-scaled encoder-decoder Transformers for translation, train/test error traces, controlled label noise, augmentation and regularization choices, and random-feature models as a tractable anchor. The essential measurement is not just final test error; it is the relationship between test error and the point where training error first becomes approximately zero.
 
-- **"Bigger is better" (modern deep learning practice).** Monotone benefit from scaling parameters
-  and training to zero training error. Gap: ignores the possibility of a peak — if a bigger model or
-  more training can hurt near interpolation, this view has no account of where that failure begins
-  or why the benefit resumes afterward.
-
-- **Parameter-count double descent (Belkin et al. 2019).** Test error double-descends as a function of
-  the number of parameters, peaking at the interpolation threshold. Gap: tied to parameter count
-  alone; says nothing about training time, augmentation, regularization, or sample count as
-  complexity-altering knobs, and is demonstrated mostly on simple (non-deep, non-SGD) models.
-
-- **Classical complexity measures (Rademacher complexity, VC dimension).** Quantify a model family's
-  capacity to fit (e.g. randomly-labeled) data. Gap as a locator of the peak: they are functions of the
-  architecture and data *inputs* alone — they assign one value to a fixed family on fixed inputs,
-  unchanged by the actual label distribution or by how long, or with what augmentation/regularization,
-  a model is trained.
-
-## Evaluation settings
-
-The phenomena are studied by sweeping a complexity knob and recording train and test error to
-completion:
-
-- **Architectures, each scaled by a width parameter k:** ResNet18 with convolutional widths
-  [k, 2k, 4k, 8k] (standard ResNet18 is k = 64); a 5-layer CNN with four conv layers [k, 2k, 4k, 8k]
-  plus a fully-connected layer; a 6-layer encoder–decoder Transformer scaled by its embedding
-  dimension d_model with feed-forward width d_ff = 4·d_model.
-- **Datasets:** CIFAR-10, CIFAR-100 (image classification); IWSLT'14 German–English (≈160K sentences)
-  and WMT'14 English–French (subsampled to 200K) for translation.
-- **Optimization:** cross-entropy for the vision nets, trained either with Adam (learning rate 1e-4,
-  4K epochs) or SGD (learning rate ∝ 1/√T, 500K steps); Transformers trained 80K steps with 10% label
-  smoothing and no dropout.
-- **Label noise:** with probability p a training example is assigned a uniformly random incorrect
-  label; otherwise it keeps the correct label. The noise is drawn once, not re-sampled per epoch.
-  Test error can be measured against the noisy or clean label distribution.
-- **Knobs swept:** model width, number of training epochs, dataset size, label-noise level, and the
-  presence of data augmentation / regularization.
-
-Metrics: test error / per-token perplexity, alongside *training* error (needed to locate the
-interpolation threshold), and early-stopping behavior.
-
-## Code framework
-
-The primitives that exist: trainable architectures whose size is set by a width hyperparameter, the
-optimizer factory, a loss, a label-noising step, and a training loop that records train and test
-error over epochs. The empty slots are left for the analysis to fill in.
-
-```python
-import numpy as np
-
-EPS = 0.1
-
-def make_model(width, fixed):
-    """Architecture scaled by a width parameter (e.g. ResNet18 widths [k,2k,4k,8k])."""
-    # TODO
-    pass
-
-def add_label_noise(labels, p, num_classes, rng):
-    """Each label kept w.p. (1-p), else replaced by a uniform incorrect label. Drawn once."""
-    flip = rng.random(len(labels)) < p
-    noisy = labels.copy()
-    replacement = rng.integers(0, num_classes - 1, size=int(flip.sum()))
-    original = labels[flip]
-    noisy[flip] = replacement + (replacement >= original)
-    return noisy
-
-def train(model, train_data, test_data, optimizer, num_steps, fixed, record_every=None):
-    """Train; return train_error and test_error (record per-epoch for epoch-wise studies)."""
-    # TODO
-    pass
-
-def analysis(fixed):
-    """Derive and compute the quantity the study turns on, from the primitives above."""
-    # TODO
-    pass
-
-def model_size_sweep(widths, fixed):
-    """Vary model width while keeping the rest of the procedure fixed."""
-    # TODO
-    pass
-
-def training_time_sweep(width, step_budget, fixed):
-    """Train one model and record errors over training time."""
-    # TODO
-    pass
-
-def sample_count_sweep(width, sample_sizes, fixed):
-    """Vary the number of training samples while keeping model and procedure fixed."""
-    # TODO
-    pass
-```
+The unresolved question is how to put these ingredients on one axis. The desired account must explain why a barely fitting model is unusually fragile, why moving farther past that boundary can improve generalization, why the same phenomenon could appear over epochs, and why increasing the number of training samples might locally fail to help.

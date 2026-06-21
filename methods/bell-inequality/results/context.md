@@ -32,37 +32,4 @@ The question that matters is whether this is a genuine physical issue or a matte
 
 The natural physical realization is Bohm's gedanken experiment: a source emitting correlated pairs toward two well-separated analyzers, each with a single adjustable orientation, each yielding a binary outcome. Two laboratory embodiments exist. Wu–Shaknov (1950) measured the polarization correlation of the 0.5-MeV γ-rays from positronium annihilation, via Compton scattering — but Compton scattering is only a statistically weak index of linear polarization, so it cannot force a sharp binary outcome suited to a decisive test. Kocher–Commins (1967) measured the polarization correlation of the visible photon pair from the 6¹S₀–4¹P₁–4¹S₀ cascade of calcium, using Polaroid-type linear polarizers and standard coincidence counting; this gives genuine two-channel (emerge/not-emerge) outcomes and is the right kind of setup, but as performed it placed the polarizers only at relative orientations 0° and 90°. The yardstick quantities are the coincidence-detection rate R(a,b) as a function of the two polarizer orientations, the single-arm rates with one polarizer removed, and the rate R₀ with both removed; from these one forms the correlation P(a,b) of the ±1 outcomes. The relevant control is whether the two settings can be changed fast enough, and the arms separated far enough, that no light-speed signal can pass from one analyzer to the other within the measurement — the condition Bohm and Aharonov insisted on.
 
-## Code framework
 
-A bare correlation-experiment harness. We can simulate any candidate local model and compute, from its outcome functions, the correlations it predicts at chosen settings — and separately compute the quantum prediction — so the two can be compared. The empty slot is below.
-
-```python
-import numpy as np
-
-# Quantum prediction for the singlet (established, used as the yardstick)
-def quantum_correlation(theta):
-    # E(a, b) for the spin singlet as a function of the angle between settings
-    return -np.cos(theta)
-
-class LocalHiddenVariableModel:
-    """A candidate local model: a shared variable lambda, and two LOCAL
-    outcome functions, each depending only on its own setting."""
-    def sample_lambda(self, n):
-        raise NotImplementedError  # TODO: the source's distribution rho(lambda)
-    def outcome_A(self, a, lam):
-        raise NotImplementedError  # TODO: +-1, depends on a and lam only (not b)
-    def outcome_B(self, b, lam):
-        raise NotImplementedError  # TODO: +-1, depends on b and lam only (not a)
-
-def correlation_of_model(model, a, b, n=10**6):
-    lam = model.sample_lambda(n)
-    A = model.outcome_A(a, lam)
-    B = model.outcome_B(b, lam)
-    return float(np.mean(A * B))
-
-def distinguish_local_from_quantum(*correlations):
-    """Given correlations measured at several settings, decide whether they
-    are compatible with the local hidden-variable form above."""
-    # TODO
-    pass
-```

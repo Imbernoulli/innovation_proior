@@ -1,65 +1,22 @@
 ## Research question
 
-Can a stock-return predictor be made robust to *temporal* distribution shift — concept drift,
-the change over time in the joint law of features and returns — while holding everything else
-fixed: the CSI300 universe, the Alpha158 factor set, the label `Ref($close,-2)/Ref($close,-1)-1`,
-and a fixed qlib top-50/drop-5 backtest? The single thing being designed is the `CustomModel`
-(its `fit`/`predict`) plus, where a method needs it, the editable dataset-adapter / processor
-block of the workflow. The model is evaluated under **three different temporal regimes** — the
-same CSI300 universe split into three test windows (`csi300`: 2017–2020; `csi300_shifted`:
-2016–2018; `csi300_recent`: 2019–2020) — so a method is rewarded only if it generalizes across
-*when* it is tested, not just *what* it is tested on.
+Can a stock-return predictor be made robust to *temporal* distribution shift — concept drift — while the universe, feature set, label, and backtest remain fixed? The substrate is the CSI300 universe, the Alpha158 factor set, the label `Ref($close,-2)/Ref($close,-1)-1`, and a qlib top-50/drop-5 backtest. The designed parts are the `CustomModel` (`fit`/`predict`) and, if needed, the dataset adapter/processor block. Evaluation runs across three temporal regimes — `csi300` (2017–2020), `csi300_shifted` (2016–2018), and `csi300_recent` (2019–2020) — so a method must generalize across *when* it is tested.
 
-## Prior art before the first rung (the lineage the first baseline reacts to)
+## Prior art / Background / Baselines
 
-The first rung is a sequence model with explicit multi-pattern routing. It reacts to a line of
-prior approaches to the non-stationary-prediction problem, each with a gap:
+- **Empirical risk minimization with one model (single LSTM / GBDT).** A single predictor is trained by averaging loss over all historical samples. Limitation: market relations rotate over time, and a single static parameter vector averages contradictory cross-sectional effects such as momentum and reversal, fitting none of them well.
+- **Mixture-of-experts / conditional computation.** Several expert sub-models are combined by a per-input gate. Limitation: the gate often collapses onto one expert or spreads mass evenly, so the ensemble effectively behaves like a single predictor and its gains are lost.
+- **Domain-adaptation alignment (covariate shift, MMD/CORAL/DANN).** Feature distributions are aligned across domains so a shared conditional can be reused. Limitation: these methods require a predefined source/target split and ignore the sequential order of samples, so a regime that appears mid-test is invisible to them.
 
-- **Empirical risk minimization on one model (a single LSTM / GBDT).** Fit one predictor on all of
-  history by average loss. Gap: it bakes in the i.i.d. assumption — one fixed joint `P`, one
-  relation `p(y|x)` — which the market violates; two documented cross-sectional effects (momentum
-  and reversal) have *opposite* sign and rotate over time, so one parameter vector can only average
-  contradictory relations and fits neither.
-- **Mixture-of-experts / conditional computation (Jacobs et al. 1991; Shazeer et al. 2017).**
-  Several expert sub-models and a gate that routes per input. The right *shape* — several relations,
-  a router — but trained naively the gate collapses onto one expert (the rich-get-richer gating
-  pathology), and a soft load-balancing penalty equalizes mass without saying *which* sample
-  belongs to *which* expert. Gap: no mechanism that assigns each sample to the expert that fits it
-  while preventing collapse.
-- **Domain-adaptation alignment (covariate shift, Shimodaira 2000; MMD/CORAL/DANN, 2012–2016).**
-  Align feature distributions across domains so a shared conditional is learned. Gap as posed for a
-  *stream*: it needs the test density and a known train/test pair, and it has no notion of *when*
-  inside a time series the distribution turns over — the temporal version of the shift is left
-  unaddressed.
+## Fixed substrate / Code framework
 
-The two reference adaptive baselines on this task — a routing sequence model and a
-temporal-alignment recurrent model — are the two answers to those gaps; a non-adaptive
-gradient-boosted tree is the strong control they must beat.
+Frozen: the CSI300 instrument list; the **Alpha158** handler (158 engineered factors per stock per day, pre-normalized with `RobustZScoreNorm` and `Fillna`); the label; the `train=[2008,2014] / valid=[2015,2016] / test=[2017,2020]` segments (the three regimes are separate fixed workflow files); and the `PortAnaRecord` backtest (`TopkDropoutStrategy`, topk 50, n_drop 5, costs and benchmark fixed). The qlib `SignalRecord` / `SigAnaRecord` / `PortAnaRecord` chain computes the metrics.
 
-## The fixed substrate
+## Editable interface
 
-The qlib workflow is frozen except for the editable region. Fixed: the CSI300 instrument list;
-the **Alpha158** handler (158 engineered factors per stock per day — rolling mean/std/max-min of
-returns and volume, ROC momentum, K-line ratios, price–volume CORR/CORD, volatility VSTD/WVMA,
-residual RESI/RSQR — pre-normalized with `RobustZScoreNorm` and `Fillna`); the label; the
-`train=[2008,2014] / valid=[2015,2016] / test=[2017,2020]` segments (the three regimes are three
-such fixed workflow files); and the `PortAnaRecord` backtest (`TopkDropoutStrategy`, topk 50,
-n_drop 5, costs and benchmark fixed). The qlib `SignalRecord` / `SigAnaRecord` / `PortAnaRecord`
-chain computes the metrics. (The task brief mentions Alpha360; the actual frozen workflow handler
-is **Alpha158**, and every baseline is filled against Alpha158 — that is the contract.)
+Two regions are editable. (1) `custom_model.py`: the `CustomModel(Model)` class with `fit(dataset)` and `predict(dataset, segment="test") -> pd.Series` indexed by `(datetime, instrument)`. (2) `workflow_config.yaml`: the dataset block (`dataset.class` / adapter) and the handler's processor block, so a method that needs a different dataset *view* — e.g., a sequence sampler or filtered feature set — can request it. Everything else (qlib init, segments, records, backtest) is fixed.
 
-## The editable interface
-
-Two regions are editable. (1) `custom_model.py` lines 16–103: the `CustomModel(Model)` class with
-`fit(dataset)` and `predict(dataset, segment="test") -> pd.Series` (indexed by
-`(datetime, instrument)`). (2) `workflow_config.yaml`: the dataset block (the `dataset.class` /
-adapter, lines 19–26) and the handler's processor block (lines 32–45), so a method that needs a
-different dataset *view* — a sequence sampler, a filtered feature set — can request it. Everything
-else (qlib init, segments, records, backtest) is fixed.
-
-The starting point is the scaffold **default fill**: a Ridge-regression `CustomModel` over the
-default `DatasetH` / Alpha158 pipeline. Each rung replaces exactly this editable region (and, for
-the sequence models, the dataset/processor block) and nothing else.
+The starting point is the default Ridge-regression fill below. Each baseline or method replaces exactly this editable region (and, for sequence models, the dataset/processor block) and nothing else.
 
 ```python
 # EDITABLE region of custom_model.py (lines 16-103) — default fill (Ridge baseline)
@@ -107,10 +64,4 @@ class CustomModel(Model):
 
 ## Evaluation settings
 
-Three temporal regimes, each a fixed CSI300 workflow with a different test window: `csi300`
-(2017–2020), `csi300_shifted` (2016–2018), `csi300_recent` (2019–2020). Three seeds {42, 123, 456}
-where a method is stochastic. Per regime, seven metrics — signal: IC, ICIR, Rank IC, Rank ICIR;
-portfolio: annualized return, information ratio, max drawdown — all higher-is-better (max drawdown
-is reported as a negative number, so closer to zero is better). The task aggregate is the geometric
-mean across the three regimes of each regime's equally-weighted (sigmoid-mapped) seven-metric mean,
-so a method that wins one regime but collapses in another is penalized.
+Three temporal regimes, each a fixed CSI300 workflow with a different test window: `csi300` (2017–2020), `csi300_shifted` (2016–2018), `csi300_recent` (2019–2020). Three seeds {42, 123, 456} for stochastic methods. Per regime, seven metrics — signal: IC, ICIR, Rank IC, Rank ICIR; portfolio: annualized return, information ratio, max drawdown — all higher-is-better (max drawdown is reported as a negative number, so closer to zero is better). The task aggregate is the geometric mean across the three regimes of each regime's equally-weighted (sigmoid-mapped) seven-metric mean, so a method that wins one regime but collapses in another is penalized.

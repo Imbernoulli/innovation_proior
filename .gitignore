@@ -1,6 +1,11 @@
 # Reference-implementation clones: 58 nested git repos + large wheels — local-only, re-clonable
 **/code/
 
+# Raw research materials under methods/ (primary source, references, working notes) — local-only provenance
+methods/**/src/
+methods/**/refs/
+methods/**/notes/
+
 # Paper figures & LaTeX build artifacts under methods/ (not provenance)
 methods/**/*.png
 methods/**/*.jpg
@@ -36,3 +41,15 @@ tools/*codex*.log
 **/*.pdf
 **/*.bin
 **/src.tar.gz
+
+# SFT build artifact (regenerate with: python3 sft/build_sft.py)
+sft/innovation_sft.jsonl
+
+# scratch / verification junk
+**/__pycache__/
+_tmp_*.py
+mc_verify_tmp.py
+/spindle_*.cnf
+/J_forced_structured.cnf
+/nadaraya_watson_demo.png
+.verify_ioi/

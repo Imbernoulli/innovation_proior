@@ -125,49 +125,4 @@ adaptive "chosen-exam" prediction game: query f adaptively, then name a fresh po
 recognize f(x) among random alternatives. The computational models are the Turing machine and,
 interchangeably, the Boolean circuit with poly(k) gates.
 
-## Code framework
 
-The primitives that already exist before the construction: a candidate one-way permutation and a
-generic distinguisher harness. The empty stubs below are the objects sought — a string generator and
-a keyed function family — left to be filled in.
-
-```python
-from typing import Callable
-
-# --- already-available hardness primitive (candidate) -------------------
-def one_way_permutation(x: int, k: int) -> int:
-    """Efficiently computable bijection on k-bit strings; believed hard to invert.
-    e.g. modular exponentiation x -> g^x mod p."""
-    ...  # provided by a number-theoretic assumption
-
-# --- empty slot: the string generator -----------------------------------
-def generator(seed: bytes) -> bytes:
-    """Deterministic, efficient. Stretch a short random seed into a longer
-    string that no efficient test can tell from uniform."""
-    # TODO
-    pass
-
-# --- empty slot: the keyed function family ------------------------------
-class KeyedFunctionFamily:
-    """Pick a member with a few random bits (the key); evaluate it at any
-    input in poly time; the family must be indistinguishable, under oracle
-    access, from a uniformly random function."""
-    def __init__(self, key: bytes):
-        self.key = key
-
-    def evaluate(self, x: bytes) -> bytes:
-        # TODO
-        pass
-
-# --- the test we must defeat -------------------------------------------
-def distinguishing_advantage(
-    sample_real: Callable[[], bytes],     # draws from the construction
-    sample_ideal: Callable[[], bytes],    # draws from uniform / random function
-    test: Callable[[bytes], int],         # any poly-time 0/1 algorithm
-    trials: int,
-) -> float:
-    """|Pr[test(real)=1] - Pr[test(ideal)=1]|; must be negligible for ALL tests."""
-    real = sum(test(sample_real()) for _ in range(trials)) / trials
-    ideal = sum(test(sample_ideal()) for _ in range(trials)) / trials
-    return abs(real - ideal)
-```

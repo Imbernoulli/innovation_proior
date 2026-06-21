@@ -1,0 +1,34 @@
+# Neural ODE Review Changelog
+
+- `methods/neural-ode/results/reasoning.md:69` corrected the adjoint notation to keep row-vector and column-vector conventions separate instead of mixing `a^T J` into the row derivation.
+- `methods/neural-ode/results/reasoning.md:91` fixed the parameter-gradient formula to use the row-adjoint product `a partial f / partial theta` with the reversed-limits sign.
+- `methods/neural-ode/results/reasoning.md:93` restored the endpoint-gradient boundary term: initialize the time-adjoint with `-dL/dt1`; in the two-endpoint case `dL/dt0 = -a(t0) f(z(t0),t0,theta)`.
+- `methods/neural-ode/results/reasoning.md:149` aligned the adjoint code sketch with torchdiffeq's canonical augmented state `(vjp_t, z, a, *vjp_params)`.
+- `methods/neural-ode/results/reasoning.md:156` made the VJP seed and inputs faithful to the canonical implementation: `torch.autograd.grad(..., (t, z)+params, -a)`.
+- `methods/neural-ode/results/reasoning.md:163` added vector-valued time VJP accumulation across requested output times.
+- `methods/neural-ode/results/reasoning.md:221` fixed the CNF maximum-likelihood sign: backward data-to-base integration yields `log p_base - log p_data`, so the accumulated logp difference is subtracted.
+- `methods/neural-ode/results/reasoning.md:242` made the planar CNF return a tuple-state log-density derivative with shape `[batch, 1]`.
+- `methods/neural-ode/results/reasoning.md:244` added a tuple-state `cnf_logprob` sketch using torchdiffeq and `base_logprob(z_base) - logp_diff`.
+- `methods/neural-ode/results/reasoning.md:255` updated the final causal-chain recap to use row-adjoint equations and the corrected signs.
+- `methods/neural-ode/results/answer.md:22` rewrote the final equations around a row adjoint and gave the correct column-convention transpose.
+- `methods/neural-ode/results/answer.md:32` stated the parameter-gradient sign with both backward and forward integral orientations.
+- `methods/neural-ode/results/answer.md:35` added the missing endpoint-gradient boundary contribution and the simple-case `dL/dt0` check.
+- `methods/neural-ode/results/answer.md:41` documented the canonical torchdiffeq adjoint state and `-vjp_y` VJP seed.
+- `methods/neural-ode/results/answer.md:53` restated instantaneous change-of-variables with the negative trace sign.
+- `methods/neural-ode/results/answer.md:58` corrected the multi-hidden-unit CNF sign to `-sum_n tr(partial f_n / partial z)`.
+- `methods/neural-ode/results/answer.md:69` replaced the hand-rolled tensor-only solver with reference-faithful torchdiffeq usage.
+- `methods/neural-ode/results/answer.md:107` rebuilt `PlanarCNF` as a tuple-state module returning `(dz_dt, dlogp_dt)`.
+- `methods/neural-ode/results/answer.md:126` fixed `cnf_logprob` to integrate data backward and subtract `logp_diff`, matching `torchdiffeq/examples/cnf.py`.
+- `methods/neural-ode/notes/source_matrix.md:1` added the strict evidence matrix with primary source, ancestors, explainers, self-account search, and canonical code.
+- `methods/neural-ode/notes/source_matrix.md:19` recorded the primary-source main-text sign typo in the multi-hidden-unit CNF paragraph and the appendix divergence typo.
+- `methods/neural-ode/notes/discovery_synthesis.md:5` documented the verified adjoint derivation and row/column convention.
+- `methods/neural-ode/notes/discovery_synthesis.md:7` documented the endpoint-gradient boundary term and why omitting it is a bug.
+- `methods/neural-ode/notes/discovery_synthesis.md:9` documented the canonical torchdiffeq adjoint implementation details used for code-faithfulness.
+- `methods/neural-ode/notes/discovery_synthesis.md:11` documented the corrected CNF trace signs, including the planar case.
+- `methods/neural-ode/notes/discovery_synthesis.md:13` documented the canonical CNF likelihood orientation and tuple-state solver requirement.
+- `methods/neural-ode/notes/synthesis.md:126` corrected the Liouville/trace note to say the ODE follows one D-dimensional trajectory plus one scalar log-density state.
+- `methods/neural-ode/notes/synthesis.md:142` replaced stale `a^T` shorthand with row-adjoint VJP wording.
+- `methods/neural-ode/notes/synthesis.md:157` corrected the CNF MLE/sampling direction and logp-difference sign.
+- `methods/neural-ode/notes/synthesis.md:158` recorded that final code must use torchdiffeq rather than a tensor-only toy solver.
+- `methods/neural-ode/notes/strict_check_output.txt:1` added the strict-check log, including the absent `scripts/check_strict_method.py` note and the successful neural-ode lint/parse/runtime checks.
+- `methods/neural-ode/results/.codex_review.json:3` updated the durable review marker to a completed this-turn Codex review with evidence.

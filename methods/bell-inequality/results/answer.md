@@ -50,26 +50,4 @@ With E = −cos θ and coplanar settings **a** = 0°, **a′** = 90°, **b** = 4
 
 The √2 margin is against the local ceiling itself, before any particular hidden-variable model is specified. Detector losses still have to be handled honestly in the measured outcomes or counting rates; the point of the four-setting form is that the derivation no longer needs exact perfect anticorrelation. Because it needs only the locality factorization P(A,B|a,b,λ) = P(A|a,λ)P(B|b,λ) and bounded outcomes — no spin, no particles — it is a test of local realism itself, decidable by setting two analyzers at the right angles and counting coincidences.
 
-## Numerical check
 
-```python
-import numpy as np
-
-def E(theta_deg):
-    # quantum singlet correlation E(a,b) = -cos(angle between settings)
-    return -np.cos(np.radians(theta_deg))
-
-# Bell 1964 three-setting inequality:  |E(a,b) - E(a,c)| <= 1 + E(b,c)
-ab, ac, bc = 45, 90, 45          # relative angles
-lhs = abs(E(ab) - E(ac))
-rhs = 1 + E(bc)
-print(f"Bell-1964: |E(ab)-E(ac)|={lhs:.3f}  1+E(bc)={rhs:.3f}  violated={lhs > rhs}")
-# -> 0.707 > 0.293, violated
-
-# CHSH four-setting inequality:  |E(a,b) - E(a,b') + E(a',b) + E(a',b')| <= 2
-a, ap, b, bp = 0, 90, 45, 135    # absolute settings (deg)
-S = E(a-b) - E(a-bp) + E(ap-b) + E(ap-bp)
-print(f"CHSH: S={S:.4f}  |S|={abs(S):.4f}  classical_bound=2  quantum=2*sqrt2={2*np.sqrt(2):.4f}")
-# -> |S| = 2.8284 > 2
-
-```

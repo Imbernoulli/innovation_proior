@@ -1,0 +1,13 @@
+I begin with the simplest possible count. If I allow a meromorphic function to have simple poles at `m` prescribed points, I expect `m` principal-part coefficients and one constant. On the sphere that expectation is essentially the answer, so it is tempting to say that the dimension is just the local pole budget plus one.
+
+As soon as the curve has genus, that count is too optimistic. I can cut the surface open, build a candidate expression from elementary pieces with the right singularities, and then try to close it back up. Closing it back up means killing periods around the cuts. There are `g` independent holomorphic differentials behind those tests, so the first corrected guess is `m + 1 - g`.
+
+That still feels incomplete, because it assumes the period equations really have full rank. I have to stop here and ask what happens if one of the period conditions is already forced by the others. In that case the local construction has one more free constant than the generic count predicts. If several period equations are dependent, the same phenomenon repeats. The failure of independence is not a nuisance at the edge of the argument; it is exactly the missing term.
+
+Now I need a way to count this failure without inspecting every period equation by hand. The dependency condition can be tested by a dual object: a differential or auxiliary function that vanishes at the same prescribed pole points. If such an object exists, it gives a linear relation among the period conditions. If there are `q` independent such objects, the count becomes the expected `m + 1 - g` plus `q`.
+
+This is the point where the formula takes its modern shape. I replace the list of allowed poles by a divisor `D`. The function space is `L(D)`, and its dimension is `l(D)`. The dual objects are encoded by the canonical divisor: the correction is the dimension of `L(K - D)`. So the thing I can compute cleanly is not `l(D)` alone but the difference between the desired function count and the dual correction.
+
+The resulting equality is `l(D) - l(K - D) = deg D + 1 - g`. It keeps the naive budget, keeps the genus subtraction, and makes the exceptional cases exact instead of exceptional. When `D` is large enough, `K - D` has negative degree and the correction vanishes, so the generic count is the actual count. When `D` is small or special, the same formula explains precisely why extra functions appear.
+
+The bridge is therefore not merely between analysis and topology. It is a rank statement. Local poles give candidate degrees of freedom, global periods impose constraints, and the canonical dual space measures the lost rank of those constraints. Once that dual space is named, the existence problem for meromorphic functions becomes a dimension identity.

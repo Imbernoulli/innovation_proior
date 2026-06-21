@@ -1,26 +1,17 @@
 ## Research question
 
 Deep reinforcement learning has removed much of the feature engineering once needed for
-policies and value functions, but it has not removed the need for a hand-specified reward.
-Reward engineering remains a real barrier: some objectives are hard to write down at all (what
-is the reward for "socially acceptable" behavior?), naively specified rewards routinely
-produce unintended behavior, and deep RL is sensitive to reward sparsity and magnitude, so
-even a "correct" reward can be hard to make trainable. Inverse reinforcement learning (IRL) —
-inferring an expert's reward function from demonstrations — promises to remove this barrier by
-*acquiring* the reward automatically.
+policies and value functions, but a reward function still has to be specified by hand. Some
+objectives are hard to write down at all (what is the reward for "socially acceptable"
+behavior?), and deep RL is sensitive to reward sparsity and magnitude. Inverse reinforcement
+learning (IRL) — inferring an expert's reward function from demonstrations — *acquires* a
+reward automatically instead.
 
-The precise goal here is sharper than "imitate the expert." We want to recover a reward
-function from a fixed set of expert demonstrations such that: (1) the procedure scales to
+The setting here is to recover a reward function from a fixed set of expert demonstrations on
 high-dimensional continuous control with unknown dynamics, where the demonstrations are
-trajectories from MuJoCo-style locomotion tasks; (2) it is sample- and variance-efficient
-enough to actually train, rather than degenerating on long-horizon trajectories; and,
-critically, (3) the recovered reward is **portable** — if we take the learned reward to a new
-environment whose *dynamics* differ from the one the demonstrations came from, and re-optimize
-a policy under it, the policy should still be good. A method that only reproduces the expert's
-*policy* gives us nothing to re-optimize; a method that recovers a reward but lets the
-environment's dynamics leak into it gives a reward that silently stops being correct the moment
-the dynamics change. Closing the gap between scalable adversarial imitation and a genuinely
-transferable reward is the problem.
+trajectories from MuJoCo-style locomotion tasks, and then to ask what happens when the learned
+reward is taken to a new environment whose *dynamics* differ from the one the demonstrations
+came from and a policy is re-optimized under it.
 
 ## Background
 
@@ -49,10 +40,9 @@ Maximizing `E_{tau~D}[log p_theta(tau)]` is the MaxEnt IRL objective. Its gradie
 `E_D[ sum gamma^t d/dtheta r_theta ] - E_{p_theta}[ sum gamma^t d/dtheta r_theta ]` — a positive phase over
 demonstrations minus a negative phase over the model — and the negative phase requires samples
 from `p_theta`, equivalently from the partition function `Z = ∫ exp(...)`, which is intractable
-in large or continuous spaces. This intractable `Z` is the practical wall every MaxEnt IRL
-method has to climb.
+in large or continuous spaces.
 
-A separate, older result frames what reward learning can and cannot pin down. **Reward shaping**
+A separate result frames what reward learning can pin down. **Reward shaping**
 (Ng, Harada & Russell 1999) shows that the transformation
 
 ```
@@ -61,15 +51,13 @@ r_hat(s,a,s') = r(s,a,s') + gamma * Phi(s') - Phi(s)
 
 leaves the optimal policy unchanged for *any* potential function `Phi: S -> R`, and — without
 prior knowledge of the dynamics — this potential-based class is the *only* class of reward
-transformations that preserves the optimal policy. The diagnostic consequence is a fact about
-the world, knowable before any method: an IRL algorithm that only observes demonstrations from
-an optimal agent has no way to tell the true reward `r` apart from any shaped `r_hat` in this
-class, unless the class of learnable rewards is restricted. And a shaped reward is dangerous
-across dynamics: with deterministic dynamics `T`, the shaped reward
+transformations that preserves the optimal policy. A consequence: an IRL algorithm that only
+observes demonstrations from an optimal agent has no way to tell the true reward `r` apart from
+any shaped `r_hat` in this class, unless the class of learnable rewards is restricted. With
+deterministic dynamics `T`, the shaped reward
 `r_hat(s,a) = r(s,a) + gamma*Phi(T(s,a)) - Phi(s)` depends on `T` through the successor state;
 change `T` to `T'` and `r_hat` no longer sits in the policy-invariant class for the new MDP, so
-the optimal policy under `r_hat` changes. Shaping speeds learning in the *training* environment
-but is exactly what makes a learned reward fail to transfer.
+the optimal policy under `r_hat` changes.
 
 Two more facts close the background. **Generative adversarial networks** (Goodfellow et al.
 2014) train a generator `G` against a discriminator `D`; for a fixed generator the optimal
@@ -86,16 +74,15 @@ to.
 
 **Maximum entropy / guided cost learning (Ziebart 2008; Finn, Levine & Abbeel 2016a, "Guided
 Cost Learning").** MaxEnt IRL fits the energy-based trajectory model above by maximum
-likelihood; the obstacle is the intractable partition function `Z`. Guided cost learning (GCL)
+likelihood, with the partition function `Z` to estimate. Guided cost learning (GCL)
 estimates `Z` with importance sampling, learning an *adaptive sampler* — a policy — that is
 improved alongside the cost so that samples concentrate where the model puts mass. Concretely
 it alternates: take a gradient step on the cost using demonstrations (positive phase) versus
 importance-weighted samples from the sampler (negative phase), and improve the sampler toward
 the current cost. A mixture `mu = (1/2) pi + (1/2) p_hat` of the policy and a rough density
 estimate `p_hat` on the demonstrations is used as the importance distribution to reduce
-variance when the early policy covers the demonstrations poorly. **Gap:** GCL operates over
-whole trajectories and needs domain-specific regularization; the trajectory-level importance
-weights make the estimates high-variance, and the method is awkward to scale to complex tasks.
+variance when the early policy covers the demonstrations poorly. GCL operates over
+whole trajectories and uses domain-specific regularization.
 
 **GAN-GCL — adversarial cost learning over trajectories (Finn, Christiano, Abbeel & Levine
 2016b, "A Connection between GANs, IRL, and Energy-Based Models").** This work shows that GCL is
@@ -108,13 +95,11 @@ D_theta(tau) = exp{ f_theta(tau) } / ( exp{ f_theta(tau) } + pi(tau) ),
 ```
 
 i.e. the sigmoid's input is `f_theta(tau) - log pi(tau)` — the learned term minus the filled-in
-log generator density. The payoff is that this makes the optimal discriminator independent of
-the generator (it is optimal exactly when `exp{f_theta} ∝ p`), which stabilizes training, and —
-unlike a generic GAN discriminator — it lets a reward be read back out of `f_theta`: at
-optimality `f*(tau) = R*(tau) + const`. **Gap:** the formulation is trajectory-centric, so the
-discriminator's logit is a sum over an entire episode and its variance compounds with the
-horizon; Finn et al.'s treatment is theoretical and reports no working implementation, and
-direct trajectory-level training learns very poorly on continuous control.
+log generator density. This makes the optimal discriminator independent of the
+generator (it is optimal exactly when `exp{f_theta} ∝ p`), and a reward can be read
+back out of `f_theta`: at optimality `f*(tau) = R*(tau) + const`. The formulation is
+trajectory-centric, so the discriminator's logit is a sum over an entire episode; Finn et al.'s
+treatment is theoretical and reports no working implementation.
 
 **GAIL — generative adversarial imitation learning (Ho & Ermon 2016).** Poses imitation as
 matching the expert's occupancy measure, and shows that with a particular regularizer the
@@ -123,12 +108,9 @@ practical algorithm is a GAN over single state-action pairs with a *generic* dis
 `D_w(s,a) -> (0,1)`: alternate an Adam step on `D_w` to increase
 `E_pi[log D_w(s,a)] + E_{pi_E}[log(1 - D_w(s,a))]` and a TRPO policy step that minimizes the
 same objective, using cost `log D_w(s,a)` (so the policy is rewarded for confusing `D`).
-Single-transition discrimination makes it low-variance and scalable, and it matches expert
-performance on continuous control. **Gap:** because `D_w` is an unstructured classifier, at the
-GAN optimum it outputs `0.5` for every `(s,a)`, so there is no reward to extract — GAIL recovers
-a *policy*, not a reward function. A policy is a far less portable representation: there is
-nothing to re-optimize in a new environment, so GAIL has no mechanism for transfer when the
-dynamics change.
+Single-transition discrimination is low-variance and scalable, and it matches expert
+performance on continuous control. Because `D_w` is an unstructured classifier, at the
+GAN optimum it outputs `0.5` for every `(s,a)`; GAIL recovers a *policy*.
 
 ## Evaluation settings
 
@@ -145,7 +127,7 @@ The natural yardsticks already in use for continuous-control imitation and IRL:
   environment that shares the reward but has *modified dynamics* (e.g. a re-articulated agent,
   altered morphology, or changed transition structure), re-optimize a fresh policy under the
   learned reward, and measure how good the resulting policy is under the *true* environment
-  reward. This is the setting that distinguishes a portable reward from an entangled one.
+  reward.
 - **Policy optimization** is by a standard on-policy method (TRPO-style trust-region updates
   or a clipped-surrogate variant in a modern harness), with entropy regularization, large
   on-policy batches per update, and the learned reward used as the training signal.
@@ -160,7 +142,7 @@ from policy transitions, turns the discriminator into a per-step reward, and run
 optimizer (PPO/TRPO) on that reward. What already exists is the GAN-over-transitions scaffold:
 a `RewardNetwork` whose internal structure is still open, and a training loop that knows how
 to do binary logistic regression of expert vs. policy and how to feed a reward to the policy
-optimizer. The empty slots are the discriminator score and the reward handed to the policy.
+optimizer. The open slots are the discriminator score and the reward handed to the policy.
 
 ```python
 import torch

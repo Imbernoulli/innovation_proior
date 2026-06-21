@@ -1,0 +1,25 @@
+# Changelog
+
+- `methods/stochastic-depth/results/context.md:19` replaced the over-narrow `id(H)` residual-block framing with shortcut notation `s_l(H)`, covering same-shape identity, CIFAR/SVHN average-pool plus zero-pad transitions, and ImageNet projection transitions.
+- `methods/stochastic-depth/results/context.md:21` corrected the Dropout ancestor statement: the original test-time rule scales retained outgoing weights by keep probability, rather than loosely saying activations are scaled.
+- `methods/stochastic-depth/results/context.md:27` added the case distinction that non-negativity proves literal identity only for identity and pool/pad shortcuts, while learned projections must be treated as shortcut branches.
+- `methods/stochastic-depth/results/context.md:31` updated the constant-depth baseline equation to use `s_l(H)` instead of `id(H)`.
+- `methods/stochastic-depth/results/context.md:46` made the scaffold pure but precise by describing the pre-method primitive as a residual branch plus shape-aware shortcut, without leaking the stochastic-depth answer.
+- `methods/stochastic-depth/results/reasoning.md:5` rewrote the insight setup around the existing shortcut branch, including same-shape, pool/pad transition, and projection cases.
+- `methods/stochastic-depth/results/reasoning.md:9` changed the training equation to gate only `f_l` while preserving `s_l`.
+- `methods/stochastic-depth/results/reasoning.md:11` fixed the main mathematical overstatement: dropped same-shape blocks are exact identities, but transition blocks are shortcut-only shape changes.
+- `methods/stochastic-depth/results/reasoning.md:33` corrected the test-time equation to scale the residual branch and add the shortcut branch, matching the canonical implementation's `skip(input) + net(input) * (1 - deathRate)`.
+- `methods/stochastic-depth/results/reasoning.md:41` grounded the code explanation in the Torch reference's `deathRate` and per-mini-batch gate behavior.
+- `methods/stochastic-depth/results/reasoning.md:46` updated the PyTorch code sample to import `torch.nn.functional`, use `death_rate`, avoid computing `f` when the gate is closed, zero-pad channels with `torch.cat`, and scale by `1 - death_rate` at test.
+- `methods/stochastic-depth/results/reasoning.md:103` updated the final causal chain so it no longer says every dropped block is an exact identity.
+- `methods/stochastic-depth/results/answer.md:9` changed the final method definition to shortcut notation and enumerated all shortcut cases.
+- `methods/stochastic-depth/results/answer.md:11` split the training cases into active block, same-shape dropped identity, and transition shortcut-only behavior.
+- `methods/stochastic-depth/results/answer.md:23` corrected the test equation to use `s_l(H)` instead of assuming `+ H`.
+- `methods/stochastic-depth/results/answer.md:35` made the code artifact faithful to the canonical Torch implementation's `deathRate` convention and closed-gate compute skipping.
+- `methods/stochastic-depth/results/answer.md:88` added the exact code-faithfulness note: linear-decay death rates, close-on-`rand < deathRate`, skipped residual gradients, and test scaling by `1 - deathRate`.
+- `methods/stochastic-depth/notes/synthesis.md:15` corrected the support note's ResBlock baseline to use shortcut notation and all dimension-changing cases.
+- `methods/stochastic-depth/notes/synthesis.md:18` removed stale "identity skip" wording from the method summary.
+- `methods/stochastic-depth/notes/synthesis.md:20` corrected the training and test formulas in the support note to use `s_l`.
+- `methods/stochastic-depth/notes/source_matrix.md:1` added the strict evidence matrix covering the primary paper, canonical code, load-bearing ancestors, explainers, and self-account search.
+- `methods/stochastic-depth/notes/discovery_synthesis.md:1` added the source-grounded reconstruction notes, including the exact expected-depth derivation and the shortcut-case audit.
+- `methods/stochastic-depth/results/.codex_review.json:1` replaced the stale errored review marker with an explicit `not_run` independent-review record because no independent review gate or `scripts/check_strict_method.py` exists in this workspace.

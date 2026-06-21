@@ -1,0 +1,21 @@
+# Changelog
+
+- `methods/wide-resnet/results/context.md:3` rewrote the setup as pre-method context instead of stating the final wide-residual answer.
+- `methods/wide-resnet/results/context.md:5` through `methods/wide-resnet/results/context.md:66` rebuilt the scaffold into exactly five `##` sections: depth pressure, fixed residual machinery, open design axes, baselines, and evaluation scaffold.
+- `methods/wide-resnet/results/reasoning.md:1` through `methods/wide-resnet/results/reasoning.md:23` replaced the old code-heavy reasoning with a continuous first-person derivation with no markdown headers.
+- `methods/wide-resnet/results/reasoning.md:15` bounded the width/depth conclusion to the tested CIFAR cases instead of overgeneralizing.
+- `methods/wide-resnet/results/reasoning.md:19` fixed dropout placement to the paper/code-faithful residual-branch position after the second BN/ReLU and before the second convolution.
+- `methods/wide-resnet/results/reasoning.md:21` corrected the depth convention to `N = (depth - 4) / 6` without the earlier faulty "stem plus fc-input conv" derivation.
+- `methods/wide-resnet/results/reasoning.md:23` made shortcut semantics exact: raw identity when planes match; stride-matched `1x1` projection of the first preactivation when they do not.
+- `methods/wide-resnet/results/answer.md:7` fixed the final block definition to `BN -> ReLU -> 3x3 conv -> BN -> ReLU -> dropout -> 3x3 conv` plus the correct shortcut cases.
+- `methods/wide-resnet/results/answer.md:13` added the CIFAR reflected-padding crop detail and preserved the paper's LR, momentum, dampening, weight decay, batch-size, and SVHN constants.
+- `methods/wide-resnet/results/answer.md:23` through `methods/wide-resnet/results/answer.md:56` replaced the block code with a faithful PyTorch transliteration of the official Torch/Lua shortcut and dropout behavior.
+- `methods/wide-resnet/results/answer.md:86` through `methods/wide-resnet/results/answer.md:96` changed convolution initialization from the earlier PyTorch `fan_out` variant to reference-faithful He/MSR fan-in initialization and zeroed linear bias.
+- `methods/wide-resnet/notes/source_matrix.md:5` through `methods/wide-resnet/notes/source_matrix.md:15` added the strict evidence matrix: primary source, canonical code, ancestors, explainer, and self-account search trail.
+- `methods/wide-resnet/notes/discovery_synthesis.md:13` through `methods/wide-resnet/notes/discovery_synthesis.md:25` recorded the math/constants audit for residual sign, depth convention, `l` cases, `k` cases, optimizer schedule, and dropout probabilities.
+- `methods/wide-resnet/notes/discovery_synthesis.md:29` through `methods/wide-resnet/notes/discovery_synthesis.md:35` recorded the code-faithfulness audit, including dropout placement, projection shortcut semantics, and fan-in initialization.
+- `methods/wide-resnet/notes/synthesis.md:5` through `methods/wide-resnet/notes/synthesis.md:6` corrected the older synthesis note to use the official Torch/Lua implementation as the canonical dropout source and to mark the PyTorch file as a no-dropout caveat.
+- `methods/wide-resnet/notes/synthesis.md:55`, `methods/wide-resnet/notes/synthesis.md:91`, and `methods/wide-resnet/notes/synthesis.md:93` corrected stale dropout/depth wording in the older synthesis note.
+- `methods/wide-resnet/refs/self_accounts/search_log.md:5` through `methods/wide-resnet/refs/self_accounts/search_log.md:19` documented the author self-account search and the no-useful-self-account result.
+- `methods/wide-resnet/notes/strict_check_output.txt:1` through `methods/wide-resnet/notes/strict_check_output.txt:16` recorded that `scripts/check_strict_method.py` is absent in this checkout and listed the substitute validation checks.
+- `methods/wide-resnet/results/.codex_review.json:3` through `methods/wide-resnet/results/.codex_review.json:8` replaced the stale failed-review marker with the completed companion-review record.

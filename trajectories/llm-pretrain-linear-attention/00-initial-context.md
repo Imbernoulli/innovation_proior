@@ -1,41 +1,37 @@
 ## Research question
 
-Pretrain a GPT-style language model whose sequence mixer is **linear or otherwise subquadratic** in
-sequence length, yet stays competitive in language-model quality with standard quadratic softmax
-attention. Softmax attention forms an `L×L` score matrix, so both compute and memory grow like `L²`,
-and at inference the key/value cache grows with the context already generated. The single thing being
-designed is the **attention sublayer** — the `CausalSelfAttention` class, and the `Block` structure
-that wraps it — replaced by a mechanism with a fixed-size state and a subquadratic training path.
-Everything else about the model and the training pipeline is fixed. Cheapness is easy; cheapness that
-does not lose quality against a strong softmax Transformer on the same data is the whole problem.
+Pretrain a GPT-style language model whose sequence mixer is linear or otherwise subquadratic in
+sequence length, yet stays competitive with standard quadratic softmax attention. Softmax attention
+builds an `L×L` score matrix, so compute and memory scale like `L²`, and at inference the key/value
+cache grows with the context already generated. The design target is the attention sublayer — the
+`CausalSelfAttention` class and the `Block` that wraps it — replaced by a mechanism with a fixed-size
+state and a subquadratic training path. Everything else is fixed. Cheapness is easy; cheapness that
+does not lose quality against a strong softmax Transformer on the same data is the problem.
 
-## Prior art before the first rung (the subquadratic-mixer lineage)
+## Prior art / Background / Baselines
 
-The first rung reacts to a line of efficient-attention work, each member of which buys one property and
-gives up another. These are the ancestors the ladder climbs out of.
+Work on efficient sequence mixers has traded properties off against one another. The relevant
+baselines are:
 
 - **Linear attention (Katharopoulos et al. 2020).** Replace the softmax kernel `exp(qₜ·kᵢ)` with a
-  plain feature-map dot product `φ(qₜ)·φ(kᵢ)`, so `φ(qₜ)` factors out of the causal sum and the layer
-  becomes a linear RNN with a matrix-valued state `Sₜ = S_{t−1} + kₜᵀvₜ`, read by `oₜ = qₜ Sₜ`. Gives
-  `O(1)`-per-step inference with no growing cache. **Gap:** the additive write never forgets — the
-  state only accumulates outer products — so old content dilutes the present, and it loses to softmax
-  on language modeling, badly on recall.
+  feature-map dot product `φ(qₜ)·φ(kᵢ)`, so `φ(qₜ)` factors out of the causal sum and the layer
+  becomes a linear recurrent update `Sₜ = S_{t−1} + kₜᵀvₜ` read by `oₜ = qₜ Sₜ`. This gives
+  `O(1)`-per-step inference with no growing cache. **Gap:** the state accumulates every past
+  key-value outer product without forgetting, so older content dilutes the present and quality
+  falls behind softmax on language modeling and recall tasks.
 - **State-space models (S4, Gu et al. 2021).** A linear recurrence `sₜ = A s_{t−1} + B xₜ`, `oₜ = C sₜ`
-  whose unrolled form is a convolution computable by FFT — parallel to train, strong at long range.
-  **Gap:** `A,B,C` are input-independent, so it does not do the content-based comparison attention
-  does; it cannot decide from the token what to keep.
-- **Fixed-decay linear attention / "ALiBi-in-the-recurrence."** Add a single global scalar decay,
-  `Sₜ = γ S_{t−1} + kₜᵀvₜ` — a recency bias that clearly helps over no decay and keeps the parallel
-  matmul form intact (a scalar pulls out of the cumulative product). **Gap:** one fixed forgetting
-  rate for every token, channel, and context — a data-independent gate, exactly the thing 1-D RNN
-  experience says a forget gate must *not* be.
-- **Gated RNNs / the forget gate (LSTM; Gers et al. 2000).** The lesson the whole ladder leans on: the
-  single most important component of a gated cell is the multiplicative forget gate `fₜ ⊙ c_{t−1}`, and
-  it must be **data-dependent** to do its job. Plain linear attention is precisely a gateless RNN.
-  **Gap:** a generic RNN forget gate depends on the previous *state*, which serializes training and
-  kills the parallel form.
+  whose unrolled form is a convolution trainable by FFT — parallel to train and strong at long range.
+  **Gap:** `A,B,C` are input-independent, so the model cannot perform the content-dependent selection
+  that attention does; it cannot decide from the token itself what to keep or discard.
+- **Fixed-decay linear attention.** Add a single global scalar decay, `Sₜ = γ S_{t−1} + kₜᵀvₜ`, to
+  bias the state toward recent tokens while keeping the parallel matmul form. **Gap:** one scalar
+  applies to every token, channel, and context, so the forgetting rate cannot adapt to the data.
+- **Gated RNNs (LSTM; Gers et al. 2000).** Use multiplicative gates, including a data-dependent
+  forget gate `fₜ ⊙ c_{t−1}`, to control how much past state is retained. **Gap:** the standard
+  data-dependent gate reads the previous state, which serializes the recurrence and removes the
+  parallel training form.
 
-## The fixed substrate
+## Fixed substrate / Code framework
 
 A nanoGPT pretraining loop is frozen and must not be touched. **Model:** GPT-2 Medium — 24 layers, 16
 heads, `n_embd = 1024`, ~355M parameters, tied input/output embeddings, pre-norm blocks, a 4·d GELU
@@ -43,31 +39,31 @@ MLP, weight-tied LM head. **Data:** FineWeb `sample-10BT`, GPT-2 tokenizer, ~7.1
 block size 1024. **Optimization:** AdamW (β = 0.9/0.95, weight decay 0.1), cosine LR schedule with 4%
 warmup, peak LR 6e-4, gradient clip 1.0, bf16, 13,535 iterations, micro-batch 32, gradient
 accumulation 16, 2-GPU DDP. The data loader, tokenizer, schedule, evaluation code, and checkpointing
-are all out of scope.
+are out of scope.
 
-Two facts about the substrate are load-bearing for every rung. First, the model **conditionally** adds
-learned absolute position embeddings: in `GPT.forward` it reads `self.transformer.h[0].attn.use_pos_emb`
-and only adds `wpe` if that flag is `True`. Any mixer whose own decay/rotation already carries relative
-position sets `self.use_pos_emb = False` in `__init__` and the loop skips `wpe`. Second, **`torch.compile`
+Two substrate details matter for mixer design. First, the model **conditionally** adds learned
+absolute position embeddings: in `GPT.forward` it reads `self.transformer.h[0].attn.use_pos_emb`
+and only adds `wpe` if that flag is `True`. A mixer that encodes position information internally
+sets `self.use_pos_emb = False` in `__init__` and the loop skips `wpe`. Second, **`torch.compile`
 is disabled** for this task because the FLA Triton kernels are not compatible with it. The
-`flash-linear-attention` (FLA) library is pre-installed and exposes 27+ optimized linear-attention
-layers with hardware-efficient chunkwise Triton kernels (`fla.layers.GatedLinearAttention`, `DeltaNet`,
-`MultiScaleRetention`, `Mamba2`, `RWKV6Attention`, `GatedDeltaNet`, …); a rung may import one of these
-or implement its own mechanism from scratch.
+`flash-linear-attention` (FLA) library is pre-installed and exposes optimized linear-attention
+layers with hardware-efficient chunkwise Triton kernels (`fla.layers.GatedLinearAttention`,
+`DeltaNet`, `MultiScaleRetention`, `Mamba2`, `RWKV6Attention`, `GatedDeltaNet`, …); a mixer may
+import one of these or implement its own mechanism from scratch.
 
-## The editable interface
+## Editable interface
 
 Exactly two regions of `nanoGPT/custom_pretrain.py` are editable: the **`CausalSelfAttention` class**
 (lines 33–70 — the mixer itself: Q/K/V projections, feature maps, gating, decay, recurrent state) and
 the **`Block` class** (lines 88–100 — how the attention and MLP sublayers compose, norm placement,
-residuals). Every rung on the ladder is a fill of these two regions and nothing else. The contract is
-fixed by the rest of the loop: `CausalSelfAttention.forward(x)` takes `x: (B, T, n_embd)` and returns a
-tensor of the same shape; `__init__(config)` receives a `GPTConfig` with `n_embd`, `n_head`, `dropout`,
+residuals). The task is to fill these two regions and nothing else. The contract is fixed by the
+rest of the loop: `CausalSelfAttention.forward(x)` takes `x: (B, T, n_embd)` and returns a tensor of
+the same shape; `__init__(config)` receives a `GPTConfig` with `n_embd`, `n_head`, `dropout`,
 `bias`, `block_size`. A mixer that does not use `wpe` sets `self.use_pos_emb = False`.
 
 The starting point is the scaffold default: **standard multi-head softmax attention** (FlashAttention
-via `scaled_dot_product_attention`, learned position embeddings on). Each rung replaces exactly these
-two definitions.
+via `scaled_dot_product_attention`, learned position embeddings on). Each replacement edits exactly
+these two definitions.
 
 ```python
 # EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — default: softmax attention

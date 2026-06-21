@@ -1,0 +1,22 @@
+# Changelog
+
+- `results/reasoning.md:91` corrected the noisy top-k load-threshold derivation: out-of-top-k experts use zero-based `top[k-1]` (the `k`th value overall), already-in experts use `top[k]` (the `(k+1)`th value overall).
+- `results/reasoning.md:128` through `results/reasoning.md:134` replaced the noncanonical `torch.nonzero(gates).sort(0)` dispatcher ordering with Tensor2Tensor-style expert-major ordering from `gates.t()`.
+- `results/reasoning.md:138` removed the unsafe squeeze from dispatched inputs so empty or singleton expert batches preserve rank.
+- `results/reasoning.md:145` changed the combiner zero buffer to use the stitched output dtype/device without setting `requires_grad=True`.
+- `results/reasoning.md:189` through `results/reasoning.md:192` changed `CV^2` to population variance (`var(unbiased=False)`), matching Tensor2Tensor.
+- `results/reasoning.md:224` through `results/reasoning.md:229` changed gating to take top-k on raw/noisy logits and then softmax only the retained logits, matching `Softmax(KeepTopK(H,k))`.
+- `results/answer.md:100` through `results/answer.md:106` made the same Tensor2Tensor dispatcher-ordering repair in the final code artifact.
+- `results/answer.md:109` removed the dispatched-input squeeze in the final code artifact.
+- `results/answer.md:116` changed the combiner zero buffer construction in the final code artifact.
+- `results/answer.md:153` through `results/answer.md:156` changed the final code artifact's `CV^2` to population variance.
+- `results/answer.md:186` through `results/answer.md:190` changed the final code artifact's gate to raw/noisy-logit top-k followed by retained-logit softmax.
+- `notes/source_matrix.md:7` through `notes/source_matrix.md:17` added the strict evidence matrix: primary paper/source, load-bearing ancestors, explainer, self-account/search-log record, Tensor2Tensor canonical code, and PyTorch contrast code.
+- `notes/source_matrix.md:21` through `notes/source_matrix.md:24` recorded the key audit conclusions for softmax order, probability sign, threshold cases, and `CV^2`.
+- `notes/discovery_synthesis.md:9` through `notes/discovery_synthesis.md:18` documented the math/derivation review for signs, constants, and all gate/load cases.
+- `notes/discovery_synthesis.md:22` through `notes/discovery_synthesis.md:27` documented the code-faithfulness review against Tensor2Tensor and the smoke tests.
+- `notes/discovery_synthesis.md:31` through `notes/discovery_synthesis.md:34` documented the posterior/hindsight and scaffold-purity review.
+- `refs/self_accounts/search_log.md:7` through `refs/self_accounts/search_log.md:16` added the author self-account search log and evidence boundary.
+- `results/.codex_review.json:15` through `results/.codex_review.json:18` recorded the completed manual review checks.
+- `results/.codex_review.json:20` through `results/.codex_review.json:28` recorded the independent-review limitation and the passing strict-check result.
+- `notes/strict_check_output.txt:3` through `notes/strict_check_output.txt:10` recorded the strict checker command and `STRICT CHECK PASSED` output.

@@ -60,3 +60,31 @@ how to keep that emphasis from destabilizing the gradient. The method below — 
 (Jiang, Dai, Wu & Loy, ICCV 2021; arXiv:2012.12821) — answers all three with a single
 dynamically-reweighted spectral distance, demonstrated as a complement that improves VAE, pix2pix, and
 SPADE reconstruction and synthesis.
+
+## Code framework
+
+```python
+import torch
+import torch.nn as nn
+
+
+class FocalFrequencyLoss(nn.Module):
+    """Minimal stub for focal frequency loss.
+
+    Computes a weighted spectral distance between predicted and target
+    images using their 2D FFT spectra. Use as a complement to a spatial
+    reconstruction loss.
+    """
+
+    def __init__(self, loss_weight=1.0, alpha=1.0):
+        super().__init__()
+        self.loss_weight = loss_weight
+        self.alpha = alpha
+
+    def forward(self, pred, target):
+        pred_fft = torch.fft.fft2(pred, norm='ortho')
+        target_fft = torch.fft.fft2(target, norm='ortho')
+        # TODO: form |F_pred - F_target|^2, weight by detached error^alpha,
+        # normalize to [0, 1], and return the weighted mean.
+        raise NotImplementedError
+```

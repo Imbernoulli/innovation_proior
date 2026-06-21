@@ -116,3 +116,30 @@ knob is the explore fraction, which the density argument says should be *large*,
 sweeps put it at ~50% of the budget. A short linear warmup composes in front as init hygiene. The three
 segments tile the budget with continuous values at the seams, and the whole thing is a per-step function
 from training progress to a scalar rate.
+
+## Minimal knee-point stub
+
+A small helper that captures the "knee" idea in its geometric form: the point on a 2-D curve that is farthest from the line connecting the curve's endpoints.
+
+```python
+def find_knee_point(x, y):
+    """Return the index of the 'knee' — the point farthest from the line
+    joining the first and last points of a 2-D curve."""
+    if len(x) != len(y) or len(x) < 3:
+        raise ValueError("x and y must have equal length >= 3")
+
+    x0, y0 = x[0], y[0]
+    x1, y1 = x[-1], y[-1]
+    dx, dy = x1 - x0, y1 - y0
+    norm = (dx * dx + dy * dy) ** 0.5
+    if norm == 0:
+        return 0
+
+    max_dist, knee_idx = -1.0, 0
+    for i, (xi, yi) in enumerate(zip(x, y)):
+        # perpendicular distance from (xi, yi) to line (x0, y0)-(x1, y1)
+        dist = abs(dy * xi - dx * yi + x1 * y0 - y1 * x0) / norm
+        if dist > max_dist:
+            max_dist, knee_idx = dist, i
+    return knee_idx
+```

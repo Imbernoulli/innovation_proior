@@ -7,6 +7,7 @@ Key eqs verified against src/residual_v1_arxiv_release.tex:
 - Eq (2): y = F(x, {W_i}) + W_s x   (projection shortcut, only to match dims)
 - F for 2-layer block: F = W2 σ(W1 x), σ = ReLU; second ReLU applied AFTER addition.
 - Bottleneck: 1x1 (reduce) -> 3x3 -> 1x1 (restore), expansion=4.
+- Original bottleneck downsampling: stride 2 is on the first 1x1 reduce and on the projection shortcut at stage transitions; the following 3x3 keeps stride 1. TorchVision's later v1.5 variant moves this stride to the 3x3 and is not the paper-faithful convention.
 - ImageNet: conv1 7x7/64 stride2; maxpool 3x3 stride2; conv2_x..conv5_x; global avg pool; 1000-fc.
   18:[2,2,2,2] 34:[3,4,6,3] 50:[3,4,6,3]bottleneck 101:[3,4,23,3] 152:[3,8,36,3].
 - CIFAR: 6n+2 layers, filters {16,32,64} on maps {32,16,8}, 2n blocks each, identity (option A) only.
@@ -16,7 +17,7 @@ Key eqs verified against src/residual_v1_arxiv_release.tex:
 - VGG (Simonyan & Zisserman, ICLR'15): "very deep" 16-19 layers, stacked 3x3 conv, design rule: same map size -> same #filters; halve map -> double filters. VGG-19 = 19.6 GFLOPs. ResNet borrows the 3x3/doubling philosophy but is thinner (34-layer = 3.6 GFLOPs = 18% of VGG-19). Gap: VGG stopped at ~19 layers; deeper plain stacks degrade.
 - GoogLeNet/Inception (Szegedy et al, CVPR'15): 22 layers, inception modules, auxiliary classifiers to fight vanishing gradients, ILSVRC'14 winner ~6.67% top-5. Gap: complex hand-designed modules; aux classifiers are a band-aid for depth.
 - Batch Norm (Ioffe & Szegedy, ICML'15): normalize each conv output over the mini-batch to zero-mean/unit-var, learnable scale/shift; lets ~30-layer nets converge, 14x fewer steps. Critical: it solves vanishing/exploding-signal at the START. ResNet relies on it so that the *remaining* failure (degradation) cannot be blamed on vanishing gradients.
-- He init / PReLU (He et al, ICCV'15): variance-preserving init for ReLU nets (fan_out kaiming_normal). Used to init all ResNet layers.
+- He init / PReLU (He et al, ICCV'15): variance-preserving init for ReLU nets. The author Caffe models use MSRA filler; the PyTorch translation uses `kaiming_normal_(mode="fan_out", nonlinearity="relu")` as in common ResNet modules.
 - Highway Networks (Srivastava, Greff, Schmidhuber, 2015): y = H(x)·T(x) + x·C(x), gates T,C data-dependent w/ params (LSTM-style gating). CONCURRENT. Gap vs ResNet: gates have parameters and can "close" (then layer is non-residual); had not shown gains beyond ~100 layers. ResNet's identity shortcut is parameter-free, never closes, always passes all info.
 - Degradation observation (He & Sun "Constrained time cost" CVPR'15; Srivastava Highway): deeper plain nets get HIGHER training error — not overfitting. This is the pain point ResNet targets.
 - AlexNet (Krizhevsky 2012), NIN (Lin 2013, global avg pool + 1x1 conv), ReLU (Nair&Hinton 2010), vanishing/exploding gradients (Bengio 1994, Glorot 2010), Caffe (Jia 2014) framework.
@@ -28,12 +29,12 @@ Prevailing wisdom: depth is king (VGG, GoogLeNet, BN-inception all winning by go
 ## Key intuitions (from explainers, for reasoning.md)
 - The "identity by construction" argument: a deeper net can always match a shallower one by setting extra layers = identity, so it should never be worse. SGD fails to find this -> optimization, not representation, problem.
 - Residual reformulation: fit F(x)=H(x)-x; if optimal map is near identity, pushing F->0 is easy (drive weights to 0); learning identity from scratch through nonlinear stacks is hard -> preconditioning.
-- Gradient flow: with y=F(x)+x, d y/d x = F'(x) + 1; the +1 gives an unimpeded path so gradient never fully vanishes/explodes across blocks. (NOTE: paper itself argues vanishing is NOT the cause of degradation since BN keeps signals healthy; the +1 argument is the complementary explainer view — keep both, attributed correctly.)
+- Gradient flow: for the pre-activation sum `s = F(x) + x`, `ds/dx = J_F(x) + I`; the post-add ReLU adds its activity mask. This is a helpful local path when active, but the paper itself argues vanishing is NOT the cause of degradation since BN keeps signals healthy, so the gradient view must stay secondary to conditioning.
 - Empirical support in paper: layer-response std (Fig std) shows residual functions have small responses -> identity is good preconditioning; deeper ResNet -> each layer modifies signal less.
 
 ## Canonical code
-torchvision resnet.py (v0.4.0, clean) saved to code/torchvision_resnet_v0.4.py and (v0.13.0) torchvision_resnet.py.
-Structure: conv3x3/conv1x1 helpers, BasicBlock (expansion=1), Bottleneck (expansion=4), ResNet with _make_layer, kaiming_normal_ fan_out init, downsample = conv1x1(stride)+BN. resnet{18,34,50,101,152} = ResNet(block,[..]).
+Author reference code: KaimingHe/deep-residual-networks README and Caffe prototxts saved under `code/`. The README says these are the original ResNet-50/101/152 models from the paper and competitions. The ResNet-50 prototxt verifies projection shortcuts, bottleneck expansion, BN+Scale after conv, elementwise SUM, post-add ReLU, and stride-2 stage transitions with stride on branch1 and branch2a.
+PyTorch comparison code: `code/torchvision_resnet_main.py`. It has the same helper/block/family structure, but explicitly documents a later v1.5 stride difference: TorchVision puts bottleneck downsampling on the 3x3, while the original paper puts it on the first 1x1. Final deliverables follow the original paper/author-code convention.
 
 ## Injection check
 No prompt-injection encountered in fetched pages/searches.

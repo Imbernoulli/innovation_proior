@@ -1,76 +1,28 @@
 ## Research question
 
-Offline-to-online RL pretrains a policy and value function on a fixed dataset `D` and then continues
-learning with live environment interaction. The single thing being designed is the
-`OfflineOnlineAlgorithm` class — the networks it builds, the per-batch `train` update, and the
-`on_online_start` hook fired once at the offline→online handoff. Everything around it (data loading,
-the replay buffer, the two-phase training loop, evaluation, the 256-width network cap) is fixed.
+Offline-to-online RL pretrains a policy and value function on a fixed dataset `D` and then continues learning with live environment interaction. The editable component is the `OfflineOnlineAlgorithm` class — the networks it builds, the per-batch `train` update, and the `on_online_start` hook fired once at the offline→online handoff. The surrounding harness (data loading, replay buffer, two-phase training loop, evaluation, and the 256-width network cap) is fixed.
 
-The transition is where this problem bites. A conservative offline value function can turn
-overoptimistic the moment online data shifts the replay distribution; a behavior-regularized policy can
-forget the competence it learned offline; and naive fine-tuning routinely triggers an early
-**Q-value collapse** and a performance drop before any recovery. The datasets are Adroit `cloned-v1`
-(Pen, Door, Hammer) — mixtures of expert and noisy demonstrations, so offline pretraining never
-produces a strong policy on its own and the online phase has to improve substantially **without losing
-the little competence that was learned**. The precise question: design one algorithm that pretrains
-stably from this mixed offline data and then fine-tunes online without catastrophic forgetting or
-Q-collapse.
+The difficulty is the transition. A conservative offline value can turn overoptimistic once online data shifts the replay distribution; a behavior-regularized policy can forget the competence it learned offline; and naive fine-tuning often triggers an early **Q-value collapse** and a performance drop before recovery. The datasets are Adroit `cloned-v1` (Pen, Door, Hammer) — mixtures of expert and noisy demonstrations, so offline pretraining alone is weak and the online phase must improve substantially while preserving what was already learned. The precise question: design an algorithm that pretrains stably from mixed offline data and then fine-tunes online without catastrophic forgetting or Q-collapse.
 
-## Prior art before the first rung (offline-to-online lineage)
+## Prior art / Background / Baselines
 
-The ladder reacts to the standard offline-RL families, each of which pretrains stably but stumbles at
-the online handoff in its own way.
+The baselines are standard offline-RL families. Each pretrains stably but fails at the online handoff in a characteristic way.
 
-- **Off-policy actor-critic on a static batch (TD3 / SAC, Fujimoto et al. 2018; Haarnoja et al. 2018).**
-  Twin critics fit a Bellman target `r + γ Q_target(s', π(s'))` and the actor maximizes `Q(s, π(s))`.
-  Online this self-corrects; on a fixed batch the bootstrap evaluates the critic at the *actor's* chosen
-  `π(s')` — an action the data may never contain — where the net extrapolates upward, the actor (a
-  maximizer) is pulled toward it, and the inflated value bootstraps and diverges. Gap: no mechanism to
-  keep the actor inside the data's support.
-- **Policy-constraint offline RL (BCQ, BEAR, BRAC, TD3+BC; Fujimoto et al. 2019, 2021).** Add a penalty
-  or architecture that keeps `π` close to the behavior policy `π_β`, which stabilizes offline learning.
-  Gap: most pin the policy to a divergence-from-`π_β` (or to an explicitly fit behavior model), which is
-  over-conservative on mixed data and, once online, either strangles improvement or — if the constraint
-  is fixed — leaves the early Q-collapse unaddressed.
-- **Value-regularization offline RL (CQL; Kumar et al. 2020).** Push `Q` down on out-of-distribution
-  actions and up on dataset actions for a conservative lower bound. Strong offline. Gap: the learned
-  `Q` is *uncalibrated* in scale — it can sit far below the true return — so at the online transition
-  the first real returns look huge relative to it, the critic lurches, and the policy collapses before
-  recovering.
+- **Off-policy actor-critic on a static batch (TD3 / SAC).** Twin critics fit a Bellman target `r + γ Q_target(s', π(s'))` and the actor maximizes `Q(s, π(s))`. Gap: on a fixed batch the bootstrap evaluates the critic at the actor's chosen `π(s')`, which can be far from any action in the data; the critic extrapolates upward, the actor chases the inflated value, and the value bootstraps and diverges.
+- **Policy-constraint offline RL (BCQ, BEAR, BRAC, TD3+BC).** These add a penalty or architecture that keeps `π` close to the behavior policy `π_β`. Gap: the constraint is over-conservative on mixed data and, once online, either strangles improvement or leaves the early Q-collapse unaddressed.
+- **Value-regularization offline RL (CQL).** This pushes `Q` down on out-of-distribution actions to obtain a conservative lower bound. Gap: the learned `Q` is miscalibrated in scale and can sit far below the true return, so at the online transition the first real returns look huge relative to it, the critic lurches, and the policy collapses before recovering.
 
-The three rungs below are the families adapted to *this* task's harness, weakest to strongest, each a
-fill of the same editable contract.
+## Fixed substrate / Code framework
 
-## The fixed substrate
+A two-phase loop is frozen and must not be touched. **Phase 1 (offline, 1M gradient steps):** sample minibatches from a `ReplayBuffer` preloaded with the D4RL `cloned-v1` dataset and call `trainer.train(batch, is_online=False)`. **Transition:** `trainer.on_online_start()` fires once. **Phase 2 (online, 1M env-interaction steps):** at each step `trainer.select_action(state)` collects a transition appended to the *same* buffer, then `trainer.train(batch, is_online=True)` runs. States are normalized by dataset mean/std (toggleable via `CONFIG_OVERRIDES`).
 
-A two-phase loop is frozen and must not be touched. **Phase 1 (offline, 1M gradient steps):** sample
-minibatches from a `ReplayBuffer` preloaded with the D4RL `cloned-v1` dataset and call
-`trainer.train(batch, is_online=False)`. **Transition:** `trainer.on_online_start()` fires once.
-**Phase 2 (online, 1M env-interaction steps):** at each step `trainer.select_action(state)` collects a
-transition that is appended to the *same* buffer (so it grows with online data), then
-`trainer.train(batch, is_online=True)` runs. States are normalized by dataset mean/std (toggleable via
-`CONFIG_OVERRIDES`). The loop provides `soft_update` (Polyak), `init_module_weights`, an `_mlp` factory
-locked at hidden width 256, the `ReplayBuffer` (whose `sample` returns
-`[states, actions, rewards, next_states, dones, next_actions]`), and `eval_actor`. If the trainer
-defines an optional `pretrain(replay_buffer, batch_size)` method it is called once before Phase 1.
+The loop provides `soft_update` (Polyak), `init_module_weights`, an `_mlp` factory locked at hidden width 256, a `ReplayBuffer` whose `sample` returns `[states, actions, rewards, next_states, dones, next_actions]`, and `eval_actor`. If the trainer defines an optional `pretrain(replay_buffer, batch_size)` method it is called once before Phase 1.
 
-Two hard constraints from the harness: **all MLP hidden widths must be 256**, and the **total trainable
-parameter count is capped at ~1.2× the largest baseline architecture** — the contribution must be
-algorithmic (transition handling, value calibration, replay balancing, constraint annealing), not
-capacity. Metric: D4RL normalized score (0 = random, 100 = expert), higher is better, on Pen, Door, and
-Hammer `cloned-v1`.
+Two hard constraints from the harness: **all MLP hidden widths must be 256**, and the **total trainable parameter count is capped at ~1.2× the largest baseline architecture** — the contribution must be algorithmic, not capacity. Metric: D4RL normalized score (0 = random, 100 = expert), higher is better, on Pen, Door, and Hammer `cloned-v1`.
 
-## The editable interface
+## Editable interface
 
-Exactly one region is editable — the network classes (`DeterministicActor`, `Actor`, `Critic`,
-`ValueFunction`) and the `OfflineOnlineAlgorithm` class, plus an optional `CONFIG_OVERRIDES` dict
-(allowed keys: `normalize`, `normalize_reward`, `actor_lr`, `critic_lr`, `tau`, `expl_noise`,
-`discount`). Every rung replaces this region and nothing else. The contract the loop calls:
-`__init__(state_dim, action_dim, max_action, replay_buffer=..., ...)` builds the nets and sets
-`self.actor` to a module with `.act(state, device)`; `train(batch, is_online)` runs one update and
-returns a scalar-metric dict; `select_action(state)` collects online data (may add exploration noise);
-`on_online_start()` adjusts hyperparameters/optimizers at the handoff. The starting point is the
-scaffold default below — a plain twin-critic actor-critic stub whose `train` is a no-op placeholder.
+Exactly one region is editable — the network classes (`DeterministicActor`, `Actor`, `Critic`, `ValueFunction`) and the `OfflineOnlineAlgorithm` class, plus an optional `CONFIG_OVERRIDES` dict (allowed keys: `normalize`, `normalize_reward`, `actor_lr`, `critic_lr`, `tau`, `expl_noise`, `discount`). Every rung replaces this region and nothing else. The contract the loop calls: `__init__(state_dim, action_dim, max_action, replay_buffer=..., ...)` builds the nets and sets `self.actor` to a module with `.act(state, device)`; `train(batch, is_online)` runs one update and returns a scalar-metric dict; `select_action(state)` collects online data (may add exploration noise); `on_online_start()` adjusts hyperparameters/optimizers at the handoff. The starting point is the scaffold default below — a plain twin-critic actor-critic stub whose `train` is a no-op placeholder.
 
 ```python
 # EDITABLE region of CORL/algorithms/finetune/custom_finetune.py — default fill (placeholder)
@@ -210,9 +162,4 @@ class OfflineOnlineAlgorithm:
 
 ## Evaluation settings
 
-Each method is trained and evaluated on **Pen**, **Door**, and **Hammer** `cloned-v1` (the public test
-commands run pen-cloned-v1 and hammer-cloned-v1; a hammer-expert-v1 run is held out). Per method the
-offline phase trains for 1M gradient steps and the online phase for 1M environment-interaction steps,
-with periodic evaluation throughout both phases. Three seeds {42, 123, 456}. Metric: D4RL normalized
-score, mean over 10 evaluation episodes, higher is better; a strong method retains offline competence
-while benefiting from online fine-tuning across all three manipulation tasks.
+Each method is trained and evaluated on **Pen**, **Door**, and **Hammer** `cloned-v1`. Per method the offline phase trains for 1M gradient steps and the online phase for 1M environment-interaction steps, with periodic evaluation throughout both phases. Three seeds {42, 123, 456}. Metric: D4RL normalized score, mean over 10 evaluation episodes, higher is better; a strong method retains offline competence while benefiting from online fine-tuning across all three manipulation tasks.

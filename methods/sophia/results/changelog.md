@@ -1,0 +1,40 @@
+# Sophia Repair Changelog
+
+- `methods/sophia/notes/source_matrix.md:5` Added primary-source evidence from the arXiv source bundle and recorded the sections used for method, estimator, theory, and evaluation framing.
+- `methods/sophia/notes/source_matrix.md:6` Added canonical implementation provenance for `Liuhong99/Sophia` at commit `a7e157229b71d58cf995d32854f1be15c265b350`.
+- `methods/sophia/notes/source_matrix.md:7` Added AdaHessian as the diagonal-Hessian/Hutchinson/EMA ancestor used to check the second-order baseline gap.
+- `methods/sophia/notes/source_matrix.md:8` Added signSGD as the sign-step ancestor used to verify the Adam-as-sign-proxy framing.
+- `methods/sophia/notes/source_matrix.md:12` Added Wei/Kakade/Ma as the cited GNB-lineage source and corrected the arXiv ID to `2002.12915`.
+- `methods/sophia/notes/source_matrix.md:14` Added Grosse's second-order training-dynamics notes as a third-party explainer for Newton/Gauss-Newton/Hessian-free background.
+- `methods/sophia/notes/source_matrix.md:19` Documented the author self-account search and the absence of a load-bearing technical self-account.
+- `methods/sophia/notes/source_matrix.md:30` Recorded review caveats: clip reparameterization, `B` placement in code, theorem scope, and paper/code default differences.
+- `methods/sophia/notes/discovery_synthesis.md:5` Logged scaffold and voice findings, including the prior `reasoning.md` code-block violation.
+- `methods/sophia/notes/discovery_synthesis.md:7` Logged the sign-case correction: clipping alone does not fix a negative-curvature Newton sign; the positive floor or PSD estimate is required.
+- `methods/sophia/notes/discovery_synthesis.md:8` Logged the canonical-code denominator correction: `rho * bs * hessian + 1e-15`.
+- `methods/sophia/notes/discovery_synthesis.md:9` Logged the theorem-scope correction for exact full-Hessian clipped Newton.
+- `methods/sophia/notes/discovery_synthesis.md:14` Rebuilt the derivation spine from cost target to heterogeneous curvature to clipped diagonal curvature.
+- `methods/sophia/notes/discovery_synthesis.md:26` Rebuilt the implementation synthesis around `exp_avg`, `hessian`, `step`, `update_hessian()`, and the sampled-label refresh loop.
+- `methods/sophia/notes/synthesis.md:1` Replaced stale pre-repair notes with a pointer to the strict synthesis and a compact list of corrected audit points.
+- `methods/sophia/results/reasoning.md:11` Fixed the negative/tiny-curvature case so the descent-sign fallback is attributed to the positive floor or PSD estimator plus clipping.
+- `methods/sophia/results/reasoning.md:13` Rechecked the Hutchinson derivation and kept the exact unbiased-coordinate expectation.
+- `methods/sophia/results/reasoning.md:19` Rechecked the Gauss-Newton decomposition, PSD surrogate, and bias from dropping `J_{\theta\theta}f[q]`.
+- `methods/sophia/results/reasoning.md:36` Rechecked the minibatch GNB derivation and the `B * grad^2` factor from Bartlett's first identity.
+- `methods/sophia/results/reasoning.md:49` Rewrote the update-parameterization discussion without paper-as-artifact phrasing and clarified `gamma` versus implementation `rho * bs * h`.
+- `methods/sophia/results/reasoning.md:60` Corrected the theory voice to state that the theorem is for deterministic exact full-Hessian clipped Newton, not the stochastic diagonal optimizer.
+- `methods/sophia/results/reasoning.md:66` Rechecked the descent lemma signs and constants, including the `-(eta - eta^2)` coefficient.
+- `methods/sophia/results/reasoning.md:83` Rechecked the two-phase bound, `rho = R/(2 sqrt(d))`, and `log(mu R^2/(32 d epsilon))`.
+- `methods/sophia/results/reasoning.md:93` Removed the prior Python code block and replaced it with in-frame implementation reasoning.
+- `methods/sophia/results/answer.md:9` Rewrote the final algorithm equations with the correct EMA timing and decoupled weight decay.
+- `methods/sophia/results/answer.md:19` Clarified clip parameterization and the safe fallback for `h_i <= 0`.
+- `methods/sophia/results/answer.md:30` Rechecked Hutchinson estimator signs and unbiasedness.
+- `methods/sophia/results/answer.md:38` Rechecked the GNB derivation, Bartlett identities, PSD status, and minibatch `B` factor.
+- `methods/sophia/results/answer.md:61` Scoped the convex theorem to exact full-Hessian clipped Newton and retained the correct descent lemma and final bound.
+- `methods/sophia/results/answer.md:86` Replaced the code artifact with a reference-code-faithful SophiaG implementation.
+- `methods/sophia/results/answer.md:116` Matched canonical `update_hessian()` behavior: EMA of sampled-label `grad * grad`.
+- `methods/sophia/results/answer.md:127` Matched canonical `step(bs=...)` behavior: decoupled weight decay, `exp_avg`, `rho * bs * h + 1e-15`, and sign-magnitude update.
+- `methods/sophia/results/answer.md:157` Fixed code defaults to official `betas=(0.965, 0.99)` for implementation faithfulness.
+- `methods/sophia/results/answer.md:161` Fixed training-loop order so the ordinary real-label step precedes the sampled-label Hessian refresh every `k` steps.
+- `methods/sophia/results/answer.md:183` Distinguished paper defaults from official code/config defaults.
+- `methods/sophia/results/.codex_review.json:1` Replaced stale errored review metadata with a valid `not_run` record explaining that no independent review gate was available.
+- `methods/sophia/notes/strict_check_output.txt:1` Recorded the failed attempt to run the required strict script and the manual checks used instead.
+- `methods/sophia/code/CODE_ORIGIN.txt:1` Recorded canonical-code repository, retrieval date, and commit after removing nested Git metadata.

@@ -6,73 +6,56 @@ the currently open bins (each of fixed capacity `C`) that still has room for it,
 bin opened for it. Once placed, an item never moves. The single thing being designed is a
 **priority function** `priority(item, bins) -> array`: given the incoming item's size and the array
 of remaining capacities of all bins, it scores every bin, and the item goes into the highest-scoring
-bin among those that can still fit it. The whole online policy is this one function; everything else
-— the arrival order, the capacity, the new-bin rule — is fixed.
+bin among those that can still fit it. The arrival order, the capacity, and the new-bin rule are
+fixed.
 
 The objective is to use as **few bins** as possible over the whole stream. Lower is better. Because
 the optimum of an online stream is itself NP-hard to pin down and order-dependent, the honest
 yardstick is the **L1 lower bound** `LB = ceil(Σ items / C)` — the count we would need if every bin
 could be filled to the brim with no wasted space. No online (or even offline) policy can beat `LB`,
-so we report each heuristic as **mean number of bins used** and, more tellingly, as **percent excess
-over the lower bound**, `100 · (mean_bins − LB) / LB`. A policy at `0%` packs with zero wasted
-capacity; First-Fit and Best-Fit sit a few percent above; the question is how far below that a
-discovered heuristic can push.
+so we report each heuristic as **mean number of bins used** and as **percent excess over the lower
+bound**, `100 · (mean_bins − LB) / LB`. A policy at `0%` packs with zero wasted capacity; the open
+question is how far below the classic greedy excess a better priority function can push.
 
-## How the score is defined
+## Prior art / Background / Baselines
 
-For a single instance the score is the integer number of bins that end up non-empty. Across a set of
-seeded instances we report the mean. The reference is the mean L1 bound over the same instances, and
-the headline metric is the percent excess above it. This is exactly the metric reported in the
-FunSearch paper (Romera-Paredes et al., *Nature* 2024), which evaluated discovered online-bin-packing
-heuristics by their fraction of bins above the L1 optimum on the OR-Library and on Weibull-distributed
-instances. The published frontier we measure against:
+The standard online heuristics are **First Fit** and **Best Fit**: both are fast, deterministic, and
+require no lookahead.
 
-| Dataset (FunSearch paper) | First Fit | Best Fit | **FunSearch** |
-|---|---|---|---|
-| OR1 | 6.42% | 5.81% | 5.30% |
-| OR3 | 5.74% | 5.37% | **3.11%** |
-| OR4 | 5.23% | 4.94% | 2.47% |
-| Weibull 5k | 4.23% | 3.98% | **0.68%** |
-| Weibull 10k | 4.20% | 3.90% | 0.32% |
-| Weibull 100k | 4.00% | 3.79% | **0.03%** |
+- **First Fit** scans the bins in order and places the item in the first bin that can accommodate
+  it. It spreads items across many bins and leaves fragmented capacity that a more selective rule
+  might consolidate.
 
-(Source: *Mathematical discoveries from program search with large language models*, Romera-Paredes et
-al., Nature 2024, Table 1; PMC10794145. Code and the two discovered priority functions live in
-`google-deepmind/funsearch`, `bin_packing/bin_packing.ipynb`.) The discovered heuristic beats Best
-Fit on every dataset and, strikingly, *widens* the gap as the streams grow — on 100k Weibull items it
-is `0.03%` off the lower bound. That published improvement over Best Fit is the target this ladder
-climbs toward, and the endpoint reproduces the exact discovered function. We reproduced these repo
-numbers as a calibration check before building our own seeded streams (OR3: First Fit `5.74%`, Best
-Fit `5.37%`, FunSearch-OR `3.11%`; Weibull 5k: `4.23%` / `3.98%` / `0.68%` — matched to the digit).
+- **Best Fit** places the item in the valid bin that minimizes the leftover slack. It quickly fills
+  bins to near capacity, but the resulting odd residual capacities are often unusable by later
+  items, forcing additional bins to open.
 
-## The fixed substrate
+Neither baseline adapts to the size distribution of the stream; both leave several percent of excess
+over `LB` on the instances used here.
 
-The harness is the FunSearch online-bin-packing skeleton, reproduced faithfully. It maintains an
-array of bin remaining-capacities (pre-allocated large enough that a new bin is always available),
-and for each arriving item: finds the valid bins (those whose remaining capacity is `≥ item`), calls
-`priority(item, valid_remaining_capacities)`, places the item in the `argmax`-priority bin,
-decrements that bin's remaining capacity, and moves on. A bin is "used" iff its remaining capacity
-ever dropped below `C`. The simulator, the placement rule (immediate, irrevocable, highest-priority
-valid bin), the capacity, and the seeded streams are all frozen.
+## Fixed substrate / Code framework
 
-Two seeded synthetic stream families are used, matching the FunSearch evaluation:
+The harness is a one-pass online-bin-packing simulator. It maintains an array of bin
+remaining-capacities, pre-allocated large enough that a new bin is always available. For each
+arriving item it finds the valid bins, calls `priority(item, bins[valid])`, places the item in the
+`argmax`-priority bin, decrements that bin's remaining capacity, and moves on. Placement is immediate
+and irrevocable; the capacity, the stream generators, and the seeded instances are frozen.
+
+Two seeded synthetic stream families are used:
 
 - **Weibull(scale = 45, shape = 3), capacity `C = 100`, 5000 items.** Item sizes drawn from a
-  Weibull(45, 3) distribution, rounded to integers in `[1, 100]`. This is the FunSearch "Weibull 5k"
-  regime (Castiñeiras–De Cauwer–O'Sullivan 2012, *Weibull-Based Benchmarks for Bin Packing*), the
-  setting on which the discovered heuristic shines.
+  Weibull(45, 3) distribution and rounded to integers in `[1, 100]`.
 - **OR-Library-style, capacity `C = 150`, 5000 items.** Integer item sizes uniform on `[20, 100]`,
-  the size range of the Beasley OR-Library `u`-class instances, at capacity `150`.
+  the size range of the Beasley OR-Library `u`-class instances at capacity `150`.
 
-Five seeds (`0–4`) per family; every rung is run on the *same* seeded streams so the numbers are
-directly comparable.
+Five seeds (`0–4`) per family; every priority function is evaluated on the *same* seeded streams so
+the numbers are directly comparable.
 
-## The editable interface
+## Editable interface
 
 Exactly one function is editable: `priority(item, bins)`, returning a real-valued array the same
 length as `bins` (the remaining capacities of the bins that can still fit the item). Higher score =
-more preferred. Every rung on the ladder is a different body for this one function. The simulator
-below is fixed and shown for reference; it is the FunSearch skeleton verbatim.
+more preferred. The simulator below is fixed and shown for reference.
 
 ```python
 import numpy as np
@@ -106,10 +89,8 @@ Best-Fit avoids unless forced). The only lever is the geometry of the score.
 
 ## Evaluation settings
 
-Per stream family (Weibull-100 and OR-150), five seeded instances of 5000 items each. We report, per
-rung, the **mean number of bins** over the five seeds and the **percent excess over the mean L1
-lower bound**. The same five seeds are reused across all rungs, so a rung that scores lower truly
-packs tighter on identical streams. The metric is exact (an integer bin count from the frozen
-simulator); the published FunSearch percentages above are the frontier context the endpoint
-reproduces. There is no held-out trickery and no partial credit — the only way to score lower is to
-actually waste less capacity as the stream goes by.
+Per stream family, five seeded instances of 5000 items each. For each priority function we report
+the **mean number of bins** over the five seeds and the **percent excess over the mean L1 lower
+bound**. The same seeds are reused across all functions, so a lower score truly means tighter packing
+on identical streams. The metric is exact — an integer bin count from the frozen simulator — and
+there is no partial credit; the only way to improve is to waste less capacity as the stream goes by.

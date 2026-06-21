@@ -65,9 +65,11 @@ sampled nodes.)
 
 ESTIMATING α, λ: for random node/edge samplers p analytic; general samplers no closed form. So
 pre-process: run sampler N times → set of N subgraphs. Counters C_v (#subgraphs containing v),
-C_{u,v} (#subgraphs containing edge). Then α_{u,v}=C_{u,v}/C_v, λ_v=C_v/N. Subgraphs reused as
+C_{u,v} (#subgraphs containing edge). Then α_{u,v}=C_{u,v}/C_v and the full-loss normalizer is
+λ_v=|V_train|·C_v/N. The paper text later writes λ_v=C_v/N as a probability shorthand, but the
+unbiased full-average loss and the public code include the |V_train| factor. Subgraphs reused as
 minibatches → small overhead.
-(Code confirms: norm_loss_train[v] = N/(C_v·|V|) = 1/λ_v; norm_aggr[edge u,v]=C_v/C_{u,v}=1/α_{u,v}.)
+(Code confirms: norm_loss_train[v] = N/(C_v·|V_train|) = 1/λ_v; norm_aggr[edge u,v]=C_v/C_{u,v}=1/α_{u,v}.)
 
 ## Variance reduction (designing the sampler)
 Want sampler that minimizes variance of the estimators. Ignore activations / analyze aggregate.
@@ -96,7 +98,9 @@ Remark: applying this edge prob as a LAYER sampler (FastGCN style) gives sparse 
 ## Samplers (Appendix algorithm)
 All return NODE-INDUCED subgraph from sampled nodes (induction adds back edges among sampled nodes,
 empirically helps convergence). Budgets are targets, not exact counts (repeats → fewer).
-- Node sampler: sample n nodes (with replacement) ∝ P(v) = ‖Â_{:,v}‖² (from FastGCN layer sampler).
+- Node sampler: paper distribution samples n nodes (with replacement) ∝ P(v) = ‖Â_{:,v}‖² (from
+  FastGCN layer sampler); official code uses the training CSR counts/cumulative distribution for the
+  implementation path.
 - Edge sampler (approximate, O(m) vs O(|E|)): sample m edges (w/ replacement) ∝
   P((u,v)) = (1/deg(u)+1/deg(v)) / normalizer; V_s = endpoints; induce.
 - RW sampler: r roots uniform; each does h-hop walk (uniform neighbor each step); collect nodes; induce.
@@ -116,7 +120,8 @@ Because each minibatch is a COMPLETE GCN, drop-in for architecture variants:
 - Adam optimizer. Grid: hidden {128,256,512}, dropout {0,0.1,0.2,0.3}, lr {0.1,0.01,0.001,0.0001}.
 - Hidden dims: 512 PPI, 256 Flickr, 128 Reddit, 512 Yelp, 512 Amazon.
 - sample_coverage: keep sampling subgraphs in pre-proc until total sampled nodes > coverage·|V_train|.
-- Save best-val-F1-micro model, eval on test. Eval is full-batch (no sampling, norm_loss=1).
+- Save best-val-F1-micro model, eval on test. Eval is full-batch (no sampling); code uses
+  norm_loss_test=1/(|V_train|+|V_val|+|V_test|) on labeled splits for reporting loss.
 
 ## Design-decision → why
 - Sample graph not layers: keeps each minibatch a complete connected GCN → no neighbor explosion,

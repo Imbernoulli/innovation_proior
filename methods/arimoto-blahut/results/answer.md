@@ -43,7 +43,7 @@ Alternating minimization decreases the Lagrangian monotonically and converges; s
 
 Both algorithms are one instance of **alternating minimization of an I-divergence (KL) between two convex families** of distributions — the structure that guarantees monotone convergence to the global optimum.
 
-## Reference implementation
+## Implementation
 
 ```python
 import numpy as np

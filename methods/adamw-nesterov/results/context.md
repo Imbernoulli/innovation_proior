@@ -6,12 +6,11 @@ When training a deep network with a stochastic first-order method, the optimizer
 gradient using accumulated statistics — a momentum term that smooths the descent direction, and (for
 adaptive methods) a per-coordinate scale. The widely used adaptive method maintains a decaying average
 of the gradient (its first moment) and steps along that smoothed direction, rescaled by a decaying
-average of the squared gradient. The momentum it uses is *classical* momentum — a running combination
-of past gradients applied as-is. But there is long-standing evidence that a different momentum, the
-accelerated kind, gives a better descent direction and a provably better convergence rate. The
-question is whether the adaptive method's momentum can be upgraded from classical to accelerated
-without disturbing its adaptive per-coordinate rescaling — and whether that upgrade actually speeds
-convergence and improves the final model in practice.
+average of the squared gradient. Momentum itself comes in more than one form: the classical running
+combination of past gradients, and the accelerated variant that uses a look-ahead gradient. The
+question is how to form the per-step parameter update from these accumulated gradient statistics, and
+how the choice of momentum form interacts with per-coordinate adaptive rescaling in terms of
+convergence speed and final model quality.
 
 ## Background
 
@@ -26,13 +25,13 @@ consistent, and damps oscillation along high-curvature directions where the grad
 sign (Sutskever et al. 2013).
 
 **Nesterov's accelerated gradient (Nesterov 1983; Sutskever et al. 2013).** The momentum step
-μ mₜ₋₁ does not depend on the current gradient, so a higher-quality direction is obtained by computing
-the gradient *after* taking the momentum step, at the look-ahead point θₜ₋₁ − μ mₜ₋₁:
+μ mₜ₋₁ does not depend on the current gradient; this variant computes the gradient *after* taking the
+momentum step, at the look-ahead point θₜ₋₁ − μ mₜ₋₁:
 gₜ = ∇fₜ(θₜ₋₁ − μ mₜ₋₁); mₜ = μ mₜ₋₁ + gₜ; θₜ = θₜ₋₁ − α mₜ. On convex, smooth problems this attains
-an O(1/k²) rate, better than gradient descent's O(1/k); Sutskever et al. 2013 give empirical evidence
+an O(1/k²) rate, compared with gradient descent's O(1/k); Sutskever et al. 2013 give empirical evidence
 it beats classical momentum, plain SGD, and Hessian-free methods on hard deep-learning objectives. As
-written, the iteration differentiates the objective at the look-ahead point θₜ₋₁ − μ mₜ₋₁ rather than
-at the current parameters θₜ₋₁ where an ordinary training loop runs its forward and backward pass.
+written, the iteration differentiates the objective at the look-ahead point θₜ₋₁ − μ mₜ₋₁, while an
+ordinary training loop runs its forward and backward pass at the current parameters θₜ₋₁.
 
 **Adaptive moment estimation (Adam, Kingma & Ba 2014).** Track an exponential moving *mean* of the
 gradient mₜ = μ mₜ₋₁ + (1−μ) gₜ and of the squared gradient nₜ = ν nₜ₋₁ + (1−ν) gₜ², correct each for
@@ -43,9 +42,7 @@ division by √n̂ₜ. Using past *gradients* (a mean) rather than past *updates
 keep adapting even after the learning rate has annealed near the end of training. Kingma & Ba report
 Adam outperforming several alternatives, including NAG, on a handful of benchmarks.
 
-The two enhancements have stayed separate: Adam carries classical momentum, and the accelerated
-momentum lives in non-adaptive SGD. The diagnostic comparison from the prior work records the relevant
-gap — accelerated momentum gives a better direction than classical momentum on the same objective.
+Adam carries classical momentum; the accelerated momentum is used in non-adaptive SGD.
 
 **Decoupled weight decay (AdamW, Loshchilov & Hutter 2019).** A separate but composable choice for the
 regularizer. Folding an L2 penalty into the gradient gₜ ← gₜ + λθₜ is *not* equivalent to weight decay
@@ -57,23 +54,17 @@ shrinkage.
 ## Baselines
 
 **SGD with classical momentum (Polyak 1964).** mₜ = μ mₜ₋₁ + gₜ; θₜ = θₜ₋₁ − α mₜ. Smooths the
-direction and accelerates low-curvature progress. Gap: the momentum step ignores the current gradient,
-so the direction it commits to can be improved; no per-coordinate adaptivity, so a single α must serve
-coordinates of very different gradient scale.
+direction and accelerates low-curvature progress; a single α serves all coordinates.
 
 **NAG (Nesterov 1983; Sutskever et al. 2013).** Evaluates the gradient at the look-ahead point,
-yielding a better direction and the accelerated convex rate. Gap: still no adaptive per-coordinate
-rescaling; and the look-ahead evaluation sits off the current parameters, awkward in a loop that
-differentiates only at θₜ₋₁. The accelerated momentum has never been carried inside an adaptive method.
+attaining the accelerated convex rate; a single α serves all coordinates, and the look-ahead
+evaluation sits off the current parameters θₜ₋₁.
 
 **Adam (Kingma & Ba 2014).** mₜ = μ mₜ₋₁ + (1−μ)gₜ; nₜ = ν nₜ₋₁ + (1−ν)gₜ²; bias-correct;
-θₜ = θₜ₋₁ − α m̂ₜ/(√n̂ₜ + ε). Adaptive and robust default. Gap: its momentum is classical — the step
-commits to μ mₜ₋₁ without consulting the current gradient — leaving the accelerated-momentum
-improvement on the table.
+θₜ = θₜ₋₁ − α m̂ₜ/(√n̂ₜ + ε). Adaptive and robust default; its momentum is the classical kind.
 
 **AdamW (Loshchilov & Hutter 2019).** Adam with the weight decay decoupled from the gradient,
-θ ← (1 − αλ)θ then the adaptive step. Fixes the L2-under-Adam distortion; the momentum is still
-classical.
+θ ← (1 − αλ)θ then the adaptive step; the momentum is the classical kind.
 
 ## Evaluation settings
 

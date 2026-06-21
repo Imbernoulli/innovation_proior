@@ -1,4 +1,6 @@
-# Swin Transformer — synthesis notes (Phase 1.5)
+# Swin Transformer — synthesis notes (superseded)
+
+This older synthesis slot is retained for compatibility. The strict source table is `notes/source_matrix.md`, and the active reconstruction/audit notes for the repaired deliverables are `notes/discovery_synthesis.md`.
 
 ## Pain point / research question
 We want ONE Transformer backbone that works for *all* vision tasks (classification, detection, segmentation), the way ResNet does and the way the Transformer does for NLP. Two obstacles when porting a language Transformer (ViT) to vision:

@@ -16,11 +16,11 @@ Now the encoding step, and there's a subtlety here that matters for generalizati
 
 Stack a few of these and I have the hierarchy: each level subsamples and enlarges the effective receptive field, exactly like conv-with-pooling — but with two honest differences I should keep straight. The neighborhood is defined by *metric distance*, not array index; and the kernel is a *set function* (my encoder), not a convolution. With the last level grouping everything into one region, I get a single global feature for classification.
 
-Now the harder problem, the one that actually motivates the "++". Real scans are *not* uniformly dense — perspective, radial falloff, and motion make some regions densely sampled and others sparse. And density wrecks the scheme I just built. Here's the failure: I want to inspect a *small* neighborhood to capture fine detail, but in a sparse region a small ball might contain only two or three points — too few for the encoder to recognize any pattern robustly; the "local pattern" is just sampling noise. So in sparse regions a small scale is actively harmful. This is the inverse of the grid intuition where smaller kernels help — here, if I shrink the neighborhood, sampling deficiency corrupts it. The resolution can't be a single fixed scale. What I really want: in *dense* regions, look closely and grab the finest detail; in *sparse* regions, back off to a larger neighborhood where there are enough points to see something reliable. The network should *adapt* its scale to the local density.
+Now the harder problem is density. Real scans are *not* uniformly dense — perspective, radial falloff, and motion make some regions densely sampled and others sparse. And density wrecks the scheme I just built. Here's the failure: I want to inspect a *small* neighborhood to capture fine detail, but in a sparse region a small ball might contain only two or three points — too few for the encoder to recognize any pattern robustly; the "local pattern" is just sampling noise. So in sparse regions a small scale is actively harmful. This is the inverse of the grid intuition where smaller kernels help — here, if I shrink the neighborhood, sampling deficiency corrupts it. The resolution can't be a single fixed scale. What I really want: in *dense* regions, look closely and grab the finest detail; in *sparse* regions, back off to a larger neighborhood where there are enough points to see something reliable. The network should *adapt* its scale to the local density.
 
 How do I make a single abstraction level density-adaptive? The most direct idea: don't commit to one scale — look at *several* scales at once and let the network combine them. At a given level, run the grouping at multiple radii $r_1<r_2<\dots$, each with its own mini set encoder, and *concatenate* the resulting features into one multi-scale feature per centroid. Now each centroid carries what it saw at a small scale *and* at a large scale, and the following layers can lean on whichever is reliable. Call this multi-scale grouping.
 
-But concatenating multi-scale features only helps if the network actually *learns* to weight them according to density — otherwise it just always trusts the fine scale and I'm back to the sparse-region failure. I need to teach it that the fine scale is unreliable when points are sparse. The trick is to *show* it sparsity during training: randomly drop input points. Concretely, for each training cloud I draw a dropout ratio $\theta$ uniformly from $[0,p]$ and then drop each point independently with probability $\theta$ (I cap $p$ below $1$ — at $0.95$ — so I never produce an empty set). Sweeping $\theta$ gives the network clouds at many sparsity levels, and the per-point randomness gives many *non-uniform* patterns. Trained across all of that, the network learns when the small-scale feature has collapsed to noise and should be down-weighted in favor of the large-scale one. At test time I keep all points. So multi-scale grouping plus random input dropout together give the density adaptivity.
+But concatenating multi-scale features only helps if the network actually *learns* to weight them according to density — otherwise it just always trusts the fine scale and I'm back to the sparse-region failure. I need to teach it that the fine scale is unreliable when points are sparse. The trick is to *show* it sparsity during training: randomly drop input points. Concretely, for each training cloud I draw a dropout ratio $\theta$ uniformly from $[0,p]$ and then drop each point independently with probability $\theta$; I set $p=0.95$, below $1$, so I avoid empty sets. Sweeping $\theta$ gives the network clouds at many sparsity levels, and the per-point randomness gives many *non-uniform* patterns. In fixed-size tensor code I can keep the tensor shape by replacing selected entries with a duplicate, and for labeled scene points I can zero their sample weight. Trained across all of that, the network learns when the small-scale feature has collapsed to noise and should be down-weighted in favor of the large-scale one. At test time I keep all points. So multi-scale grouping plus random input dropout together give the density adaptivity.
 
 Multi-scale grouping works but it's expensive, and I should see exactly where the cost lands. At every centroid I run a mini-encoder over a *large*-radius neighborhood, which contains many points; and the lowest abstraction level has the *most* centroids. So I'm running large-neighborhood encoders at thousands of centroids — that's the bulk of the compute, and it's redundant because the higher levels already inspect large extents of space. Can I get multi-scale information without re-encoding large neighborhoods at the dense low levels? Here's a cheaper construction. Form the feature of a region at level $L_i$ as the concatenation of *two* vectors. The first is the ordinary one: summarize the features of the *sub-regions* from the lower level $L_{i-1}$ through the abstraction level — this is the "already abstracted lower-resolution" path. The second is computed by running a single encoder directly on the *raw* points of the region at this level. Now reason about density. When the region is *sparse*, the first vector is suspect — it was built from sub-regions that are even sparser and suffer more from sampling deficiency — so the network should weight the second (raw) vector higher. When the region is *dense*, the first vector carries finer detail because it recursively inspected at higher resolution below, so it's valuable. The network learns this weighting (again via random input dropout), and I never pay to encode large neighborhoods at the lowest, most populous level. Multi-resolution grouping — same adaptivity, much cheaper.
 
@@ -28,18 +28,17 @@ That handles classification, where I only need the final global feature. Segment
 $$f^{(j)}(x)=\frac{\sum_{i=1}^{k} w_i(x)\,f_i^{(j)}}{\sum_{i=1}^{k} w_i(x)},\qquad w_i(x)=\frac{1}{d(x,x_i)^p},$$
 with $p=2$ and $k=3$ by default — nearer coarse points dominate, which is the sensible prior for a smooth feature field. But interpolation alone has lost the high-resolution detail that existed at the finer level on the way *down*. So I add a *skip link*: concatenate the interpolated coarse feature with the feature this fine point had at the corresponding abstraction level (carried across by the skip), and then run a small per-point MLP — a "unit PointNet," the analogue of a $1\times1$ convolution — to fuse them into an updated per-point feature. Repeat propagation level by level until I'm back at the original points, each now carrying a feature that combines its own fine detail with progressively larger-scale context, ready for a per-point label.
 
-Let me write the pieces concretely, grounded in a real implementation: the sampling+grouping, the set abstraction module (single-scale and multi-scale), and the feature-propagation module.
+Let me write the pieces concretely with the tensor cases I will need: the sampling+grouping, the set abstraction module (single-scale and multi-scale), and the feature-propagation module.
 
 ```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# ---- primitives (exist): FPS, ball query, gather, knn -----------------------
 def farthest_point_sample(xyz, npoint): ...        # (B,N,3) -> (B,npoint) indices
-def ball_query(radius, nsample, xyz, new_xyz): ... # -> (B,npoint,nsample) indices
+def ball_query(radius, nsample, xyz, new_xyz): ... # fixed radius, cap nsample, repeat if underfull
 def index_points(points, idx): ...                 # gather by index
-def knn(query, ref, k): ...                        # -> (B,M,k) indices, (B,M,k) dists
+def three_nn_sqdist(query, ref, k=3): ...           # -> squared distances, indices
 
 def sample_and_group(npoint, radius, nsample, xyz, feats):
     # 1) Sampling: farthest point sampling for good, data-dependent coverage
@@ -109,10 +108,13 @@ class FeaturePropagation(nn.Module):
             layers += [nn.Conv1d(c, out, 1), nn.BatchNorm1d(out), nn.ReLU()]; c = out
         self.mlp = nn.Sequential(*layers)
     def forward(self, xyz_fine, xyz_coarse, feats_fine, feats_coarse):
-        idx, dist = knn(xyz_fine, xyz_coarse, k=3)             # 3 nearest coarse points
-        w = 1.0 / (dist + 1e-8) ** 2                           # inverse distance, p=2
-        w = w / w.sum(-1, keepdim=True)
-        interp = (index_points(feats_coarse, idx) * w.unsqueeze(-1)).sum(2)  # IDW average
+        if xyz_coarse.size(1) == 1:
+            interp = feats_coarse.expand(-1, xyz_fine.size(1), -1)
+        else:
+            sqdist, idx = three_nn_sqdist(xyz_fine, xyz_coarse, k=min(3, xyz_coarse.size(1)))
+            inv = 1.0 / sqdist.clamp_min(1e-10)                # p=2 because sqdist=d^2
+            w = inv / inv.sum(-1, keepdim=True)
+            interp = (index_points(feats_coarse, idx) * w.unsqueeze(-1)).sum(2)
         if feats_fine is not None:
             interp = torch.cat([interp, feats_fine], dim=-1)   # skip link
         return self.mlp(interp.transpose(1, 2)).transpose(1, 2)  # unit PointNet

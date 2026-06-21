@@ -79,44 +79,6 @@ O(M²/n) = o(1). Thus Σ_{p≠q} Cov = o(1), Var[X] = ln ln n + O(1), and Chebys
 Pr[|ν − ln ln n| > λ√(ln ln n)] < λ^{−2} + o(1): almost all integers have ≈ ln ln n prime factors
 (Hardy–Ramanujan).
 
-## Optional numerical sanity check
-
-```python
-import itertools, random
-from math import comb
-
-def sample_gnp(n, p):
-    edges = set()
-    for u, v in itertools.combinations(range(n), 2):
-        if random.random() < p:
-            edges.add((u, v))
-    return edges
-
-def count_4cliques(n, edges):
-    E = edges
-    has = lambda a, b: (a, b) in E or (b, a) in E
-    c = 0
-    for S in itertools.combinations(range(n), 4):
-        if all(has(a, b) for a, b in itertools.combinations(S, 2)):
-            c += 1
-    return c
-
-def expected_4cliques(n, p):
-    return comb(n, 4) * p**6            # E[X] = C(n,4) p^6
-
-def fraction_with_4clique(n, p, trials=300):
-    hit = sum(count_4cliques(n, sample_gnp(n, p)) > 0 for _ in range(trials))
-    return hit / trials
-
-# Try values below, near, and above n^{-2/3}; compare empirical hits with E[X] = C(n,4)p^6.
-if __name__ == "__main__":
-    n = 30
-    thr = n ** (-2/3)
-    for p in (0.3 * thr, thr, 3 * thr):
-        print(f"p={p:.4f}  E[X]={expected_4cliques(n, p):.3f}  "
-              f"Pr[X>0]≈{fraction_with_4clique(n, p):.2f}")
-```
-
 The first moment gives the disappearance half and the candidate threshold; the second moment (via
 Δ* = o(E[X])) gives the appearance half and concentration; Paley–Zygmund supplies a constant lower
 bound when the variance is only comparable to the mean squared. Var[X] = o(E[X]²) is the engine behind

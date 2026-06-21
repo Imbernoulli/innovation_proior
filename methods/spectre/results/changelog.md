@@ -1,0 +1,33 @@
+# File:Line Changelog
+
+- `methods/spectre/results/context.md:1` rewrote the context as exactly five pre-method sections and removed target-method naming.
+- `methods/spectre/results/context.md:9` corrected the mixture covariance setup, including the sign-insensitive `epsilon * (1 - epsilon) * (mu_D - mu_W)(mu_D - mu_W)^T` term.
+- `methods/spectre/results/context.md:13` reframed robust statistics as a pre-existing primitive with the reduced-dimension constraint, without giving away the final combination.
+- `methods/spectre/results/context.md:15` kept QUE as a separate pre-existing scoring primitive rather than a finished answer.
+- `methods/spectre/results/context.md:27` corrected the removal-budget convention for both fraction notation and repository poison-count notation.
+- `methods/spectre/results/context.md:31` replaced the scaffold with a generic target-label representation filter interface.
+- `methods/spectre/results/reasoning.md:1` rebuilt the covariance derivation and verified the bump constant and sign.
+- `methods/spectre/results/reasoning.md:9` corrected the robust covariance sample-complexity argument and why full-dimensional estimation is not viable.
+- `methods/spectre/results/reasoning.md:13` replaced the old raw-top-eigenvalue `k` selection with the mean-QUE `k`-Identifier used by `rcov_auto_quantum_filter`.
+- `methods/spectre/results/reasoning.md:15` replaced the invented Mahalanobis-trimming scaffold with the DKK-style covariance filter used in `dkk17.jl`, including the `2 * eps_count` robust-filter cap and `eps_count / n` fraction.
+- `methods/spectre/results/reasoning.md:17` distinguished the abstract `RobustEst` mean/covariance algorithm from the centered-PCA covariance path in the repository code, including the `k == 1` special case.
+- `methods/spectre/results/reasoning.md:19` corrected the QUE formula, denominator `||Sigma_tilde||_2 - 1`, trace normalization, and `alpha` endpoint cases.
+- `methods/spectre/results/reasoning.md:21` fixed the score sign convention and keep-mask/removal-mask interpretation.
+- `methods/spectre/results/reasoning.md:23` closed on the corrected two-stage target-label detector with adaptive `k`.
+- `methods/spectre/results/answer.md:7` rewrote the final algorithm around target-label representations, robust whitening, QUE scoring, and retraining.
+- `methods/spectre/results/answer.md:14` stated the final `Sigma_tilde`, `Q_alpha`, and `tau_i` formulas with the correct constants.
+- `methods/spectre/results/answer.md:19` corrected adaptive `k` selection and the canonical squared grid `[1, 4, 9, ..., 100]`.
+- `methods/spectre/results/answer.md:23` added a compact checklist of math/code invariants: covariance bump sign, clean-covariance whitening, QUE denominator, trace normalization, endpoint cases, `eps` count semantics, and target-label scope.
+- `methods/spectre/results/answer.md:36` replaced the non-canonical Python `BackdoorDefense` scaffold with a Julia-shaped `rcov_quantum_filter` matching `quantum_filters.jl`.
+- `methods/spectre/results/answer.md:44` made the robust covariance call faithful to `cov_estimation_iterate(reps_pca, eps / n, ..., limit=round(Int, 2 * eps))`.
+- `methods/spectre/results/answer.md:56` corrected QUE scoring and final removal to `k_lowest_ind(-scores, round(Int, 1.5 * eps))`.
+- `methods/spectre/results/answer.md:64` added the faithful `rcov_auto_quantum_filter` shape, including survivor-covariance whitening and mean QUE objective.
+- `methods/spectre/results/answer.md:86` documented centered PCA and the DKK-style covariance filter behavior.
+- `methods/spectre/results/answer.md:99` corrected the repository pipeline and target-label mask output.
+- `methods/spectre/results/.codex_review.json:1` replaced the prior overclaiming review record with an explicit independent-review-not-run record and manual verification summary.
+- `methods/spectre/notes/source_matrix.md:1` added the strict source matrix with primary, supplement, canonical code, ancestors, explainer, self-account search artifacts, and methods.json status.
+- `methods/spectre/notes/source_matrix.md:18` recorded the key draft corrections for `k` selection, code faithfulness, count/fraction semantics, and QUE normalization.
+- `methods/spectre/notes/discovery_synthesis.md:1` added the source-grounded reconstruction notes used for the rewrite.
+- `methods/spectre/notes/discovery_synthesis.md:18` listed the concrete fixes applied against the previous draft.
+- `methods/spectre/refs/self_accounts/search_log.md:1` added the documented author self-account search and its negative result.
+- `methods/spectre/notes/strict_check_output.txt:1` recorded the partial strict-check pass, including the absent `scripts/check_strict_method.py` blocker and manual structural checks.

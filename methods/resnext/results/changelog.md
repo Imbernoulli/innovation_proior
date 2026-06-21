@@ -1,0 +1,21 @@
+# Changelog
+
+- `methods/resnext/results/context.md:53` and `methods/resnext/results/context.md:101` updated the scaffold initialization to mirror the official Torch/Lua convention: explicit `math`, conv normal std `sqrt(2/(kW*kH*out_channels))`, BN scale/bias constants, and linear bias zeroing.
+- `methods/resnext/results/reasoning.md:25` narrowed the three-form equivalence claim to the homogeneous bottleneck template with BN/ReLU handled consistently.
+- `methods/resnext/results/reasoning.md:27` replaced ambiguous `256-d` shorthand with fixed 256-channel block I/O.
+- `methods/resnext/results/reasoning.md:33` changed the `d >= 4` cutoff from hindsight phrasing into an in-frame saturation risk to test.
+- `methods/resnext/results/reasoning.md:39` repeated the homogeneous-template caveat at implementation time.
+- `methods/resnext/results/reasoning.md:48` and `methods/resnext/results/reasoning.md:104` made the embedded PyTorch implementation faithful to the canonical Torch/Lua initialization.
+- `methods/resnext/results/answer.md:27` added the homogeneous-template and non-arbitrary-`T_i` caveat for the equivalent forms.
+- `methods/resnext/results/answer.md:31` fixed the block-I/O wording in the matched-complexity derivation.
+- `methods/resnext/results/answer.md:38` grounded the `4d` lower-width rule in the preserved-complexity saturation result.
+- `methods/resnext/results/answer.md:50` and `methods/resnext/results/answer.md:108` labeled the code as a PyTorch transliteration of official `resnext_C` and aligned its initialization with the reference implementation.
+- `methods/resnext/notes/source_matrix.md:5` added the primary source and CVPR PDF evidence.
+- `methods/resnext/notes/source_matrix.md:6` added the official Facebook Research code evidence.
+- `methods/resnext/notes/source_matrix.md:7` through `methods/resnext/notes/source_matrix.md:14` added ancestor and explainer evidence.
+- `methods/resnext/refs/self_accounts/search_log.md:7` through `methods/resnext/refs/self_accounts/search_log.md:16` documented the unsuccessful author self-account search.
+- `methods/resnext/notes/discovery_synthesis.md:11` through `methods/resnext/notes/discovery_synthesis.md:21` recorded the verified capacity arithmetic for all `C,d` cases.
+- `methods/resnext/notes/discovery_synthesis.md:25` through `methods/resnext/notes/discovery_synthesis.md:37` recorded the canonical code-faithfulness audit.
+- `methods/resnext/notes/discovery_synthesis.md:41` through `methods/resnext/notes/discovery_synthesis.md:45` recorded the posterior-leak and in-frame voice audit.
+- `methods/resnext/notes/synthesis.md:29`, `methods/resnext/notes/synthesis.md:43`, and `methods/resnext/notes/synthesis.md:85` through `methods/resnext/notes/synthesis.md:87` brought the older synthesis note into alignment with the stricter equivalence, I/O-width, and `4d` wording.
+- `methods/resnext/results/.codex_review.json:3` through `methods/resnext/results/.codex_review.json:8` replaced the stale errored review record with an explicit `not_run` independent-review status and reason.

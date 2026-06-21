@@ -1,41 +1,75 @@
-# Maximum-Margin Classifier (Support-Vector Machine)
+# Support-Vector Machine From Maximum Margin
 
-## Problem
+The method chooses the separating hyperplane with largest geometric margin, because VC theory bounds the capacity of margin-restricted hyperplanes by a radius-to-margin term rather than by the full feature dimension. Duality then makes the solution depend only on inner products, so any Mercer kernel can supply a nonlinear feature space without explicitly constructing it.
 
-Binary classification of $(x_i,y_i)$, $y_i\in\{-1,+1\}$, with good *generalization*: small expected test error, not merely small training error. Among the infinitely many hyperplanes that separate the training data, pick a single principled one whose capacity — and therefore generalization — is controlled, and do so even when the (feature-space) dimension is enormous or infinite.
+## Hard-Margin Form
 
-## Key idea
+For a separating hyperplane `D(x) = w . x + b`, normalize the scale so the closest points satisfy `y_i D(x_i) = 1`. The boundary-to-nearest-point margin is then `1 / ||w||`, while the full distance between the two supporting hyperplanes is `2 / ||w||`; maximizing either is equivalent to:
 
-Choose, among all separating hyperplanes, the one of **maximum margin** (largest distance to the nearest training points). The Vapnik–Chervonenkis bound on $\Delta$-margin separating hyperplanes — for data in a sphere of radius $R$, $h\le \min(\lceil R^2/\Delta^2\rceil, n)+1$ — shows that a large margin means low VC dimension *independent of the dimension* $n$. Maximizing the margin is thus structural risk minimization realized geometrically. The problem becomes a convex quadratic program; its Lagrangian dual depends on the data **only through inner products** (so any Mercer kernel can replace the dot product, giving nonlinear boundaries for free), its solution is **sparse** (a few support vectors), and **slack variables with a cost $C$** extend it to non-separable data.
+```text
+minimize    1/2 ||w||^2
+subject to  y_i (w . x_i + b) >= 1,  i = 1,...,l
+```
 
-## Derivation
+The Lagrangian conditions give:
 
-Signed distance of $x$ to $\{w\cdot x+b=0\}$ is $D(x)/\lVert w\rVert$. A margin-$M$ separation means $y_i(w\cdot x_i+b)/\lVert w\rVert\ge M$. Fixing the scale by $M\lVert w\rVert=1$ gives $y_i(w\cdot x_i+b)\ge 1$ with the closest points at equality, supporting hyperplanes $w\cdot x+b=\pm1$, geometric margin $M=1/\lVert w\rVert$, and full gap $2/\lVert w\rVert$. Maximizing $M$ is equivalent to minimizing $\tfrac12\lVert w\rVert^2$.
+```text
+w = sum_i alpha_i y_i x_i
+sum_i alpha_i y_i = 0
+alpha_i >= 0
+```
 
-**Primal QP (soft margin).**
-$$ \min_{w,b,\xi}\ \tfrac12\lVert w\rVert^2 + C\sum_{i=1}^{\ell}\xi_i \quad\text{s.t.}\quad y_i(w\cdot x_i+b)\ge 1-\xi_i,\ \ \xi_i\ge 0. $$
-($\sum_i\xi_i$ upper-bounds the number of training errors; for separable data, a large enough $C$ recovers the hard-margin solution when the upper bound does not bind.)
+Substitution yields the dual:
 
-**Lagrangian.** With $\alpha_i\ge0$ (margin constraints), $\mu_i\ge0$ (slack):
-$$ L=\tfrac12\lVert w\rVert^2+C\textstyle\sum_i\xi_i-\sum_i\alpha_i[y_i(w\cdot x_i+b)-1+\xi_i]-\sum_i\mu_i\xi_i. $$
-Stationarity: $w=\sum_i\alpha_i y_i x_i$, $\ \sum_i\alpha_i y_i=0$, $\ \alpha_i=C-\mu_i$ (so $\alpha_i\le C$).
+```text
+maximize    sum_i alpha_i
+            - 1/2 sum_i sum_j alpha_i alpha_j y_i y_j K(x_i, x_j)
+subject to  sum_i alpha_i y_i = 0
+            alpha_i >= 0
+```
 
-**Dual QP.** Substituting back (slacks and $\mu_i$ cancel), with $K(x_i,x_j)=\Phi(x_i)\cdot\Phi(x_j)$:
-$$ \max_{\alpha}\ \sum_i\alpha_i-\tfrac12\sum_{i,j}\alpha_i\alpha_j y_i y_j K(x_i,x_j) \quad\text{s.t.}\quad \sum_i\alpha_i y_i=0,\ \ 0\le\alpha_i\le C. $$
-In matrix form $\max_\alpha\ \alpha^\top\mathbf 1-\tfrac12\alpha^\top D\alpha$, $D_{ij}=y_iy_jK(x_i,x_j)$. Size $=\ell$, not the feature dimension.
+Points with `alpha_i > 0` lie on the supporting boundary in the hard-margin case; points strictly outside the margin have `alpha_i = 0`. In degenerate cases a boundary point can have zero coefficient, so the sparse expansion uses the nonzero-coefficient support vectors:
 
-**KKT / support vectors.** Complementary slackness $\alpha_i[y_i(w\cdot x_i+b)-1+\xi_i]=0$:
-- $\alpha_i=0$: correctly on or outside the margin but not contributing to the classifier;
-- $0<\alpha_i<C$: $\xi_i=0$, on the margin (free support vector — used to compute $b$);
-- $\alpha_i=C$: margin constraint is tight with $y_i(w\cdot x_i+b)=1-\xi_i$; the point may be on the margin, inside it, or misclassified (bounded support vector).
+```text
+f(x) = sign(sum_i alpha_i y_i K(x_i, x) + b)
+```
 
-**Decision function.** $f(x)=\operatorname{sign}\!\big(\sum_i\alpha_i y_i K(x_i,x)+b\big)$, summed over support vectors only.
+where the sum is over support vectors.
 
-**Generalization.** Leave-one-out: removing a non-support vector leaves the boundary unchanged, so expected test error $\le \mathbb{E}[\#\text{support vectors}]/\ell$ — independent of dimension.
+## Soft-Margin Form
 
-**Kernels (Mercer).** Under the usual Mercer assumptions, $K$ is a valid inner product when $\iint K(u,v)g(u)g(v)\,du\,dv\ge0$ for all $g\in L_2$. Standard choices: linear $u\cdot v$; polynomial $(u\cdot v+1)^d$; RBF $\exp(-\lVert u-v\rVert^2/2\sigma^2)$ (support vectors become RBF centers); sigmoid-shaped kernels only in parameter regimes where the resulting Gram matrices are positive semidefinite.
+For overlapping or noisy data, introduce `xi_i >= 0`:
 
-## Final form (code)
+```text
+minimize    1/2 ||w||^2 + C sum_i xi_i
+subject to  y_i (w . x_i + b) >= 1 - xi_i
+            xi_i >= 0
+```
+
+The dual objective is unchanged, and the slack penalty becomes the box constraint:
+
+```text
+maximize    sum_i alpha_i
+            - 1/2 sum_i sum_j alpha_i alpha_j y_i y_j K(x_i, x_j)
+subject to  sum_i alpha_i y_i = 0
+            0 <= alpha_i <= C
+```
+
+`C` controls the tradeoff between a wide margin and violations. If `0 < alpha_i < C`, the point has `xi_i = 0`, lies exactly on the margin, and can be used to compute `b`. If `alpha_i = C`, the point may be on the margin, inside the margin, or misclassified, but its influence is capped. If `alpha_i = 0`, the point is outside or on the margin and does not appear in the decision expansion.
+
+## Kernel Condition
+
+`K` must be an inner product in some feature space. Mercer-positive choices include:
+
+```text
+linear:      K(u, v) = u . v
+polynomial:  K(u, v) = (gamma u . v + coef0)^d
+radial:      K(u, v) = exp(-gamma ||u - v||^2), gamma = 1 / (2 sigma^2)
+```
+
+The training problem scales with the number of examples, and prediction scales with the number of support vectors, not with the explicit feature dimension.
+
+## Classifier Skeleton
 
 ```python
 import numpy as np
@@ -44,48 +78,58 @@ def linear_kernel(X, Y=None):
     Y = X if Y is None else Y
     return X @ Y.T
 
-def poly_kernel(X, Y=None, degree=3, coef0=1.0):
-    Y = X if Y is None else Y
-    return (X @ Y.T + coef0) ** degree             # (x.x' + 1)^d
+def _default_gamma(gamma, X):
+    return 1.0 / X.shape[1] if gamma is None else gamma
 
-def rbf_kernel(X, Y=None, gamma=0.5):
+def polynomial_kernel(X, Y=None, degree=3, gamma=None, coef0=0.0):
     Y = X if Y is None else Y
+    gamma = _default_gamma(gamma, X)
+    return (gamma * (X @ Y.T) + coef0) ** degree
+
+def rbf_kernel(X, Y=None, gamma=None):
+    Y = X if Y is None else Y
+    gamma = _default_gamma(gamma, X)
     x2 = np.sum(X * X, axis=1)[:, None]
     y2 = np.sum(Y * Y, axis=1)[None, :]
     d2 = x2 + y2 - 2.0 * (X @ Y.T)
-    return np.exp(-gamma * d2)                     # gamma = 1 / (2 sigma^2)
+    return np.exp(-gamma * d2)
 
-class MaxMarginClassifier:
-    """min 1/2||w||^2 + C sum xi  ->  dual:
-       max  sum_i a_i - 1/2 sum_ij a_i a_j y_i y_j K(x_i,x_j)
-       s.t. sum_i a_i y_i = 0,  0 <= a_i <= C.
-       Decision: sign( sum_i a_i y_i K(x_i, x) + b )."""
-
-    def __init__(self, kernel, C=1.0, tol=1e-6):
-        self.kernel, self.C, self.tol = kernel, C, tol
+class MaxMarginKernelClassifier:
+    def __init__(self, kernel=linear_kernel, C=1.0, tol=1e-7):
+        self.kernel = kernel
+        self.C = C
+        self.tol = tol
 
     def fit(self, X, y):
         y = y.astype(float)
-        K = self.kernel(X, X)                      # data enters only via inner products
-        D = (y[:, None] * y[None, :]) * K          # D_ij = y_i y_j K(x_i,x_j)
-        alpha = solve_qp(                          # min 1/2 a^T D a - 1^T a
-            P=D, q=-np.ones_like(y),               #   equivalent to the dual maximum
-            A_eq=y, b_eq=0.0,                      #   under sum_i a_i y_i = 0
-            bounds=(0.0, self.C))
-        sv = alpha > self.tol                       # KKT: a_i>0 only for support vectors
-        self.alpha, self.sv_X, self.sv_y = alpha[sv], X[sv], y[sv]
-        free = sv & (alpha < self.C - self.tol)     # 0<a<C  =>  xi=0, point on margin
+        K = self.kernel(X, X)
+        P = (y[:, None] * y[None, :]) * K
+        alpha = solve_qp(
+            P=P,
+            q=-np.ones(len(y)),
+            A_eq=y,
+            b_eq=0.0,
+            bounds=(0.0, self.C),
+        )
+
+        sv = alpha > self.tol
+        self.alpha = alpha[sv]
+        self.sv_X = X[sv]
+        self.sv_y = y[sv]
+
+        free = sv & (alpha < self.C - self.tol)
         bias_idx = free if np.any(free) else sv
-        margins = (self.alpha * self.sv_y) @ K[np.ix_(sv, bias_idx)]
-        self.b = np.mean(y[bias_idx] - margins)
+        support_scores = (self.alpha * self.sv_y) @ K[np.ix_(sv, bias_idx)]
+        self.b = float(np.mean(y[bias_idx] - support_scores))
+        self.rho = -self.b
         return self
 
     def decision_function(self, X):
         Kx = self.kernel(X, self.sv_X)
-        return (self.alpha * self.sv_y) @ Kx.T + self.b
+        return Kx @ (self.alpha * self.sv_y) + self.b
 
     def predict(self, X):
         return np.where(self.decision_function(X) >= 0, 1, -1)
 ```
 
-The training QP scales with the number of examples, and prediction scales with the number of support vectors and one kernel evaluation per support vector, independent of the (possibly billion-dimensional or infinite) feature-space coordinates.
+This is the binary, unweighted C-SVC core. LIBSVM implements the same dual as a minimization with `q = -1`, stores `sv_coef_i = y_i alpha_i`, stores `rho = -b`, evaluates `sum_i sv_coef_i K(x, SV_i) - rho`, and extends the core with per-class costs and one-vs-one multiclass classification.

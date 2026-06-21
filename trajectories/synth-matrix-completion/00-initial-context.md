@@ -1,75 +1,65 @@
 ## Research question
 
-Given a sparse, uniformly-random subset of the entries of an unknown rank-$r$ ground-truth matrix
-$M^\*$, design the **matrix-recovery strategy** that reconstructs $M^\*$ as accurately as possible on
+Given a sparse, uniformly-random subset of the entries of an unknown rank-$r$ matrix
+$M^*$, design the **matrix-recovery strategy** that reconstructs $M^*$ as accurately as possible on
 the *unobserved* entries. The single thing being designed is the algorithm inside `recover(...)` — how
 the recovered matrix is parameterized (depth, initialization, regularization) and how it is fit (which
-update, which optimizer, which stopping rule). Everything else — how $M^\*$ is sampled, how the mask is
+update, which optimizer, which stopping rule). Everything else — how $M^*$ is sampled, how the mask is
 drawn, how the estimate is scored — is fixed by the driver.
 
-## Prior art before the first rung (low-rank-recovery lineage)
+## Prior art / Background / Baselines
 
 Low-rank matrix completion is fundamental in collaborative filtering, signal processing, and
-statistics. The first rung reacts to a line of recovery methods that all agree on *what* the answer
-should be — a low-rank matrix that fits the observed entries — and differ on *how* to get there.
+statistics. The methods below agree that the answer should be a low-rank matrix fitting the observed
+entries, and differ in how they reach it.
 
-- **Rank-constrained / convex relaxation (Recht-Fazel-Parrilo 2010; Candès-Recht 2009).** Minimizing
-  rank subject to fitting the observations is NP-hard, so relax rank to its convex envelope, the nuclear
-  norm $\|X\|_\* = \sum_i \sigma_i(X)$. Under an incoherence condition, the minimum-nuclear-norm fit
-  exactly recovers an incoherent rank-$r$ matrix from $O(nr\log n)$ entries. Gap: it is an SDP, and the
-  surrogate parts ways with min-rank precisely in the *data-poor* regime — too few entries for the
-  convex relaxation to be tight.
-- **Explicit factorization (Burer-Monteiro 2003; Jain-Netrapalli-Sanghavi 2012).** Write $X = UV^\top$
-  with a *hard* inner dimension $d$ and minimize the squared error on observed entries by alternating
-  minimization or gradient descent. Cheap and scalable, and recovery works when $d$ matches the true
-  rank. Gap: it needs the rank as a hard cap — wrong $d$ either under-fits or removes the low-rank bias
-  entirely — and the true rank is usually unknown.
-- **Implicit-regularization observation (Gunasekar et al. 2017).** Take the factorization to full inner
-  dimension $d = n$ so it imposes *no* rank constraint, and run small-step gradient descent from a
-  near-zero initialization: the recovered matrix is low rank anyway. The bias toward low rank — toward
-  the minimum-nuclear-norm fit — comes for free from the *dynamics* of descending on the factors, not
-  from any penalty. Gap: this is a depth-2 factorization, and as a nuclear-norm surrogate it inherits
-  nuclear norm's exact failure in the data-poor regime.
+- **Nuclear-norm convex relaxation.** Replace the rank objective with nuclear-norm minimization
+  $\|X\|_* = \sum_i \sigma_i(X)$, a convex surrogate that exactly recovers incoherent rank-$r$ matrices
+  from enough entries. Gap: it is an SDP, and the relaxation stops being tight when the observations
+  are too scarce.
+- **Explicit low-rank factorization.** Write $X = UV^\top$ with a fixed inner dimension $d$ and fit the
+  observed entries by gradient descent or alternating minimization. Gap: it needs the true rank as a
+  hard cap — the wrong $d$ either under-fits or removes the low-rank bias entirely — and the true rank
+  is usually unknown.
+- **Implicit regularization from depth-2 factorization.** Use a full-dimensional factorization with
+  small initialization and small-step gradient descent; the dynamics bias the solution toward low rank
+  without an explicit penalty. Gap: this behaves like a nuclear-norm surrogate and fails in the same
+  data-poor regime.
 
-The fixed substrate below is the harness these methods are filled into; the ladder climbs from the
-depth-2 implicit-regularization fill, through the classical convex baseline, to a deeper factorization.
-
-## The fixed substrate
+## Fixed substrate / Code framework
 
 The driver is frozen and must not be touched. Per top-level seed it samples one ground-truth matrix and
 one initialization, then calls `strategy.recover(...)` once under a hard iteration budget.
 
-- **Ground truth.** A random rank-$r$ matrix $M^\* = (UV^\top)/\sqrt{r}$ with $U, V \sim \mathcal N(0,1)$
-  i.i.d. of shape $[n, r]$, rescaled to $\|M^\*\|_F = n$ (the Arora et al. 2019 `gen_gt.py`
-  construction).
+- **Ground truth.** A random rank-$r$ matrix $M^* = (UV^\top)/\sqrt{r}$ with $U, V \sim \mathcal N(0,1)$
+  i.i.d. of shape $[n, r]$, rescaled to $\|M^*\|_F = n$ (the Arora et al. 2019 construction).
 - **Observations.** A uniformly random subset of the $n^2$ entries at the configured observation rate;
   the unobserved entries are zeroed before they reach the strategy, so the truth cannot be peeked at.
 - **Metric.** Relative Frobenius error on the *unobserved* entries,
-  $\texttt{test\_rel\_fro} = \|(\hat M - M^\*)[\lnot\text{mask}]\|_F / \|M^\*[\lnot\text{mask}]\|_F$,
+  $\texttt{test\_rel\_fro} = \|(\hat M - M^*)[\lnot\text{mask}]\|_F / \|M^*[\lnot\text{mask}]\|_F$,
   lower is better. A secondary `full_rel_fro` over the whole matrix is also reported.
 
 The driver hands the strategy helpers it may use: `set_global_seed`, the masked-MSE and
 relative-Frobenius utilities, and `torch` / `torch.nn`. It also emits `TRAIN_METRICS iter=...
 train_mse=...` lines so the agent loop sees training progress.
 
-## The editable interface
+## Editable interface
 
 Exactly one region of `pytorch-examples/synth_matrix_completion/custom_strategy.py` is editable (the
-`EDITABLE` block, lines 138–228): `build_strategy()`, the `MatrixRecoveryStrategy` interface, and one
-or more reference strategy classes. The contract every rung fills is the single method
+`EDITABLE` block): `build_strategy()`, the `MatrixRecoveryStrategy` interface, and one or more strategy
+classes. The contract is the single method
 
 ```
 recover(observed_values, observed_mask, n, rank_hint, device, max_iters, log_iters) -> torch.Tensor
 ```
 
-returning a full $[n, n]$ estimate of $M^\*$. The driver supplies `observed_values` ($M^\*$ masked to
+returning a full $[n, n]$ estimate of $M^*$. The driver supplies `observed_values` ($M^*$ masked to
 zero off the observation set), `observed_mask` (bool $[n,n]$), `n`, `rank_hint` (the true rank — may be
 used or ignored), `device`, `max_iters` (a hard budget), and `log_iters` (the suggested print
-interval). Each method on the ladder is a different fill of this same contract.
+interval).
 
-The starting point is the scaffold default: a **depth-3 deep matrix factorization** (the strongest of
-the three baselines, shipped as the template default). The ladder below begins from the *weakest* fill
-and works up to it.
+The starting point is the scaffold default shown below: a depth-3 parameterization fit by Adam on the
+masked squared error.
 
 ```python
 # EDITABLE region of custom_strategy.py — scaffold default fill

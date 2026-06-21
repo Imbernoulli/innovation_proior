@@ -114,44 +114,4 @@ which any analytic law for $\pi(x)$ would be checked:
   $\mathrm{Re}(s)>1$, so any analytic claim must be checked first where these converge and only then
   extended.
 
-## Code framework
 
-A starting scaffold has two parts: the elementary number-theoretic primitives already available,
-and a blank layer left open for whatever analytic construction the prime data suggests.
-
-```python
-import numpy as np
-
-# --- existing primitives (sieving, the empirical smooth law, basic special functions) ---
-
-def primes_up_to(N):
-    """Sieve of Eratosthenes: the list of primes <= N. Exact enumeration."""
-    sieve = np.ones(N + 1, dtype=bool); sieve[:2] = False
-    for p in range(2, int(N**0.5) + 1):
-        if sieve[p]:
-            sieve[p*p::p] = False
-    return np.flatnonzero(sieve)
-
-def pi_count(x, primes):
-    """pi(x): number of primes <= x, by direct counting."""
-    return int(np.searchsorted(primes, x, side='right'))
-
-def Li(x):
-    """The logarithmic integral Li(x) = ∫_0^x dt/log t — the empirical smooth approximation."""
-    raise NotImplementedError  # standard quadrature of 1/log t
-
-def mobius(n):
-    """Möbius μ(n): 0 if n has a squared prime factor, else (-1)^(#distinct primes)."""
-    raise NotImplementedError  # factor n, apply the rule
-
-def Gamma(s):
-    """Euler's factorial interpolation Γ(s) = ∫_0^∞ e^{-x} x^{s-1} dx."""
-    raise NotImplementedError
-
-# --- analytic layer left open ---
-
-def analytic_law_for_pi(x, primes):
-    """Produce an analytic account of pi(x) from the prime data, going beyond
-    direct enumeration and beyond the empirical smooth fit."""
-    raise NotImplementedError  # TODO
-```

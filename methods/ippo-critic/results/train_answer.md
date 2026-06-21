@@ -1,0 +1,60 @@
+A team of $N$ agents acts in a partially observable, stochastic world, shares a single scalar reward $r(s,u)$, and must learn a joint policy that maximises the discounted team return $J = \mathbb{E}[\sum_t \gamma^t r_t]$. The execution constraint on the actor is hard: at run time each agent $a$ sees only its own local observation, so its action can depend only on its own action-observation history $\tau^a$, and the policies must factor as $\pi(u|\tau) = \prod_a \pi^a(u^a|\tau^a)$. Training, however, happens in simulation, where I am allowed to use information no agent could access at run time — the global state $s$, every agent's observations, shared gradients and shared parameters. This is centralised training with decentralised execution, and it leaves exactly one degree of freedom: the actor's form is settled, but the critic — the value function I use as a baseline — can in principle condition on anything I have during training. So the whole question is narrow and sharp: what should the critic condition on, and how should I build it? It decides everything, because the only reason I have a critic at all is variance. The score-function policy gradient $\hat g = \mathbb{E}[\nabla \log \pi(u^a|\tau^a)\,\hat A]$ is unbiased but brutally noisy; subtracting a learned baseline and feeding the advantage $\hat A$ in its place keeps the gradient unbiased while cutting variance, and the variance of the whole update is then dominated by the variance of $\hat A$, which is built out of the critic. The critic's input set therefore fixes the bias and variance of every advantage estimate and decides whether the method survives multi-agent learning at all.
+
+The reflex move in this field is that more centralised information in the value function is better. The argument is seductive: the non-stationarity that wrecks naive independent learners comes from each agent treating the others as part of a drifting environment, so let the critic see the whole picture — the global state $s$, or the concatenation of everyone's observations and actions — and that moving target vanishes from the critic's view. This is the Central-V / COMA / MADDPG line, and because the critic is discarded at execution the actors stay decentralisable. But two things itch. First, variance: the actor for agent $a$ acts on $\tau^a$, so if the critic conditions on variables outside $a$'s own input, the per-agent update has to average over those extra variables — sometimes implicitly through the sampled trajectories, sometimes explicitly as in a counterfactual marginalisation — and that averaging can inject variance into the per-agent update even when it makes the value target itself easier to fit. It also scales badly as $N$ and the observation dimension grow. Second, and sharper, bias from partial observability. A critic keyed on the ground-truth state $s$ does not see partial observability; it sees the truth. In the smallest exposing case — a Dec-Tiger-style problem with a couple of underlying states but exponentially many histories — many histories $h$ map to the same state $s$ with genuinely different values: a history in which I have heard the same evidence ten times should be worth more than the empty history, because I am now confident and about to act well. The history value $V(h)$ must climb as evidence accumulates, but $V(s)$ is one number forced to be the average $\mathbb{E}_{h|s}[V(h)]$ over all those histories, so it literally cannot represent the climb — and an information-gathering action raises $V(h)$ without changing $s$, so to a state critic it looks worthless. The state-only critic is thus not merely lossy but biased relative to the history-conditioned objective the actor is solving. The dividing line is exact: if I had a joint critic $V(h,s)$ I could recover the history value unbiasedly by averaging out the state, $V^\pi(h) = \mathbb{E}_{s|h}[V^\pi(h,s)]$, but throwing away $h$ and keeping $s$ averages over the wrong variable, $V(s) = \mathbb{E}_{h|s}[V(h)]$, and there is no way to undo it. So the question is not "does the critic see global information," it is "does the critic keep the information set the actor conditions on," and the bare-state critic fails that test.
+
+I propose the IPPO critic: a per-agent, parameter-shared, decentralised value function that stays on the agent's own local information stream, $V_\phi(z^a, \mathrm{one\text{-}hot}(a))$, with no global state and no peer information. My first reaction was that this is just independent learning, and independent learning is supposed to be the thing that fails — unstable, converging to poor policies — because of co-learner non-stationarity (Tan, 1993) and the confounded-stochasticity pathology that blocks optimal play in some coordination games (Claus & Boutilier, 1998). But who is responsible for stability? The critic's job is to be a low-variance, low-bias baseline; the stability of the policy step is a different job, and PPO already owns it. The non-stationarity disaster is specifically that one agent, reacting to a co-learner's shift, takes a catastrophic policy step, which shifts everyone's dynamics and spirals. PPO's clipped surrogate, with ratio $r^a = \pi_\theta(u^a|\tau^a)/\pi_{\theta_\text{old}}(u^a|\tau^a)$,
+$$L^a(\theta) = \mathbb{E}\big[\min\big(r^a A^a,\ \mathrm{clip}(r^a, 1-\varepsilon, 1+\varepsilon)\,A^a\big)\big],$$
+removes the objective's incentive to push a probability ratio past $[1-\varepsilon, 1+\varepsilon]$ once it has crossed the useful side: when $A^a > 0$ and $r^a$ exceeds $1+\varepsilon$ the $\min$ flattens the reward, when $A^a < 0$ and $r^a$ drops below $1-\varepsilon$ the clipped product is more negative so the $\min$ again removes the incentive, and on the side where a move would worsen the surrogate the unclipped term remains in force. That is exactly the restraint I need against peer-induced surprises: if every agent's effective step is modest, the others become a slowly drifting environment that a local critic can track. So independent learning's instability is plausibly an artifact of unrestrained updates, not of the local critic itself.
+
+What convinces me this is principled and not merely lucky is a coordinate-ascent identity. Telescoping the joint return over agents — for three agents, $J(\pi^1_{t+1},\pi^2_{t+1},\pi^3_{t+1}) - J(\pi^1_t,\pi^2_t,\pi^3_t)$ written as a sum of three terms, each changing one agent's policy while the others are held fixed — shows the joint return improves if every coordinate term is non-negative. The last term changes only $\pi^3$ with $\pi^1,\pi^2$ fixed; holding the others fixed, the world agent 3 faces is a single-agent POMDP $M^3$ in which the peers are absorbed into the dynamics, and agent 3's policy conditioning only on $\tau^3$ is exactly a POMDP policy. So making that term non-negative is just "improve a single-agent policy on the induced POMDP," which a restrained trust-region-like step can supply, while vanilla actor-critic and Q-learning offer no such per-step improvement story. PPO is only a first-order clipped approximation and simultaneous updates without recollection are a further approximation, so this is not a theorem for the exact update; but it tells me the structure to want — each agent takes a restrained single-agent improvement step against its induced POMDP — and the natural baseline for a POMDP policy on $\tau^a$ is a value function on that same information set. The local critic and the clip are not two unrelated choices; they are the two halves of "take restrained single-agent improvement steps on the right per-agent information set." The identity permits a central baseline for $M^a$ too, so it is the bias-variance argument above, not the coordinate-ascent view, that makes me choose local. And the decentralised choice is not a weak cousin of CTDE: when all agents learn concurrently with shared parameters on the joint data, the joint policy gradient equals the sum of the per-agent decentralised gradients (Peshkin et al., 2000), so I am computing the same direction without paying the centralised critic's variance and bias.
+
+Now the module, with each remaining choice motivated. With homogeneous agents I learn one shared critic rather than $N$ separate ones, because separate nets waste data — each learns from a single agent's stream — whereas sharing pools all $N$ streams into the same parameters for $N$-fold more data per step and faster, more stable value learning. The only thing sharing strictly removes is index-based specialisation; the agents already behave differently because they see different observations, and I hand the rest back cheaply by appending a one-hot agent id, so the shared network can route different agents to different values if the data demands it while still pooling everything. The input per agent is $[z^a; \mathrm{one\text{-}hot}(a)]$ of width $\text{obs\_dim} + N$, and a small MLP — two hidden layers of width $128$ with ReLU and a linear scalar head — is the right tool for a scalar regression. The learner calls the critic over whole sequences and then does `.squeeze(3)`, so the module must return shape $(B, T, N, 1)$ with the trailing singleton mandatory, and must set `output_type = "v"`. Inside `forward` I read only `batch["obs"]` over the appropriate time slice — full $\text{max\_seq\_length}$ when no time index is given, length 1 otherwise — build the agent id as the $N\times N$ identity broadcast to $(B, T, N, N)$, concatenate along the feature axis, and push through the MLP; because the agent axis is just a batched dimension, the same shared weights apply independently to each agent's vector with no cross-agent mixing, and the global state in `batch["state"]` is simply never read, keeping the critic strictly on the local side of the CTDE line. The advantage and loss are then single-agent PPO run $N$-fold: the GAE residual is $\delta^a_t = r_t + \gamma V_\phi(z^a_{t+1}) - V_\phi(z^a_t)$ with $A^a_t = \sum_{l} (\gamma\lambda)^l \delta^a_{t+l}$ and the team reward $r_t$ broadcast to all agents, while the EPyMARL learner I match builds a fixed $q_\text{nstep}=5$ target $R_t^{a,(n)} = \sum_{l=0}^{n-1}\gamma^l r_{t+l} + \gamma^n V_{\bar\phi}(z^a_{t+n})$ from a soft-updated target critic ($\tau = 0.01$) and passes the masked TD error $R_t^{a,(n)} - V_\phi(z^a_t)$ to the actor; the actor takes the clipped surrogate on each agent's own ratio plus an entropy bonus ($\varepsilon = 0.2$, entropy coefficient $0.001$), the critic is fit by masked mean-squared regression to those returns with no value clipping in this path, rewards are standardised and returns are not, $\gamma = 0.99$, Adam at $\text{lr} = 3\times 10^{-4}$, gradient norms clipped at $10$.
+
+```python
+import torch as th
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class ACCritic(nn.Module):
+    def __init__(self, scheme, args):
+        super(ACCritic, self).__init__()
+
+        self.args = args
+        self.n_actions = args.n_actions
+        self.n_agents = args.n_agents
+
+        input_shape = self._get_input_shape(scheme)
+        self.output_type = "v"
+
+        self.fc1 = nn.Linear(input_shape, args.hidden_dim)
+        self.fc2 = nn.Linear(args.hidden_dim, args.hidden_dim)
+        self.fc3 = nn.Linear(args.hidden_dim, 1)
+
+    def forward(self, batch, t=None):
+        inputs, bs, max_t = self._build_inputs(batch, t=t)
+        x = F.relu(self.fc1(inputs))
+        x = F.relu(self.fc2(x))
+        q = self.fc3(x)
+        return q
+
+    def _build_inputs(self, batch, t=None):
+        bs = batch.batch_size
+        max_t = batch.max_seq_length if t is None else 1
+        ts = slice(None) if t is None else slice(t, t + 1)
+        inputs = []
+        inputs.append(batch["obs"][:, ts])
+        inputs.append(
+            th.eye(self.n_agents, device=batch.device)
+            .unsqueeze(0)
+            .unsqueeze(0)
+            .expand(bs, max_t, -1, -1)
+        )
+        inputs = th.cat(inputs, dim=-1)
+        return inputs, bs, max_t
+
+    def _get_input_shape(self, scheme):
+        input_shape = scheme["obs"]["vshape"]
+        input_shape += self.n_agents
+        return input_shape
+```

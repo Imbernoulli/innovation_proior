@@ -1,110 +1,159 @@
 # ULMFiT: Universal Language Model Fine-tuning for Text Classification
 
-## Problem
+## Method
 
-NLP lacked the vision-style recipe of pretraining a whole model once and
-fine-tuning it to any task; word-embedding transfer only seeds the first layer.
-Full language-model fine-tuning had failed because it overfits small target sets,
-suffers catastrophic forgetting when a classifier is attached, and underfits if
-(vision-style) only the last layer is tuned. ULMFiT makes whole-model fine-tuning
-robust across diverse text-classification tasks with a single architecture and no
-custom engineering.
+ULMFiT transfers a whole pretrained language model to a text classifier in three
+stages:
 
-## Key idea
+1. Pretrain a regular AWD-LSTM language model on a large general corpus
+   (WikiText-103 in the paper).
+2. Fine-tune that language model on the target task's unlabeled text.
+3. Replace the decoder with a concat-pooling classifier head and fine-tune the
+   classifier with top-down unfreezing.
 
-Use a language model as the universal source task and transfer the *entire*
-network in three stages, with fine-tuning techniques that defeat overfitting and
-forgetting:
+The method is designed around three failures of naive transfer: small target
+corpora overfit, full classifier fine-tuning causes catastrophic forgetting, and
+last-layer-only fine-tuning underfits shallow NLP models.
 
-1. **General-domain LM pretraining** — pretrain an AWD-LSTM (3-layer LSTM, heavy
-   regularization: DropConnect on recurrent weights, variational dropout, etc.) on
-   a large general corpus (WikiText-103). Done once.
+## Core formulas
 
-2. **Target-task LM fine-tuning** — adapt the LM to the target text using:
-   - **Discriminative fine-tuning**: per-layer learning rates. The SGD update
-     becomes θ_t^l = θ_{t-1}^l − η^l·∇_{θ^l}J(θ). Tune the last layer's rate η^L,
-     then set lower layers η^{l-1} = η^l / 2.6 (general low layers move little;
-     task-specific high layers adapt).
-   - **Slanted triangular learning rates (STLR)**: short linear increase, long
-     linear decay. With cut = ⌊T·cut_frac⌋, p = t/cut for t<cut else
-     1 − (t−cut)/(cut·(1/cut_frac − 1)), and η_t = η_max·(1 + p·(ratio−1))/ratio.
-     Defaults cut_frac=0.1, ratio=32, η_max=0.01.
+**Discriminative fine-tuning.** For layer groups θ^1,...,θ^L with rates
+η^1,...,η^L:
 
-3. **Target-task classifier fine-tuning** — attach two new linear blocks (batchnorm
-   + dropout, ReLU then softmax; only these are learned from scratch), fed by:
-   - **Concat pooling**: h_c = [h_T, maxpool(H), meanpool(H)] over hidden states
-     H = {h_1..h_T}, so a class-deciding word anywhere in a long document survives.
-   - **Gradual unfreezing**: unfreeze from the top, one layer per epoch (last layer
-     first, as it holds the least general knowledge), adding a layer to the thawed
-     set each epoch until all layers train — protecting general features through the
-     unstable early epochs.
-   - **BPT3C**: backprop-through-time over fixed-length chunks of long documents,
-     carrying hidden state across chunks.
+```text
+θ_t^l = θ_{t-1}^l - η^l * ∇_{θ^l} J(θ)
+η^{l-1} = η^l / 2.6
+```
 
-Optionally pretrain/fine-tune a **backward LM** as well and average the two
-classifiers' predictions.
+The sign is ordinary gradient descent. Lower layers get smaller rates because
+they hold more general features.
+
+**Slanted triangular learning rates.** For T updates:
+
+```text
+cut = floor(T * cut_frac)
+p = t / cut                                      if t < cut
+p = 1 - (t - cut) / (cut * (1/cut_frac - 1))    otherwise
+η_t = η_max * (1 + p * (ratio - 1)) / ratio
+```
+
+Paper defaults: `cut_frac=0.1`, `ratio=32`, `η_max=0.01`. The schedule rises
+quickly from `η_max/ratio` to `η_max`, then decays linearly back near the floor.
+
+**Concat pooling.**
+
+```text
+h_c = [h_T, maxpool(H), meanpool(H)]
+H = {h_1, ..., h_T}
+```
+
+**Gradual unfreezing.** Train the classifier/top group first, then unfreeze one
+lower group per epoch until all groups train together. This protects lower
+language features from the first random-head gradients.
 
 ## Configuration
 
-AWD-LSTM: embedding 400, 3 layers, 1150 hidden units/layer, BPTT length 70.
-Dropouts: 0.4 (layers), 0.3 (RNN), 0.4 (input embedding), 0.05 (embedding), 0.5
-weight-drop (recurrent hidden-to-hidden). Classifier hidden size 50. Adam with
-β₁=0.7, β₂=0.99. Batch size 64; base LR 0.004 (LM fine-tune) and 0.01 (classifier
-fine-tune). Special tokens for upper-case, elongation, repetition.
+Paper constants: AWD-LSTM with embedding size `400`, hidden activations `1150`,
+`3` recurrent layers, BPTT length `70`, batch size `64`; classifier hidden size
+`50`; dropout rates `0.4` layer/output, `0.3` recurrent, `0.4` input, `0.05`
+embedding, and `0.5` recurrent weight-drop; base learning rates `0.004` for LM
+fine-tuning and `0.01` for classifier fine-tuning; Adam reported with
+`β1=0.7`, `β2=0.99`.
 
-## Code
+Reference-code caveats from the fastai v0.7.2 release snapshot:
+
+- The IMDb scripts set `optim.Adam(betas=(0.8, 0.99))`, not the paper's
+  reported `β1=0.7`.
+- The classifier script implements five discriminative groups as
+  `[lr/2.6^4, lr/2.6^3, lr/2.6^2, lr/2.6, lr]`.
+- The LM fine-tuning script uses four rates `[lr/6, lr/3, lr, lr/2]`.
+- The later fastai1 library default uses `n_hid=1152`; the paper and v0.7.2
+  IMDb scripts use `1150`.
+
+## Reference-faithful sketch
 
 ```python
-import torch, torch.nn as nn
+import math
+import torch
+import torch.nn as nn
 
-# ---- discriminative fine-tuning: eta^{l-1} = eta^l / 2.6 ----
-def discriminative_lrs(eta_last, n_layers, factor=2.6):
-    return [eta_last / (factor ** (n_layers - 1 - l)) for l in range(n_layers)]
-
-def make_optimizer(layer_groups, eta_last):
-    lrs = discriminative_lrs(eta_last, len(layer_groups))
-    return torch.optim.Adam(
-        [{"params": g.parameters(), "lr": lr} for g, lr in zip(layer_groups, lrs)],
-        betas=(0.7, 0.99))
-
-# ---- slanted triangular learning rates ----
 def stlr(t, T, eta_max=0.01, cut_frac=0.1, ratio=32):
-    cut = int(T * cut_frac)
-    p = (t / cut) if t < cut else 1 - (t - cut) / (cut * (1/cut_frac - 1))
+    cut = math.floor(T * cut_frac)
+    if cut <= 0:
+        return eta_max
+    if t < cut:
+        p = t / cut
+    else:
+        p = 1 - (t - cut) / (cut * (1 / cut_frac - 1))
     return eta_max * (1 + p * (ratio - 1)) / ratio
 
-# ---- concat pooling ----
-def concat_pool(H):                                # H: [B, T, hidden]
-    return torch.cat([H[:, -1, :], H.max(dim=1).values, H.mean(dim=1)], dim=-1)
+def classifier_group_lrs(lr, factor=2.6):
+    return [lr / (factor ** 4), lr / (factor ** 3), lr / (factor ** 2), lr / factor, lr]
 
-class Classifier(nn.Module):
-    def __init__(self, encoder, hidden, inner=50, n_classes=2, drop=0.4):
+def lm_group_lrs_v072(lr):
+    return [lr / 6, lr / 3, lr, lr / 2]
+
+def concat_pool(output):
+    # fastai v0.7 uses sequence-first tensors: [time, batch, hidden].
+    avg_pool = output.mean(dim=0)
+    max_pool = output.max(dim=0).values
+    return torch.cat([output[-1], max_pool, avg_pool], dim=1)
+
+class LinearBlock(nn.Module):
+    def __init__(self, n_in, n_out, p):
         super().__init__()
-        self.encoder = encoder                     # pretrained AWD-LSTM
-        self.block1 = nn.Sequential(nn.BatchNorm1d(3*hidden), nn.Dropout(drop),
-                                    nn.Linear(3*hidden, inner), nn.ReLU())
-        self.block2 = nn.Sequential(nn.BatchNorm1d(inner), nn.Dropout(drop),
-                                    nn.Linear(inner, n_classes))
+        self.bn = nn.BatchNorm1d(n_in)
+        self.drop = nn.Dropout(p)
+        self.lin = nn.Linear(n_in, n_out)
+
+    def forward(self, x):
+        return self.lin(self.drop(self.bn(x)))
+
+class PoolingLinearClassifier(nn.Module):
+    def __init__(self, hidden_size, n_classes, inner=50, drops=(0.4, 0.1)):
+        super().__init__()
+        self.layers = nn.ModuleList([
+            LinearBlock(3 * hidden_size, inner, drops[0]),
+            LinearBlock(inner, n_classes, drops[1]),
+        ])
+
+    def forward(self, raw_outputs, outputs):
+        x = concat_pool(outputs[-1])
+        for layer in self.layers:
+            logits = layer(x)
+            x = torch.relu(logits)
+        return logits, raw_outputs, outputs
+
+class MultiBatchEncoder(nn.Module):
+    def __init__(self, encoder, bptt=70, max_seq=20 * 70):
+        super().__init__()
+        self.encoder, self.bptt, self.max_seq = encoder, bptt, max_seq
+
     def forward(self, tokens):
-        H = self.encoder(tokens)
-        return self.block2(self.block1(concat_pool(H)))   # softmax via cross-entropy
+        # tokens: [time, batch]. The encoder carries hidden state across chunks.
+        self.encoder.reset()
+        raw_chunks, out_chunks = [], []
+        sl = tokens.size(0)
+        for i in range(0, sl, self.bptt):
+            raw, out = self.encoder(tokens[i:min(i + self.bptt, sl)])
+            if i > sl - self.max_seq:
+                raw_chunks.append(raw)
+                out_chunks.append(out)
+        return self._concat(raw_chunks), self._concat(out_chunks)
 
-# ---- gradual unfreezing: thaw top-down, one layer per epoch ----
-def gradual_unfreeze_schedule(model_layers):
-    for k in range(1, len(model_layers) + 1):
-        for L in model_layers[:-k]: set_requires_grad(L, False)
-        for L in model_layers[-k:]: set_requires_grad(L, True)
-        yield model_layers[-k:]                    # train one epoch, then release one more
+    @staticmethod
+    def _concat(chunks):
+        return [torch.cat([chunk[layer] for chunk in chunks], dim=0)
+                for layer in range(len(chunks[0]))]
 
-# ---- BPT3C: chunked BPTT for long documents, state carried across chunks ----
-def bpt3c(encoder, document, chunk=70):
-    H_all, state = [], None
-    for c in document.split(chunk, dim=1):
-        H, state = encoder(c, state)
-        H_all.append(H)
-    return torch.cat(H_all, dim=1)
+def gradual_unfreezing_training(learner, lrs, final_cycles):
+    learner.freeze_to(-1)
+    learner.fit(lrs, 1, use_clr=(8, 3))
+    learner.freeze_to(-2)
+    learner.fit(lrs, 1, use_clr=(8, 3))
+    learner.unfreeze()
+    learner.fit(lrs, final_cycles, use_clr=(8, 8))
 ```
 
-In practice the AWD-LSTM uses DropConnect/variational dropout, discriminative
-learning rates via layer groups, the slanted-triangular (one-cycle) schedule, and
-`freeze_to`-style gradual unfreezing.
+Run the same pipeline for forward and backward language models when bidirectional
+evidence is wanted, then average the two classifiers' predicted probabilities.

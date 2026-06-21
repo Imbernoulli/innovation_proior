@@ -4,36 +4,35 @@ A reinforcement-learning agent must navigate a Safety-Gymnasium task while keepi
 *cost* — a separate hazard signal, distinct from the task reward — under a fixed budget. The
 specification is a constrained Markov decision process (CMDP): maximize the discounted reward return
 `J_r(π)` subject to the discounted cost return `J_c(π) ≤ d`, with a hard limit `d = 25.0` that must
-hold not only at convergence but be respected across three different environments with different
-control geometries. The one transferable component this task isolates is the *constraint-handling
-update rule*: given a fixed PPO backbone that already produces a reward advantage `adv_r` and a cost
-advantage `adv_c` per transition, what rule for (a) updating the cost-penalty controller and (b)
-combining the two advantage streams best keeps episode cost at or below 25 while retaining as much
-reward as possible. The success metric `budget_success_rate` is binary per run — 1 if the final
-episode cost is ≤ 25, else 0 — so a method that lowers cost on average but never crosses under the
-budget scores zero on the thing the task actually measures.
+hold across three environments with different control geometries.
 
-## Prior art before the first rung
+The one transferable component this task isolates is the *constraint-handling update rule*: given a
+fixed PPO backbone that already produces a reward advantage `adv_r` and a cost advantage `adv_c` per
+transition, what rule for (a) updating the cost-penalty controller and (b) combining the two
+advantage streams best keeps episode cost at or below 25 while retaining as much reward as possible.
+The success metric `budget_success_rate` is binary per run — 1 if the final episode cost is ≤ 25,
+else 0 — so a method that lowers cost on average but never crosses under the budget scores zero on
+the thing the task actually measures.
 
-- **Constrained MDPs (Altman 1999).** The formal object: an MDP augmented with a cost function and a
-  threshold `d`, feasible set `Π_C = {π : J_c(π) ≤ d}`, optimal constrained policy
-  `π* = argmax_{π∈Π_C} J_r(π)`. It says *what* to solve but not how to solve it with a deep policy
-  optimizer that is only partially converged at each iteration.
-- **Policy-gradient backbones (Schulman et al. 2015, 2017).** TRPO controls policy drift with a hard
-  KL trust region and a second-order step; PPO recovers the same reliability with a first-order
-  clipped surrogate reused for `K` epochs. Both optimize a single scalar objective — neither carries a
-  constraint, so a cost budget has to be folded into the advantage that the surrogate ascends.
-- **Lagrangian duality for CMDPs (Paternain et al. 2019).** In occupancy-measure space the constrained
-  problem is a linear program with zero duality gap, which is the theoretical license to convert the
-  constraint into a penalty `λ·(J_c − d)` and learn `λ` by dual ascent. The gap: this clean duality
-  lives in occupancy space, while neural policy optimization is nonconvex and only approximate, so the
-  *controller* that drives `λ` — how fast it reacts, whether it overshoots, whether it wrecks reward —
-  becomes the real algorithmic choice the task is asking about.
+## Prior art / Background / Baselines
 
-The weakest rung reacts to the last point by *not* reacting at all: it runs the PPO backbone and
-ignores the cost signal entirely, establishing the floor that any constraint-handling rule must beat.
+- **Constrained MDPs (Altman).** Core idea: augment an MDP with a cost function and a threshold `d`, so
+  the feasible set is `Π_C = {π : J_c(π) ≤ d}` and the goal is `argmax_{π∈Π_C} J_r(π)`. Gap: the
+  framework defines what to solve but does not specify a practical update rule for a partially
+  converged deep policy optimizer.
+- **Policy-gradient backbones (TRPO, PPO).** Core idea: stable policy updates through a KL trust region
+  or a clipped surrogate objective reused for multiple epochs. Gap: both optimize a single scalar
+  objective with no constraint mechanism, so a cost budget has to be folded into the advantage that
+  the surrogate ascends.
+- **Lagrangian duality for CMDPs.** Core idea: convert the constrained problem into an unconstrained
+  one via the penalty `λ·(J_c − d)` and update `λ` by dual ascent. Gap: the zero-duality-gap result
+  holds in occupancy-measure space, while neural policy optimization is nonconvex and approximate,
+  so the dual update can overshoot, oscillate, or suppress reward before the budget is met.
+- **Unconstrained PPO baseline.** Core idea: run the fixed PPO backbone and ignore the cost signal
+  entirely. Gap: it establishes the floor that any constraint-handling rule must beat, but provides
+  no budget control.
 
-## The fixed substrate
+## Fixed substrate / Code framework
 
 The backbone is OmniSafe's on-policy PPO. The rollout loop, the two value functions (one for reward,
 one for cost), the GAE estimators that produce `adv_r` and `adv_c`, the actor/critic optimizers, the
@@ -42,7 +41,7 @@ loop (`learn`) — including the per-epoch `TRAIN_METRICS` print and the final `
 the harness parses for `ep_ret`, `ep_cost`, and `budget_success_rate` — is also fixed. Each
 environment trains for 1M steps with `cost_limit = 25.0`.
 
-## The editable interface
+## Editable interface
 
 Only the `CustomLag` class in `custom_lag.py` is editable, and only two regions of it: the custom
 import line, and the four methods `_init`, `_init_log`, `_update`, `_compute_adv_surrogate`. The

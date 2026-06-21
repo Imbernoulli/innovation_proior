@@ -1,74 +1,64 @@
 ## Research question
 
-Industrial aerodynamic design: given a 3D unstructured point cloud of a body (a car, an
-airfoil, an aircraft) with its boundary conditions baked in, predict the full steady flow field
-at every mesh point in one forward pass — surface pressure and the surrounding velocity
-components — so a designer can rank candidate shapes by drag without running a CFD solver. The
-single thing being designed is the **neural operator itself**: the `Model` class in
-`models/Custom.py`. Everything around it — the dataset loaders, the 200-epoch OneCycleLR
-schedule, the loss, the metric computation, and a parameter-budget check — is frozen. Each mesh
-has a *variable* number of points (~5000–10000), batch size is always 1 (one mesh per forward
-pass), and the model must work across three benchmarks with different output widths (4 channels
-for Car/AirfRANS, 6 for AirCraft).
+Industrial aerodynamic design: given a 3D unstructured point cloud of a body with boundary
+conditions baked in, predict the steady flow field at every mesh point in one forward pass —
+surface pressure and surrounding velocity — so a designer can rank candidate shapes by drag
+without running a CFD solver. The only editable piece is the neural operator itself, the
+`Model` class in `models/Custom.py`. Everything else is frozen: the dataset loaders, the
+200-epoch OneCycleLR schedule, the combined volume+surface relative-L2 loss, the drag metrics,
+and the parameter-budget check. Each mesh has a variable number of points (~5000–10000), batch
+size is 1, and the model must work across three benchmarks with different output widths (4
+channels for Car/AirfRANS, 6 for AirCraft).
 
-## Prior art before the first rung (operator-on-geometry lineage)
+## Prior art / Background / Baselines
 
-The ladder lives inside the operator-learning frame: instead of solving one PDE instance, learn
-the map from (geometry, boundary conditions) to the solution field, with each layer a non-local
-integral operator followed by a pointwise nonlinearity. The rungs below are the families that
-frame react to.
+The task is operator learning: learn the map from (geometry, boundary conditions) to the
+solution field, with each layer a non-local integral operator followed by a pointwise
+nonlinearity. The relevant families are:
 
-- **Fourier Neural Operator (Li et al. 2021) and geo-FNO (Li et al. 2022).** Parameterize the
-  integral kernel in the Fourier domain — fixed basis, learnable spectral multipliers, truncated
-  to low modes, evaluated by FFT in O(N log N); geo-FNO learns a deformation onto a latent
-  uniform grid. **Gap:** the FFT *is* the periodic-uniform-grid assumption; on a car surface or
-  an airfoil — irregular, non-periodic boundaries — the deformation degenerates, so fixed-basis
-  spectral operators are not on this task's edit surface at all.
-- **Graph-kernel neural operators / message passing on the mesh graph (Li et al. 2020).**
-  Approximate each operator iteration by a learnable kernel over *local* graph neighborhoods.
-  Handles arbitrary unstructured meshes — this is the family the graph baselines here belong to.
-  **Gap:** the kernel is local, so carrying information from the nose of a car to its wake needs
-  many message-passing steps, and global correlation is exactly what local kernels are worst at.
-- **Attention as a learnable integral operator (Vaswani et al. 2017; Cao 2021; Kovachki et
-  al.).** Softmax attention is a Monte-Carlo discretization of the integral operator with a
-  *learned* kernel and the mesh points as quadrature nodes — the most expressive, most
-  geometry-agnostic parameterization. **Gap:** with the N mesh points as nodes the cost is
-  O(N²), infeasible at tens of thousands of points; even made linear it dilutes the physics
-  across a sea of meaningless point-to-point relations.
+- **Fourier Neural Operator (FNO) and geo-FNO (Li et al. 2021; 2022).** They parameterize the
+  integral kernel in the Fourier domain with fixed basis and learnable spectral multipliers,
+  evaluated by FFT. **Gap:** the FFT assumes a periodic uniform grid; on irregular, non-periodic
+  boundaries the deformation degenerates and accuracy is poor.
+- **Graph-kernel neural operators / message passing on the mesh graph (Li et al. 2020).** They
+  approximate operator iterations by learnable kernels over local graph neighborhoods and handle
+  arbitrary unstructured meshes. **Gap:** the kernel is local, so carrying information from the
+  nose of a car to its wake requires many message-passing steps, and global correlations are
+  weak.
+- **Attention-based neural operators (Vaswani et al. 2017).** They treat the mesh points as
+  quadrature nodes for a learned integral kernel, giving an expressive, geometry-agnostic
+  parameterization. **Gap:** with N mesh points the cost is O(N²), infeasible at tens of
+  thousands of points; linear approximations sacrifice resolution.
 
-## The fixed substrate
+## Fixed substrate / Code framework
 
-The training pipeline is frozen and must not be touched: the dataset loaders for Car
-(ShapeNet-Car), AirfRANS (2D RANS airfoils), and AirCraft (a custom 3D probe), the 200-epoch
-OneCycleLR schedule, the combined volume+surface relative-L2 loss, the drag-coefficient
-integration and metric computation, and `budget_check.py`, which rejects any model whose
-parameter count exceeds **1.05× the largest paper-faithful baseline** (Transolver at
-`n_hidden=256, slice_num=32`). The loop hands the model `args` at construction with the relevant
-knobs — `n_hidden`, `n_layers`, `n_heads`, `space_dim` (2 for AirfRANS, 3 otherwise),
-`fun_dim=7`, `out_dim`, `act`, `mlp_ratio`, `dropout`, `geotype='unstructured'`, `radius` (for
-graph construction), `slice_num` — and the read-only reference modules `layers.Basic.MLP`,
-`layers.Embedding.unified_pos_embedding`, and `layers.Physics_Attention.*`. The shell scripts
-default to `--n_hidden 128 --slice_num 32`.
+The training pipeline is frozen and must not be touched: dataset loaders for Car
+(ShapeNet-Car), AirfRANS (2D RANS airfoils), and AirCraft (custom 3D aircraft probe), the
+200-epoch OneCycleLR schedule, the combined volume+surface relative-L2 loss, the drag
+integration and metrics, and `budget_check.py`, which rejects any model whose parameter count
+exceeds **1.05× the largest paper-faithful baseline** (Transolver at `n_hidden=256,
+slice_num=32`). At construction the model receives `args` with `n_hidden`, `n_layers`,
+`n_heads`, `space_dim` (2 for AirfRANS, 3 otherwise), `fun_dim=7`, `out_dim`, `act`,
+`mlp_ratio`, `dropout`, `geotype='unstructured'`, `radius`, and `slice_num`, plus the read-only
+reference modules `layers.Basic.MLP`, `layers.Embedding.unified_pos_embedding`, and
+`layers.Physics_Attention.*`. The shell scripts default to `--n_hidden 128 --slice_num 32`.
 
-## The editable interface
+## Editable interface
 
-Exactly one region is editable: lines 1–64 of `models/Custom.py` (the imports through the end of
-the `Model` class) plus line 74, the `CONFIG_OVERRIDES` dict. The contract is fixed —
+Only one region is editable: lines 1–64 of `models/Custom.py` (the imports through the end of
+the `Model` class) plus line 74, the `CONFIG_OVERRIDES` dict. The contract is fixed:
 
-- `Model(args)` constructs the network from `args`;
-- `forward(self, x, fx, T=None, geo=None) -> output`, where `x` is `(1, N, space_dim)` spatial
-  coordinates, `fx` is `(1, N, 7)` features (boundary conditions + geometry), `T` is always
-  `None`, `geo` is the **edge_index** tensor for graph connectivity (graph models squeeze the
-  batch dim and use it for message passing; non-graph models ignore it), and `output` is
-  `(1, N, out_dim)`;
-- `CONFIG_OVERRIDES` may set only `n_hidden` (int) and `slice_num` (int); the shell scripts read
-  these from the file at runtime and pass them as `--n_hidden` / `--slice_num`. Different model
-  families need different widths to be competitive and to stay under the parameter budget.
+- `Model(args)` builds the network from `args`;
+- `forward(self, x, fx, T=None, geo=None) -> output`, where `x` is `(1, N, space_dim)`
+  spatial coordinates, `fx` is `(1, N, 7)` features, `T` is always `None`, `geo` is the
+  **edge_index** tensor for graph connectivity (graph models use it; non-graph models ignore
+  it), and `output` is `(1, N, out_dim)`;
+- `CONFIG_OVERRIDES` may set only `n_hidden` (int) and `slice_num` (int); the shell scripts
+  read these at runtime and pass them as `--n_hidden` / `--slice_num`.
 
-The starting point is the scaffold **default**: a per-point encoder MLP, *no operator in between*
-(the body is a TODO), and a per-point decoder MLP. With nothing between encode and decode, the
-default has no cross-point interaction at all — every point is predicted from its own features.
-Each rung replaces the body of `Model` (and sets `CONFIG_OVERRIDES`) and nothing else.
+The default scaffold is a per-point encoder MLP, no operator body, and a per-point decoder MLP,
+so there is no cross-point interaction at all. Each entry replaces the body of `Model` and sets
+`CONFIG_OVERRIDES`, nothing else.
 
 ```python
 import torch
@@ -94,7 +84,7 @@ class Model(nn.Module):
         # Each mesh has variable number of points (~5000-10000). Batch size is always 1.
         # args.geotype = 'unstructured'.
         # Reference models: PointNet (global pooling), GraphSAGE (message passing),
-        # Graph_UNet (multi-scale graph), Transolver (physics attention).
+        # Graph_UNet (multi-scale graph).
 
         # Output projection: hidden_dim -> out_dim (velocity xyz + pressure)
         self.decoder = MLP(args.n_hidden, args.n_hidden * 2, args.out_dim,
@@ -131,16 +121,16 @@ class Model(nn.Module):
 # CONFIG_OVERRIDES: per-method hyperparameter overrides.
 # Allowed keys: n_hidden (int), slice_num (int). Default follows the shell scripts
 # (n_hidden=128, slice_num=32). Reference paper widths: PointNet=16, Graph_UNet=16,
-# GraphSAGE=128, Transolver=256.
+# GraphSAGE=128.
 CONFIG_OVERRIDES = {}
 ```
 
 ## Evaluation settings
 
-Three steady-aerodynamic benchmarks, each trained 200 epochs (OneCycleLR), seed 42:
-**Car** (ShapeNet-Car), **AirfRANS** (2D RANS airfoils), and **AirCraft** (a custom 3D aircraft
-probe with no published baseline; its numbers are task-internal references). Metrics, all
-reported: **rho_d** — Spearman rank correlation of the drag coefficient (higher is better);
-**c_d** — relative error of the drag coefficient (lower is better); and **relative L2 error**
-of the pressure and velocity fields, reported per benchmark (lower is better). The
-parameter-budget check runs before training; a model over 1.05× Transolver(256) is rejected.
+Three steady-aerodynamic benchmarks, each trained 200 epochs (OneCycleLR), seed 42: **Car**
+(ShapeNet-Car), **AirfRANS** (2D RANS airfoils), and **AirCraft** (custom 3D aircraft probe
+with no published baseline; its numbers are task-internal references). Metrics, all reported:
+**rho_d** — Spearman rank correlation of the drag coefficient (higher is better); **c_d** —
+relative error of the drag coefficient (lower is better); and **relative L2 error** of the
+pressure and velocity fields, reported per benchmark (lower is better). The parameter-budget
+check runs before training; a model over 1.05× Transolver(256) is rejected.

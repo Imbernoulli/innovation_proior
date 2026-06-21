@@ -14,7 +14,6 @@ Sources consulted (web): mlshark "SimCLR and NT-Xent Loss Explained" (medium), a
 - g(h)=W2·ReLU(W1·h) is trained so z=g(h) becomes invariant to the augmentations (that's what the loss demands). Invariance = throwing away exactly the info that distinguishes the two views: color, orientation, crop position.
 - For downstream tasks that info is often useful → you want it preserved. By putting a nonlinear g between h and the loss, the loss can be satisfied by g while h upstream keeps the richer info. So keep h (before g), discard g.
 - SimCLR's own probe (Table critic_invariance): an MLP can recover rotation/color/corruption much better from h than from g(h) — direct evidence g removes that info.
-- Recent theory framings (post-hoc, NOT for reasoning.md): "subspace selection" / "geometric buffering" — g induces a metric singularity along augmentation directions so the backbone stays linearly separable. (Hindsight; keep out of context/reasoning.)
 
 ## Large batch / many negatives
 - Each positive in a batch of N gets 2(N-1) negatives. More negatives = harder, more informative classification task = better representation, and (per InfoNCE bound I ≥ logN − L) a tighter MI lower bound. SimCLR shows large batch helps most when training is short; with long training the gap shrinks. LARS needed because plain SGD with linear LR scaling is unstable at batch 4096–8192.
@@ -23,4 +22,3 @@ Sources consulted (web): mlshark "SimCLR and NT-Xent Loss Explained" (medium), a
 - Single augmentation: model can almost perfectly solve the contrastive task yet representation is poor. Composition makes the task harder → forces general features.
 - Crop-only shortcut: random crops of one image share a color histogram, so the net can match views by color statistics alone. Adding color distortion destroys that shortcut → must learn shape/semantics. Crop+color is the standout pair.
 - Random crop alone already subsumes "global-to-local" and "adjacent-view" prediction tasks that prior work baked into architecture — so augmentation, not architecture, defines the task.
-</content>

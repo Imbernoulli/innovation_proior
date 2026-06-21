@@ -88,3 +88,30 @@ is also what makes one shared centralized critic emit per-agent values. The lean
 central-V critic — global state plus an agent one-hot — is the EP design point; the recommended,
 stronger design point is AS/FP, the central-V critic that additionally conditions on each agent's own
 observation.
+
+## Code framework
+
+```python
+import torch
+import torch.nn as nn
+
+
+class MAPPOCritic(nn.Module):
+    """Minimal scaffold for the AS central-V critic used as a PPO baseline."""
+
+    def __init__(self, state_dim, obs_dim, n_agents, hidden_dim=64):
+        super().__init__()
+        self.n_agents = n_agents
+        self.net = nn.Sequential(
+            nn.Linear(state_dim + obs_dim + n_agents, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1),
+        )
+
+    def forward(self, state, obs):
+        return self.net(torch.cat([state, obs], dim=-1))
+
+    def update(self, obs, actions, returns, advantages):
+        """PPO-style value update stub; fill with clipped MSE on returns."""
+        raise NotImplementedError
+```

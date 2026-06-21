@@ -1,0 +1,27 @@
+# Changelog
+
+- `results/context.md:15` tightened the expander-search prerequisite to bounded-degree enumeration without implying the target construction.
+- `results/context.md:19` reframed rotation maps as prior local graph interfaces for powers and products, avoiding a direct prescription of the final method.
+- `results/reasoning.md:5` corrected the degree accounting for one phase: zig-zag from `D^16` with a `D`-regular graph yields degree `D^2`, and the eighth power restores `D^16`.
+- `results/reasoning.md:9` added the exact eigenvalue cases from Lemma 3.2: below `1/2` gives `(5/6)^8 < 1/2`; at least `1/2` gives squaring.
+- `results/reasoning.md:13` made preprocessing exact: cycle labels `1,2`, original-edge/loop label `3`, remaining self-loops, component `S x [N]`.
+- `results/reasoning.md:17` aligned the implicit evaluator with Appendix A's `v,a_0,...,a_ell`, `I`, `j_1,...,j_ell`, and reusable `basic` workspace.
+- `results/reasoning.md:19` explained why the lifted vertices are `(s,1^{ell+1})` and `(t,1^{ell+1})`.
+- `results/answer.md:5` added the exact preprocessing rotation-map behavior.
+- `results/answer.md:7` stated the exact transform parameters `D^16`, `H` on `[D^16]`, and `ell = 2 ceil(log(D M^2))`.
+- `results/answer.md:11` added the exact spectral inequality and both cases used by the proof.
+- `results/answer.md:15` added implementation-level faithfulness to Appendix A's evaluator.
+- `refs/final_artifact/reingold_theorem_rotation_transform.md:47` clarified that `ell` uses the current regular graph size `M`, avoiding confusion with the original input size before regularization.
+- `refs/final_artifact/reingold_theorem_rotation_transform.md:54` added the degree and eigenvalue derivation used for math verification.
+- `refs/final_artifact/reingold_theorem_rotation_transform.md:80` added Appendix A as the canonical implementation-level reference because no official runnable code was found.
+- `notes/source_matrix.md:7` expanded the primary-source evidence entry to include Appendix A and the exact constants.
+- `notes/source_matrix.md:44` added the implementation-level reference note.
+- `notes/discovery_synthesis.md:5` recorded the absence of official runnable code and the use of Appendix A as the implementation reference.
+- `notes/discovery_synthesis.md:31` corrected the transform mechanics with `M`, degree restoration, and both eigenvalue cases.
+- `notes/discovery_synthesis.md:33` clarified the `ell+1` lifted-coordinate convention.
+- `notes/sources.md:9` linked the implementation-level reference note from the source index.
+- `notes/sources.md:11` included Appendix A's evaluator in the source grounding summary.
+- `refs/self_accounts/search_log.md:5` recorded the 2026-06-18 implementation-reference search update.
+- `refs/self_accounts/search_log.md:39` documented that no official runnable implementation was found and Appendix A's `A_tau` is the implementation-level reference.
+- `results/.codex_review.json:4` recorded that no independent review gate or strict-check script was available and that local verification was run instead.
+- `code/README.md:1` added the implementation-level faithfulness checklist.

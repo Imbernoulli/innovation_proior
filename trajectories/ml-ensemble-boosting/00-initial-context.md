@@ -1,69 +1,32 @@
 ## Research question
 
-Boosting builds a predictor as a sum of weak learners fit one after another, each round trying to
-correct what the previous rounds left wrong. With the weak learner *fixed* — a shallow
-`DecisionTree(max_depth=3)` — and the prediction-aggregation, training loop, and evaluation all frozen,
-the single thing being designed is the **boosting strategy**: how sample weights are initialized, what
-pseudo-target each new tree fits, how each tree's contribution (its `alpha`) is set, and how the sample
-weights are updated for the next round. One strategy must serve both a binary classification task and
-two regression tasks, because the harness runs the same `BoostingStrategy` on all three. Everything
-else — the tree, the learning-rate shrinkage, the score accumulation — is substrate.
+Boosting builds a predictor as a sum of weak learners fit one after another, each round trying to correct what the previous rounds left wrong. With the weak learner fixed as a shallow `DecisionTree(max_depth=3)` and the training loop, aggregation, and evaluation frozen, the only design space is the **boosting strategy**: how sample weights start, what pseudo-target each new tree fits, how each tree's contribution (`alpha`) is set, and how sample weights are updated for the next round. The same strategy must work for one binary classification task and two regression tasks, because the harness runs it unchanged on all three.
 
-## Prior art before the first rung (the boosting lineage)
+## Prior art / Background / Baselines
 
-The first rung reacts to the line of additive-model methods that precede it; the fixed substrate below
-is the shape they all converged to (sequential weak learners, a per-round contribution, a sample
-distribution).
+- **Weighted majority / multiplicative weights.** Maintain a weight per expert, multiply down the ones that err, and predict by weighted vote. It reweights mistakes, but it combines a *fixed* pool of experts and cannot synthesize new hypotheses aimed at the current failures.
+- **Boosting by filtering / majority-of-three.** Run the weak learner on filtered distributions and combine the results to show that weak learnability implies strong learnability. The construction is a rigid recursive circuit with fixed error thresholds, so it cannot take advantage of a weak learner that performs better than expected in a given round.
+- **Forward stagewise additive modeling.** Fit an additive model greedily, one term at a time, by least-squares against the current residual. This gives a clean stage-wise update for squared error, but for other losses the per-stage optimization has no convenient closed form, so each loss needs its own derivation.
 
-- **Weighted majority / multiplicative weights (Littlestone & Warmuth, 1994).** Maintain a weight per
-  expert, multiply down the ones that erred, predict by the weighted vote; the total-weight bookkeeping
-  factors cleanly across rounds. The template for "reweight what's wrong," but it combines a *fixed*
-  pool of experts — it does not manufacture new hypotheses aimed at the current failures. Gap: no
-  mechanism to generate the next weak learner where the committee is currently weakest.
-- **Boosting by filtering / majority-of-three (Schapire, 1990).** Proves weak learnability implies
-  strong learnability by running the weak learner on three manufactured distributions and recursing on a
-  majority-of-three. Establishes that "aim the weak learner at the hard cases" works, but the machine is
-  a rigid recursive circuit pinned to a worst-case error level, and a round that comes back unusually
-  strong cannot be cashed in. Gap: rigid, non-adaptive, cannot exploit easy rounds.
-- **Forward stagewise additive modeling (the classical least-squares residual loop).** Fit
-  `F(x) = sum_m beta_m h(x; a_m)` greedily, one term at a time, each term fit to the current residual by
-  least squares. Beautiful for squared error, where "fit the residuals" *is* the stage subproblem; but
-  for any other loss the per-stage `argmin` over `(beta, a)` has no convenient form, so each loss needs
-  its own bespoke procedure. Gap: not a single recipe across losses.
+## Fixed substrate / Code framework
 
-## The fixed substrate
+The boosting loop in `scikit-learn/custom_boosting.py` is frozen. It calls `init_weights(n)` once, then for `n_rounds = 200` rounds calls `compute_targets`, fits a `DecisionTree(max_depth=3)` on `(X, pseudo_targets, sample_weights)`, calls `compute_learner_weight` for `alpha`, and calls `update_weights`. Weights are then renormalized and clipped positive, and the new tree is folded into a running raw-score accumulator.
 
-A stagewise tree-boosting loop in `scikit-learn/custom_boosting.py` is frozen and must not be touched.
-It (1) calls `init_weights(n)` once; (2) for each of `n_rounds = 200` rounds, asks the strategy for
-`compute_targets`, fits a `DecisionTree(max_depth=3)` on `(X, pseudo_targets, sample_weights)`, asks
-for `compute_learner_weight` (`alpha`) and then `update_weights`; (3) renormalizes the weights, clips
-them positive, and folds the new tree into a running raw-score accumulator. The accumulator is the
-load-bearing detail every strategy must respect:
+- **Regression** starts from a `MeanPredictor(y_train.mean())` and accumulates `alpha * learning_rate * tree.predict(X)`.
+- **Classification** uses a discrete head (`alpha * (2*pred - 1)` thresholded at zero) when pseudo-targets are integers and a continuous head (accumulating `alpha * learning_rate * pred`) when they are continuous. The loop selects automatically by checking `np.array_equal(pt, pt.astype(int))`.
 
-- **Regression** keeps a `MeanPredictor(y_train.mean())` as the first model, then accumulates
-  `alpha * learning_rate * tree.predict(X)` per round; the final prediction is that raw score.
-- **Classification** routes a tree whose pseudo-targets are integers to a *discrete* head — a signed
-  majority vote `alpha * (2*pred - 1)` thresholded at zero — and a tree whose pseudo-targets are
-  continuous to a *continuous* head accumulating `alpha * learning_rate * pred`, also thresholded at
-  zero. The loop decides discrete-vs-continuous automatically by `np.array_equal(pt, pt.astype(int))`.
+The strategy never writes leaf values and never sees the tree's splits. Available imports in the fixed section are `numpy`, `sklearn.tree`, `sklearn.metrics`, `sklearn.datasets`, and `sklearn.model_selection`. The strategy receives a `config` dict with `task_type`, `n_rounds`, `learning_rate` (`0.1`), `n_samples`, `n_features`, `dataset`, and `seed`.
 
-So the strategy never writes leaf values and never sees the tree's splits; the only levers are the four
-methods. Available in the FIXED section: `numpy`, `sklearn.tree`, `sklearn.metrics`, `sklearn.datasets`,
-`sklearn.model_selection`. The strategy is constructed with a `config` dict carrying `task_type`,
-`n_rounds`, `learning_rate` (`0.1`), `n_samples`, `n_features`, `dataset`, `seed`.
+## Editable interface
 
-## The editable interface
+Only the `BoostingStrategy` class is editable. It implements four methods:
 
-Exactly one region is editable — the `BoostingStrategy` class (lines 147-256 of `custom_boosting.py`).
-Every method on the ladder is a fill of this same four-method contract: `init_weights(n_samples)` (the
-starting sample distribution), `compute_targets(y, current_predictions, sample_weights, round_idx)`
-(what the next tree fits), `compute_learner_weight(learner, X, y, pseudo_targets, sample_weights,
-round_idx)` (the tree's `alpha`), and `update_weights(sample_weights, learner, X, y, pseudo_targets,
-alpha, round_idx)` (the next round's sample weights).
+- `init_weights(n_samples)` — the starting sample distribution.
+- `compute_targets(y, current_predictions, sample_weights, round_idx)` — what the next tree fits.
+- `compute_learner_weight(learner, X, y, pseudo_targets, sample_weights, round_idx)` — the tree's `alpha`.
+- `update_weights(sample_weights, learner, X, y, pseudo_targets, alpha, round_idx)` — the next round's sample weights.
 
-The starting point is the scaffold default: **uniform weights, fit the raw labels, alpha = 1, never
-reweight** — the inert strategy the loop ships with. Each method replaces exactly these four bodies and
-nothing else.
+The default fill is the inert strategy below. Each method replaces exactly these four bodies and nothing else.
 
 ```python
 # EDITABLE region of custom_boosting.py (lines 147-256) — default fill (inert strategy)
@@ -99,13 +62,8 @@ class BoostingStrategy:
 
 ## Evaluation settings
 
-Three datasets spanning one classification and two regression problems, each over three seeds
-{42, 123, 456}, with a single fixed configuration: 200 boosting rounds, `DecisionTree(max_depth=3)`,
-`learning_rate = 0.1`, 80/20 train/test split, standardized features.
+Three datasets over seeds {42, 123, 456}, with a single configuration: 200 boosting rounds, `DecisionTree(max_depth=3)`, `learning_rate = 0.1`, 80/20 train/test split, standardized features.
 
-- **Breast Cancer Wisconsin** — binary classification, 569 samples, 30 features → metric
-  `test_accuracy_breast_cancer` (**higher is better**).
-- **Diabetes** — regression, 442 samples, 10 features → metric `test_rmse_diabetes` (**lower is
-  better**).
-- **California Housing** — regression, 20,640 samples, 8 features → metric
-  `test_rmse_california_housing` (**lower is better**).
+- **Breast Cancer Wisconsin** — binary classification, 569 samples, 30 features → `test_accuracy_breast_cancer` (higher is better).
+- **Diabetes** — regression, 442 samples, 10 features → `test_rmse_diabetes` (lower is better).
+- **California Housing** — regression, 20,640 samples, 8 features → `test_rmse_california_housing` (lower is better).

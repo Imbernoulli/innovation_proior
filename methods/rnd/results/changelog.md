@@ -1,0 +1,51 @@
+# RND File:Line Changelog
+
+- `results/context.md:3` Rebuilt `context.md` to the strict five-`##` scaffold.
+- `results/context.md:5` Reframed the research question as pre-method sparse-reward exploration without naming or revealing the final method.
+- `results/context.md:22` Rewrote prior mechanisms around counts, pseudo-counts, prediction-error curiosity, learning-progress bonuses, and randomized-prior context.
+- `results/context.md:46` Added the four prediction-error cases and the desired epistemic-only signal, while keeping the target construction out of context.
+- `results/context.md:65` Rebuilt the evaluation frame around hard-exploration Atari, sticky actions, no demonstrations, no RAM state, and ablation requirements.
+- `results/context.md:81` Replaced the old answer-leaking scaffold with open PPO/intrinsic-bonus TODO slots.
+- `results/reasoning.md:1` Rebuilt `reasoning.md` as a continuous first-person trace with no markdown headers.
+- `results/reasoning.md:10` Re-derived the error-source taxonomy and the noisy-TV failure before introducing the method.
+- `results/reasoning.md:23` Added the target/predictor distillation equations on \(s_{t+1}\), with stop-gradient on the target.
+- `results/reasoning.md:31` Corrected the squared-norm versus feature-MSE scaling: code-faithful artifact uses per-feature MSE mean.
+- `results/reasoning.md:35` Weakened the misspecification claim from a blanket guarantee to the clean ideal plus practical deeper-predictor approximation.
+- `results/reasoning.md:52` Re-derived why intrinsic returns are non-episodic while extrinsic returns stay episodic.
+- `results/reasoning.md:63` Added the intrinsic GAE case with the correct sign and no done mask.
+- `results/reasoning.md:67` Added the extrinsic GAE case with the correct sign and done mask.
+- `results/reasoning.md:70` Added the canonical advantage weights \(c_I=1,c_E=2\) and discounts \(\gamma_I=0.99,\gamma_E=0.999\).
+- `results/reasoning.md:73` Added the predictor/target observation-normalization rationale and policy-input separation.
+- `results/reasoning.md:82` Added intrinsic-return-standard-deviation normalization and clarified that extrinsic rewards are not normalized beyond Atari sign clipping.
+- `results/reasoning.md:89` Added the predictor update-rate argument and 25 percent keep-mask rationale.
+- `results/reasoning.md:103` Replaced the old code with a canonical PyTorch core matching the OpenAI TensorFlow architecture and feature-MSE reduction.
+- `results/answer.md:5` Rebuilt the final method equations with frozen random target, trainable predictor, and mean-squared distillation.
+- `results/answer.md:22` Documented the paper/code constant-scaling distinction: squared norm in prose versus `reduce_mean` in canonical code.
+- `results/answer.md:34` Rebuilt the two-stream PPO combination with separate value heads.
+- `results/answer.md:47` Added exact intrinsic and extrinsic TD-error cases, including done-mask placement.
+- `results/answer.md:55` Added the weighted-advantage formula and coefficients.
+- `results/answer.md:58` Added canonical PPO/RND constants: \(\gamma_I=0.99\), \(\gamma_E=0.999\), \(\lambda=0.95\), clip range 0.1, entropy 0.001, Adam \(10^{-4}\), rollout 128, 4 minibatches, 4 epochs.
+- `results/answer.md:66` Added the one-frame predictor/target normalization path and separated it from the policy's four-frame `x/255` input.
+- `results/answer.md:76` Added intrinsic reward normalization by discounted intrinsic-return standard deviation.
+- `results/answer.md:82` Added the 25 percent predictor-example keep rate for 128 parallel environments.
+- `results/answer.md:98` Replaced the code artifact with the canonical DQN-style target/predictor core.
+- `results/answer.md:131` Corrected intrinsic reward code to `F.mse_loss(..., reduction="none").mean(dim=1)`.
+- `results/answer.md:136` Added the masked predictor loss with `keep_probability=0.25`.
+- `results/answer.md:159` Added implementation-faithfulness checks for \(s_{t+1}\), stop-gradient, MSE mean, done masks, reward normalization, two value heads, and advantage combination.
+- `notes/source_matrix.md:7` Added primary paper PDF/text/e-print/source provenance.
+- `notes/source_matrix.md:13` Added load-bearing ancestor sources for pseudo-counts, ICM, large-scale curiosity, randomized priors, PPO, and sticky-action ALE practice.
+- `notes/source_matrix.md:24` Added third-party explainer sources from CleanRL and DI-engine.
+- `notes/source_matrix.md:31` Added the OpenAI technical post as the available author/institutional self-account and documented local fetch limitations.
+- `notes/source_matrix.md:39` Added canonical code provenance with OpenAI repository commit `f75c0f1efa473d5109d487062fd8ed49ddce6634`.
+- `notes/discovery_synthesis.md:11` Recorded the MSE-versus-summed-norm audit and why the artifact uses MSE mean.
+- `notes/discovery_synthesis.md:28` Recorded the corrected derivation and practical misspecification caveat.
+- `notes/discovery_synthesis.md:34` Recorded the intrinsic no-done GAE case.
+- `notes/discovery_synthesis.md:40` Recorded the extrinsic done-masked GAE case.
+- `notes/discovery_synthesis.md:52` Recorded architecture, normalization, reward, keep-mask, and PPO constants checked against the canonical code.
+- `refs/self_accounts/search_log.md:3` Documented the `SELF_ACCOUNT_SOURCES.md` check.
+- `refs/self_accounts/search_log.md:17` Documented the OpenAI technical post and local fetch limitation.
+- `refs/self_accounts/search_log.md:25` Documented that no longer-form author retrospective was found.
+- `notes/synthesis.md:14` Replaced the old synthesis with a compatibility pointer and strict-audit correction summary.
+- `results/.codex_review.json:4` Replaced the prior errored review marker with explicit `not_run`.
+- `notes/strict_check_output.txt:3` Recorded that the required `scripts/check_strict_method.py methods/rnd` command could not be run because no strict checker exists in the checkout.
+- `notes/strict_check_output.txt:8` Recorded the fallback structural/content checks and their passing output.

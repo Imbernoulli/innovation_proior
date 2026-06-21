@@ -1,84 +1,68 @@
 ## Research question
 
-A pretrained large language model already exists — say a LLaMA / Llama-2 of 7B to 70B parameters,
-trained at full cost — and the task is to make it cheaper to *serve* without touching its weights as
-learned. Concretely: **post-training quantization (PTQ) of a fixed pretrained LLM to low bit-width
-with the smallest possible loss in quality**, where quality is measured by **WikiText-2 perplexity**
-(lower is better) and by **zero-shot accuracy** averaged over standard commonsense-reasoning tasks
-(higher is better). The model architecture, its trained weights, and the evaluation harness are all
-held fixed. The single free variable is the **quantization method**: how the FP16 tensors are mapped
-to a low-bit integer grid, and what preprocessing is allowed before that mapping.
+A pretrained LLaMA / Llama-2 model (7B–70B) is already trained and fixed. The task is to compress it for serving by quantizing its FP16 tensors to low-bit integers after training, with no retraining and no gradient update to the original weights. Quality is measured by WikiText-2 perplexity (lower is better) and by zero-shot commonsense-reasoning accuracy averaged over standard tasks (higher is better). The only free variable is the quantization method: how weights and activations are mapped to a uniform integer grid and what preprocessing is permitted before that mapping.
 
-"Post-training" is the binding constraint and what makes this hard. We are not allowed to retrain the
-network or run gradient descent over its weights on the training corpus; at most we get a tiny
-**calibration set** (a few hundred sequences) and a few hours of single-GPU compute to fit
-quantization parameters. Everything else about the model is frozen. The bit-width budget is the lever
-we push down on: 8-bit is nearly free, but every bit below that costs accuracy, and the goal of each
-rung on this ladder is to give back fewer points of perplexity / accuracy at the *same* bit-width than
-the previous method did.
+At most we have a small calibration set (a few hundred sequences) and a few hours of single-GPU compute to fit quantization parameters. The useful regimes split into two axes:
 
-Two distinct axes of difficulty appear as the budget tightens, and the ladder climbs through both:
+- **Weight-only quantization (WxA16).** Weights are quantized to 3–4 bits while activations stay in FP16. This cuts memory footprint and speeds up batch-1 generation, which is memory-bandwidth-bound.
+- **Weight-and-activation quantization (WxAx).** Both operands are quantized so matmuls run on integer tensor cores. This speeds up compute-bound large-batch serving, but activations carry persistent outliers that weight-only methods never face.
 
-- **Weight-only quantization (WxA16).** Quantize the weight matrices to 3–4 bits and keep activations
-  in FP16. This already halves-or-quarters the memory footprint and speeds up *batch-1 generation*,
-  which is memory-bandwidth-bound (the bottleneck is reading weights from DRAM, not the arithmetic).
-- **Weight-and-activation quantization (WxAx).** Quantize *both* operands so the matmul itself runs on
-  integer tensor cores (INT8, and eventually INT4). This is what speeds up *compute-bound,
-  large-batch* serving — but it forces us to quantize the activations, which carry brutal outliers
-  that weight-only methods never had to confront.
+## Prior art / Background / Baselines
 
-The metric the ladder is ranked on is the WikiText-2 perplexity (and the zero-shot average) at a
-stated bit-width; each rung is a real published method that lowered the quality loss at its target
-bit-width, told as the discovery that got us there.
+The simplest baseline and the starting point is **round-to-nearest (RTN)**: pick a per-channel or per-group scale from the maximum magnitude, divide, round, clamp. It is free and works well at 8 bits, but its low-bit quality is poor. The methods currently known try to close different parts of that gap.
 
-## Prior art before the first rung
+- **Round-to-nearest (RTN).** Maps each tensor to a uniform symmetric grid using a scale from the maximum absolute value. Gap: at 3-bit per-channel on LLaMA-7B, WikiText-2 perplexity jumps to **25.54** versus an FP16 reference of **5.68**; on Llama-2-7B W4A4 it produces perplexity on the order of **2×10³**, effectively broken.
 
-The baseline every rung climbs out of is the simplest possible quantizer: **round-to-nearest (RTN)**.
-Pick a per-channel (or per-group) scale from the max magnitude of the tensor, divide, round to the
-integer grid, clamp. No calibration, no reconstruction, no search — just rounding. RTN is the thing
-that "already scales": it costs nothing and it works fine at 8 bits, where the rounding error is small
-relative to the signal. The trouble is the low-bit regime. At 4-bit weight-only with a fine group size
-(g128) RTN is still tolerable, but at **3-bit per-channel** the rounding error swamps the smallest
-weights and perplexity blows up: round-to-nearest on a 3-bit per-channel LLaMA-7B gives WikiText
-perplexity **25.54**, against an FP16 reference of about **5.68** — an enormous, unusable gap. And the
-moment we try to quantize *activations* to 4 bits, RTN is not merely bad but catastrophic: W4A4 RTN on
-Llama-2-7B produces perplexity on the order of **2×10³** (effectively a broken model), because a
-handful of activation channels carry values ~100× larger than the rest and a single per-tensor scale
-cannot represent both them and the bulk.
+- **GPTQ.** Accumulates the layer input second-moment matrix during calibration and quantizes columns one at a time, feeding the rounding residual forward through the inverse Hessian. Gap: on LLaMA-7B 3-bit per-channel it reports perplexity **8.07**, still well above FP16 **5.68**, and it is restricted to weight-only quantization.
 
-So the field starts here, with a method that is free and correct in spirit but loses far too much at
-the bit-widths that actually save memory and compute. Every rung below is a named method that closes a
-specific part of that gap:
+- **AWQ.** Identifies salient weight channels by activation magnitude, scales them up before rounding, and searches the scaling factor against layer output error. Gap: on Llama-2-7B INT3-g128 it reports perplexity **6.24** versus RTN-g128 **6.66** and FP16 **~5.47**, and it does not handle activation quantization.
 
-1. the second-order error compensation that fixes weight rounding (GPTQ),
-2. the activation-aware scaling that protects the weight channels that matter (AWQ),
-3. the offline migration of activation outliers into the weights that first makes W8A8 work
-   (SmoothQuant),
-4. the computational-invariance rotations that finally make true 4-bit *activations* work (QuaRot),
-5. and the *learned* rotations that squeeze the last variance out of the rotation idea (SpinQuant).
+- **SmoothQuant.** Migrates activation outliers into the weight matrix offline with a per-channel equivalence transform so that W8A8 quantization survives. Gap: on OPT-175B W8A8 it restores zero-shot average to **66.8%**, close to FP16 **66.9%**, but at W4A4 the same approach reports perplexity **83.12** on Llama-2-7B.
 
-## The fixed substrate
+- **QuaRot.** Applies computationally invariant rotations to spread activation outliers before quantizing weights, activations, and KV cache to 4 bits. Gap: on Llama-2-7B W4A4KV4 it reports perplexity **6.10** versus FP16 **5.47**, and the gap persists at 13B (**5.40** vs **4.88**) and 70B (**3.79** vs **3.32**).
 
-The model is a fixed pretrained Transformer LLM (the headline numbers below are on the LLaMA / Llama-2
-family at 7B, 13B, and 70B). Quantization is uniform integer quantization on a per-channel or
-group-wise grid; the calibration set is a few hundred sequences (e.g. from WikiText-2 or the Pile),
-used only to fit scales / Hessians / rotations, never for backprop on the model's own weights.
-Evaluation is WikiText-2 perplexity at sequence length 2048 and a fixed suite of zero-shot reasoning
-tasks. The bit-width and the granularity (per-channel vs group-of-128, written *g128*) are stated
-explicitly for every number, because they are not comparable across settings — a g128 number is
-always easier than the per-channel number at the same nominal bits. This frozen harness is the
-scaffold; each rung is a single named quantization method dropped into it.
+## Fixed substrate / Code framework
+
+The substrate is a fixed pretrained Transformer LLM. Quantization is uniform integer quantization on a per-channel or group-of-128 (g128) grid. A small calibration set is used only to fit scales, Hessians, or rotations; the model weights are never updated. Evaluation is WikiText-2 perplexity at sequence length 2048 and a fixed zero-shot reasoning suite. The bit-width and grouping are reported with every number, because per-channel and g128 results are not interchangeable.
+
+The harness loads the model, records the FP16 reference, then walks the transformer blocks one at a time. For each linear layer it collects calibration inputs, calls the quantizer, writes the quantized-dequantized weight back in place, and propagates the quantized block's outputs to the next block. The quantizer sees one linear layer at a time.
+
+## Editable interface
+
+The editable region is the `WeightQuantizer` class (and any helpers it calls). It must implement `configure(bits, perchannel, sym)`, `find_params(x)`, and `quantize(x)`, returning a same-shape, same-dtype tensor that is the fake-quantized weight. The default fill below is plain RTN: the scale is `max(|x|) / (2^(bits-1) - 1)`, and the forward pass is round-then-dequantize.
+
+```python
+import torch
+
+
+def sym_quant_dequant(x, scale, maxq):
+    q = torch.clamp(torch.round(x / scale), -(maxq + 1), maxq)
+    return scale * q
+
+
+class WeightQuantizer(torch.nn.Module):
+    """Default fill: symmetric per-channel round-to-nearest."""
+
+    def configure(self, bits, perchannel=True, sym=True):
+        self.bits = bits
+        self.perchannel = perchannel
+        self.sym = sym
+        self.maxq = 2 ** (bits - 1) - 1
+
+    def find_params(self, x):
+        x = x.flatten(1) if self.perchannel else x.flatten().unsqueeze(0)
+        tmp = torch.zeros(x.shape[0], device=x.device)
+        xmin = torch.minimum(x.min(1)[0], tmp)
+        xmax = torch.maximum(x.max(1)[0], tmp)
+        xmax = torch.maximum(xmin.abs(), xmax).clamp(min=1e-5)
+        self.scale = (xmax / self.maxq).reshape([-1] + [1] * (x.dim() - 1))
+
+    def quantize(self, x):
+        return sym_quant_dequant(x, self.scale, self.maxq)
+```
+
+Group-wise g128 quantization is obtained by reshaping each row into contiguous blocks of 128 columns and running the same routine independently per block.
 
 ## Evaluation settings
 
-The ranking metric is **WikiText-2 perplexity (lower is better)** at a stated weight/activation
-bit-width, with **zero-shot accuracy (higher is better)** as the secondary metric where the source
-table reports it. Every number below is copied from the named method's own paper table or repository
-README — none is re-run by us — and every number is labeled with its exact bit-width and grouping
-(per-channel vs g128, weight-only WxA16 vs weight+activation WxAx). Because the ladder spans two
-regimes, the rungs are *not* all on one comparable axis: rungs 1–3 are weight-only (the perplexities
-are directly comparable within a bit-width/grouping), rung 4 is the W8A8 activation-quantization
-breakthrough (ranked on zero-shot accuracy at INT8), and rungs 5–6 are the true 4-bit-activation
-(W4A4KV4) regime, anchored by the QuaRot Table 1 multi-method comparison so SmoothQuant, QuaRot, and
-SpinQuant are read off the *same* table at the *same* W4A4 setting. The bit-width and grouping are
-stated in each feedback file so no two incomparable numbers are silently compared.
+Primary metric is WikiText-2 perplexity at the stated weight/activation bit-width; secondary metric is zero-shot accuracy where the source reports it. Every number is taken from the named method's own paper table or repository README, not re-run here. Numbers are labeled with exact bit-width and grouping (per-channel vs g128, weight-only WxA16 vs weight+activation WxAx), and they are compared only within matched settings. Weight-only numbers are comparable among themselves at the same bit-width and grouping; W8A8 numbers are read from the SmoothQuant OPT-175B setting; W4A4KV4 numbers are read from the same comparison table at the same setting.

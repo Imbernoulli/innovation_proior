@@ -1,0 +1,14 @@
+VDM strict/check output, 2026-06-18
+
+No repository-local `check_strict_method.py` was present under the workspace root.
+
+Supplemental checks run:
+
+- `python tools/lint_inframe.py methods/vdm/results/context.md methods/vdm/results/reasoning.md methods/vdm/results/answer.md | rg 'methods/vdm|totals'`
+  - Output: `=== totals ===`
+  - Interpretation: the full-tree linter emitted no VDM-specific hits after filtering.
+- `rg -n 'VDM|Variational Diffusion Models|z_0, z_1|...' methods/vdm/results/context.md`
+  - Output: no matches.
+- `rg -n '^#|^```|paper|public repository|final artifact|our method|we propose|state-of-the-art|outperform|with these features|same features' methods/vdm/results/reasoning.md`
+  - Output: no matches.
+

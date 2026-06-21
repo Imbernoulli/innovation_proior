@@ -1,0 +1,54 @@
+# Swin Strict Rereview Changelog
+
+- `results/context.md:75` Neutralized the pre-method scaffold's patch-embedding width so it no longer leaks the target tiny variant's `96` channel choice.
+- `results/context.md:129` Replaced the target tiny variant's exact depth/head tuple with a neutral scaffold tuple.
+- `results/reasoning.md:35` Corrected the shifted-window mask band derivation: the implementation uses `[0:-M]`, `[-M:-s]`, `[-s:]`, so the first band is generally `H-M`, not a fixed-width strip.
+- `results/reasoning.md:158` Renamed the embedded block class to keep the reasoning in-frame instead of naming the final method before the artifact.
+- `results/reasoning.md:293` Renamed the embedded model class to keep the prototype neutral in the discovery monologue.
+- `results/reasoning.md:97` Added canonical `qk_scale` handling to the embedded window-attention prototype.
+- `results/reasoning.md:202` Added the canonical `L == H * W` assertion in the embedded shifted-window block.
+- `results/reasoning.md:236` Added canonical input-size/even-resolution assertions to patch merging.
+- `results/reasoning.md:273` Aligned patch embedding with the reference implementation's image-size assertion and optional norm behavior.
+- `results/reasoning.md:293` Added `ape`, `patch_norm`, initialization, forward-features, and weight-decay skip hooks to match the Microsoft V1 classifier path.
+- `results/answer.md:31` Replaced the conceptual `0/-inf` shifted mask wording with the reference implementation's `0/-100` logit mask.
+- `results/answer.md:38` Declared that the code block is the V1 classifier path and omits only checkpointing and optional fused CUDA kernels.
+- `results/answer.md:75` Added canonical `qk_scale` handling in `WindowAttention`.
+- `results/answer.md:126` Propagated `qk_scale` through `SwinTransformerBlock`.
+- `results/answer.md:168` Added the reference block input-size assertion.
+- `results/answer.md:189` Added the reference patch-merging assertions and kept LayerNorm before the bias-free `4C -> 2C` reduction.
+- `results/answer.md:233` Aligned `PatchEmbed` with the reference fields, image-size assertion, and optional normalization default.
+- `results/answer.md:256` Added the canonical `ape=False` and `patch_norm=True` path to `SwinTransformer`.
+- `results/answer.md:305` Added the reference optimizer skip hooks for `absolute_pos_embed` and `relative_position_bias_table`.
+- `notes/source_matrix.md:7` Added primary source evidence from arXiv/CVF and the local source/PDF/text artifacts.
+- `notes/source_matrix.md:8` Recorded the official Microsoft implementation as the canonical code target.
+- `notes/source_matrix.md:9` Added the Transformer ancestor source for scaled dot-product attention and block lineage.
+- `notes/source_matrix.md:10` Added the ViT ancestor source for patch tokens, class token, absolute position embedding, and global attention.
+- `notes/source_matrix.md:11` Added the DeiT ancestor source for ImageNet-1K training and distillation context.
+- `notes/source_matrix.md:12` Added the FPN ancestor source for the dense-prediction pyramid contract.
+- `notes/source_matrix.md:13` Added the Local Relation Networks ancestor source for locality, geometry, and latency limits.
+- `notes/source_matrix.md:14` Added the Stand-Alone Self-Attention ancestor source for local attention as a convolution replacement.
+- `notes/source_matrix.md:15` Added the Shaw relative-position ancestor source.
+- `notes/source_matrix.md:16` Added PVT as the concurrent pyramid Transformer contrast.
+- `notes/source_matrix.md:17` Added the third-party annotated implementation explainer.
+- `notes/source_matrix.md:18` Added the Microsoft Research self-account and local search log.
+- `notes/source_matrix.md:22` Recorded the verified complexity constants and softmax-cost convention.
+- `notes/source_matrix.md:23` Recorded the shifted-mask slice correction.
+- `notes/discovery_synthesis.md:5` Re-derived the MSA and W-MSA complexity constants with signs and factors.
+- `notes/discovery_synthesis.md:9` Recorded every shifted-window batching case, including the 2.25x naive-padding example and the exact `-100.0` mask.
+- `notes/discovery_synthesis.md:11` Recorded the relative-position index formula for rectangular and square windows.
+- `notes/discovery_synthesis.md:13` Recorded the patch-merging order and `LayerNorm -> Linear(4C,2C,bias=False)` sequence.
+- `notes/discovery_synthesis.md:17` Recorded the code-faithfulness findings for `WindowAttention`.
+- `notes/discovery_synthesis.md:18` Recorded the code-faithfulness findings for `SwinTransformerBlock`.
+- `notes/discovery_synthesis.md:19` Recorded the code-faithfulness findings for `BasicLayer`.
+- `notes/discovery_synthesis.md:20` Recorded the code-faithfulness findings for `SwinTransformer`.
+- `notes/discovery_synthesis.md:24` Recorded the context scaffold-purity fix.
+- `notes/discovery_synthesis.md:25` Recorded the reasoning in-frame voice fix.
+- `notes/discovery_synthesis.md:26` Recorded the answer code-faithfulness fix.
+- `refs/self_accounts/search_log.md:7` Documented the usable Microsoft Research self-account.
+- `refs/self_accounts/search_log.md:10` Documented the additional author/self-account search trail.
+- `notes/synthesis.md:1` Marked the old synthesis as superseded.
+- `notes/strict_check_output.txt:5` Recorded `STRICT CHECK PASSED`.
+- `notes/strict_check_output.txt:8` Recorded that the `answer.md` embedded Python block parses.
+- `notes/strict_check_output.txt:9` Recorded that the `reasoning.md` embedded Python block parses.
+- `results/.codex_review.json:3` Replaced the stale limited/rate-limit marker with the current independent-review status.
+- `results/.codex_review.json:8` Recorded the manual audit scope and why delegated independent review was not run under the current tool policy.

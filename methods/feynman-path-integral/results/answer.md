@@ -104,39 +104,4 @@ quantum state, the same `ψ` that obeys Schrödinger's equation above.
   `S = ε L((x_{i+1}-x_i)/ε, (x_{i+1}+x_i)/2)`. A pure potential `V(x)` is insensitive at first
   order (difference in the exponent is `O(ε^{3/2})`).
 
-## Minimal numerical illustration (1-D short-time evolution)
 
-```python
-import numpy as np
-
-hbar = 1.0
-
-def slice_action(x_next, x, eps, m, V):
-    # ε[ (m/2)((x_next-x)/eps)^2 - V(x_next) ]
-    return eps * (0.5 * m * ((x_next - x) / eps) ** 2 - V(x_next))
-
-def normalization(eps, m):
-    # A = (2π i ℏ ε / m)^{1/2}, forced by zeroth-order identity matching.
-    return np.sqrt(2j * np.pi * hbar * eps / m)
-
-def short_time_kernel(x_next, x, eps, m, V):
-    return np.exp(1j * slice_action(x_next, x, eps, m, V) / hbar) / normalization(eps, m)
-
-def evolve_one_slice(psi, x_grid, eps, m, V):
-    """psi(x', t+eps) = ∫ K(x', x) psi(x, t) dx  on a uniform grid."""
-    dx = x_grid[1] - x_grid[0]
-    K = short_time_kernel(x_grid[:, None], x_grid[None, :], eps, m, V)  # K[i,j] = K(x_i, x_j)
-    return (K @ psi) * dx
-
-def propagator(x_final, x_initial, t, N, m, V, x_grid):
-    """Compose N short-time kernels by integrating over N-1 intermediate coordinates:
-    the discretized sum over paths. Returns K(x_final, x_initial; t)."""
-    eps = t / N
-    dx = x_grid[1] - x_grid[0]
-    # start from a grid delta at the nearest x_initial point, propagate N slices, read off at x_final
-    psi = np.zeros_like(x_grid, dtype=complex)
-    psi[np.argmin(np.abs(x_grid - x_initial))] = 1.0 / dx
-    for _ in range(N):
-        psi = evolve_one_slice(psi, x_grid, eps, m, V)
-    return psi[np.argmin(np.abs(x_grid - x_final))]
-```

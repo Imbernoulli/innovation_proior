@@ -35,7 +35,7 @@ WALL: diagonalizing HiPPO. Its eigenvector matrix V_ij = C(i+j, i-j) has entries
 Ideal: A normal (diagonalizable by unitary V, perfectly conditioned, spectral theorem). But HiPPO is NOT normal.
 
 ### 4. NPLR / DPLR
-Observation: HiPPO = normal + low-rank. For LegS: A + ½(2n+1)^.5(2k+1)^.5 (rank-1, =P P^* with P_n=sqrt(n+½)) = ½I + S, S skew-symmetric (normal, pure-imaginary eigenvalues). So A = (normal) - PQ^*, i.e. A = VΛV^* - PQ^T with V unitary.
+Observation: HiPPO = normal + low-rank. For LegS: A + ½(2n+1)^.5(2k+1)^.5 (rank-1, =P P^* with P_n=sqrt(n+½)) = -½I + S, S skew-symmetric (normal, pure-imaginary eigenvalues). So A = (normal) - PQ^*, i.e. A = VΛV^* - PQ^T with V unitary.
 Conjugate by V: get DPLR over C: A = Λ - PQ^*, Λ diagonal, P,Q ∈ C^{N×r}, r=1 (LegS) or 2 (LegT).
 But powering a DPLR matrix is still hard (low-rank term ruins it). Need a different route than powers.
 
@@ -71,10 +71,10 @@ For r=1, (1 + Q^* R P) is a scalar. All four bilinear forms C̃^*RB, C̃^*RP, Q^
 Each form C̃^* R B = Σ_j (c̃_j^* b_j)/(g(ω) - λ_j). Over all nodes ω this is a Cauchy matrix-vector product M_ij = 1/(ω_i - λ_j). Cauchy MVP: O(MN) naive, O((M+N)log²) exact arithmetic / FMM, O((M+N)log·log(1/ε)) numeric. So 4 Cauchy multiplies -> Õ(N+L) total, O(N+L) space. Recover K̄ by iFFT. DONE.
 
 ### 9. Recurrence in DPLR (O(N)/step)
-Ā = A_1 A_0 where A_0 = (2/Δ)I + (Λ - PQ^*) (forward), A_1 = (2/Δ)[ (2/Δ)I - Λ + PQ^* ]^{-1} = (2/Δ)[D - DP(1+Q^*DP)^{-1}Q^*D] (Woodbury), D=( (2/Δ) - Λ)^{-1}. Both DPLR -> O(N) MVP. B̄ = 2 A_1 B. Inverse of DPLR is DPLR.
+Ā = A_1 A_0 where A_0 = (2/Δ)I + (Λ - PQ^*) (forward), D = ((2/Δ) - Λ)^{-1}, and A_1 = [ (2/Δ)I - Λ + PQ^* ]^{-1} = D - DP(1+Q^*DP)^{-1}Q^*D (Woodbury). Both DPLR -> O(N) MVP. B̄ = 2 A_1 B. Inverse of DPLR is DPLR. Equivalently, (I-Δ/2 A)^{-1}=(2/Δ)A_1.
 
 ## Architecture / design choices -> why
-- 5N params per SSM: Λ, P, Q (=P* in S4D variant), B, C, all C^N. (paper: Λ,P,Q,B,C; later P=Q for stability).
+- O(N) DPLR params per SSM: paper derivation uses Λ, P, Q, B, C̃, Δ; the public S4 DPLR code stores half conjugate pairs and uses Q=P.conj() in the stabilized path.
 - H independent copies of the 1-D SSM + position-wise linear mixing (O(H^2)) = like depthwise-separable conv with global kernels. Nonlinearity between layers (core SSM is linear).
 - Δ (step size / timescale) learned per feature, init log-uniform in [dt_min,dt_max]=[1e-3,1e-1]; gives multi-timescale memory, also lets resolution change at test time.
 - HiPPO init of A: principled memory; random A fails. Conjugate to DPLR (Λ,P) at init.
@@ -90,6 +90,6 @@ Each form C̃^* R B = Σ_j (c̃_j^* b_j)/(g(ω) - λ_j). Over all nodes ω this 
 ## Code grounding (state-spaces/s4)
 - cauchy_naive(v,z,w): sum_n v_n/(z - w_n).
 - SSMKernelDPLR.forward: _omega gives omega=exp(-2πi k/L) for k in [0,L/2], z = 2(1-omega)/(1+omega); A scaled by dt so node is (2/Δ)(1-ω)/(1+ω); stack [B,P],[C,Q]; v=B*C*dt; r=cauchy(v,z,A); rank-1 Woodbury k_f = r00 - r01 r10/(1+r11); k_f *= 2/(1+omega); k = irfft(k_f). Matches derivation exactly.
-- nplr('legs'): P=sqrt(.5+arange(N)) rank-1; A+PP^* skew-symmetric; diagonalize skew part -> Λ.
+- nplr('legs'): P=sqrt(.5+arange(N)) rank-1; A+PP^* = -1/2 I + skew-symmetric part; diagonalize the shifted skew part -> Λ.
 - S4D (diagonal) forward uses log_vandermonde — the simpler diagonal special case.
 - S4Model backbone: encoder Linear -> stack of (S4 block + LayerNorm + residual + dropout) -> mean pool -> decoder Linear.

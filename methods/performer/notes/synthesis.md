@@ -23,21 +23,21 @@ Softmax attention: A = exp(QKᵀ/√d), Att = D⁻¹AV, D=diag(A1_L). Time O(L²
    - MSE(trig)=(1/2m)exp(‖z‖²)SM⁻²(1-exp(-‖Δ‖²))², z=x+y, Δ=x-y. → ∞ as SM→0.
    - MSE(+)=(1/m)exp(‖z‖²)SM²(1-exp(-‖z‖²)). → 0 as SM→0 (since SM²→0). This is the punchline: positive estimator is accurate exactly where it matters.
    - MSE(hyp+)=½(1-exp(-‖z‖²))MSE(+).
-8. ORTHOGONAL features (FAVOR+). Entangle ω_i exactly orthogonal (Gram-Schmidt on Gaussian block), marginals unchanged → still unbiased for isotropic D. Need m≤d. "Beautiful function" F_{Ω,g}(z)=E[g(ωᵀz)], g entire with nonneg power-series coeffs (exp qualifies). Theorem (general-var): MSE(ort) ≤ MSE(iid) - (1-1/m)(2/(d+2))(F(z)-a_0)². For SM, F-a_0 = SM·exp((‖x‖²+‖y‖²)/2) - 1 form → gives main-text Thm 3 gap. Holds for ALL d, not just asymptotically. Positivity (a_i≥0) is exactly what makes the τ≤d/(d+2) bound give a strictly positive gap.
+8. ORTHOGONAL features (FAVOR+). Entangle ω_i exactly orthogonal within a Gaussian block (Gram-Schmidt/QR), marginals unchanged after chi-length scaling → still unbiased for isotropic D. A single block has m≤d, while implementations stack independent d×d blocks plus a partial block when more features are requested. "Beautiful function" F_{Ω,g}(z)=E[g(ωᵀz)], g entire with nonneg power-series coeffs (exp qualifies). Theorem (general-var): MSE(ort) ≤ MSE(iid) - (1-1/m)(2/(d+2))(F(z)-a_0)². For SM, F-a_0 = SM·exp((‖x‖²+‖y‖²)/2) - 1 form → gives main-text Thm 3 gap. Holds for ALL d, not just asymptotically. Positivity (a_i≥0) is exactly what makes the τ≤d/(d+2) bound give a strictly positive gap.
 9. SMREG (regularized softmax): replace ω by √d·ω/‖ω‖ (sample on sphere radius √d). Thm: SMREG≤SM and ratio ≥ 1 - 2/d^{1/3}+o(...). So SMREG is a tight, universal lower-bound proxy; ORF concentration even sharper for it.
 10. Unidirectional/causal: need tril(Q'K'ᵀ)C without forming L×L. Prefix-sum: G_j = K'_j C_jᵀ (outer product, M×(d+1)), G^PS_i = Σ_{j≤i}G_j, output row i = G^PS_i × Q'_i. O(Lmd) time, parallel prefix sum O(log L).
-11. m = Θ(d log d) random features suffice for uniform ε-approx of A, independent of L.
-12. Generalized attention: any φ=f(ωᵀx)+ε with f≥0 (ReLU empirically best for proteins). Drop-in.
+11. Uniform approximation uses m = Θ((d/δ²) log(4 d^{3/4}R/δ)) under bounded query/key norm R, so the feature count depends on dimension, radius, and precision but not directly on sequence length L.
+12. Generalized attention: any nonnegative φ can be used; the Google reference default is deterministic φ(x)=ReLU(x)+10^{-3}, with iid/orthogonal projected variants optional. Drop-in.
 
 ## Design decisions → why
 - Non-negative features: convex-combination semantics of attention; negative scores → negative D̂⁻¹ → NaN.
 - exp (not sin/cos): unbiased AND positive AND variance→0 as kernel→0.
 - orthogonal ω: variance reduction provable for all d; positivity needed for the bound.
-- m≤d for ORF; m=Θ(d log d) for accuracy; m independent of L.
+- ORF is exact within d-row blocks; uniform-approximation feature count depends on d, query/key radius R, and error tolerance, not directly on L.
 - normalize by d^{-1/4} per vector (so qᵀk/√d folded into renorming q,k): code data_normalizer = dim^{-0.25}.
 - numerical stabilizer: subtract max in exponent (log-sum-exp style) before exp; +eps.
 - redraw features periodically: avoid unlucky fixed projection.
-- ReLU generalized kernel: best downstream, no √-d normalization issues.
+- ReLU generalized kernel: Google reference default is deterministic ReLU plus 10^{-3}; no softmax d^{-1/4} normalization unless explicitly configured.
 
 ## Code grounding
-lucidrains performer-pytorch: softmax_kernel (φ⁺ with stabilizer), generalized_kernel (ReLU), gaussian_orthogonal_random_matrix (block QR + chi-distributed row norms), linear_attention (einsum reassociation), causal_linear_attention_noncuda (chunked cumsum prefix-sum). FastAttention module.
+Google reference implementation (`code/google-research`, commit `4fde028f6017e16aefcbc2b6d3f77f70b9f6b421`): `nonnegative_softmax_kernel_feature_creator` (φ⁺ with query/key max subtraction and stabilizer), `generalized_kernel_feature_creator` (deterministic ReLU default, optional projections), `GaussianOrthogonalRandomMatrix` (block QR plus chi-distributed row norms or sqrt(d) scaling), and `FastAttentionviaLowRankDecomposition` (noncausal reassociation, causal scan numerator/denominator, denominator stabilizer, feature redraw policy).

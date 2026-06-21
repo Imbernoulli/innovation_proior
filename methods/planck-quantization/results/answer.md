@@ -69,33 +69,4 @@ with units of energy times time). A finite $h$ means energy exchange is not cont
 classical physics is the $h\to 0$ limit. The radiation law and the hypothesis $\varepsilon=h\nu$ are
 the result; energy is counted, not poured.
 
-## Optional numerical sanity check
 
-```python
-import numpy as np
-
-h = 6.626e-27   # erg s   (quantum of action)
-k = 1.381e-16   # erg/K   (Boltzmann constant)
-c = 2.998e10    # cm/s
-
-def mean_energy(nu, T):
-    # U(nu,T) = h nu / (exp(h nu / kT) - 1)   -- the derived resonator energy
-    x = h * nu / (k * T)
-    return h * nu / np.expm1(x)
-
-def spectral_density(nu, T):
-    # u = (8 pi nu^2 / c^3) * U   -- mode bridge times resonator energy
-    return (8 * np.pi * nu**2 / c**3) * mean_energy(nu, T)
-
-# Limit checks
-def long_wave(nu, T):    # h nu << kT  ->  8 pi nu^2 k T / c^3  (Rayleigh-Jeans)
-    return (8 * np.pi * nu**2 / c**3) * k * T
-
-def short_wave(nu, T):   # h nu >> kT  ->  (8 pi h nu^3 / c^3) exp(-h nu/kT)  (Wien)
-    return (8 * np.pi * h * nu**3 / c**3) * np.exp(-h * nu / (k * T))
-
-# Finite total ~ T^4 (Stefan-Boltzmann); classical equipartition would diverge.
-def total_energy_density(T, nu_max=5e15, n=400000):
-    nu = np.linspace(1.0, nu_max, n)
-    return np.trapz(spectral_density(nu, T), nu)
-```

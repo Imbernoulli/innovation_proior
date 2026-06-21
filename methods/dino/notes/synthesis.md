@@ -64,19 +64,19 @@ With no negatives, no predictor, no Sinkhorn — what stops collapse? Two trivia
 Both are collapse: P_t independent of input ⇒ nothing to learn.
 
 Two cheap teacher-only operations, pushing in *opposite* directions:
-- **Centering**: subtract an EMA center c from teacher logits before softmax: g_t(x) ← g_t(x) − c, with c ← m c + (1−m) (1/B) Σ_i g_θt(x_i). Equivalent to a bias on the teacher. Centering prevents *any single dimension from dominating* (it recenters the mean logit), but on its own it pushes the output toward **uniform** (flattens differences) → collapse mode 2.
+- **Centering**: subtract an EMA center c from teacher logits before softmax: g_t(x) ← g_t(x) − c, with c ← m c + (1−m) (1/|T|) Σ_{z∈T} g_θt(z), where T is the set of teacher global-view outputs and is all-reduced across workers in the official code. Equivalent to adding a bias term −c to the teacher logits. Centering prevents *any single dimension from dominating* (it recenters the mean logit), but on its own it pushes the output toward **uniform** (flattens differences) → collapse mode 2.
 - **Sharpening**: low teacher temperature τ_t (e.g. 0.04–0.07). Sharpening concentrates mass → prevents the *uniform* collapse, but on its own encourages **one dimension to dominate** → collapse mode 1.
 - They are complementary: centering counters mode 1 but invites mode 2; sharpening counters mode 2 but invites mode 1. Apply both → effects balance → stable, in the presence of a momentum teacher.
 
 **Decomposition proof of complementarity** (decompose the loss):
 H(P_t, P_s) = h(P_t) + D_KL(P_t ‖ P_s), where h is entropy.
-- KL → 0 ⇒ teacher output is constant ⇒ collapse. So "KL→0" is the collapse detector.
+- KL → 0 alone only says the student is matching the teacher; it is a collapse detector here only when paired with an entropy extreme that shows the teacher has become input-independent.
 - When one operation is missing, KL → 0 (collapse), and the *entropy h of the teacher* converges to a tell-tale value:
   - no centering → h → 0 (one-hot / one dim dominates), and
   - no sharpening → h → −log(1/K) = log K (uniform).
-  Two different collapse entropies ⇒ the two operations induce *opposite* failure modes. Both together hold KL away from 0.
+  Two different collapse entropies ⇒ the two operations induce *opposite* failure modes. With both operations, the entropy stays away from both extremes and the same degenerate KL fall is not observed.
 
-Empirical hyperparameter facts (diagnostic, pre-method-style): centering EMA m robust over 0..0.99, collapses at m=0.999 (too slow). τ_t must be ≤ ~0.06 to avoid collapse (τ_t=0.08 → loss converges to ln K = uniform collapse); warm up τ_t 0.04→0.07 over first 30 epochs to avoid early collapse. τ_t→0 = argmax = hard one-hot. τ_s = 0.1.
+Empirical hyperparameter facts (diagnostic, pre-method-style): centering EMA m robust over 0..0.99, collapses at m=0.999 (too slow). A fixed τ_t must be lower than ~0.06 to avoid collapse (τ_t=0.08 → loss converges to ln K = uniform collapse), but a warmup from 0.04→0.07 over the first 30 epochs avoids the early collapse. τ_t→0 = argmax = hard one-hot. τ_s = 0.1. The official code default is the conservative τ_t=0.04 / no teacher-temperature warmup; its boosted ViT-S README command uses 0.04→0.07 and norm_last_layer=false.
 
 ### Why centering (vs Sinkhorn / softmax-over-batch)
 - Sinkhorn (SwAV) and softmax-over-batch couple samples within a batch and iterate. Centering depends only on *first-order* batch statistics (a mean) and is EMA'd over batches → works across batch sizes (down to bs=8), low batch dependence. Trades a little stability for batch-independence. With a momentum teacher, centering+sharpening alone suffice (Sinkhorn adds little).
@@ -90,10 +90,10 @@ Empirical hyperparameter facts (diagnostic, pre-method-style): centering EMA m r
 | EMA momentum teacher (λ 0.996→1) | Polyak-Ruppert ensemble: teacher consistently better than student → higher-quality targets that lead training. Student-copy/prev-iter teachers don't converge; prev-epoch works but worse. |
 | Stop-gradient on teacher | Teacher is a *target*; gradients only update the student. Teacher updated by weight EMA, not backprop. |
 | Centering (EMA bias on teacher logits) | Kills the dominant-dimension collapse with only first-order batch stats → batch-size robust. Sinkhorn/softmax-batch also work but couple the batch and iterate; with momentum they add nothing. |
-| Sharpening (low τ_t) | Kills the uniform collapse. Complementary to centering. Must stay ≤~0.06; warm up to avoid early-training collapse. |
+| Sharpening (low τ_t) | Kills the uniform collapse. Complementary to centering. Fixed values must stay around or below 0.06 in the appendix; warming from 0.04 lets the recipe reach 0.07 without the same early collapse. |
 | τ_s = 0.1, τ_t < τ_s | Teacher sharper than student is the distillation signal — student is pulled toward a peakier target. |
 | Multi-crop: 2 global (224²) + several local (96²), local→student only | "Local-to-global" forces small crops to predict the global view's distribution; many cheap view comparisons. Biggest single accuracy lever for DINO (+3.4% linear). Global-only to teacher keeps targets high-quality. |
-| Projection head: 3-layer MLP (GELU, hidden 2048) → ℓ2-normalize → weight-normalized last linear, output K=65536, bottleneck d=256 | SwAV-style. ℓ2 bottleneck *stabilizes* deep heads (without it, 3-4 layer heads collapse, k-NN 0.1). Large K helps. Weight-norm last layer with g fixed to 1 (and frozen first epoch) stabilizes early training. |
+| Projection head: 3-layer MLP (GELU, hidden 2048) → ℓ2-normalize → weight-normalized last linear, output K=65536, bottleneck d=256 | SwAV-style. ℓ2 bottleneck *stabilizes* deep heads (without it, 3-4 layer heads collapse, k-NN 0.1). Large K helps. Weight-norm last layer has g initialized to 1 and optionally frozen by `norm_last_layer`; the official boosted ViT-S recipe sets `norm_last_layer=false`, while `freeze_last_layer=1` still cancels output-layer gradients in epoch 0. |
 | BN-free (no BN in head for ViT) | ViT has no BN; removing BN from head has ~0 effect (69.7 vs 68.6) → makes the whole system BN-free, avoiding cross-GPU BN sync cost and the BYOL "needs BN" dependence. |
 | AdamW, lr=0.0005·bs/256, 10-ep warmup, cosine decay; WD cosine 0.04→0.4; clip grad 3.0; freeze last layer 1st epoch | ViT training stability recipe (DeiT-style). |
 | k-NN evaluation (k=20, τ=0.07) | Hyperparameter-free probe of feature quality; DINO ViT features are unusually k-NN friendly. |

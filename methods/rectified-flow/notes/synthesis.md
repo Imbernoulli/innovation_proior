@@ -24,7 +24,7 @@ The bottleneck is *curvature*: a curved ODE needs many steps; a perfectly straig
    = E[c(X_1−X_0)]. Pareto descent over ALL convex c at once, not tied to a single c.
 3. **Straightening / O(1/K) (Thm 3.7):** define straightness S(Z)=∫_0^1 E[‖(Z_1−Z_0)−Ż_t‖²]dt; non-crossing measure V((X_0,X_1))=∫_0^1 E[‖(X_1−X_0)−E[X_1−X_0|X_t]‖²]dt. With c=‖·‖² the two Jensen gaps are exactly S(Z)+V, giving the identity
    E[‖X_1−X_0‖²] − E[‖Z_1−Z_0‖²] = S(Z) + V((X_0,X_1)).
-   Reflow Z^{k+1}=RectFlow((Z_0^k,Z_1^k)); telescoping ∑_{k=0}^K [S(Z^{k+1})+V((Z_0^k,Z_1^k))] = E‖X_1−X_0‖² − E‖Z_1^{K+1}−Z_0^{K+1}‖² ≤ E‖X_1−X_0‖². So min_k S(Z^k) ≤ E‖X_1−X_0‖²/K → 0.
+   Reflow Z^{k+1}=RectFlow((Z_0^k,Z_1^k)); telescoping ∑_{k=0}^K [S(Z^{k+1})+V((Z_0^k,Z_1^k))] = E‖X_1−X_0‖² − E‖Z_1^{K+1}−Z_0^{K+1}‖² ≤ E‖X_1−X_0‖². So the best indexed rectification gap among those K+1 terms is ≤ E‖X_1−X_0‖²/(K+1) → 0, and the best straightness term is bounded by the same quantity.
    Derivation of S+V identity: E‖X_1−X_0‖² − E‖Z_1−Z_0‖²; use Z_1−Z_0=∫Ż_t dt and the two Jensen steps; each gap is the variance of the averaged quantity. (Gap1 = ∫E‖Ż_t − (Z_1−Z_0)‖²? actually gap from Jensen-in-t equals S; gap from conditioning equals V; verify signs.)
    Straight coupling = fixed point of Rectify = non-crossing interpolation (V=0) = flow coincides with interpolation.
 
@@ -50,5 +50,4 @@ The bottleneck is *curvature*: a curved ODE needs many steps; a perfectly straig
 - Why conditional-mean averaging is the right "fix" for crossings: a single-valued field can't follow two directions at a crossing; the L2-optimal single value is the mean → mass-preserving rewiring.
 - Reflow not distill for straightening: distill approximates the *same* coupling; reflow produces a *new*, lower-cost, straighter coupling (uses marginal-preserving so it's still valid). Few reflows (1–2) — more accumulates v^X estimation error.
 - π_0 arbitrary, decoupled from schedule: nonlinear framework shows α_t,β_t and π_0 are independent choices; SDE derivation conflated them.
-- Distill at t=0 with one Euler step: when flow already near-straight, z0+v(z0,0)≈z1, so the t=0 term of the same objective is the distillation loss.
-</content>
+- Distill at t≈0 with one Euler step: when flow already near-straight, z0+v(z0,0)≈z1, so the endpoint term of the same objective is the distillation loss; the reference implementation uses eps=1e-3 in the actual model call.

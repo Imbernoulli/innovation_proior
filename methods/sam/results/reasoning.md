@@ -1,174 +1,77 @@
-OK, let me think this through from scratch. I'm training a big overparameterized network — enough capacity that I can drive the training loss `L_S(w)` essentially to zero. And here's the thing that keeps nagging me: when I do that, the training loss value tells me almost nothing about test performance. I can take two runs, two different random seeds, both land at `L_S(w) ≈ 0`, and one generalizes noticeably better than the other. The loss surface is non-convex with a huge number of minima, lots of them at basically the same (near-zero) training loss, and they spread out across a wide range of test errors. So "minimize the training loss" is underdetermined in exactly the way I care about: it picks *a* minimum, not the *right* minimum.
+I start from the uncomfortable fact that the training objective is underdetermined. I can minimize `L_S(w)` until it is tiny, but in an overparameterized network that only tells me that this point fits this sample. It does not tell me whether I am in a stable basin or on a narrow spike. If two solutions have the same training loss and different test loss, then the missing information is not the value at the point. It has to be in the neighborhood around the point.
 
-So what distinguishes the good minima from the bad ones? It's not the loss value at the point — those are equal. It has to be something about the *neighborhood* of the point. And there's an old intuition here I keep coming back to: flat minima generalize, sharp minima don't. Hochreiter and Schmidhuber argued this back in the 90s through a description-length lens — a minimum where the loss stays low over a big, low-precision box of weights needs fewer bits to pin down, and by an Occam/MDL argument that should generalize. Keskar and collaborators saw the same thing empirically for large-batch training: large batches converge to sharp minima — points where the Hessian has big eigenvalues and the loss shoots up if you nudge the weights — and those generalize worse than the flat minima small-batch noise tends to find. And Jiang et al. did the careful large-scale thing: they took forty different candidate complexity measures and asked which one actually tracks the generalization gap across many trained models, and the sharpness-based measures came out on top, ahead of norm- and margin-based ones.
+The old flat-minimum intuition is tempting: prefer a solution whose loss remains low when the weights are imprecise. A flat solution can tolerate a coarse description; a sharp solution needs many bits because the loss changes quickly under tiny moves. That is a real signal, but I have to be careful. Raw flatness is not a theorem by itself. Deep networks have scale symmetries, and I can sometimes make a parameterization look sharper or flatter without changing the function. So I do not want to say, "flatness alone explains generalization." I need a local-loss term paired with a scale or complexity term.
 
-So the empirical signal is pretty strong: sharpness around `w` is the thing correlated with bad generalization. But all of this is *diagnostic*. Hochreiter-Schmidhuber gave a flat-minimum search, but it leans on second-derivative quantities that are miserable to compute and differentiate through at the scale of a real network. Keskar's sharpness is a *measurement*, computed after the fact. Jiang's study *measures* trained models. Nobody here is handing me a cheap thing I can stick into SGD and actually train with. That's the gap.
+PAC-Bayes gives me that pairing. If I choose a posterior distribution over weights centered at `w`, the bound controls the population loss of a stochastic predictor by the empirical loss averaged under that posterior plus a KL cost to a prior. If the posterior is Gaussian around `w`, the empirical term becomes an average of `L_S(w + epsilon)`. That is already a neighborhood quantity. It says that I should not merely fit at `w`; I should fit under perturbations of `w`.
 
-Let me try to state what I actually want, mathematically. The standard thing minimizes the loss *value* at a point. I want to instead make sure the *whole neighborhood* of `w` has low loss — equivalently, low loss *and* low curvature. What if I don't minimize `L_S(w)` but the worst case of the loss in a small ball around `w`? That is,
+At first I might optimize the expected perturbed loss directly. But the expected loss under random Gaussian perturbations feels too passive. Random directions in a high-dimensional parameter space mostly miss the dangerous direction. If there is one steep wall near me, an average over random directions may dilute it. Generalization failure from sharpness is about vulnerability to small changes, so I want the local worst case, not just a random sample.
 
-  minimize over `w` of  `max_{‖ε‖ ≤ ρ} L_S(w + ε)`.
+The PAC-Bayes route lets me make that move. Most of the mass of a Gaussian perturbation lies inside a ball of appropriate radius, and the maximum loss inside that ball upper-bounds the perturbed empirical loss on that high-probability event. So I can replace the averaged local term by a stronger local term:
 
-If I can make the *highest* the loss gets anywhere within radius `ρ` of `w` be small, then I've found a `w` whose entire neighborhood is low — a flat basin, by construction. A sharp minimum would have a huge `max` inside its ball even if `L_S(w)` itself is zero, so it gets penalized automatically. This feels right. But "feels right" isn't enough; let me see if I can ground it in something quantitative instead of just the flatness folklore, because I want to know I'm optimizing a real upper bound on test loss, not a vibe.
+`max_{||epsilon||_2 <= rho} L_S(w + epsilon)`.
 
-PAC-Bayes is the natural place to look. The McAllester bound controls a *stochastic* predictor: if I draw my weights from a posterior `Q`, then with high probability over the training set,
+Now the objective has the right shape. The maximum decomposes into the training loss plus a rise in loss under a nearby move:
 
-  `E_{w∼Q}[L_D(w)] ≤ E_{w∼Q}[L_S(w)] + sqrt( (KL(Q‖P) + log(n/δ)) / (2(n−1)) )`,
+`max L_S(w + epsilon) = L_S(w) + [max L_S(w + epsilon) - L_S(w)]`.
 
-for any data-independent prior `P`. Now follow Dziugaite-Roy and Neyshabur: take `P = N(0, σ_P² I)` centered at the origin and `Q = N(w, σ_Q² I)` centered at my trained weights, with `σ_Q = ρ` say. Then `E_{w∼Q}[L_S(w)] = E_{ε∼N(0,ρ²I)}[L_S(w+ε)]` — the loss averaged over Gaussian weight perturbations. And the KL between two isotropic Gaussians is `(1/2)[ (k σ_Q² + ‖μ_P − μ_Q‖²)/σ_P² − k + k log(σ_P²/σ_Q²) ]`, which with `μ_P = 0`, `μ_Q = w` is governed by `‖w‖²/σ²`. So the bound has the shape
+The bracket is sharpness. The remaining bound term grows with something like `||w||^2 / rho^2`, so a norm penalty belongs there too. That means the practical objective should have two distinct jobs: keep the local worst-case training loss small, and keep the weights controlled. Weight decay is not the main idea; it is the simple surrogate for the complexity term. The main idea is to train the whole neighborhood.
 
-  `E_{ε∼N(0,ρ)}[L_D(w+ε)] ≤ E_{ε∼N(0,ρ)}[L_S(w+ε)] + sqrt( (k log(1 + ‖w‖²/(kσ²)) + …) / (n−1) )`.
+Now I hit the obvious wall. The objective I want contains an inner maximization over the weights, and the loss is nonconvex. If I try to solve that inner problem exactly at every step, the method is dead. I need the cheapest useful adversary.
 
-Let me make sure I can actually get from the *expected* perturbed loss to the *worst-case* perturbed loss I wrote down, because those aren't the same and I don't want to hand-wave the gap. The bound has `E_ε[L_S(w+ε)]` on the right with `ε` Gaussian, `σ_Q = σ`. I want to replace that expectation by the max over an `ℓ₂`-ball, since the max is what measures sharpness and what I can later attack with a first-order solve. For a Gaussian `ε` with per-coordinate variance `σ²` in `k` dimensions, `‖ε‖₂²` is `σ²` times a chi-square with `k` degrees of freedom, which concentrates: by the Laurent-Massart tail, `P(‖ε‖₂² − kσ² ≥ 2σ²√(kt) + 2σ²t) ≤ e^{-t}`. Set `t = (1/2)log n` so the failure probability is `1/√n`. Then with probability `1 − 1/√n`,
+The neighborhood radius is small, so I linearize the loss around the current weights:
 
-  `‖ε‖₂² ≤ σ²( k + 2√(k · (1/2)log n) + 2·(1/2)log n ) = σ²( k + √(2k log n) + log n ) ≤ σ² k (1 + √(log(n)/k))²`,
+`L_S(w + epsilon) ~= L_S(w) + epsilon^T g`, with `g = grad_w L_S(w)`.
 
-since `√(2k log n) ≤ 2√(k log n)` and `k(1+√(log(n)/k))² = k + 2√(k log n) + log n`.
+The constant `L_S(w)` drops out of the inner maximization. I am left with a linear function over a norm ball:
 
-So if I *choose* `σ` such that `σ² k (1 + √(log(n)/k))² = ρ²`, then with high probability the Gaussian draw lands inside the ball of radius `ρ`. On that event, `E_ε[L_S(w+ε)] ≤ max_{‖ε‖₂≤ρ} L_S(w+ε)` (the Gaussian mass is mostly inside the ball, and the rare outside-event I pay for with a tiny `1/√n` additive term, which folds into the constants). And on the left, the theorem's working assumption is that adding Gaussian noise doesn't *decrease* the test loss at the final solution, `L_D(w) ≤ E_ε[L_D(w+ε)]` — reasonable at a real minimum, since you're sitting near the bottom and perturbing can only push you up. Plugging the chosen `σ` (which makes `σ² = ρ²/(k(1+√(log n /k))²)`, i.e. `1/(kσ²) = (1+√(log n /k))²/ρ²`) into the `log(1+‖w‖²/(kσ²))` complexity term, I land at
+`argmax_{||epsilon||_p <= rho} epsilon^T g`.
 
-  `L_D(w) ≤ max_{‖ε‖₂ ≤ ρ} L_S(w + ε) + sqrt( ( k log(1 + (‖w‖²/ρ²)(1+√(log(n)/k))²) + 4 log(n/δ) + O(1) ) / (n − 1) ).`
+This is exactly where dual norms do the work. Holder's inequality gives
 
-That's exactly the object I want: the population loss is upper-bounded by the *worst-case loss in a ρ-ball* plus a term that's increasing in `‖w‖²/ρ²`. Write the complexity term abstractly as `h(‖w‖²/ρ²)`, `h` strictly increasing. So minimizing the right-hand side over `w` means: minimize `max_{‖ε‖₂≤ρ} L_S(w+ε)` and keep `‖w‖²` controlled. Now I'm not just chasing flatness folklore — I'm minimizing a genuine high-probability upper bound on the test loss.
+`epsilon^T g <= ||epsilon||_p ||g||_q <= rho ||g||_q`,
 
-Let me pull the sharpness out explicitly so I can see what I'm really doing. Trivially,
+where `1/p + 1/q = 1`. Equality tells me the adversarial perturbation:
 
-  `max_{‖ε‖≤ρ} L_S(w+ε) = [ max_{‖ε‖≤ρ} L_S(w+ε) − L_S(w) ] + L_S(w)`.
+`epsilon_hat = rho * sign(g) * |g|^(q - 1) / (||g||_q^q)^(1/p)`.
 
-The bracket is precisely a sharpness measure — how much the loss can rise as I move `ρ` away from `w` — and it's the same shape Keskar used. So the right-hand side of my bound is (sharpness) + (training loss) + (a function of `‖w‖²/ρ²`). The bound is literally telling me: simultaneously make the loss low *and* the neighborhood flat *and* the weights not-too-big. The last term `h(‖w‖²/ρ²)` is ugly and its exact form is an artifact of which inequalities I used in the proof; I'm not going to optimize that exact function. Instead I'll substitute the standard stand-in, a plain `λ‖w‖²` weight-decay term, which is monotone in `‖w‖²` just like `h` and is what every training pipeline already has. So the objective becomes
+For `p = 2`, this collapses to the clean form:
 
-  `min_w   L_S^{SAM}(w) + λ‖w‖²`,  where  `L_S^{SAM}(w) ≜ max_{‖ε‖_p ≤ ρ} L_S(w + ε)`.
+`epsilon_hat = rho * g / ||g||_2`.
 
-I wrote `ℓ_p` instead of `ℓ₂` — the bound came out for `p = 2`, but nothing about the *procedure* forces `p = 2`, so let me keep `p ∈ [1,∞]` general for now and pick later. `ρ ≥ 0` is the neighborhood radius, the one real hyperparameter.
+So the inner maximization is trainable because I do not solve a nonlinear maximization. I take one gradient, normalize it to the radius, and move uphill in weight space. This is the same kind of first-order adversarial trick that works for inputs, but now the adversary perturbs the parameters.
 
-Now the hard part. How do I minimize this by gradient descent? I need `∇_w L_S^{SAM}(w)`, and `L_S^{SAM}` has an inner `max` over `ε` baked into it. The inner max is itself an optimization over a `ρ`-ball, and the loss is non-convex in `ε`, so I can't solve it exactly. But I don't need to — `ρ` is small, so I only need the behavior of `L_S` in a tiny neighborhood of `w`. Linearize. First-order Taylor of `L_S(w+ε)` in `ε` around `0`:
+I need to check the sign. The inner problem is a maximum, so `epsilon_hat` points uphill. I add it to `w`. Then the outer problem is a minimum, so I descend using the gradient measured at that uphill point. If I subtract the perturbation first, I am sampling an easier nearby point and hiding the sharp direction. The update has to climb first, then descend.
 
-  `L_S(w + ε) ≈ L_S(w) + ε^T ∇_w L_S(w)`.
+Next I try to differentiate the sharpness-aware loss. If I write
 
-The constant `L_S(w)` doesn't depend on `ε`, so the inner maximizer is
+`L_S^local(w) ~= L_S(w + epsilon_hat(w))`,
 
-  `ε̂(w) = argmax_{‖ε‖_p ≤ ρ}  ε^T ∇_w L_S(w)`.
+then the derivative is not just the gradient at `w + epsilon_hat`. There is also a term from the dependence of `epsilon_hat(w)` on `w`. Since `epsilon_hat` depends on `grad L_S(w)`, that term contains the Hessian. It is not impossible: it appears through Hessian-vector products, not a full Hessian matrix. But it still adds cost and complexity.
 
-This is now a *linear* objective maximized over a `ρ`-ball in the `ℓ_p` norm — a classical dual-norm problem, exactly the same shape that shows up when you build a first-order adversarial perturbation in input space. Let me actually solve it rather than quote it; the algebra is where it's easy to slip a norm. Write `g = ∇_w L_S(w)`. By Hölder's inequality, for conjugate exponents `1/p + 1/q = 1`,
+I have to decide whether that second-order term is essential. The dominant signal I want is the gradient at the locally bad point. That already tells me how to lower the worst nearby loss. The Hessian term refines how the adversary itself moves as I change `w`, but it is no longer the simple scalable method I am trying to build. If I keep it, I turn a two-pass optimizer into a heavier second-order procedure. If I drop it, I get a plain gradient evaluation at the perturbed weights.
 
-  `ε^T g ≤ ‖ε‖_p ‖g‖_q ≤ ρ ‖g‖_q`,
+So I drop it:
 
-so the maximum possible value is `ρ‖g‖_q`. When is Hölder tight? Equality needs `|ε_i|^p ∝ |g_i|^q` componentwise, and `ε^T g = Σ ε_i g_i` is maximized (not just `|·|`) when each `ε_i` carries the *sign* of `g_i`. So set
+`grad_w L_S^local(w) ~= grad_w L_S(w) |_{w + epsilon_hat(w)}`.
 
-  `ε̂_i = c · sign(g_i) · |g_i|^{q-1}`
+This is the decisive simplification. The method becomes a wrapper around any base optimizer. On a minibatch, I compute the ordinary gradient at `w`, form `epsilon_hat`, temporarily move to `w + epsilon_hat`, compute the ordinary gradient there, restore `w`, and let the base optimizer apply that second gradient. The cost is about two backpropagations per update, not a Hessian and not an inner chain.
 
-for some constant `c > 0` fixed by the constraint `‖ε̂‖_p = ρ`. Check: `‖ε̂‖_p^p = c^p Σ_i |g_i|^{(q-1)p}`. Here's the spot to be careful — `(q-1)p`. From `1/p + 1/q = 1` I get `p + q = pq`, hence `q = pq − p = p(q − 1)`, so `(q-1)p = q`. So `‖ε̂‖_p^p = c^p Σ_i |g_i|^q = c^p ‖g‖_q^q`. Setting that equal to `ρ^p` gives `c = ρ / (‖g‖_q^q)^{1/p}`. So
+This also clarifies why the method is not just noise injection. Noise would choose `epsilon` without looking at the current loss slope. Here the perturbation is adversarial: it is constructed to increase the loss as much as the first-order local model allows. Random noise tests whether the basin is usually okay; the adversarial perturbation tests whether the basin has an exposed wall. If I want to penalize sharpness, the wall matters.
 
-  `ε̂(w) = ρ · sign(∇_w L_S(w)) · |∇_w L_S(w)|^{q-1} / ( ‖∇_w L_S(w)‖_q^q )^{1/p}`,  with `1/p + 1/q = 1`,
+It is also not just weight decay. Weight decay pulls the parameter norm down at the current point. It never evaluates `L_S(w + epsilon)`. The neighborhood maximum asks a different question: if I move a small distance in the worst direction, is the loss still low? The norm penalty remains useful because the generalization bound needs scale control, but the method's distinctive pressure comes from descending the loss at the ascended point.
 
-where `sign` and `|·|^{q-1}` are elementwise. Let me sanity-check the two endpoints I actually care about. For `p = 2`: `q = 2`, so `ε̂ = ρ · sign(g) · |g|^1 / (‖g‖_2^2)^{1/2} = ρ · g / ‖g‖_2`. Clean — it's just the gradient rescaled to have norm exactly `ρ`. (One has to be careful writing this: the denominator is `‖g‖₂`, not `‖g‖₂²`; the `^{1/p} = ^{1/2}` is what kills the square.) For `p = ∞`: `q = 1`, so `ε̂ = ρ · sign(g) · |g|^{0} / (‖g‖_1^1)^{0} = ρ · sign(g)` — the pure sign vector, the FGSM-style step. And `p = 1` would put `q = ∞` and concentrate the whole perturbation onto the single largest-gradient coordinate, which is a degenerate way to probe sharpness, so I'll set it aside.
+I also see why the perturbation norm matters. The proof naturally gives an L2 ball, and for `p = 2` the adversary keeps the gradient's magnitude structure. A sign step from `p = infinity` throws away that structure; an `L1` perturbation would concentrate on one coordinate. The default should be the L2 perturbation, with `rho` as the neighborhood radius.
 
-Now substitute `ε̂(w)` back and differentiate the objective. The SAM loss is `L_S^{SAM}(w) = L_S(w + ε̂(w))` (using the maximizer for the inner max), so by the chain rule, treating `w + ε̂(w)` as the argument,
+The minibatch version changes the meaning slightly. The clean objective is over the whole training set, but practical training computes the perturbation on a batch, and in data parallel training often on each accelerator shard. If each shard constructs its own adversarial perturbation and only the final gradients are averaged, I am not measuring one global sharpness. I am measuring a smaller-subset sharpness. That is not a bug in the implementation; it can be a better diagnostic because each small subset has its own local wall, and empirically smaller subsets can correlate better with generalization.
 
-  `∇_w L_S^{SAM}(w) ≈ ∇_w [ L_S(w + ε̂(w)) ] = (d(w + ε̂(w))/dw)^T · ∇L_S |_{w + ε̂(w)}`
-            `= ∇L_S|_{w+ε̂(w)} + (dε̂(w)/dw)^T · ∇L_S|_{w+ε̂(w)}`.
+The final method is therefore simple enough to fit into existing training. It asks for one new hyperparameter, `rho`. It uses the existing loss, the existing model, and the existing base optimizer. Its update is:
 
-The first term is just: evaluate the ordinary gradient of `L_S`, but at the *perturbed* point `w + ε̂(w)` instead of at `w`. The second term is the annoying one: `dε̂(w)/dw`. Since `ε̂` is built from `∇_w L_S(w) = g(w)`, its derivative in `w` pulls down a `dg/dw`, which is the Hessian of `L_S`. So this term implicitly involves the Hessian.
+`g = grad L_B(w)`,
 
-Do I have to compute it? Not the full Hessian — `dε̂/dw` only ever multiplies a vector here, so it shows up as a Hessian-vector product, and HVPs are cheap (one extra backward, no `k×k` matrix ever materialized). So I *could* keep it. But let me count the cost of keeping it versus dropping it, and ask whether it even helps. If I drop the second term entirely, the gradient approximation collapses to
+`epsilon_hat = rho * g / (||g||_2 + small_eps)`,
 
-  `∇_w L_S^{SAM}(w) ≈ ∇_w L_S(w) |_{w + ε̂(w)}`,
+`g_local = grad L_B(w + epsilon_hat)`,
 
-which is beautifully simple: it's exactly the *ordinary* batch gradient, just computed at the ascended point `w + ε̂(w)`. No second derivatives at all. The whole procedure becomes: figure out the worst-case direction `ε̂` at `w` (needs one gradient at `w`), step there, take the ordinary gradient at the perturbed point, and use *that* to update the original `w`.
+then update `w` with `g_local`.
 
-Is dropping the Hessian term legitimate, or am I throwing away the signal? Two reasons it's fine, maybe even better. First, intuitively, the dominant effect of being in a sharp region is already captured: I evaluated the gradient where the loss is *highest* in the neighborhood, so I'm descending the worst case, and the curvature-correction term is a second-order refinement of *where exactly* the max sits. Second — and this is the one that actually settles it for me — if I imagine running it both ways and comparing, keeping the second-order term doesn't buy generalization; if anything it can hurt, and the first-order updates track the full updates closely (their directions stay nearly aligned through most of training, only drifting near convergence). So the more expensive version isn't the more accurate-where-it-matters version. Drop it. The reason that the cheap thing generalizes at least as well as the expensive thing is genuinely a little mysterious, and worth probing later, but as an engineering decision it's clear: drop the second-order term.
-
-So now the full step, concretely, as a thing SGD can drive. One SAM update of `w`:
-
-  1. Compute `g = ∇_w L_B(w)` on the current batch `B` — one forward, one backward at `w`.
-  2. Form `ε̂(w) = ρ · g / ‖g‖₂` (taking `p = 2`).
-  3. Ascend: move to `w + ε̂(w)`.
-  4. Compute `g_SAM = ∇_w L_B(w) |_{w + ε̂(w)}` — a second forward and backward, at the perturbed point.
-  5. Restore `w`, and apply the descent there with the base optimizer: `w ← w − η · g_SAM`.
-
-Two backward passes per step. That's the price: SAM costs `2×` a normal step, so to compare fairly against plain SGD I should let plain SGD run twice as many epochs. The `‖g‖₂` in step 2 needs a tiny `+1e-12` so I never divide by zero when the gradient happens to vanish.
-
-Which `p`? The bound was derived at `p = 2`, and `p = 2` gives the cleanest `ε̂ = ρ g/‖g‖₂`. If I think about `p = ∞` (the sign step) versus `p = 2`, the sign step throws away all the *magnitude* structure of the gradient and treats every coordinate as equally worth perturbing, which seems wasteful when some directions are far steeper than others. And against a *random* perturbation of the same Euclidean norm — `ε̂ = ρ z/‖z‖₂`, `z ∼ N(0,I)` — the adversarial (gradient-aligned) choice should win, because random noise mostly probes flat directions and only occasionally hits a steep one, whereas `ε̂ = ρ g/‖g‖₂` aims straight up the steepest local direction, which is exactly where sharpness lives. So `p = 2`, adversarial, is the default; `ρ` I'll tune over a small grid like `{0.01, 0.02, 0.05, 0.1, 0.2, 0.5}`, and `0.05` looks like a robust default I can fall back on without tuning.
-
-There's one more thing I glossed. My derivation defined the inner `max` over the *whole* training set `L_S`. But in practice I compute `ε̂` on a *batch* — and if I'm on multiple accelerators, I compute it independently on each shard of size `m` and then average the resulting SAM gradients, rather than first averaging gradients across shards and then doing a single `ε̂`. Is that the same objective? No, and the difference is interesting. Averaging per-shard SAM updates is equivalent to changing the objective to a *sum of independent `ε`-maximizations*, each over a disjoint subset of `m` points, instead of one `ε`-maximization over the global sum. Call the sharpness this induces `m`-sharpness. As `m` shrinks, each maximization is over fewer points, so each `ε̂` is sharper-tailored to its little subset, and empirically smaller `m` generalizes *better* — and, intriguingly, the `m`-sharpness measure with `m < n` correlates with the actual generalization gap *better* than the full-batch sharpness my theorem started from. That's a happy accident: the thing I'm forced to do for parallelism (not syncing the perturbations across accelerators) is also the thing that generalizes best. So I won't sync `ε̂`; I'll compute it per-shard.
-
-Let me also double check the *sign* in the ascend step, because it's the easiest place to flip something and silently get plain SGD with extra steps. The inner problem is a `max` of the loss. So `ε̂` points *uphill*: `ε̂ = +ρ g/‖g‖₂`, and I *add* it to `w` to climb to the local worst case. Then I compute the gradient there and *descend* on `w` (subtract `η g_SAM`). Add to climb, subtract to descend — both signs are as they should be. If I'd subtracted in the ascend step I'd be evaluating the gradient at a *lower*-loss nearby point, which is the opposite of probing sharpness.
-
-Now to code. The clean way is to make this an optimizer wrapper around a base optimizer (SGD, Adam, whatever), with two methods: a `first_step` that does the ascend, and a `second_step` that restores and does the descent through the base optimizer. The training loop hands the optimizer a closure that does a forward-backward, so the optimizer can recompute the gradient at the perturbed point.
-
-```python
-import torch
-
-class SAM(torch.optim.Optimizer):
-    def __init__(self, params, base_optimizer, rho=0.05, adaptive=False, **kwargs):
-        assert rho >= 0.0, f"Invalid rho, should be non-negative: {rho}"
-        defaults = dict(rho=rho, adaptive=adaptive, **kwargs)
-        super().__init__(params, defaults)
-        # SAM wraps an ordinary optimizer; the descent in step 5 is delegated to it.
-        self.base_optimizer = base_optimizer(self.param_groups, **kwargs)
-        self.param_groups = self.base_optimizer.param_groups
-        self.defaults.update(self.base_optimizer.defaults)
-
-    @torch.no_grad()
-    def first_step(self, zero_grad=False):
-        # steps 1-3: with g already on .grad (from a backward at w),
-        # build e_hat = rho * g / ||g||_2 and ASCEND to w + e_hat.
-        grad_norm = self._grad_norm()                 # ||g||_2 over all params
-        for group in self.param_groups:
-            scale = group["rho"] / (grad_norm + 1e-12) # rho / ||g||  (avoid /0)
-            for p in group["params"]:
-                if p.grad is None: continue
-                self.state[p]["old_p"] = p.data.clone()           # remember w
-                # adaptive variant rescales per-weight by w^2 (scale-invariant); off by default
-                e_w = (torch.pow(p, 2) if group["adaptive"] else 1.0) * p.grad * scale.to(p)
-                p.add_(e_w)                                        # w <- w + e_hat  (climb)
-        if zero_grad: self.zero_grad()
-
-    @torch.no_grad()
-    def second_step(self, zero_grad=False):
-        # step 5: with .grad now holding g_SAM (a backward at w + e_hat),
-        # restore w and let the base optimizer take the descent step.
-        for group in self.param_groups:
-            for p in group["params"]:
-                if p.grad is None: continue
-                p.data = self.state[p]["old_p"]   # back to w from w + e_hat
-        self.base_optimizer.step()                # w <- w - eta * g_SAM  (the real, sharpness-aware step)
-        if zero_grad: self.zero_grad()
-
-    @torch.no_grad()
-    def step(self, closure=None):
-        assert closure is not None, "SAM needs a closure that does a full forward-backward"
-        closure = torch.enable_grad()(closure)
-        self.first_step(zero_grad=True)   # ascend, then clear g
-        closure()                         # step 4: recompute gradient g_SAM at w + e_hat
-        self.second_step()                # restore w, descend
-
-    def _grad_norm(self):
-        # ||g||_2 over the whole parameter vector (one scalar). Per-shard => m-sharpness.
-        shared_device = self.param_groups[0]["params"][0].device
-        norm = torch.norm(
-            torch.stack([
-                ((torch.abs(p) if group["adaptive"] else 1.0) * p.grad).norm(p=2).to(shared_device)
-                for group in self.param_groups for p in group["params"]
-                if p.grad is not None
-            ]), p=2)
-        return norm
-```
-
-And the training loop, where the closure is what lets the optimizer get a second gradient at the perturbed weights:
-
-```python
-def train_step(model, x, y, optimizer, loss_fn):
-    # first forward-backward: gradient g at w (for building e_hat)
-    enable_running_stats(model)                 # batchnorm: count this pass normally
-    loss = loss_fn(model(x), y)
-    loss.backward()
-    optimizer.first_step(zero_grad=True)        # ascend to w + e_hat
-
-    # second forward-backward: gradient g_SAM at w + e_hat
-    disable_running_stats(model)                # don't let the 2nd pass pollute BN stats
-    loss_fn(model(x), y).backward()
-    optimizer.second_step()                     # restore w, descend with base optimizer
-    return loss
-```
-
-So the whole causal chain: training loss alone is underdetermined among many equal-loss minima that generalize differently → flatness of the basin is what tracks generalization, and PAC-Bayes turns that into a real upper bound whose key term is the worst-case loss in a `ρ`-ball → so minimize `max_{‖ε‖≤ρ} L_S(w+ε)` (plus weight decay standing in for the bound's `‖w‖²` term) → the inner max is intractable but linearizes, and the linear-objective-over-a-`ρ`-ball is a dual-norm problem with closed form `ε̂ = ρ·sign(g)|g|^{q-1}/(‖g‖_q^q)^{1/p}`, which for `p=2` is just `ρ g/‖g‖₂` → differentiating the composite gives the gradient at the ascended point plus a Hessian-vector term that I drop, both for speed and because the cheap version generalizes at least as well → leaving a two-pass update (ascend to `w+ε̂`, take the ordinary gradient there, descend at `w`) that any base optimizer can drive, costing `2×` per step, with the per-shard `m`-sharpness variant being a free generalization bonus from parallelism.
+I can now name the thing: sharpness-aware minimization. The name matters less than the reframing. Generalization is treated as a local property of the loss surface, not as the loss at an isolated point. The hard local adversary is made cheap by a first-order dual-norm approximation, and the outer update is made cheap by ignoring the Hessian term and using the ordinary gradient at the worst nearby weights.

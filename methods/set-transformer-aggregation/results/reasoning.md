@@ -149,3 +149,32 @@ decisively, self-attention among the variables before pooling — at `O(V²)` pe
 for `V = 48` and does not touch the backbone's `h·w` sequence. LayerNorm on, `num_heads = 16`, one SAB
 block, one PMA seed, no positional encoding, no dropout: the minimal Set-Transformer pooling that captures
 inter-variable structure the fixed reductions cannot.
+
+## Minimal code sketch
+
+A tiny attention-based pooling stub that realizes the core idea — variables attend to each other, then a
+learnable seed summarizes the set:
+
+```python
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class SetTransformerAggregator(nn.Module):
+    def __init__(self, dim, num_heads):
+        super().__init__()
+        self.dim = dim
+        self.num_heads = num_heads
+        self.sab = nn.MultiheadAttention(dim, num_heads, batch_first=True)
+        self.seed = nn.Parameter(torch.randn(1, 1, dim))
+        self.pma = nn.MultiheadAttention(dim, num_heads, batch_first=True)
+        self.ln = nn.LayerNorm(dim)
+
+    def forward(self, x):                 # x: [B, V, L, D]
+        b, v, l, d = x.shape
+        x = x.permute(0, 2, 1, 3).reshape(b * l, v, d)
+        z, _ = self.sab(x, x, x)         # variables interact
+        s = self.seed.expand(b * l, 1, d)
+        out, _ = self.pma(s, z, z)       # seed pools the set
+        return out.squeeze(1).reshape(b, l, d)
+```

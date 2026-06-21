@@ -4,26 +4,21 @@
 
 Over-parameterized neural networks have many global minimizers that all achieve
 (near-)zero training loss yet generalize very differently. Which minimizer an
-optimizer settles into — its *implicit bias* — is therefore a central determinant of
-test performance. For full-batch gradient descent and gradient flow the implicit bias
-is fairly well understood (max-margin, min-norm, kernel limits). The harder and more
-practically relevant question concerns *stochastic* and *adaptive* training: once the
-loss is essentially zero and the iterate has reached a connected set of minimizers,
-what slow force continues to act, and toward what kind of solution does it push?
+optimizer settles into — its *implicit bias* — is a central determinant of test
+performance. For full-batch gradient descent and gradient flow the implicit bias is
+fairly well understood (max-margin, min-norm, kernel limits). A question for
+*stochastic* and *adaptive* training is: once the loss is essentially zero and the
+iterate has reached a connected set of minimizers, what slow force continues to act,
+and toward what kind of solution does it push?
 
 For plain stochastic gradient descent this force is known: gradient noise induces a
 drift that reduces a sharpness measure of the loss, and sharpness has long correlated
-with generalization. But the optimizer that actually trains modern models is almost
-never plain SGD — it is an adaptive method that rescales each coordinate's step by a
-running estimate of the gradient's second moment. The precise problem is: **give a
-rigorous, long-horizon (not just a short transient) characterization of the implicit
-bias of adaptive gradient methods near a manifold of minimizers, and pin down exactly
-how it differs from SGD's** — including whether the per-coordinate rescaling changes
-*which* sharpness measure is reduced, and whether that helps or hurts generalization.
-A solution must be valid for the full timescale over which the implicit
-regularization actually plays out (empirically `O(η⁻²)` steps), must not rely on
-artificial assumptions like vanishingly small gradients, and ideally should cover a
-whole family of adaptive methods at once rather than a single hand-tuned case.
+with generalization. The optimizers that train modern models are largely adaptive
+methods that rescale each coordinate's step by a running estimate of the gradient's
+second moment. The setting here is to **characterize the implicit bias of adaptive
+gradient methods near a manifold of minimizers** — what slow motion they undergo on
+the manifold, which sharpness measure (if any) that motion is associated with, and how
+that compares to SGD.
 
 ## Background
 
@@ -44,13 +39,11 @@ is trapped near such a `Γ`.
 **Two phases.** Stochastic optimizers spend `Õ(η⁻¹)` steps converging onto `Γ`, then
 linger for `O(η⁻²)` steps during which a much slower, implicit-regularization motion
 dominates. A first-order ("conventional") SDE approximation
-`dθ = -∇L dt + √η Σ^{1/2} dW` faithfully tracks the *convergence* phase, but its
-approximation error cannot be controlled once the iterate is on the manifold — exactly
-the regime where the implicit bias lives. Capturing the manifold phase requires a
-different device that peels the fast convergence off and follows only the slow drift,
-by projecting the trajectory onto `Γ` via the gradient-flow map `Φ` (whose Jacobian on
-`Γ` is the orthogonal projector onto the tangent space `T_ζΓ`). This projected
-description remains accurate for the full `O(η⁻²)` horizon.
+`dθ = -∇L dt + √η Σ^{1/2} dW` tracks the *convergence* phase. A separate device for the
+manifold phase peels the fast convergence off and follows the slow drift by projecting
+the trajectory onto `Γ` via the gradient-flow map `Φ` (whose Jacobian on `Γ` is the
+orthogonal projector onto the tangent space `T_ζΓ`); this projected description
+remains accurate for the full `O(η⁻²)` horizon.
 
 **The drift for SGD.** For SGD this slow, projected dynamics is a stochastic process
 on `Γ` whose drift is the negative *semi-gradient* (differentiate only the first
@@ -85,73 +78,58 @@ landscapes make the choice of sharpness target directly visible.
 **Adaptive methods.** Adaptive optimizers maintain an exponential moving average of a
 per-coordinate (or per-block, per-layer, or Kronecker-factored) second moment of the
 gradient and divide the momentum step by (a power of) it: a parameter-dependent
-preconditioner `S`. Whether convergence onto a manifold even holds is delicate: with the
-second-moment decay rate too far from 1 these methods can fail to converge, a
-long-standing concern. Prior attempts to characterize their implicit bias were either
-restricted to a 2-D loss with a non-rigorous quasistatic approximation, valid only for
-the short `Õ(η⁻¹)` transient, dependent on the unrealistic assumption that every
-gradient coordinate is below the stabilizing constant, or limited to linearly
-separable data — leaving the long-horizon manifold behavior of adaptive methods open.
+preconditioner `S`. The second-moment decay rate `β2` governs how quickly that running
+estimate adapts. Existing characterizations of their implicit bias include a 2-D loss
+analyzed with a quasistatic approximation over the `Õ(η⁻¹)` transient, an analysis
+that assumes every gradient coordinate is below the stabilizing constant, and a
+treatment limited to linearly separable data.
 
 ## Baselines
 
 **Plain SGD (`θ_{k+1} = θ_k − η ∇ℓ_k(θ_k)`).** The reference point. Near `Γ`, its
 slow projected dynamics reduces a Hessian-and-noise sharpness measure; under label
-noise this is exactly `tr(∇²L)`. Gap: SGD is rarely used to train modern models, and
-its analysis leans on the noise entering the update *unmodified* (and on rotational
-equivariance), so it says nothing directly about preconditioned updates.
+noise this is exactly `tr(∇²L)`. Its analysis relies on the noise entering the update
+unmodified and on rotational equivariance.
 
 **Blanc et al. (2020) — Ornstein–Uhlenbeck analysis of label-noise SGD.** Showed
 that near a zero-loss point, label-noise SGD behaves like an OU process and locally
 decreases `tr(∇²L)`, moving away from a minimizer iff the trace is not locally
-minimal. Gap: a *local* statement valid only for `Õ(η⁻¹·⁶)` steps and specific to
-label noise — too short to capture the full regularization and not a global picture.
+minimal. A local statement valid for `Õ(η⁻¹·⁶)` steps, specific to label noise.
 
 **Damian, Ma, Lee (2021) — label-noise SGD prefers flat minimizers.** Extended the
 trace-reduction bias to constant learning rate, to any sufficiently smooth loss
-satisfying a Kurdyka–Łojasiewicz condition, and to SGD with momentum. Gap: still tied
-to SGD's additive-noise structure; no preconditioning, and the analysis does not
-reach the `O(η⁻²)` manifold timescale in full generality.
+satisfying a Kurdyka–Łojasiewicz condition, and to SGD with momentum. Tied to SGD's
+additive-noise structure, with no preconditioning.
 
 **Li, Wang, Arora (2021) — mathematical framework after SGD reaches zero loss.**
 Introduced the long-horizon projected-SDE device (via a Katzenberger-style giant-step
 limit): track `Φ(θ)` on `Γ` so the fast convergence cancels, leaving a slow drift
 valid for `O(η⁻²)` steps with arbitrary noise covariance; under label noise it reduces
-to gradient flow on `tr(∇²L)`. Gap: the derivation is specific to SGD — it uses the
-noise entering the gradient directly and the rotational structure that lets one
-diagonalize the Hessian and treat `Γ` as a coordinate subspace; it does not extend to
-a parameter-dependent preconditioner.
+to gradient flow on `tr(∇²L)`. The derivation uses the noise entering the gradient
+directly and the rotational structure that lets one diagonalize the Hessian and treat
+`Γ` as a coordinate subspace.
 
 **Gu, Lyu, Huang, Arora (2023) — long-horizon SDE for local SGD.** Cast the same
 device in a form designed to generalize across optimizers and supplied reusable
 giant-step moment lemmas (first- and second-moment change of the projection over one
-giant step). Gap: instantiated for local SGD, a communication variant; the
-preconditioned case is not treated.
+giant step), instantiated for local SGD, a communication variant.
 
 **Wang et al. (2023) — marginal value of momentum.** Proved SGD and SGD-with-momentum
-share the *same* slow SDE at small learning rate. Useful prior: momentum (the first
-moment) does not, by itself, change the implicit bias — a fact any adaptive-method
-analysis can lean on. Gap: only the first moment; says nothing about the
-second-moment preconditioner that distinguishes adaptive methods.
+share the *same* slow SDE at small learning rate, i.e. momentum (the first moment)
+does not, by itself, change the implicit bias.
 
 **Conventional SDEs for SGD and adaptive methods (Li et al.; Malladi et al.).**
-First-order weak approximations of the *iteration itself*. Gap: accurate only on the
-`Õ(η⁻¹)` convergence phase; error is uncontrolled on the manifold, so they cannot
-expose the implicit bias.
+First-order weak approximations of the *iteration itself*, accurate on the `Õ(η⁻¹)`
+convergence phase.
 
 **Implicit-gradient-regularization for adaptive methods (Cattaneo et al. 2024).**
 Derived higher-order ODE corrections suggesting full-batch adaptive updates with
-constant learning rate can *anti*-regularize sharpness when `β1 < β2`. Gap: valid only
-for an `Õ(η⁻¹)` horizon and the full-batch / deterministic regime — it does not see
-the long-horizon, noise-driven behavior.
+constant learning rate can *anti*-regularize sharpness when `β1 < β2`, over an
+`Õ(η⁻¹)` horizon in the full-batch / deterministic regime.
 
 **Existing convergence guarantees for adaptive methods.** Prior bounds variously
 assume convexity, use `1/√t` decaying step sizes, do not vanish as `η→0`, or bound
-only the *average* gradient norm or the loss *in expectation*. Gap: the manifold
-analysis needs a *high-probability* bound on the *last-iterate* optimality gap that
-goes to zero with `η`, holds for a whole family of adaptive methods, and is compatible
-with a second-moment decay rate scaling as `Θ(η²)` — none of the prior bounds deliver
-this.
+only the *average* gradient norm or the loss *in expectation*.
 
 ## Evaluation settings
 
@@ -172,7 +150,7 @@ hyperparameters.
 **Deep matrix factorization with label noise.** `L`-layer linear network
 (`L = 2, 5`), product `W_L⋯W_1` fit by MSE to linear measurements of a low-rank
 ground-truth matrix `M*`, Gaussian label noise per step. Tracked quantities over
-training: `tr(H)`, `tr(Diag(H)^{1/2})`, and the train/test MSE. Standard adaptive
+training: `tr(H)` and the train/test MSE. Standard adaptive
 hyperparameters `β1=0.9`, `β2=0.999`, lr `1e-3`; SGD configured to a standard
 matrix-factorization protocol.
 

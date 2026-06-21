@@ -95,32 +95,3 @@ Thus $\langle\psi|\phi\rangle\in\{0,1\}$ in a fixed phase convention: the two ke
 
 The causal chain, end to end: closed-system quantum evolution is linear and unitary; a copier would have to be a single such $U$ producing $|\psi\rangle|\psi\rangle$, which is quadratic in the state, for every $\psi$; linearity carries each superposition branch separately and cannot generate the cross term that squaring needs, so a machine that copies a basis fails on every superposition of it; equivalently, unitarity preserves the input inner product $\langle\psi|\phi\rangle$ while perfect copying would square it to $\langle\psi|\phi\rangle^2$, forcing $\langle\psi|\phi\rangle\in\{0,1\}$ in the stripped case and $|\langle\psi|\phi\rangle|\in\{0,1\}$ physically — only orthogonal, perfectly distinguishable states are copyable. The same linearity makes Bob's reduced density matrix independent of Alice's choice, so the would-be superluminal signal never appears.
 
-```python
-import numpy as np
-
-# States are unit vectors in C^2; the unknown qubit is a|0> + b|1>.
-ket0 = np.array([1, 0], dtype=complex)
-ket1 = np.array([0, 1], dtype=complex)
-
-# A machine that copies the basis {|0>,|1>} onto a blank |0> is CNOT:
-#   |0>|0> -> |0>|0>,  |1>|0> -> |1>|1>.   It is the best a fixed linear box can do.
-CNOT = np.array([[1, 0, 0, 0],
-                 [0, 1, 0, 0],
-                 [0, 0, 0, 1],
-                 [0, 0, 1, 0]], dtype=complex)
-assert np.allclose(CNOT.conj().T @ CNOT, np.eye(4))
-
-# Linearity argument: feed it a superposition; the output is FORCED, and it is
-# not the clone.
-a = b = 1 / np.sqrt(2)
-psi   = a * ket0 + b * ket1                 # |+>
-forced = CNOT @ np.kron(psi, ket0)          # a|00> + b|11>   (entangled)
-clone  = np.kron(psi, psi)                  # a^2|00>+ab|01>+ab|10>+b^2|11>
-assert not np.allclose(forced, clone)       # cross terms missing -> cloning fails
-
-# Inner-product argument: a unitary cloner would need <psi|phi> = <psi|phi>^2,
-# impossible for a non-orthogonal pair like |0> and |+>.
-phi = (ket0 + ket1) / np.sqrt(2)            # <0|+> = 1/sqrt(2)
-ip  = np.vdot(ket0, phi)
-assert not np.isclose(ip, ip * ip)          # 1/sqrt(2) != 1/2 -> not clonable
-```

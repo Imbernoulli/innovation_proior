@@ -16,11 +16,11 @@ where $h:\mathbb{R}^N\to\mathbb{R}^K$ is applied to *each point independently* a
 
 Before I build more on top of this, I want to know whether it's expressive enough to be worth it, or whether I've crippled the model by insisting on a single max-pool bottleneck. Let me try to prove that this form — shared $h$, then $\mathrm{MAX}$, then continuous $\gamma$ — can approximate *any* continuous set function arbitrarily well. "Continuous" here means continuous with respect to Hausdorff distance $d_H$ between sets: small set-perturbations give small changes in $f$, which is exactly the robustness I want a classifier to have.
 
-Let me do it in one dimension first; it'll generalize coordinate-wise. Take $\mathcal X=\{S\subseteq[0,1]:|S|=n\}$ and $f$ continuous w.r.t. $d_H$. Fix $\epsilon>0$. By continuity there's a $\delta_\epsilon$ such that $d_H(S,S')<\delta_\epsilon\Rightarrow|f(S)-f(S')|<\epsilon$. Now discretize: let $K=\lceil 1/\delta_\epsilon\rceil$, which chops $[0,1]$ into $K$ equal intervals, and define $\sigma(x)=\lfloor Kx\rfloor/K$, snapping each point to the left end of its interval. Let $\tilde S=\{\sigma(x):x\in S\}$. Every point moves by less than one interval width $1/K\le\delta_\epsilon$, so $d_H(S,\tilde S)<\delta_\epsilon$, hence $|f(S)-f(\tilde S)|<\epsilon$. So if I can reconstruct $f$ on the *snapped* set $\tilde S$, I'm within $\epsilon$ of $f$ on $S$.
+Let me do it in one dimension first; the higher-dimensional version is the same idea with product cells. Take $\mathcal X=\{S\subseteq[0,1]:|S|=n\}$ and $f$ continuous w.r.t. $d_H$. Fix $\epsilon>0$. By continuity there's a $\delta_\epsilon$ such that $d_H(S,S')<\delta_\epsilon\Rightarrow|f(S)-f(S')|<\epsilon$. Now discretize: let $K=\lceil 1/\delta_\epsilon\rceil$, which chops $[0,1]$ into $K$ equal intervals, and define $\sigma(x)=\lfloor Kx\rfloor/K$, with the endpoint $x=1$ handled by the final cell. Let $\tilde S=\{\sigma(x):x\in S\}$. Every point moves by at most one interval width $1/K\le\delta_\epsilon$, so $d_H(S,\tilde S)\le\delta_\epsilon$; if I want the strict inequality in the continuity condition, I just choose a slightly finer grid. Then $|f(S)-f(\tilde S)|<\epsilon$. So if I can make the network recover enough information about the snapped set $\tilde S$, I'm within the continuity budget of $f$ on $S$.
 
-Now I need to recover $\tilde S$ from a max-pool of per-point features. Define a soft indicator per interval, $h_k(x)=e^{-d(x,[\,\tfrac{k-1}{K},\tfrac{k}{K}\,])}$, where $d$ is point-to-interval distance — it's near $1$ when $x$ is in interval $k$ and decays outside it. Stack them: $\mathbf h(x)=[h_1(x);\dots;h_K(x)]\in\mathbb{R}^K$. Max-pool each coordinate over the set: $v_j=\max_i h_j(x_i)$, and $\mathbf v=\mathrm{MAX}(\mathbf h(x_1),\dots,\mathbf h(x_n))$. The $j$-th coordinate of $\mathbf v$ lights up exactly when *some* point occupies interval $j$ — so $\mathbf v$ is (essentially) the occupancy vector in $\{0,1\}^K$, and it's symmetric in the points by construction. The occupancy vector is in bijection with the snapped set: define $\tau(\mathbf v)=\{(k-1)/K:v_k\ge 1\}$, the set of left-ends of occupied intervals, and then $\tau(\mathbf v(x_1,\dots,x_n))\equiv\tilde S$. Finally let $\gamma:\mathbb{R}^K\to\mathbb{R}$ be a continuous function that agrees with $f\circ\tau$ on occupancy vectors, $\gamma(\mathbf v)=f(\tau(\mathbf v))$. Chaining it all together,
-$$\big|\gamma(\mathbf v(x_1,\dots,x_n))-f(S)\big|=\big|f(\tau(\mathbf v))-f(S)\big|=|f(\tilde S)-f(S)|<\epsilon,$$
-and $\gamma(\mathbf v)=\gamma(\mathrm{MAX}(\mathbf h(x_1),\dots,\mathbf h(x_n)))=(\gamma\circ\mathrm{MAX})(\mathbf h(x_1),\dots,\mathbf h(x_n))$, with $\gamma\circ\mathrm{MAX}$ symmetric. So the architecture *can* approximate any continuous set function, given enough max-pool width $K$. The proof is constructive and tells me something concrete: in the worst case the net is allowed to behave like a voxel-occupancy encoder, partitioning space into $K$ cells. In practice gradient descent will find a smarter probing than uniform voxels — but it's reassuring that the floor is "at least as good as voxelizing," with none of the cubic cost, because I only ever store $K$ numbers, not $K^3$.
+The idealized recovery is simple. For each interval, imagine an occupancy feature that says whether some point of $S$ falls in that interval. Max-pooling those interval features over the points gives a code whose $j$-th coordinate depends only on whether interval $j$ is occupied, not on the order of the points. A map $\tau$ can send that occupancy code back to the set of occupied left endpoints, so $\tau(\mathrm{MAX}_i h(x_i))=\tilde S$ in the hard-indicator version, and a following continuous $\gamma$ can match $f\circ\tau$ on those finitely many grid codes. The only subtlety is that hard indicators are discontinuous. If I instead use continuous soft interval functions such as $h_k(x)=e^{-d(x,I_k)}$, absent intervals do not become literal zeros; they take values below $1$. So I should not pretend the soft max-pooled vector is exactly in $\{0,1\}^K$. What I need is weaker and enough: choose continuous bump features and a continuous $\gamma$ that is stable on neighborhoods of the finite grid codes, and spend part of the error budget on this continuous approximation. Then
+$$\left|\gamma\left(\mathrm{MAX}_{x_i\in S}h(x_i)\right)-f(S)\right|<\epsilon$$
+for sufficiently many pooled coordinates. So the architecture can approximate any continuous set function, given enough max-pool width $K$. The proof is constructive and tells me something concrete: in the worst case the net is allowed to behave like a voxel-occupancy encoder, partitioning space into cells. In practice gradient descent can find a smarter probing than uniform voxels, but the useful floor is "at least an occupancy-style summary," with no dense cubic grid stored by the network.
 
 That same proof immediately raises a sharper question I should chase, because the answer is the model's robustness story. Look at the pooled vector $\mathbf u(S)=\mathrm{MAX}_{x\in S}\,h(x)\in\mathbb{R}^K$, with $f=\gamma\circ\mathbf u$. How much of the input set actually *determines* the output? Claim: $f(S)$ is decided by at most $K$ points. Here's why. Since $f$ factors through $\mathbf u$, I only need to understand what fixes $\mathbf u$. For each of the $K$ output coordinates $j$, the max $\mathbf u_j(S)=\max_i h_j(x_i)$ is achieved by *at least one* point — call it $x_j$, the argmax for that coordinate. Collect these argmaxes, $\mathcal C_S=\{x_1,\dots,x_K\}$ (at most $K$ of them, possibly fewer since one point can win several coordinates). Then $\mathbf u(\mathcal C_S)=\mathbf u(S)$ — keeping just those points reproduces every coordinate's maximum — so $f(\mathcal C_S)=f(S)$. And now the two-sided robustness. On the one hand I can *delete* any non-argmax point and the maxes are untouched. On the other hand I can *add* any point $x$ whose features lie below the current maxima, $h(x)\le\mathbf u(S)$ in every coordinate, and again the element-wise max is unchanged. Let $\mathcal N_S$ be $\mathcal C_S$ together with all such addable points. Then for *any* set $T$ sandwiched between them, $\mathcal C_S\subseteq T\subseteq\mathcal N_S$, we get $\mathbf u(T)=\mathbf u(S)$, hence $f(T)=f(S)$. So the output is invariant to throwing away non-critical points and to inserting noise points (as long as their features don't exceed the maxima), and it's pinned down by a *critical set* $\mathcal C_S$ of at most $K=$ the max-pool dimension. That's why this thing should be remarkably robust to missing data and outliers — it summarizes a shape by a sparse set of key points, and I'd bet those key points trace out the skeleton of the object. And it tells me the max-pool width $K$ isn't a free knob: it's the *bottleneck dimension*, the number of distinct features I can notice, so it should directly govern how finely the model can discriminate shapes — too small and I can't cover the space, so I'd expect accuracy to climb as I widen $K$ and then saturate.
 
@@ -32,62 +32,69 @@ The same idea should help in *feature* space, not just on raw coordinates: inser
 $$L_{\text{reg}}=\big\|I-AA^\top\big\|_F^2,$$
 where $A$ is the predicted feature-transform matrix and $\|\cdot\|_F$ is the Frobenius norm. With a small weight on this term the feature alignment becomes stable and helps; without it the high-dimensional transform tends to hurt. I don't put this constraint on the $3\times3$ input transform — at that size the regression is well-behaved on its own.
 
-Let me assemble the whole classification pipeline and then say how segmentation branches off. Take the $n$ input points, $(x,y,z)$ each. Run the input alignment net, get a $3\times3$ matrix, multiply the coordinates by it. Apply a shared MLP to lift each point to $64$ features. Run the feature alignment net, get a $64\times64$ matrix (orthogonality-regularized), apply it to the per-point features. Apply another shared MLP raising each point to $128$ then $1024$ features. Max-pool over the $n$ points to get a single $1024$-dim global descriptor. For classification, pass that through fully connected layers $512\to256\to k$, with batch norm and ReLU on the hidden layers and dropout on the last hidden layer for regularization. For segmentation, take the $1024$-dim global feature, concatenate it onto each point's $64$-dim local feature, and run a shared MLP down to $m$ per-point scores. The training loss is the softmax cross-entropy for the labels plus the orthogonality regularizer on the feature transform, with a small weight.
+Let me assemble the whole classification pipeline and then say how segmentation branches off. Take the $n$ input points, $(x,y,z)$ each. Run the input alignment net, get a $3\times3$ matrix, multiply the coordinates by it. Apply a shared MLP to lift each point to $64$ features. Run the feature alignment net, get a $64\times64$ matrix (orthogonality-regularized), apply it to the per-point features. Apply another shared MLP raising each point through $64$, $128$, then $1024$ features. Max-pool over the $n$ points to get a single $1024$-dim global descriptor. For classification, pass that through fully connected layers $512\to256\to k$, with batch norm and ReLU on the hidden layers and keep-probability $0.7$ dropout after each hidden fully connected layer. For basic segmentation, take the $1024$-dim global feature, concatenate it onto each point's $64$-dim local feature, and run shared layers $512\to256\to128\to128\to m$ for per-point scores. The training loss is the softmax cross-entropy for the labels plus the orthogonality regularizer on the feature transform, with a small weight.
 
-Now to real code, grounded in a standard implementation. The shared per-point MLP is most naturally a stack of $1\times1$ convolutions over the point axis (the convolution shares one small MLP across all $n$ points, which is precisely $h$), batch-normed and ReLU'd; the max-pool is a reduction over the point axis; the T-nets are mini versions of the same backbone whose final linear layer is biased to output the identity matrix.
+Now I can write the implementation. The shared per-point MLP is a stack of $1\times1$ convolutions over the point axis, batch-normed and ReLU'd except at score layers; the max-pool is a reduction over the point axis; the T-nets are mini versions of the same backbone. To start exactly at "no transform," I should initialize the final affine layer of each T-net with zero weights and an identity bias, rather than adding identity on top of a randomly initialized transform.
 
 ```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+class SharedMLP(nn.Module):
+    def __init__(self, sizes, activate_last=True):
+        super().__init__()
+        blocks = []
+        for i, (a, b) in enumerate(zip(sizes[:-1], sizes[1:])):
+            last = i == len(sizes) - 2
+            layers = [nn.Conv1d(a, b, 1)]
+            if activate_last or not last:
+                layers += [nn.BatchNorm1d(b), nn.ReLU()]
+            blocks.append(nn.Sequential(*layers))
+        self.net = nn.Sequential(*blocks)
+
+    def forward(self, x):
+        return self.net(x)
+
 class TNet(nn.Module):
-    """Alignment net (T-net): regress a kxk transform, initialized to identity.
-       Built from the same parts as the main net: shared per-point MLP, max-pool,
-       fully connected layers."""
     def __init__(self, k):
         super().__init__()
         self.k = k
-        self.conv = nn.Sequential(                       # shared per-point MLP h
-            nn.Conv1d(k, 64, 1),   nn.BatchNorm1d(64),   nn.ReLU(),
-            nn.Conv1d(64, 128, 1), nn.BatchNorm1d(128),  nn.ReLU(),
-            nn.Conv1d(128, 1024, 1), nn.BatchNorm1d(1024), nn.ReLU())
-        self.fc = nn.Sequential(
-            nn.Linear(1024, 512), nn.BatchNorm1d(512), nn.ReLU(),
-            nn.Linear(512, 256),  nn.BatchNorm1d(256), nn.ReLU(),
-            nn.Linear(256, k * k))                       # -> flattened transform
+        self.conv = SharedMLP([k, 64, 128, 1024])
+        self.fc1 = nn.Linear(1024, 512)
+        self.bn1 = nn.BatchNorm1d(512)
+        self.fc2 = nn.Linear(512, 256)
+        self.bn2 = nn.BatchNorm1d(256)
+        self.fc3 = nn.Linear(256, k * k)
+        nn.init.zeros_(self.fc3.weight)
+        with torch.no_grad():
+            self.fc3.bias.copy_(torch.eye(k).reshape(-1))
+
     def forward(self, x):                                # x: (B, k, N)
         B = x.size(0)
-        x = self.conv(x).max(dim=2)[0]                   # symmetric max-pool over points
-        x = self.fc(x).view(B, self.k, self.k)
-        # bias toward identity so training starts from "no transform"
-        return x + torch.eye(self.k, device=x.device).unsqueeze(0)
+        x = self.conv(x).max(dim=2).values               # symmetric max-pool over points
+        x = F.relu(self.bn1(self.fc1(x)))
+        x = F.relu(self.bn2(self.fc2(x)))
+        return self.fc3(x).view(B, self.k, self.k)
 
-class PointNet(nn.Module):
+class PointSetNet(nn.Module):
     def __init__(self, num_classes=40, seg=False, m=None):
         super().__init__()
         self.seg = seg
         self.input_tnet   = TNet(3)                      # 3x3 input alignment
         self.feature_tnet = TNet(64)                     # 64x64 feature alignment
-        self.mlp1 = nn.Sequential(                       # h up to 64
-            nn.Conv1d(3, 64, 1),  nn.BatchNorm1d(64), nn.ReLU(),
-            nn.Conv1d(64, 64, 1), nn.BatchNorm1d(64), nn.ReLU())
-        self.mlp2 = nn.Sequential(                       # h up to 1024
-            nn.Conv1d(64, 64, 1),   nn.BatchNorm1d(64),   nn.ReLU(),
-            nn.Conv1d(64, 128, 1),  nn.BatchNorm1d(128),  nn.ReLU(),
-            nn.Conv1d(128, 1024, 1), nn.BatchNorm1d(1024), nn.ReLU())
+        self.mlp1 = SharedMLP([3, 64, 64])               # h up to 64
+        self.mlp2 = SharedMLP([64, 64, 128, 1024])       # h up to 1024
         if seg:
-            self.seg_mlp = nn.Sequential(                # combined local+global -> per-point
-                nn.Conv1d(1024 + 64, 512, 1), nn.BatchNorm1d(512), nn.ReLU(),
-                nn.Conv1d(512, 256, 1),       nn.BatchNorm1d(256), nn.ReLU(),
-                nn.Conv1d(256, 128, 1),       nn.BatchNorm1d(128), nn.ReLU(),
-                nn.Conv1d(128, m, 1))
+            self.seg_mlp = SharedMLP([1024 + 64, 512, 256, 128, 128, m],
+                                     activate_last=False)
         else:
-            self.cls = nn.Sequential(
-                nn.Linear(1024, 512), nn.BatchNorm1d(512), nn.ReLU(),
-                nn.Linear(512, 256),  nn.BatchNorm1d(256), nn.ReLU(),
-                nn.Dropout(0.3),                         # dropout on last hidden layer
-                nn.Linear(256, num_classes))
+            self.fc1 = nn.Linear(1024, 512)
+            self.bn1 = nn.BatchNorm1d(512)
+            self.fc2 = nn.Linear(512, 256)
+            self.bn2 = nn.BatchNorm1d(256)
+            self.drop = nn.Dropout(p=0.3)                # TensorFlow keep_prob=0.7
+            self.fc3 = nn.Linear(256, num_classes)
 
     def forward(self, x):                                # x: (B, 3, N)
         N = x.size(2)
@@ -100,14 +107,17 @@ class PointNet(nn.Module):
         if self.seg:
             g_exp = g.unsqueeze(2).repeat(1, 1, N)             # broadcast global to each point
             return self.seg_mlp(torch.cat([local, g_exp], 1)), A   # per-point scores
-        return self.cls(g), A                                  # class scores
+        g = self.drop(F.relu(self.bn1(self.fc1(g))))
+        g = self.drop(F.relu(self.bn2(self.fc2(g))))
+        return self.fc3(g), A                                  # class scores
 
 def pointnet_loss(pred, label, A, reg_weight=0.001):
     cls = F.cross_entropy(pred, label)
-    # orthogonality regularizer on the feature transform: keep A near orthogonal
-    I = torch.eye(A.size(1), device=A.device).unsqueeze(0)
-    reg = ((I - torch.bmm(A, A.transpose(1, 2))) ** 2).sum(dim=[1, 2]).mean()
+    # Mirrors TensorFlow tf.nn.l2_loss: one half of the sum of squares.
+    I = torch.eye(A.size(1), device=A.device, dtype=A.dtype).unsqueeze(0)
+    diff = torch.bmm(A, A.transpose(1, 2)) - I
+    reg = 0.5 * diff.pow(2).sum()
     return cls + reg_weight * reg
 ```
 
-So the causal chain, start to finish: I refuse to voxelize or render, so I must consume the raw set — and a set is unordered, which kills sorting (no perturbation-stable order exists) and kills sequence models (order can't be trained away, doesn't scale to thousands of points), leaving symmetric aggregation as the only clean route. That fixes the form $f\approx\gamma\circ\mathrm{MAX}\circ h$: a shared per-point MLP followed by max-pooling, which I prove can approximate any continuous set function and whose output is pinned down by at most $K$ critical points — giving both the bottleneck-dimension knob and the robustness to missing/extra points. Segmentation then needs locality, so I concatenate the global descriptor back onto each per-point feature; and rigid/affine invariance comes from letting small alignment nets canonicalize first the coordinates and then the features, the latter kept stable by an orthogonality penalty because a $64\times64$ transform is otherwise too unconstrained to optimize.
+So the causal chain, start to finish: I refuse to voxelize or render, so I must consume the raw set — and a set is unordered, which kills sorting (no perturbation-stable order exists) and kills sequence models (order can't be trained away, doesn't scale to thousands of points), leaving symmetric aggregation as the clean route. That fixes the form $f\approx\gamma\circ\mathrm{MAX}\circ h$: a shared per-point MLP followed by max-pooling, which can approximate any continuous set function with enough pooled coordinates and whose output is pinned down by at most $K$ critical points — giving both the bottleneck-dimension knob and the robustness to missing/extra points. Segmentation then needs locality, so I concatenate the global descriptor back onto each per-point feature; and rigid/affine invariance comes from letting small alignment nets canonicalize first the coordinates and then the features, the latter kept stable by an orthogonality penalty because a $64\times64$ transform is otherwise too unconstrained to optimize.

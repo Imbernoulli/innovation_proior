@@ -1,8 +1,9 @@
-# Wide ResNet (WRN) — synthesis (grounded in arXiv 1605.07146 source + szagoruyko code)
+# Wide ResNet (WRN) — synthesis (grounded in arXiv 1605.07146 source + official szagoruyko code)
 
 ## Source
 - arXiv 1605.07146 (verified). BMVC 2016. LaTeX read in full.
-- Canonical code: szagoruyko/wide-residual-networks pytorch/resnet.py — functional. depth=6n+4, widths [16k,32k,64k], pre-activation basic block BN-ReLU-conv-(dropout)-BN-ReLU-conv, projection 1x1 convdim when ni!=no, group downsample stride at first block of group1,group2. conv0 (3->16), group0 stride1, group1 stride2, group2 stride2, final BN-ReLU, avgpool 8, fc.
+- Canonical code: szagoruyko/wide-residual-networks `models/wide-resnet.lua` and `models/utils.lua` — official Torch/Lua implementation. depth=6n+4, stages [16, 16k, 32k, 64k], pre-activation basic block BN-ReLU-conv-BN-ReLU-(dropout)-conv, projection 1x1 shortcut when channels change, group downsample stride at the first block of groups 2 and 3, fixed 3->16 stem, final BN-ReLU, avgpool 8, fc. Convolutions have no bias and use MSR/He fan-in init `sqrt(2/(kW*kH*nInputPlane))`.
+- Repository caveat: `pytorch/resnet.py` is useful for the no-dropout functional layout, but it omits the paper's dropout option. Use the Torch/Lua model for dropout placement.
 
 ## Pain point / research question (in-frame, mid-2016)
 - Deep residual nets scale to thousands of layers with improving performance. BUT each fraction-of-a-percent of accuracy costs ~doubling the layers → training very deep ResNets has DIMINISHING FEATURE REUSE → very slow to train.
@@ -51,7 +52,7 @@
 ## Dropout in residual blocks (Sec)
 - Widening ↑ params → need regularization. BN already regularizes but requires heavy data augmentation (avoid). Add dropout layer INSIDE each residual block, BETWEEN convolutions (and after ReLU), NOT in the identity path. (Prior work put dropout in identity path → negative effects.)
 - Rationale: perturbs BN in the next residual block, prevents it from overfitting; helps diminishing feature reuse by enforcing learning in different blocks.
-- Dropout p: 0.3 CIFAR, 0.4 SVHN (cross-validated). No extra epochs needed.
+- Dropout p: 0.3 CIFAR, 0.4 SVHN (cross-validated). In the official block it is after the second BN-ReLU and before the second 3x3 convolution. No extra epochs needed.
 - Effect: WRN-28-10 CIFAR-10/100 down 0.11%/0.4%; big on SVHN (no aug → BN overfits → dropout regularizes; WRN-16-8 SVHN 1.81%→1.54%). 16-deep WRN with dropout → 1.64% SVHN.
 - Side observation (diagnostic, on existing ResNet training): after first LR drop, loss + val error suddenly rise and oscillate until next LR drop, caused by WEIGHT DECAY; lowering wd hurts accuracy; dropout partially removes this effect.
 
@@ -87,7 +88,7 @@
 | Basic B(3,3) block, l=2 | block-type study: B(3,3) best (comparable-param blocks ~tie); deepening l=3,4 worse (fewer residual connections → harder optimization); drop bottleneck (it thins, opposite of widening); no filters >3x3 (small filters effective). |
 | Pre-activation order BN-ReLU-conv | trains faster + better than original conv-BN-ReLU (He et al. identity mappings). |
 | widths 16, 16k, 32k, 64k; conv1 fixed 16 | ResNet template (double width when halving map); k scales the three groups, conv1 fixed. |
-| Dropout BETWEEN convs in the block (after ReLU), p=0.3 CIFAR/0.4 SVHN | widening adds params → need regularization; BN alone needs heavy aug; dropout in identity path hurts (prior work); between-conv dropout perturbs next block's BN, fights diminishing feature reuse; biggest effect on SVHN (no aug, BN overfits). |
+| Dropout BETWEEN convs in the block (after the second BN-ReLU), p=0.3 CIFAR/0.4 SVHN | widening adds params → need regularization; BN alone needs heavy aug; dropout in identity path hurts (prior work); branch-only dropout perturbs the residual stream without corrupting the shortcut; biggest effect on SVHN (no aug, BN overfits). |
 | SGD + Nesterov, lr 0.1, wd 5e-4, dampening 0, mom 0.9, batch 128 | standard; wd causes a post-LR-drop oscillation but lowering it hurts accuracy, so keep it (dropout partially mitigates). |
-| depth = 6n+4 | 3 groups × n blocks × 2 convs + conv1 + fc-input = 6n+4 conv layers. |
+| depth = 6n+4 | Official paper/code convention. The implementation enforces `(depth - 4) % 6 == 0` and sets `n = (depth - 4) / 6` blocks per group; avoid re-deriving this as "stem plus fc-input conv." |
 | projection 1x1 only when channels change (group transitions) | identity elsewhere (ResNet convention). |

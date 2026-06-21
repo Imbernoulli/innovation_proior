@@ -1,0 +1,25 @@
+# File:Line Changelog
+
+- `results/answer.md:23` tightened the identity-as-zero case: zero residual output requires zero conv weights and zero BN shift, not a vague "push conv weights toward zero" statement.
+- `results/answer.md:26` replaced scalar `F'(x)+1` gradient language with the exact Jacobian `J_F(x)+I` for the pre-add sum and added the post-add ReLU mask case.
+- `results/answer.md:38` kept bottleneck downsampling on the first 1x1 reduce and projection shortcut, matching the original paper/author Caffe convention.
+- `results/answer.md:98` and `results/answer.md:100` keep the emitted PyTorch bottleneck faithful to the original convention: `conv1` carries the stage-transition stride and `conv2` remains stride 1.
+- `results/answer.md:169` explicitly states that the code follows the original paper/author-code bottleneck convention.
+- `results/reasoning.md:15` made the residual branch zero-function argument exact for BN shifts.
+- `results/reasoning.md:47` removed a posterior CIFAR warm-up aside from the discovery monologue while preserving the ImageNet training constants.
+- `results/reasoning.md:49` corrected the gradient derivation: `ds/dx = J_F(x)+I`, with the post-add ReLU activity mask left-multiplying the exact v1 block Jacobian.
+- `results/reasoning.md:53` removed "modern" framing from the code transition to keep the voice in-frame.
+- `results/reasoning.md:109` and `results/reasoning.md:111` keep the bottleneck stride on the first 1x1 and the 3x3 at stride 1 in the reasoning code.
+- `results/reasoning.md:198` removed a top-level code comment that could be mistaken for a markdown header; the reasoning file now has zero markdown headers outside fenced code.
+- `notes/research_notes.md:10` corrected the canonical bottleneck stride note and recorded TorchVision v1.5 as a later variant, not the paper-faithful artifact.
+- `notes/research_notes.md:20` clarified author Caffe MSRA initialization versus the PyTorch translation's fan-out Kaiming call.
+- `notes/research_notes.md:32` corrected the gradient note to `J_F(x)+I` plus post-add ReLU masking.
+- `notes/research_notes.md:35` through `notes/research_notes.md:37` replaced the old TorchVision-only code note with author Caffe code plus TorchVision comparison.
+- `notes/synthesis_v4.md:17` changed the reconstruction procedure from TorchVision-grounded to paper/author-code-grounded.
+- `notes/synthesis_v4.md:81` through `notes/synthesis_v4.md:86` replaced the incorrect v1.5 stride decision with the original author-code stride placement.
+- `notes/synthesis_v4.md:109` through `notes/synthesis_v4.md:116` corrected the gradient/Jacobian derivation and demoted gradient flow to a secondary explanation.
+- `notes/source_matrix.md:5` through `notes/source_matrix.md:18` added the strict source matrix covering primary, ancestors, explainers, self-account, and code evidence.
+- `notes/discovery_synthesis.md:15` through `notes/discovery_synthesis.md:33` added the corrected reconstruction, code-faithfulness audit, and TorchVision-vs-author-code distinction.
+- `notes/discovery_synthesis.md:37` through `notes/discovery_synthesis.md:41` recorded the posterior-leak/scaffold/voice review.
+- `refs/self_accounts/search_log.md:3` through `refs/self_accounts/search_log.md:14` documented the author self-account search and ICML 2016 tutorial selection.
+- `results/.codex_review.json:1` through `results/.codex_review.json:7` records that no independent review gate was available.

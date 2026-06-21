@@ -49,7 +49,7 @@ Adversarial game (eq minmax): min_θG max_θD E_{I^HR~p_train}[log D(I^HR)] + E_
 
 ## Training details (grounded, line 512-517)
 - Data: 350k random ImageNet images. LR via bicubic downsample r=4 (Gaussian filter then downsample per method section). 16 random 96x96 HR crops per minibatch. Fully convolutional → arbitrary test size.
-- Scaling: LR input → [0,1]; HR → [-1,1]; MSE computed in [-1,1]. VGG feature maps rescaled by 1/12.75 (≈ multiply eq by ≈0.006) to match MSE scale.
+- Scaling: LR input → [0,1]; HR → [-1,1]; MSE computed in [-1,1]. VGG feature maps are rescaled by 1/12.75, which is equivalent for the squared VGG loss to multiplying Eq. 4 by ≈0.006.
 - Adam, β1=0.9. SRResNet: lr 1e-4, 1e6 iterations. SRGAN: pre-init generator with the trained MSE SRResNet (avoid bad local optima); then 1e5 iters at lr 1e-4 then 1e5 at lr 1e-5.
 - Alternate G/D updates, k=1.
 - Test time: BN in eval mode (deterministic on input).
@@ -77,7 +77,7 @@ Adversarial game (eq minmax): min_θG max_θD E_{I^HR~p_train}[log D(I^HR)] + E_
 - Content loss in VGG feature space (not pixel) → feature maps invariant to pixel-shifts; lets texture vary while content matches.
 - VGG54 (deep φ_{5,4}) chosen → higher-level features = content/abstraction, leave texture to the adversarial term; deeper layers more invariant to pixel space.
 - weight 1e-3 on adversarial loss → keep adversarial subordinate; balance content fidelity vs manifold pull.
-- VGG rescale 1/12.75 → put VGG loss on same scale as MSE.
+- VGG feature-map rescale 1/12.75 → squared VGG loss scale ≈0.006, putting it on the MSE scale.
 - Generator = deep ResNet (B=16) + skip → enable very deep generator; skip avoids identity-mapping burden.
 - PReLU in G → learnable negative slope.
 - Sub-pixel conv (PixelShuffle) ×2 ×2 → learn upscaling in LR space; efficient, no bicubic pre-upsample.

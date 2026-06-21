@@ -26,7 +26,7 @@
   - Proof of (a)≡(b): A_1 B_1 + A_2 B_2 = [A_1,A_2][B_1;B_2] (horiz concat of weights, vert concat of responses). A_i = weight of last layer, B_i = output of second-last layer. For C=2 the elementwise add in (a) = A_1B_1+A_2B_2; in (b) the last-layer weight is [A_1,A_2] and concatenated second-last outputs are [B_1;B_2]. So equal.
 - (c) grouped convolution: replace all C low-dim-embedding 1x1 layers with a SINGLE wider 1x1 (256→Cd, e.g. 128-d); the 3x3 is a grouped conv with C groups (input/output Cd channels, each group operates on d=Cd/C channels); then 1x1 (Cd→256). Grouped conv does the splitting. Looks like original bottleneck but wider+sparsely connected.
 - Reformulations give nontrivial topology only for block depth ≥3. Depth-2 block → trivially wide dense module.
-- All three forms strictly equivalent (with BN/ReLU handled correctly). Train all three → same results. Implement (c) — more succinct + faster.
+- For the homogeneous bottleneck template, all three forms are strictly equivalent with BN/ReLU handled correctly. The reformulations do not hold for arbitrary heterogeneous T_i. Train all three → same results. Implement (c) — more succinct + faster.
 
 ## Template & two rules (Sec Template) — from VGG/ResNet
 - (i) blocks producing same-size spatial maps share same hyperparameters (width, filter sizes).
@@ -40,7 +40,7 @@
 - conv4 (14×14): [1×1,512; 3×3,512,C=32; 1×1,1024] ×6.
 - conv5 (7×7): [1×1,1024; 3×3,1024,C=32; 1×1,2048] ×3.
 - global avg pool → 1000-d fc → softmax.
-- 25.0M params, 4.2 GFLOPs (vs ResNet-50: 25.5M, 4.1 GFLOPs). Input/output width of template fixed 256-d (at conv2); widths double each subsample.
+- 25.0M params, 4.2 GFLOPs (vs ResNet-50: 25.5M, 4.1 GFLOPs). Input/output width of template fixed at 256 channels in conv2; widths double each subsample.
 
 ## Model capacity (Sec, Eq capacity)
 - Original ResNet bottleneck: 256·64 + 3·3·64·64 + 64·256 ≈ 70k params (on a given map size).
@@ -82,9 +82,9 @@
 | Aggregate by SUMMATION, set as residual y = x + ΣT_i | matches the inner-product's Σ aggregation; reuses ResNet's residual conditioning (identity shortcut); summation lets the C paths combine into one additive residual. |
 | T_i = bottleneck (1×1 reduce → 3×3 → 1×1 restore) | first 1×1 makes the low-dim embedding (split-transform); needs depth ≥3 for the reformulations to be nontrivial; reuses ResNet's affordable bottleneck. |
 | Expose cardinality C as a new dimension | C sits where D sits in the inner product but is free; controls #complex transformations; empirically more effective than depth/width when those give diminishing returns. |
-| Vary bottleneck width d to hold complexity when changing C | d is isolated from block I/O (fixed 256-d), so changing it doesn't touch depth or block I/O width → clean controlled study of C. params = C·(256d + 9d² + 256d). |
-| C=32, d=4 default | gives ≈70k params matching ResNet bottleneck; bottleneck width ≥4d (accuracy saturates as width shrinks below that — not worthwhile to keep trading width for C). |
-| Implement form (c) grouped convolution | strictly equivalent to (a),(b) but more succinct + faster; grouped conv does the splitting natively. |
+| Vary bottleneck width d to hold complexity when changing C | d is isolated from the fixed 256-channel block I/O, so changing it doesn't touch depth or block I/O width → clean controlled study of C. params = C·(256d + 9d² + 256d). |
+| C=32, d=4 default | gives ≈70k params matching the ResNet bottleneck; the preserved-complexity sweep then supports adopting no bottleneck width smaller than 4d because accuracy saturates as width shrinks. |
+| Implement form (c) grouped convolution | equivalent to (a),(b) for the homogeneous bottleneck case but more succinct + faster; grouped conv does the splitting natively. |
 | Two template rules (same map→same width; halve map→double width) | from VGG/ResNet; equalizes per-block FLOPs across stages; narrows design space to the template. |
 | Shortcut: identity, projection only when dims increase (type B) | from ResNet; keeps most skips free, projects only at stage transitions. |
 | Downsample by stride-2 in the 3×3 of the first block per stage | fb.resnet.torch convention. |

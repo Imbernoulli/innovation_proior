@@ -8,57 +8,50 @@ y = g(U*ᵀ x),   x ~ N(0, I_d),   U* ∈ R^{d×r} column-orthonormal (Haar),   
 g(z) = (1/√r) Σ_{i=1..r} He₃(z_i),   He₃(z) = z³ − 3z.
 ```
 
-All of the label's structure lives in the unknown `r`-dimensional teacher subspace `span(U*)`; the
-input is isotropic. The single thing being designed is the **training recipe** for that frozen
-architecture — and only four hooks of it: how the weights are initialized, how the training data is
-built, the optimizer hyperparameters, and the per-step update rule. The architecture, width, batch
-size (128), training budget (8000 mini-batch steps), and evaluation are fixed. Two things must be
-recovered: the subspace `span(U*)` (so the first layer's row-span aligns with the teacher directions)
-and the link `g` (so the readout fits the cubic). The link `He₃` has **information exponent 3**, which
-is what makes the problem hard: the lowest Hermite degree at which `g` correlates with a single
-direction is 3, so the gradient signal toward an unfound teacher direction is third-order-weak at a
-random start.
+All label structure lives in the unknown `r`-dimensional teacher subspace `span(U*)`; the input is
+isotropic. The only design freedom is the **training recipe** for this frozen architecture, through
+four hooks: weight initialization, training data construction, optimizer hyperparameters, and the
+per-step update rule. The architecture, width, batch size (128), training budget (8000 mini-batch
+steps), and evaluation are fixed. The task is to recover both the subspace `span(U*)` and the link
+`g`. The link has **information exponent 3**: the lowest Hermite degree at which `g` correlates with
+a single direction is 3, so gradient signal toward an unfound teacher direction is weak at a random
+start.
 
-## Prior art before the first rung (the multi-index / feature-learning lineage)
+## Prior art / Background / Baselines
 
-The first rung reacts to a single line: *can a plainly trained two-layer net find the hidden subspace,
-or does the information exponent strangle it?* The ancestors that frame the question:
+Three baselines frame the difficulty.
 
 - **Kernel / random-feature methods (fixed-feature regime).** Freeze the first-layer features and fit
-  only a linear readout. The features never learn *which* directions are `V* = span(U*)`, so a degree-3
-  target costs the full ambient dimension — `Ω(d³)` samples. Gap: no feature learning, pays the
-  ambient dimension.
-- **Single-index information-exponent analysis (Ben Arous, Gheissari, Jagannath 2021).** For a target
-  reading one direction with information exponent `s`, one-pass SGD on the first layer needs `≈ d^{s-1}`
-  samples/steps: at a random start the overlap with the true direction is `O(1/√d)`, the population
-  correlation behaves like `overlap^s`, so its derivative — the actual pull — is `O(overlap^{s-1})`,
-  vanishingly weak for `s ≥ 3`. The iterate diffuses near the uninformative equator for an enormous
-  number of steps. Gap: graded by the exponent, `d²` here, far above the `n ~ d` information floor.
-- **Multi-direction "leap" / saddle-to-saddle SGD (Abbe, Boix-Adserà, Misiakiewicz, COLT 2023;
-  arXiv:2302.11055).** For several directions the analogue is the *leap complexity*: SGD on a two-layer
-  net climbs the directions saddle-to-saddle, picking up Fourier/Hermite components in increasing order,
-  taking `≈ d^{max(Leap, 2)}` steps. A direction only leaves the equator once the directions it is
-  "staircase-connected" to are already found. Gap: still exponent-graded, sequential, and on a bare
-  cubic with no lower-degree ladder it has no staircase to climb.
+  only a linear readout. The features never learn the teacher subspace, so a degree-3 target costs
+  `Ω(d³)` samples. Gap: no feature learning; sample complexity scales with the ambient dimension.
+- **Single-index information-exponent analysis.** For a target reading one direction with information
+  exponent `s`, one-pass SGD on the first layer needs roughly `d^{s-1}` samples/steps; the gradient
+  pull toward the true direction is `O(overlap^{s-1})` and vanishes at small overlap. Gap: for
+  `s = 3` this gives a `d²` wall, far above the `n ~ d` information floor.
+- **Multi-direction saddle-to-saddle SGD.** For several directions, SGD climbs saddle-to-saddle,
+  picking up Hermite components in increasing order; a direction leaves the equator only after the
+  directions it is coupled to are already found. Gap: on a bare cubic with no lower-degree ladder,
+  there is no staircase to climb.
 
-The first rung is exactly this bare regime: vanilla joint SGD on the fixed MLP. It exists to show the
-`d²` wall in the data, so the later rungs can attack it.
+The starting point is vanilla joint SGD on the fixed MLP. It establishes the baseline wall in the
+data, and every subsequent rung modifies the same four-hook interface.
 
-## The fixed substrate
+## Fixed substrate / Code framework
 
 A driver builds the MLP, calls `init_model`, builds an SGD/AdamW optimizer with separate parameter
 groups for the inner (`d → W`) and outer (`W → 1`) layers from `get_optimizer_config`, samples
 `make_dataset` once per teacher, then iterates `training_step` for `max_steps = 8000` mini-batch
-updates (batch 128, reshuffled each epoch). After training it evaluates on a fresh 8192-point test set.
-It is frozen and may not be touched. Helpers it provides and the editable hooks may call:
-`teacher_outputs(x, teacher)` (the label oracle `y = g(U*ᵀ x)`), `hermite3`, `link_function`, and the
-`TaskConfig` fields (`n_features=128`, `rank`, `hidden_width=256`, `batch_size=128`, `max_steps=8000`,
+updates (batch 128, reshuffled each epoch). After training it evaluates on a fresh 8192-point test
+set. It is frozen and may not be touched. Helpers the hooks may call: `teacher_outputs(x, teacher)`
+(the label oracle `y = g(U*ᵀ x)`), `hermite3`, `link_function`, and the `TaskConfig` fields
+(`n_features=128`, `rank`, `hidden_width=256`, `batch_size=128`, `max_steps=8000`,
 `max_train_examples=200_000`). The optimizer is constructed *outside* `training_step`; the step
 receives both the live `optimizer` and the immutable `OptimizerConfig` it was built from. The driver
-also injects Langevin noise itself when `noise_std > 0` (it adds `noise_std·√(2·lr)·N(0,I)` to each
-gradient before `optimizer.step()`), so a recipe can opt into parameter noise purely through the config.
+also injects Langevin noise itself when `noise_std > 0` (it adds
+`noise_std·√(2·lr)·N(0,I)` to each gradient before `optimizer.step()`), so a recipe can opt into
+parameter noise purely through the config.
 
-## The editable interface
+## Editable interface
 
 Exactly one region of `pytorch-examples/synth_multi_index/custom_strategy.py` (lines 251–325) is
 editable: four functions. Every rung on the ladder is a fill of this same contract.
@@ -120,7 +113,7 @@ def training_step(model, optimizer, optimizer_config, batch_x, batch_y, step, co
 
 ## Evaluation settings
 
-The same scaffold is run at three teacher ranks — `r2` (d=128, r=2; easiest), `r3` (r=3), `r4` (r=4;
+The same scaffold runs at three teacher ranks — `r2` (d=128, r=2; easiest), `r3` (r=3), `r4` (r=4;
 hardest, more directions to align) — each over three top-level seeds {42, 123, 456} (one teacher and
 one data ordering per seed). Three metrics per run:
 

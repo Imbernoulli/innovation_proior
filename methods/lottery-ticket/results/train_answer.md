@@ -1,0 +1,44 @@
+Modern neural networks are routinely larger than the functions they end up needing, and post-training pruning makes this concrete: after a dense network has trained successfully, most of its weights can be deleted and the remaining sparse model recovers essentially the same accuracy after a little additional tuning. That settles a question about representation — the learned function is compressible — but it leaves the harder training question untouched. If the final function lives in a much smaller parameter set, why did training require the larger model at all? A sparse model that only exists after the dense model has already done the optimization work saves nothing on the cost of finding it.
+
+The trouble is that every existing option leaves the two things I care about tangled together. Train-prune-fine-tune demonstrates a sparse endpoint can represent the learned function, but it starts the sparse model from values already shaped by dense training, so its success could be nothing more than fine-tuning weights that are already nearly done. The obvious fix — keep the discovered sparse pattern but draw fresh random weights before training — produces an ambiguous failure when it learns slowly or plateaus low: I cannot tell whether the pattern lacks capacity, the optimizer struggles on that pattern, or the original fine-tuning run had quietly depended on weight values inherited from dense training. Random sparse subnetworks of the same size test whether sparsity at a given parameter count is enough, but they never use a mask that a trained dense model actually selected. None of these isolates the variable I suspect is doing the work, which is the original random initialization of the surviving connections.
+
+I propose the Lottery Ticket Hypothesis, together with the method that exposes it: iterative magnitude pruning with reset to the original initialization. The framing is that a dense randomly initialized network is not only a solver but also a search space — a single draw $\theta_0 \sim \mathcal{D}_\theta$ contains an enormous number of overlapping sparse subnetworks, each with its own assignment of initial values, and dense training plus pruning can reveal one whose particular starting point is unusually favorable for gradient descent. Made precise: given $f(x; \theta)$ initialized at $\theta_0$, dense training reaches minimum validation loss at iteration $j$ with test accuracy $a$; the claim is that there exists a binary mask $m$ such that the masked network $f(x; m \odot \theta_0)$, trained in isolation with $m$ held fixed, reaches test accuracy $a' \ge a$ in $j' \le j$ iterations while using far fewer parameters, $\lVert m \rVert_0 \ll \lvert \theta \rvert$. The load-bearing object is the pair — a mask *and* the specific original values under that mask — not the wiring alone and not a trained endpoint.
+
+The mechanism that makes this testable is the reset, and it is the move that overcomes the post-training-pruning obstacle. I use dense training only as a probe: initialize at $\theta_0$, train to $\theta_j$, and prune low-magnitude weights at $\theta_j$ to obtain a mask $m$. Then I refuse to keep $\theta_j$ for the survivors. Each surviving connection is sent back to the value it held in $\theta_0$, and the masked network $m \odot \theta_0$ is trained by itself. Old pruning proves a sparse network exists *after* learning; the reset asks whether the sparse network is trainable *before* learning. Because the survivors no longer sit at a dense-trained solution, success can no longer be explained as "the weights are already done," and because the mask was selected by the dense run rather than sampled blindly, this is not merely a random sparse architecture either. The required control follows directly from what the hypothesis singles out: keep the same mask $m$ but draw a fresh random initialization. If $m \odot \theta_0$ trains fast and accurately while the same mask with a fresh draw learns slower or degrades as sparsity rises, the structure alone is not the explanation and the causal object is the pair; if both work equally, the initialization story collapses. The same sparse shape can stop working when only the initialization changes — that is what makes the claim stronger than "sparse networks work."
+
+Several design choices in the search procedure are deliberate. Pruning is iterative rather than one-shot because a single large cut forces one final-magnitude ranking to identify the entire sparse learner at once; instead I repeatedly train the current masked network, prune a fraction of its survivors, and reset the remaining weights back to the *same* $\theta_0$. The mask accumulates while the starting point stays anchored, so each round lets the current sparse regime reveal which of its surviving connections still matter, and gradual pruning reliably finds smaller trainable subnetworks than a one-shot cut. The pruning rule is layer-wise, not global: a single global magnitude threshold confuses scale differences across layers with importance and can strip one layer too severely, whereas ranking within each layer keeps every layer represented while still removing its lowest-magnitude survivors. The output layer is small and is pruned more gently — in the fully connected MNIST setup the per-round rates are $\{\text{layer0}: 0.2,\ \text{layer1}: 0.2,\ \text{layer2}: 0.1\}$ — because a few unlucky deletions there can damage the class readout before the hidden representation has been tested fairly. Pruning is unstructured, ranking individual weights, because the question is whether *any* sparse set of individual connections can carry the learner, not whether the result is immediately hardware-friendly. The concrete pruning step is exact: sort only the currently surviving weights by absolute value, take the rounded percentile as a cutoff index, and zero every entry whose magnitude is at or below that cutoff while preserving the existing mask elsewhere. For deeper networks the learning rate becomes part of the trainability test, since a subnetwork reset to an early state can be more fragile under large first steps than the dense model; warmup is the least invasive remedy because it softens the early optimization shock without touching the mask, the original values, or the hypothesis itself.
+
+A handful of controls beyond the random-reinit baseline decide whether the object really is the identity of each surviving connection together with its original value. If the selected initial values were already near their trained values I would only have found hidden pretraining, so surviving and removed weights should be compared by how far they move during dense training. If only the marginal distribution of surviving initial values mattered, resampling new values from that distribution should recover the effect. If the secret were merely that initially small weights are useless, pruning before training would suffice. The final interpretation is that overparameterization buys attempts: most sparse learners sampled alone are not lucky, but a dense model holds so many overlapping candidates that the chance of containing a trainable one is high, and SGD plus pruning can expose it after the fact. This is not compression, which speaks only of storing the final function in fewer parameters; not ordinary pruning, which only trims a trained dense model; and not generic sparse training. The distinctive claim is that the dense random initialization already contains a sparse subnetwork that can learn in isolation when it keeps its original starting values, and that post-training magnitude pruning reveals that subnetwork without letting the final dense weights explain the success.
+
+```python
+import numpy as np
+
+def prune_by_percent_once(percent, mask, final_weight):
+    sorted_weights = np.sort(np.abs(final_weight[mask == 1]))
+    cutoff_index = np.round(percent * sorted_weights.size).astype(int)
+    cutoff = sorted_weights[cutoff_index]
+    return np.where(np.abs(final_weight) <= cutoff, np.zeros(mask.shape), mask)
+
+def prune_by_percent(percents, masks, final_weights):
+    return {
+        name: prune_by_percent_once(percent, masks[name], final_weights[name])
+        for name, percent in percents.items()
+    }
+
+def find_ticket(train_fn, prune_per_layer, rounds):
+    initial, final = train_fn(presets=None, masks=None)
+    masks = {name: np.ones(weights.shape) for name, weights in initial.items()}
+
+    for _ in range(rounds):
+        masks = prune_by_percent(prune_per_layer, masks, final)
+        _, final = train_fn(presets=initial, masks=masks)
+
+    return masks, {name: masks[name] * initial[name] for name in masks}
+```
+
+The required control keeps the same masks but discards the original initialization:
+
+```python
+def random_reinit_control(train_fn, masks):
+    return train_fn(presets=None, masks=masks)
+```

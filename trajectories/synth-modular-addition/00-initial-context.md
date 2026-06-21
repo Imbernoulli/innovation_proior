@@ -1,72 +1,26 @@
 ## Research question
 
-On the modular-addition task `y = (a + b) mod p`, can the *grokking* delay — the gap between when a
-network memorizes the training table and when it finally generalizes to the held-out cells — be
-accelerated, or removed, by changing **only** the model architecture, the optimizer and its
-hyperparameters, and an optional per-step gradient hook? Everything else is frozen: the dataset is the
-full `Z_p × Z_p` table, the train/test split is a fixed `train_frac = 0.40` of the `p*p` cells, the
-loss is cross-entropy, optimization is **full-batch**, and there is a hard budget of
-`max_steps = 30000` per run with early stopping once held-out accuracy is sustained above `0.99`. The
-single object being designed is the contents of the editable block — the model, the optimizer, and the
-hook. The benchmark scores three primes (`p=59`, `p=97`, `p=113`) and the aggregate is the geometric
-mean over them of `weighted_mean(score, test_accuracy)`; higher is better. Two derived diagnostics
-decide which fill is better when accuracies tie: `grok_rate` (fraction of seeds that reach the
-threshold inside the budget) and `mean_steps_to_grok` (lower is faster).
+On the modular-addition task `y = (a + b) mod p`, can the *grokking* delay — the gap between when a network memorizes the training table and when it generalizes to the held-out cells — be shortened or removed by changing **only** the model architecture, the optimizer and its hyperparameters, and an optional per-step gradient hook? Everything else is frozen: the full `Z_p × Z_p` table, a fixed `train_frac = 0.40` split, cross-entropy loss, **full-batch** training, and a hard budget of `max_steps = 30000` with early stopping once held-out accuracy sustains `≥ 0.99`. The design object is the contents of the editable block. The benchmark scores three primes (`p = 59`, `p = 97`, `p = 113`); the aggregate is the geometric mean over them of `weighted_mean(score, test_accuracy)`. Higher is better. If accuracies tie, prefer higher `grok_rate` and lower `mean_steps_to_grok`.
 
-## Prior art before the first rung (the grokking lineage)
+## Prior art / Background / Baselines
 
-The first rung does not appear in a vacuum; it is the resolution of a short line of work on delayed
-generalization in tiny algorithmic problems. These are the methods the ladder reacts to, each with the
-gap that the next move is trying to close.
+- **Power et al. (2022).** Train a small decoder-only transformer on held-out algorithmic operation tables; it first memorizes, then after a long plateau suddenly generalizes. Their intervention sweep finds AdamW weight decay is the strongest known knob for reducing the delay. Gap: generalization still takes a long time, and no cheap intervention reliably forces it inside a fixed step budget.
+- **Nanda et al. (2023).** Reverse-engineer a one-layer transformer on modular addition and identify the grokked solution as a discrete-Fourier circuit; they fix a minimal canonical architecture (`d_model = 128`, 4 heads, `d_mlp = 512`, an explicit `=` token, full-batch AdamW with warmup). Gap: the analysis describes the final circuit but does not remove the long training delay.
+- **Gromov (2023).** Shows a two-layer MLP with no biases, quadratic activation, and one-hot inputs also groks on modular addition, and its learned weights encode the same Fourier structure. Gap: this is an architectural existence result, not a recipe for fast, reliable generalization under a fixed budget.
 
-- **Delayed generalization on algorithmic tables (Power, Burns, Edwards, Babuschkin, Misra 2022,
-  arXiv:2201.02177).** Train a small decoder-only transformer on an operation table — `a ∘ b` over a
-  finite set — revealing a fraction of the cells and holding out the rest. Training accuracy saturates
-  in `~10^3` steps; held-out accuracy stays at chance for one-to-three orders of magnitude longer, then
-  climbs to near-perfect. The same paper's interventions sweep shows one lever dominates: AdamW weight
-  decay more than halves the data (and time) needed to generalize, far more than any other knob. Gap:
-  the *mechanism* and the *delay* are left as phenomena — generalization eventually happens, but slowly,
-  and the paper does not give a cheap way to force it sooner.
-- **Reverse-engineering the modular-addition circuit (Nanda, Chan, Lieberum, Smith, Steinhardt 2023,
-  arXiv:2301.05217).** Takes a *one-layer* transformer on `a + b mod p` and shows the grokked network
-  implements a discrete-Fourier algorithm: it embeds each residue on a circle, rotates by the operand
-  angles in attention and the MLP, and reads off the angle of the sum. This fixes a concrete, minimal
-  architecture (`d_model=128`, 4 heads, `d_mlp=512`, an explicit `=` token, full-batch AdamW with a
-  short warmup) as the canonical grokking testbed. Gap: it explains *what* is learned but inherits the
-  same long delay — the Fourier circuit only crystallizes late in training.
-- **Plain MLPs also grok (Gromov 2023, arXiv:2301.02679).** Shows the transformer is not necessary: a
-  two-layer fully-connected network with **no biases**, a **quadratic** activation, and **one-hot**
-  inputs groks on the same modular task, and the grokked first-layer weights are clean sinusoids in the
-  input index — the same Fourier structure, reached by a much simpler model. Gap: it is an architecture
-  result, not yet a recipe for *speed* under a fixed budget.
+## Fixed substrate / Code framework
 
-## The fixed substrate
+The training and evaluation driver is frozen. It builds the full `p*p` table of `(a, b) → (a+b) mod p`, splits it once per seed into a `0.40` train fraction and the rest as test, and runs **full-batch** gradient descent: every step does `optimizer.zero_grad()`, forward pass, `F.cross_entropy(logits, y)`, `loss.backward()`, `hook.post_grad(step)`, then `optimizer.step()`. Held-out accuracy is evaluated every 500 steps; a run is declared "grokked" the first step its test accuracy is `≥ 0.99` over two consecutive windows, then early-stops. A run that never reaches the threshold records `steps_to_grok = max_steps`. The model receives `LongTensor[B, 2]` of `(a, b)` pairs in `[0, p)` and must return `FloatTensor[B, p]` logits; `build_model` must not depend on the split.
 
-The training and evaluation driver is frozen and must not be touched. It builds the full `p*p` table of
-`(a, b) → (a+b) mod p`, splits it once per top-level seed into a `0.40` train fraction and the rest as
-test, and runs **full-batch** gradient descent: every optimizer step uses *all* training pairs. Each
-step does `optimizer.zero_grad()`, a forward pass, `F.cross_entropy(logits, y)`, `loss.backward()`,
-then `hook.post_grad(step)`, then `optimizer.step()`. Held-out accuracy is evaluated every 500 steps;
-a run is declared "grokked" the first step its test accuracy is `≥ 0.99` over two consecutive eval
-windows, at which point it early-stops. A run that never reaches the threshold records
-`steps_to_grok = max_steps` and its latest metrics. A wall-clock safeguard stops a run gracefully
-before the per-seed timeout. The model receives a `LongTensor[B, 2]` of `(a, b)` pairs in `[0, p)` and
-must return `FloatTensor[B, p]` logits; `build_model` must not depend on the split.
+## Editable interface
 
-## The editable interface
+Exactly one region is editable — the block holding three things:
 
-Exactly one region is editable — the block holding three things, and every rung on the ladder is a fill
-of this same contract:
-
-1. `build_model(p, config) -> nn.Module` — the architecture, `forward(x: Long[B,2]) -> Float[B,p]`,
-   plus any helper `nn.Module` classes it needs;
+1. `build_model(p, config) -> nn.Module` — the architecture, `forward(x: Long[B,2]) -> Float[B,p]`, plus any helper `nn.Module` classes it needs;
 2. `make_optimizer(model, config) -> torch.optim.Optimizer` — a standard optimizer;
-3. `class TrainHook` with `post_grad(self, step)` — called after `loss.backward()` and before
-   `optimizer.step()`, free to modify each parameter's `.grad`; the default returns `None` (no-op).
+3. `class TrainHook` with `post_grad(self, step)` — called after `loss.backward()` and before `optimizer.step()`, free to modify each parameter's `.grad`; the default returns `None` (no-op).
 
-The starting point is the scaffold default: the Nanda one-layer transformer trained with full-batch
-AdamW (`wd=1.0`, a 10-step linear warmup to `lr=1e-3`, `betas=(0.9, 0.98)`) and a no-op hook. Each rung
-replaces exactly these definitions and nothing else.
+The starting point is the scaffold default: the Nanda one-layer transformer trained with full-batch AdamW (`wd=1.0`, a 10-step linear warmup to `lr=1e-3`, `betas=(0.9, 0.98)`) and a no-op hook.
 
 ```python
 # EDITABLE region of custom_strategy.py — default fill (Nanda one-layer transformer, AdamW wd=1.0)
@@ -149,11 +103,4 @@ class TrainHook:
 
 ## Evaluation settings
 
-Three primes spanning a range of table sizes — `p=59`, `p=97`, `p=113` — each over the three seeds
-`{42, 123, 456}` (one fixed train/test split per seed). The recorded per-prime metrics are
-`test_accuracy` (held-out accuracy at the last step), `score` (best held-out accuracy at any eval
-checkpoint), `grok_rate` (fraction of seeds reaching `test_acc ≥ 0.99` inside the budget), and
-`mean_steps_to_grok` (mean step of first sustained grok, `= max_steps` if a seed never groks). The
-aggregate task score is the geometric mean over the three primes of
-`weighted_mean(score, test_accuracy)`. Higher is better; among fills that reach perfect accuracy, the
-faster grok (lower `mean_steps_to_grok`, higher `grok_rate`) wins.
+Three primes — `p = 59`, `p = 97`, `p = 113` — each over seeds `{42, 123, 456}` with one fixed train/test split per seed. The per-prime metrics are `test_accuracy` at the last step, `score` (best held-out accuracy at any checkpoint), `grok_rate` (fraction of seeds reaching `test_acc ≥ 0.99` inside the budget), and `mean_steps_to_grok` (mean step of first sustained grok, `= max_steps` if a seed never groks). The aggregate task score is the geometric mean over the three primes of `weighted_mean(score, test_accuracy)`. Higher is better; among fills that reach perfect accuracy, lower `mean_steps_to_grok` and higher `grok_rate` win.

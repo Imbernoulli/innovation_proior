@@ -1,0 +1,43 @@
+# Changelog: two-stage review and fix
+
+- `results/context.md:1` Rebuilt the context around feature learning in shallow multi-index models without naming the target method.
+- `results/context.md:3` Restored a pre-method research-question setup centered on Gaussian multi-index targets and row alignment.
+- `results/context.md:21` Rewrote the Hermite/Stein background without answer-stage leakage.
+- `results/context.md:45` Replaced baselines with fixed random features, lazy/small-step training, online SGD, preprocessing one-step methods, and staircase analyses.
+- `results/context.md:57` Kept evaluation settings pre-method and removed method outcomes.
+- `results/context.md:69` Rebuilt the scaffold with open initialization, first-layer update, and readout-fit slots.
+- `results/reasoning.md:3` Fixed the loss-gradient sign convention by separating true gradient `(f_hat - f*)` from negative gradient `(f* - f_hat)`.
+- `results/reasoning.md:15` Corrected the zero-output initialization discussion: pairing is exact theory, while the public notebooks often use small independent output weights.
+- `results/reasoning.md:28` Re-derived the Stein/Hermite expansion with the two sums and the correct index shifts.
+- `results/reasoning.md:36` Restored the missing `(a_i/sqrt(p))` and `c_ell` factors in the leap-order term.
+- `results/reasoning.md:42` Corrected the scale argument to `d^{-(ell-1)/2}/p`, yielding `eta = p d^{(ell-1)/2}`.
+- `results/reasoning.md:50` Restated the one-step lower and upper sample regimes without overclaiming below threshold.
+- `results/reasoning.md:52` Clarified that one step recovers only `V_ell*`, with the `ell=1` one-dimensional spike case.
+- `results/reasoning.md:54` Rebuilt the multi-step subspace-conditioning recursion.
+- `results/reasoning.md:66` Verified both staircase examples algebraically, including the zero first-Hermite case for `z1+z2+z1^2+z2^2`.
+- `results/reasoning.md:68` Corrected the ridge derivation on scaled features and explained the regularization-constant normalization.
+- `results/reasoning.md:90` Matched the notebook sign convention: `G` uses `(Y - f_hat)` and `W <- W + eta G.T`.
+- `results/reasoning.md:97` Removed the noncanonical per-step row-projection claim from the reference algorithm.
+- `results/answer.md:10` Added both valid sign conventions for the first-layer update.
+- `results/answer.md:24` Added the corrected expected negative-gradient formula.
+- `results/answer.md:32` Added the corrected leap-order term, learning-rate scale, and multiple-step recursion.
+- `results/answer.md:53` Rebuilt the reference implementation to follow the `GiantStep` notebooks' sign, feature scaling, ridge branches, and no row projection.
+- `results/answer.md:78` Made symmetric initialization actually pair rows and output weights when exact zero initial output is requested.
+- `results/answer.md:97` Implemented the negative-gradient matrix with shape `(d, p)` and the correct `a/sqrt(p)` factor.
+- `results/answer.md:123` Formed readout features as `sigma(Z W.T)/sqrt(p)` before ridge and prediction.
+- `results/answer.md:135` Restated the lower-threshold, one-step, staircase, and finite-width readout limits.
+- `notes/source_matrix.md:7` Added primary-source evidence from the JMLR PDF, arXiv source tarball, and local TeX.
+- `notes/source_matrix.md:8` Added Ba et al. as the one-step feature-learning ancestor.
+- `notes/source_matrix.md:9` Added Damian et al. as the multi-index representation/preprocessing ancestor.
+- `notes/source_matrix.md:10` Added Ben Arous et al. as the information-exponent online-SGD baseline.
+- `notes/source_matrix.md:12` Added the merged-staircase slides as third-party explainer evidence.
+- `notes/source_matrix.md:13` Recorded the canonical code-sign and ridge conventions from the local `GiantStep` notebooks.
+- `notes/discovery_synthesis.md:7` Documented the sign audit.
+- `notes/discovery_synthesis.md:24` Documented the corrected constants and leading-term scaling.
+- `notes/discovery_synthesis.md:26` Documented all one-step sample cases.
+- `notes/discovery_synthesis.md:33` Documented the multiple-step recursion and examples.
+- `notes/discovery_synthesis.md:41` Documented code-faithfulness checks against the notebooks.
+- `notes/discovery_synthesis.md:63` Documented posterior/leak and voice/scaffold fixes.
+- `refs/self_accounts/search_log.md:1` Added the author-side self-account/search trail.
+- `results/.codex_review.json:3` Updated the review metadata to honestly record that no independent companion review was run.
+- `notes/strict_check_output.txt:1` Recorded the strict checker command and passing output.

@@ -1,59 +1,24 @@
 ## Research question
 
-Self-attention is the throughput bottleneck of a Transformer forward pass. The map is simple —
-for `Q, K, V` in `R^{N x d}`, compute `O = softmax(Q K^T) V` row-wise — but a naive implementation
-materializes the `N x N` score matrix in HBM, so it is memory-bound and slow on long sequences. The
-single thing being designed here is the **fused attention forward kernel**: an OpenAI-Triton
-`@triton.jit` kernel (plus its Python launcher) that computes exact attention while maximizing
-achieved throughput (TFLOPs/s) on an H100, subject to a hard correctness constraint (max abs diff
-from PyTorch SDPA `< 1e-2`). Everything else — the benchmark harness, the FLOP accounting, the
-reference, the configs — is fixed. Each rung on the ladder is a different fill of the same kernel
-slot, climbing from a basic tiled kernel toward GEMM-level utilization on Hopper.
+Self-attention is the throughput bottleneck of a Transformer forward pass. For `Q, K, V` in `R^{N x d}`, the operation is `O = softmax(Q K^T) V` computed row-wise. A naive implementation materializes the `N x N` score matrix in HBM, so it is memory-bound and slow on long sequences. The goal is a **fused attention forward kernel**: a Triton `@triton.jit` kernel (plus Python launcher) that computes exact attention while maximizing achieved throughput (TFLOPs/s) on an H100, subject to a hard correctness constraint (max abs diff from PyTorch SDPA `< 1e-2`). Everything else — benchmark harness, FLOP accounting, reference, configs — is fixed. Each rung on the ladder fills the same kernel slot.
 
-## Prior art before the first rung (the attention-efficiency lineage)
+## Prior art / Background / Baselines
 
-The first rung does not invent tiled attention; it reacts to a line of attempts that each got part
-of the way and left a gap the tiled, IO-aware kernel closes.
+Attention has been accelerated along several axes, each leaving a concrete gap.
 
-- **Standard (materialized) attention.** Form `S = Q K^T` (an `N x N` matrix), write it to HBM,
-  read it back to softmax into `P`, write `P`, read `P` and `V` to form `O = P V`. Exact and simple,
-  but it moves `Theta(N d + N^2)` bytes across HBM, and the `N^2` term dominates for `N` in the
-  thousands with `d` only 64-256. Gap: memory-bound — the wall-clock is HBM traffic on `S` and `P`,
-  not the matmuls.
-- **Approximate attention (Reformer, Kitaev et al. 2020; Linformer; Performer; Longformer; BigBird).**
-  Sparsify or low-rank/kernel-approximate the score matrix to cut FLOPs to near-linear in `N`. From
-  the FLOP count they look like the answer, but the measured wall-clock is often no better than dense
-  attention at the lengths that matter, because FLOPs were never the bottleneck — and they change the
-  function (a quality cost). Gap: optimizes the wrong cost and is inexact.
-- **Online / lazy softmax (Milakov & Gimelshein 2018; Rabe & Staats 2021).** The numerically-stable
-  softmax is fully determined by a running max `m` and normalizer `l`; the online-normalizer identity
-  combines block partials exactly by rescaling with `e^{m_old - m_new}`, so the softmax denominator —
-  and, pushed through `* V`, the whole output — can be built one block at a time with `O(1)` memory
-  per query. Rabe & Staats minimize the memory *footprint* and achieve it, but their HBM *access*
-  count stays quadratic, so on a GPU they run at about standard-attention speed. Gap: right recurrence,
-  wrong cost axis (footprint, not traffic) and not fused into a single kernel.
+- **Standard (materialized) attention.** Form `S = Q K^T` as an `N x N` matrix, write it to HBM, read it back to softmax into `P`, then read `P` and `V` to form `O = P V`. The idea is exact and simple, but it moves `Theta(N d + N^2)` bytes across HBM; the `N^2` term dominates for `N` in the thousands with `d` only 64-256. Observed limitation: the wall-clock is dominated by HBM traffic on `S` and `P`, not the matmuls.
 
-The first rung takes the online-softmax recurrence and re-engineers it around HBM *traffic* in one
-fused kernel: tile `Q, K, V`, stream tiles through SRAM, accumulate `(m, l, O)` over key blocks with
-the rescaling identity, and never let an `N x N` object touch HBM — exact attention with the `N^2`
-traffic removed.
+- **Approximate attention (Reformer, Linformer, Performer, Longformer, BigBird).** Sparsify or low-rank/kernel-approximate the score matrix to cut FLOPs to near-linear in `N`. Measured wall-clock is often no better than dense attention at the lengths that matter, because FLOPs were never the bottleneck, and the approximation changes the function. Observed limitation: optimizes the wrong cost and is inexact.
 
-## The fixed substrate
+- **Online / lazy softmax (Milakov & Gimelshein; Rabe & Staats).** A numerically-stable softmax is fully determined by a running max `m` and normalizer `l`; the online-normalizer identity combines block partials exactly by rescaling with `e^{m_old - m_new}`, so the output can be built one block at a time with `O(1)` memory per query. Existing implementations minimize memory footprint, but their HBM access count stays quadratic and the work is not organized as a single kernel. Observed limitation: right recurrence, wrong cost axis (footprint, not traffic), and not fused.
 
-A benchmark harness is frozen and must not be touched: it builds `(batch, nheads, seqlen, headdim)`
-FP16 tensors for `Q, K, V` on H100, computes the PyTorch-SDPA reference, checks `max_diff < 1e-2`,
-then times both the custom kernel and SDPA (25 warmup, 100 timed runs, median latency). It reports,
-per config, `tflops` (achieved TFLOPs/s, primary, higher better), `latency_ms` (lower better),
-`max_diff`/`correct` (hard constraint), and `speedup_vs_sdpa` (SDPA latency / custom latency — the
-cross-GPU-comparable ratio). The causal FLOP count is fixed at `4 * batch * seqlen^2 * nheads *
-headdim / 2`. Available imports inside the editable region: `torch`, `triton`,
-`triton.language as tl`, `math`, `torch.nn.functional as F`.
+## Fixed substrate / Code framework
 
-## The editable interface
+A benchmark harness is frozen and must not be touched: it builds `(batch, nheads, seqlen, headdim)` FP16 tensors for `Q, K, V` on H100, computes the PyTorch-SDPA reference, checks `max_diff < 1e-2`, then times both the custom kernel and SDPA (25 warmup, 100 timed runs, median latency). It reports, per config, `tflops` (achieved TFLOPs/s, primary, higher better), `latency_ms` (lower better), `max_diff`/`correct` (hard constraint), and `speedup_vs_sdpa` (SDPA latency / custom latency — the cross-GPU-comparable ratio). The causal FLOP count is fixed at `4 * batch * seqlen^2 * nheads * headdim / 2`. Available imports inside the editable region: `torch`, `triton`, `triton.language as tl`, `math`, `torch.nn.functional as F`.
 
-Exactly one region is editable — the Triton kernel `_custom_attn_fwd` and the Python wrapper
-`custom_attention_forward` in `flash-attention/custom_triton_bench.py` (lines 29-119). The contract
-the harness calls is the wrapper:
+## Editable interface
+
+Exactly one region is editable — the Triton kernel `_custom_attn_fwd` and the Python wrapper `custom_attention_forward` in `flash-attention/custom_triton_bench.py` (lines 29-119). The contract the harness calls is the wrapper:
 
 ```
 custom_attention_forward(q, k, v, causal=True, sm_scale=None) -> output
@@ -63,14 +28,7 @@ custom_attention_forward(q, k, v, causal=True, sm_scale=None) -> output
     returns : (batch, nheads, seqlen, headdim), same dtype, == softmax(q k^T) v
 ```
 
-Every method on the ladder replaces exactly this kernel + wrapper and nothing else: the kernel may be
-renamed, helper kernels may be defined, block sizes may be tuned, `@triton.autotune` may be used. The
-starting point is the scaffold default — a basic FA1-style tiled kernel: one program per query block
-per (batch, head), a single pass over all causal key blocks with the mask applied at every block, the
-scale folded inside the loop, uniform `BLOCK_M = BLOCK_N = 64`, online-softmax accumulators in fp32,
-the probability tile cast to fp16 for the `P @ V` matmul, and a single normalization at the end. This
-is forward-only (the harness benchmarks only the forward pass): no log-sum-exp statistic is stored and
-there is no backward kernel.
+Every method on the ladder replaces exactly this kernel + wrapper and nothing else: the kernel may be renamed, helper kernels may be defined, block sizes may be tuned, `@triton.autotune` may be used. The starting point is the scaffold below — a basic tiled kernel with online softmax: one program per query block per (batch, head), a single pass over all causal key blocks with the mask applied at every block, the scale folded inside the loop, uniform `BLOCK_M = BLOCK_N = 64`, online-softmax accumulators in fp32, the probability tile cast to fp16 for the `P @ V` matmul, and a single normalization at the end. This is forward-only (the harness benchmarks only the forward pass): no log-sum-exp statistic is stored and there is no backward kernel.
 
 ```python
 @triton.jit
@@ -171,8 +129,4 @@ Three causal configurations, total tokens fixed at 16384, all FP16, causal, H100
 | `hdim128_seq8k` | 2 | 8192 | 16 | 128 |
 | `hdim256_seq16k` | 1 | 16384 | 8 | 256 |
 
-Per config, four reported quantities: `tflops` (primary, higher better), `latency_ms` (lower better),
-`correct` (1 iff `max_diff < 1e-2`, a hard gate), and `speedup_vs_sdpa` (SDPA latency / custom
-latency). The three configs probe distinct regimes: small head dim with the largest batch
-(`hdim64_seq4k`), the middle ground (`hdim128_seq8k`), and a large head dim with batch 1 — the
-occupancy-starved, register-pressured corner (`hdim256_seq16k`).
+Per config, four reported quantities: `tflops` (primary, higher better), `latency_ms` (lower better), `correct` (1 iff `max_diff < 1e-2`, a hard gate), and `speedup_vs_sdpa` (SDPA latency / custom latency). The three configs probe distinct regimes: small head dim with the largest batch (`hdim64_seq4k`), the middle ground (`hdim128_seq8k`), and a large head dim with batch 1 — the occupancy-starved, register-pressured corner (`hdim256_seq16k`).

@@ -1,0 +1,58 @@
+Few-shot chain-of-thought prompting buys a frozen large language model a lot: show it a handful of worked examples, each carrying a full natural-language rationale, and it learns to generate its own rationale before answering, which lifts accuracy across multi-step math, commonsense, and symbolic tasks while staying interpretable and needing no finetuning. But it has one clean, reproducible failure. It does well only when the test instance is about as hard as the demonstrations, and it degrades the moment the test instance is *harder* than anything in the prompt. Write the exemplars on two-word last-letter lists and the model nails two-word test lists, then watch accuracy slide downward word by word as the lists grow to length twelve. Map short commands to action sequences and the model cannot stretch to the long commands of a length split. Demonstrate two-step arithmetic and accuracy decays as the gold solution needs more steps. This is *easy-to-hard generalization*, and its sharpest form is *compositional generalization*: shown short compositions of primitives, the model fails on longer or novel compositions of those same primitives. It is exactly the regime where people are strong — solve the small instances, then break the large ones down — and exactly where a single continuous rationale cannot reach. The standard alternatives do not close this gap. Plain few-shot prompting has no intermediate steps and collapses to near zero on anything multi-step. Zero-shot is weaker still. The specialized neural-symbolic and data-augmentation systems that score well on the compositional benchmark demand grammar search, augmentation pipelines, or training on the full fifteen-thousand-example set, and the end-to-end neural ones still fail the length split. What we want is none of that machinery: a pure prompting recipe, no architecture change and no training, that lets a frozen model solve instances substantially deeper or longer than its exemplars.
+
+The reason CoT cannot bridge the gap is visible the moment you look at what a CoT exemplar is. It is a single rationale that solves the *entire* problem in one continuous generation. For a two-word list that rationale is short and the model reproduces its shape; for a twelve-word list the model would have to emit a much longer rationale of the same shape in one pass, holding all twelve steps coherent at once, and that one-shot extrapolation to an unseen size is precisely what it cannot do. A person never attempts the twelve-word list in one mental shot — they take the first word's last letter, then the next and append, then the next, turning one hard twelve-step problem into a chain of trivial one-step problems, each built on the last. That decompose-and-chain move is why people generalize from easy to hard, and it is the move CoT skips. So I propose least-to-most prompting: rather than ask the model to solve the hard instance in one rationale, first prompt it to break the instance into an ordered list of simpler subproblems, then solve those subproblems one at a time, with the answer to each earlier subproblem fed into the next. Two stages — decompose, then solve sequentially with carry-over — both implemented purely by few-shot prompting of the same frozen LM, with no training or finetuning in either stage.
+
+What separates this from ordinary "decomposition" matters on two counts, and both are deliberate. The usual decomposition methods split a question into *independent* subquestions, answer each in isolation, and aggregate at the end, and they typically need a trained model to do the splitting and another to do the aggregating. Here the subproblems are *dependent and ordered*: the last-letter step at position $k$ genuinely needs the concatenation produced at step $k-1$, so later subproblems consume earlier answers as building blocks. And neither stage uses a trained component — decomposition is done by prompting and solving is done by prompting, both with the one frozen model. Stage one writes a decomposition prompt whose exemplars demonstrate peeling a complex problem into an ordered list of simpler ones; append the real problem and read off its decomposition. For last-letter this is almost trivial — the decomposition of a list is its sequence of growing prefixes, $\{w_1\dots w_2\},\,\{w_1\dots w_3\},\,\dots,\,\{w_1\dots w_n\}$ — so one exemplar that expands "think, machine, learning, reasoning" into its chain of sublists teaches the model to expand any list the same way.
+
+Stage two is where the method earns its generalization, and the decisive choice lives in how the solving exemplars are written. I want the model to learn that to answer the current subproblem it should *use* the answer to the previous one, so the solving exemplars cannot be independent worked examples — they must model the dependency as a base case plus a recursive step. The base case, the two-word list "think, machine", is solved from scratch: last letter of "think" is "k", last letter of "machine" is "e", concatenate to "ke". The recursive exemplar, "think, machine, learning", does *not* recompute the earlier last letters — it opens with "think, machine" outputs "ke", takes the last letter "g" of "learning", and concatenates "ke" with "g" to get "keg". Those two exemplars together are a base case and a recursive step; they teach the recursion that, given the answer to the $(k-1)$-prefix, you compute the $k$-prefix by appending one letter. That is the whole trick. At solve time the procedure normalizes the decomposition so the original problem itself is the final subproblem — appending it when, as on the compositional task, the decomposition returns only prerequisite components — and then walks the ordered list. For each subproblem $S$ it builds a solving prompt equal to the constant base-and-recursive exemplars, plus every previously answered (subproblem, answer) pair so far, plus $S$; it queries the model, takes the answer, and appends that new pair to the running history before moving on. Those accumulating prior pairs are exactly the building blocks the recursive exemplar taught the model to reuse: at every step the model sees its own prior answer sitting in the prompt and extends it. The contrast with CoT is one bit of design and nothing else. CoT can use the *same* two lists, but its rationale for the three-word list is built from scratch, recomputing all three last letters independently of the two-word exemplar above it — its exemplars are independent. Least-to-most's are dependent, the longer built on the shorter. That single difference, whether the later answer reuses the earlier one, is what buys the length and step generalization.
+
+The same shape handles richer instances. On the compositional command-to-action task a long command like "look opposite right thrice after walk" composes shorter commands with connectives, so decomposition is not prefixing but parsing the command into its constituent shorter commands in dependency order; an exemplar shows that "look opposite right thrice" is solved by "look opposite right" then "look opposite right thrice", "walk" by "walk", giving the ordered prerequisite list. The solve loop appends the original command as the final mapping step so the model first translates the pieces and then composes the full command from those translations, the mapping exemplars demonstrating how a command's output is composed from its parts' outputs. Two separate prompts are used here — eight decomposition exemplars and fourteen mapping exemplars chosen to cover the command semantics — and to keep intermediate representations within the model's roughly two-thousand-token context the actions are written in a compact Python-ish notation, `"LOOK" * 3` rather than `LOOK LOOK LOOK`, with a small postprocessing script expanding the expressions at the end. For math word problems the two stages need not even be separate: a single exemplar first lists the subquestions ("Let's break down this problem: 1. … 2. …") and then answers them in sequence within the same response, each numbered answer using the earlier ones; in the revised one-shot GSM8K setup the prompt prefix ends after "Let's break down this problem:", the model's reply is appended, and a second short request ending in "The answer is:" extracts the final answer.
+
+Why does this generalize where CoT does not? Because the difficulty the model faces at any single step is bounded by the *subproblem*, not by the whole instance. Each subproblem is no harder than an exemplar — one letter to append, one short command to map, one arithmetic step — no matter how long or deep the overall instance is. The instance's difficulty is absorbed entirely by the *number* of steps, and the model only ever performs one easy step at a time with the prior answers handed to it, so a twelve-word list is as easy per step as a two-word list; there are simply more steps. That is the easy-to-hard bridge: hold each step at demonstration-level difficulty and let the chain be as long as the instance demands. It stays fully interpretable, needs no training, and composes with the other prompting tricks — each subproblem's solution can itself be a chain of thought, and the answers can be self-consistency-sampled — while needing none of them. The code is the two-stage loop made literal: decompose once, then solve the subproblems in order, threading each answer into the next prompt.
+
+```python
+def llm(prompt, stop=None):
+    """Frozen LM completion endpoint (e.g. a GPT-3-class code/text model). Exists already."""
+    ...
+
+# --- Stage-1 exemplars: how to break a problem into an ordered list of subproblems. ---
+# (last-letter: a list -> growing prefixes, starting at the two-word base case)
+DECOMPOSITION_EXEMPLARS = '''Q: "think, machine, learning, reasoning"
+A: "think, machine", "think, machine, learning", "think, machine, learning, reasoning"
+'''
+
+# --- Stage-2 exemplars: a BASE CASE + a RECURSIVE STEP that builds on the previous answer. ---
+# Note the second exemplar starts from the first's answer ("ke") instead of recomputing it.
+SOLUTION_EXEMPLARS = '''Q: "think, machine"
+A: The last letter of "think" is "k". The last letter of "machine" is "e". \
+Concatenating "k", "e" leads to "ke". So, "think, machine" outputs "ke".
+
+Q: "think, machine, learning"
+A: "think, machine" outputs "ke". The last letter of "learning" is "g". \
+Concatenating "ke", "g" leads to "keg". So, "think, machine, learning" outputs "keg".
+'''
+
+
+def decompose(question):
+    """Stage 1: prompt the LM to break `question` into an ordered list of easier subproblems."""
+    completion = llm(DECOMPOSITION_EXEMPLARS + f'Q: {question}\nA:')
+    return parse_subproblems(completion)        # -> ordered list of sub-instances
+
+
+def ensure_final_subproblem(subproblems, question):
+    """Make the target problem the final step; SCAN-style decompositions omit it."""
+    return subproblems if subproblems and subproblems[-1] == question else [*subproblems, question]
+
+
+def solve(question):
+    subproblems = ensure_final_subproblem(
+        decompose(question), question
+    )                                          # stage 1: ordered prerequisites + original problem
+    history = ""                                # accumulated (subproblem, answer) pairs = building blocks
+    answer = None
+    for sub in subproblems:                     # stage 2: solve in order, each on top of prior answers
+        prompt = SOLUTION_EXEMPLARS + history + f'Q: {sub}\nA:'
+        answer = llm(prompt).strip()
+        history += f'Q: {sub}\nA: {answer}\n\n'  # thread this answer into the next subproblem's prompt
+    return answer                               # answer to the final subproblem = the solution
+```

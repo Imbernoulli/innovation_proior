@@ -1,0 +1,84 @@
+I have a flow-based generative model that works well. I built a stochastic interpolant $I_t = \alpha_t x_0 + \beta_t x_1$ between a Gaussian base $\rho_0$ and the data $\rho_1$, with $\alpha_0 = 1$, $\alpha_1 = 0$, $\beta_0 = 0$, $\beta_1 = 1$, and I learned the drift of the probability-flow ODE $\dot x_t = b_t(x_t)$ by the square-loss regression $L_b(\hat v) = \int_0^1 \mathbb{E}\,|\hat v_t(I_t) - \dot I_t|^2\,dt$, which recovers exactly the conditional expectation $b_t(x) = \mathbb{E}[\dot I_t \mid I_t = x]$. The samples are excellent. The pain is purely the cost of sampling: to draw one $x_1$ I integrate the ODE from $t=0$ to $t=1$, and accurate integration evaluates the network at tens, sometimes hundreds, of substeps, each a full forward pass of a large UNet. The velocity only reports the instantaneous direction; to move a finite distance I have to keep re-asking it. Inference is one or two orders of magnitude slower than I want, which rules these models out of anything latency-critical. What I actually want is not the velocity at a point but the *result of integrating* it — a two-time jump map $X_{s,t}(x_s) = x_t$ that, given a point on an ODE trajectory at time $s$, hands me the point on the same trajectory at time $t$ in one shot. Then $X_{0,1}(x_0)$ with $x_0 \sim \rho_0$ is a sample in a single evaluation, and if that one shot is imperfect I can compose a handful of smaller jumps over a grid $0 = t_0 < \dots < t_k = 1$, spending a few evaluations to buy quality. That is exactly the few-step regime I am after.
+
+The two existing routes to such a map are both unsatisfying. Distillation trains the fast jump map to imitate a separately pre-trained slow many-step model: stable and effective, but a two-phase pipeline requiring two models, and the student can never exceed the teacher it copies. Direct training of the jump map from scratch — no teacher — is what I want in principle, but the objectives in use for it are observed to be touchy: they diverge on large image networks and need heavy dataset-specific babysitting to converge. Consistency models and their two-time extension, consistency trajectory models, and shortcut models all live in this second camp. So the field's state is: pay the teacher tax, or fight an unstable optimizer. Worse, there is no unifying account telling me *which* residual I should minimize, *why* its unique minimizer is the jump map, and *what* driving the loss down buys me. I will derive that residual from scratch, then pick the one that dodges the documented instabilities, to get direct training with distillation-grade stability and no teacher.
+
+I propose Lagrangian Self-Distillation, LSD: a single-phase, teacher-free objective in which one network parameterizes the two-time map, its diagonal is trained as the velocity by ordinary flow matching, and its off-diagonal is distilled from that diagonal through the Lagrangian flow-map relation. The starting point is to ask what I know about $X_{s,t}$ for free, purely from its definition $X_{s,t}(x_s) = x_t$. Differentiating the jump condition in $t$ along a fixed trajectory, the left side's $t$-derivative is $\partial_t X_{s,t}(x_s)$ and the right side is $\dot x_t = b_t(x_t) = b_t(X_{s,t}(x_s))$, so for all $x$,
+$$\partial_t X_{s,t}(x) = b_t(X_{s,t}(x)).$$
+This Lagrangian identity says the map, as a function of its end time, is itself an integral curve of the same velocity field, started from $X_{s,t}(x)$. Differentiating instead in $s$ — the endpoint $x_t$ is fixed, so its $s$-derivative vanishes, while the moving argument $x_s$ contributes $\dot x_s = b_s(x_s)$ through the chain rule — gives the Eulerian transport PDE
+$$\partial_s X_{s,t}(x) + \nabla X_{s,t}(x)\cdot b_s(x) = 0,$$
+which carries the spatial gradient $\nabla X$ of the map. And jumping $s \to u$ then $u \to t$ along the same trajectory equals jumping $s \to t$, the semigroup law
+$$X_{u,t}(X_{s,u}(x)) = X_{s,t}(x).$$
+Three structural identities the true map must satisfy, each a residual I could square and minimize.
+
+Every one of those identities references the velocity $b$ or the map composed with itself, which raises a chicken-and-egg problem for teacher-free training: where does $b$ come from? Pushing the Lagrangian identity to the diagonal resolves it. On the diagonal the map is the identity, $X_{t,t}(x) = x$, so $\lim_{s\to t}\partial_t X_{s,t}(x) = b_t(X_{t,t}(x)) = b_t(x)$. The velocity is not a separate object I must supply — it is the time-derivative of the map read off on its own diagonal. One network for $X$ encodes both $b$ (at $s=t$) and the integrated jump (at $s\neq t$); the diagonal *is* the teacher for the off-diagonal. To make this structure exact rather than approximate, I bake the diagonal into the parameterization:
+$$X_{s,t}(x) = x + (t-s)\,v_{s,t}(x),$$
+where $v$ is the network's actual output. This is a shift-and-rescale of $X$, not a first-order approximation, so it costs no expressivity — any $X$ with $X_{s,s}=x$ is recovered by $v_{s,t}(x) = (X_{s,t}(x)-x)/(t-s)$. It buys two exact properties: the boundary $X_{s,s}(x) = x$ holds automatically with nothing learned, and since $\partial_t X_{s,t}(x) = v_{s,t}(x) + (t-s)\,\partial_t v_{s,t}(x)$, the $(t-s)$ term dies as $s\to t$ and the tangent condition becomes
+$$v_{t,t}(x) = b_t(x).$$
+So the diagonal of my network output is the velocity field, trainable by the flow-matching loss $L_b$ I already trust; off the diagonal, $v_{s,t}(x)$ is the average slope of the secant carrying $x$ from time $s$ to time $t$.
+
+The whole game is now the off-diagonal: force $v_{s,t}$ for $s<t$ to be the genuine secant of the true flow using only the diagonal as teacher. I write each of the three identities as a squared residual added to $L_b$, with the off-diagonal expectation taken over $I_s$ because that is the distribution of points the map actually acts on at time $s$. The Lagrangian, Eulerian, and progressive (semigroup) residuals are
+$$L_{\mathrm{LSD}} = \int_0^1\!\!\int_0^t \mathbb{E}\,\big|\,\hat v_{t,t}(\hat X_{s,t}(I_s)) - \partial_t \hat X_{s,t}(I_s)\,\big|^2\,ds\,dt,$$
+$$L_{\mathrm{ESD}} = \int_0^1\!\!\int_0^t \mathbb{E}\,\big|\,\partial_s \hat X_{s,t}(I_s) + \nabla \hat X_{s,t}(I_s)\cdot \hat v_{s,s}(I_s)\,\big|^2\,ds\,dt,$$
+$$L_{\mathrm{PSD}} = \int_0^1\!\!\int_0^t\!\!\int_s^t \mathbb{E}\,\big|\,\hat X_{s,t}(I_s) - \hat X_{u,t}(\hat X_{s,u}(I_s))\,\big|^2\,du\,ds\,dt,$$
+and the total objective is $L_{\mathrm{sd}} = L_b + L_{\mathrm{dist}}$. All three are correctness-equivalent: with $v_{t,t} = b$ imposed, the Lagrangian residual being zero is exactly the initial-value problem $\partial_t X_{s,t} = b_t(X_{s,t})$, $X_{s,s}(x)=x$, whose solution is unique under the one-sided Lipschitz condition $(b_t(x)-b_t(y))\cdot(x-y) \le C|x-y|^2$ — the true flow map is one solution, hence the only one. The Eulerian case integrates $\frac{d}{ds}X_{s,t}(x_s) = 0$ along trajectories back to the jump condition; the semigroup case needs continuity of $v$ to exclude the trivial map $X_{s,t}(x)=x$, after which Taylor-expanding $X_{s,t+h}(x) = X_{t,t+h}(X_{s,t}(x)) = X_{s,t}(x) + h\,b_t(X_{s,t}(x)) + o(h)$ recovers the same Lagrangian ODE. And the global minimum is correct: $L_b(\hat v) \ge L_b(b)$ since $L_b$ is convex with the conditional mean as its unique minimizer, each $L_{\mathrm{dist}} \ge 0$, so $L_{\mathrm{sd}} \ge L_b(b)$; the true map attains this bound, and any minimizer must have $L_b(\hat v) = L_b(b)$ (exact diagonal) and $L_{\mathrm{dist}} = 0$ (exact identity), which forces the true map.
+
+Since the three share their minimizer, the choice is decided by optimization, not correctness. The Eulerian residual contains $\nabla X$, the spatial Jacobian of the map; its parameter gradient backpropagates through a spatial Jacobian-vector product of a large image UNet, and that operation is exactly the documented instability behind the engineering consistency-style methods need — strike against ESD. The progressive residual composes two learned jumps, feeding the imperfect inner jump $\hat X_{s,u}$ into the outer $\hat X_{u,t}$ so errors compound, while the outer jump's input $\hat X_{s,u}(I_s)$ is a model output whose distribution drifts off the support the model was trained on; it is stable to optimize but pays in sample quality, and admits no Wasserstein guarantee — strike against PSD. The Lagrangian mismatch $\hat v_{t,t}(\hat X_{s,t}) - \partial_t \hat X_{s,t}$ has neither pathology. Its only derivative is $\partial_t \hat X$, a derivative with respect to the scalar *time*, a one-dimensional JVP that `jax.jvp` computes at roughly $1.5\times$ a forward pass and that returns $\hat X$ itself as the primal byproduct; the target $\hat v_{t,t}(\hat X_{s,t}(I_s))$ is a single network call at the transported point, using the diagonal velocity as teacher, with no composition of learned jumps. About $2.5$ forward-pass-equivalents per off-diagonal sample, with neither the spatial Jacobian of ESD nor the bootstrapping of PSD. That threads the needle, so I choose the Lagrangian residual.
+
+Two stopgradient placements make it train. In the mismatch $\hat v_{t,t}(\hat X_{s,t}) - \partial_t \hat X_{s,t}$ both terms share parameters, so a free-flowing optimizer could satisfy the residual by corrupting $\hat v_{t,t}$ — my one externally grounded signal, from $L_b$ — to match a possibly-wrong off-diagonal, exactly backwards. Information must flow *from* the diagonal, which has the genuine $\dot I_t$ signal, *to* the off-diagonal, which has none of its own. In ordinary distillation the frozen pre-trained teacher enforces this for free; I am replacing it with my own diagonal, a self-consistent implicit teacher, so I manufacture the frozen-teacher effect with a stopgradient:
+$$r = \mathrm{sg}\big[\hat v_{t,t}(\hat X_{s,t}(I_s))\big] - \partial_t \hat X_{s,t}(I_s).$$
+I use the instantaneous teacher $\phi = \theta$ (decay $\delta = 0$) rather than an EMA copy, because an EMA lags the very signal the off-diagonal is trying to follow; EMA parameters are kept for sampling, where they smooth last-iterate noise. The second placement closes a side door: the teacher term $\hat v_{t,t}(\hat X_{s,t}(I_s))$ evaluates a network *at* the transported point, itself a network output, so letting gradients flow through that argument differentiates the teacher through the map — a spatial JVP, the exact thing LSD was chosen to avoid. So for images I also stop the gradient on the transported point before the teacher call, $\hat v_{t,t}(\mathrm{sg}[\hat X_{s,t}(I_s)])$ — the `convex` configuration, a genuine frozen evaluation with no spatial Jacobian. For low-dimensional toys with small nets the instability is absent and full gradients are fine.
+
+Two variance issues across the time pairs remain. The residual's scale varies wildly: a tiny jump $t\approx s$ and a huge jump $t\gg s$ produce loss and gradient norms differing by orders of magnitude, injecting minibatch variance and forcing a tiny learning rate. The cure is an uncertainty-style adaptive weight: introduce a learned scalar $w_{s,t}$ and replace the bare loss $L^{s,t}$ by
+$$e^{-w_{s,t}}\,L^{s,t} + w_{s,t}.$$
+Minimizing over $w_{s,t}$ gives $\frac{d}{dw}[e^{-w}L + w] = -e^{-w}L + 1 = 0$, so $w^* = \log L$, and at that optimum the gradient reaching the model is $e^{-w}\nabla L = \nabla L / L$ — each time pair contributes a scale-normalized gradient, so all pairs push on a common scale and a larger learning rate becomes admissible. This is the EDM2 uncertainty weight generalized from one time to two; the diagonal uses $w_{t,t}$. The second issue is which pairs to sample. The self-distillation residual is degenerate on the diagonal — with $X_{s,t} = x + (t-s)v_{s,t}$ the mismatch vanishes at $s=t$ regardless of whether $v_{t,t}$ equals $b_t$ — so the diagonal flow-matching term is not optional; it is the only place the external target $\dot I_t$ enters. I therefore draw a mixture $p_{s,t} = \eta\,U_{\mathrm{diag}} + (1-\eta)\,U_{\mathrm{offtriangle}}$ with $\eta = 0.75$: three-quarters of the batch learns the flow on $s=t$, one-quarter distills it into the map on uniformly-drawn upper-triangle pairs. The diagonal term is the cheap one (a single evaluation) and learns the very thing the off-diagonal distills, so it deserves the majority of the budget, and $\eta$ doubles as a compute knob.
+
+Finally, driving $L_{\mathrm{sd}}$ down provably improves the sampler, not just the number. If $L_b(\hat v) + L_{\mathrm{LSD}}(\hat v) \le \varepsilon$, expand $L_b$ by adding and subtracting $b_t(I_t)$; the cross term vanishes by the tower property since $b_t = \mathbb{E}[\dot I_t \mid I_t]$, leaving a conditional-variance term that is $\ge 0$ and independent of $\hat v$, so $\int_0^1 \mathbb{E}\,|\hat v_{t,t}(I_t) - b_t(I_t)|^2\,dt \le \varepsilon$ — my diagonal velocity is within $\varepsilon$ in mean-square of the true $b$. A flow-matching Grönwall bound then gives $W_2^2(\rho_1, \hat\rho_1^v) \le e^{1+2\hat L}\varepsilon$ for the flow of $\hat v_{t,t}$, where $\hat L$ is its spatial Lipschitz constant, and the Lagrangian flow-map-matching bound, which is what $L_{\mathrm{LSD}} \le \varepsilon$ certifies, gives $W_2^2(\hat\rho_1^v, \hat\rho_1) \le e^{1+2\hat L}\varepsilon$ for the one-shot map. Triangle inequality with $(a+b)^2 \le 2a^2 + 2b^2$ combines them to
+$$W_2^2(\hat\rho_1, \rho_1) \le 4\,e^{1 + 2\hat L}\,\varepsilon.$$
+ESD admits an analogous $2e(1 + e^{2\hat L})\varepsilon$, while PSD admits none — the theoretical shadow of its compounding error.
+
+Concretely the network outputs $v_{s,t}(x)$ with EDM2 preconditioning, $v_{s,t}(x) = \sigma_{\mathrm{data}}\,\mathrm{UNet}(x/\sigma_{\mathrm{data}}, s, t-s)$, embedding $s$ and the gap $dt = t-s$ rather than $s$ and $t$ directly, with positional (not Fourier) time embeddings and FiLM conditioning. The interpolant is linear, $\alpha_t = 1-t$, $\beta_t = t$, so $\dot I_t = x_1 - x_0$, with a Gaussian base scaled to the data variance. I train from random init with no pre-training — the diagonal $L_b$ is the pre-training, happening simultaneously — using RAdam, warmup then square-root LR decay, gradient clipping at $1.0$, and parameter EMA for sampling. The loss terms below fill the off-diagonal slot of the interpolant harness; the flow-map module exposes `method="calc_b"` for $v_{t,t}$, `method="partial_t"` for $(X_{s,t}, \partial_t X_{s,t})$ via `jvp` in $t$, and `method="calc_weight"` for $w_{s,t}$.
+
+```python
+import jax
+import jax.numpy as jnp
+
+
+def diagonal_term(params, x0, x1, label, t, rng, *, interp, X):
+    """Flow matching on the diagonal s = t: v_{t,t} = b_t, regressed onto Idot."""
+    It = interp.calc_It(t, x0, x1)              # I_t = alpha_t x0 + beta_t x1
+    It_dot = interp.calc_It_dot(t, x0, x1)      # Idot_t = alpha_dot_t x0 + beta_dot_t x1
+    bt = X.apply(params, t, It, label, train=True, method="calc_b", rngs=rng)  # v_{t,t}(I_t)
+    velocity_loss = jnp.sum((bt - It_dot) ** 2)
+    weight_tt = X.apply(params, t, t, method="calc_weight")          # w_{t,t}
+    return jnp.exp(-weight_tt) * velocity_loss + weight_tt           # e^{-w} L + w
+
+
+def lsd_term(params, teacher_params, x0, x1, label, s, t, rng, *, interp, X, stopgrad_type):
+    """Lagrangian self-distillation mismatch on the off-diagonal s < t."""
+    Is = interp.calc_It(s, x0, x1)              # start point at time s
+
+    # one jvp in t returns BOTH X_{s,t}(I_s) and partial_t X_{s,t}(I_s)
+    Xst_Is, dt_Xst = X.apply(
+        params, s, t, Is, label, train=False, method="partial_t", rngs=rng
+    )
+
+    if stopgrad_type == "convex":
+        # frozen-teacher emulation for images: stop gradient through the transported point
+        # (no spatial Jacobian) and through the teacher velocity (info flows diag -> offdiag)
+        Xst_Is = jax.lax.stop_gradient(Xst_Is)
+        b_eval = jax.lax.stop_gradient(
+            X.apply(teacher_params, t, Xst_Is, label, train=False, method="calc_b", rngs=rng)
+        )
+    elif stopgrad_type == "none":
+        # full gradient (low-dimensional / small-net regime)
+        b_eval = X.apply(params, t, Xst_Is, label, train=False, method="calc_b", rngs=rng)
+    else:
+        raise ValueError(f"Invalid stopgrad_type: {stopgrad_type}")
+
+    weight_st = X.apply(params, s, t, method="calc_weight")          # w_{s,t}
+    error = b_eval - dt_Xst                     # v_{t,t}(X_{s,t}(I_s)) - partial_t X_{s,t}(I_s)
+    lsd_loss = jnp.sum(error ** 2)
+    return jnp.exp(-weight_st) * lsd_loss + weight_st               # e^{-w} |r|^2 + w
+```
+
+The training driver vmaps these over the batch, routes a fraction $\eta = 0.75$ of samples through `diagonal_term` (diagonal $s=t$) and the rest through `lsd_term` on uniformly-sampled upper-triangle pairs $(s,t)$, sums the two contributions, and takes one gradient step on both the model $v$ and the weight $w$. Sampling composes $X_{t_i, t_{i+1}}$ over a uniform time grid for the chosen NFE.

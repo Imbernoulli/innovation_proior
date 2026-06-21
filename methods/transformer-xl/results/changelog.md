@@ -1,0 +1,22 @@
+# Changelog
+
+- `methods/transformer-xl/results/reasoning.md:1` rewrote the derivation as a continuous first-person reconstruction with no markdown headers and no embedded code artifact.
+- `methods/transformer-xl/results/reasoning.md:13` re-grounded segment-level recurrence with current-only queries, extended keys/values, and stop-gradient on cached states.
+- `methods/transformer-xl/results/reasoning.md:29` made the relative-distance sign explicit for memory plus current tokens: key columns are not stream coordinates, so the causal distance is `M+i-j` in implementation indexing.
+- `methods/transformer-xl/results/reasoning.md:41` corrected the query-side absolute-position explanation: the learned `u` and `v` vectors are position-independent replacements after moving to query-relative coordinates, not because the original `U_i W_q` term is literally constant.
+- `methods/transformer-xl/results/reasoning.md:63` corrected the efficient relative-attention claim: `_rel_shift` avoids per-pair relative-key projection and the quadratic relative-key tensor, but the ordinary `L(M+L)` attention logits remain.
+- `methods/transformer-xl/results/answer.md:30` added the exact memory/current indexing convention for relative positions and future masking.
+- `methods/transformer-xl/results/answer.md:54` corrected the complexity statement for relative-key projection versus full attention logits.
+- `methods/transformer-xl/results/answer.md:61` refreshed the code artifact against the canonical PyTorch `attn_type=0` path.
+- `methods/transformer-xl/results/answer.md:123` fixed mask faithfulness by handling both 2D and 3D attention masks like the reference implementation.
+- `methods/transformer-xl/results/answer.md:196` added local initialization for the two relative-attention bias tensors that the official training script initializes externally.
+- `methods/transformer-xl/results/answer.md:207` added the canonical `ext_len` memory update behavior under `torch.no_grad()` with detached cache slices.
+- `methods/transformer-xl/results/answer.md:247` changed loss computation to slice `hidden[-tgt_len:]`, matching the official language-model forward path.
+- `methods/transformer-xl/results/.codex_review.json:1` replaced the stale errored review record with an explicit `not_run` record and reason.
+- `methods/transformer-xl/notes/source_matrix.md:1` added the strict source matrix for primary, ancestor, explainer, self-account, and canonical-code evidence.
+- `methods/transformer-xl/notes/discovery_synthesis.md:21` added the math audit for recurrence, signs, constants, and efficient relative attention.
+- `methods/transformer-xl/notes/discovery_synthesis.md:50` added the code-faithfulness audit against `kimiyoung/transformer-xl` commit `44781ed21dbaec88b280f74d9ae2877f52b492a5`.
+- `methods/transformer-xl/notes/discovery_synthesis.md:76` added the posterior-leak and scaffold-purity audit.
+- `methods/transformer-xl/notes/strict_check_output.txt:1` recorded that `scripts/check_strict_method.py` is absent and listed the manual checks run instead.
+- `methods/transformer-xl/refs/self_accounts/search_log.md:1` documented the author self-account search and saved Google Research blog source.
+- `methods/transformer-xl/notes/synthesis.md:1` replaced the stale draft synthesis with a pointer to the strict synthesis and noted the corrected issues.

@@ -1,6 +1,6 @@
 # Inception-v3, distilled
 
-Inception-v3 is a 42-layer convolutional image classifier that scales up the parallel-branch Inception architecture efficiently — spending each multiply-add where a set of design principles say it pays. It reaches strong ILSVRC-2012 accuracy at a fraction of the compute and parameters of denser networks, by factorizing convolutions, reducing grids without representational bottlenecks, and regularizing aggressively (batch-normalized auxiliary head + label smoothing).
+Inception-v3 is a 42-layer convolutional image classifier that scales up the parallel-branch Inception architecture efficiently — spending each multiply-add where a set of design principles says it pays. It reaches strong ILSVRC-2012 accuracy at a fraction of the compute and parameters of denser networks, by factorizing convolutions, reducing grids without representational bottlenecks, and regularizing aggressively (dropout, batch-normalized auxiliary head, and label smoothing).
 
 ## The problem
 
@@ -25,18 +25,18 @@ Better ImageNet backbones transfer to every downstream vision task, so scaling u
 ## The architecture (input 299×299×3)
 
 - **Stem:** conv 3×3/2 (→149²×32) → conv 3×3 (→147²×32) → conv 3×3 pad (→147²×64) → maxpool 3×3/2 → conv 1×1 (80) → conv 3×3 (192) → maxpool 3×3/2 → **35×35×192**.
-- **3× InceptionA** (5×5→two 3×3) → 35×35×288.
+- **3× InceptionA** (cheap reduced 5×5 branch plus a separate double-3×3 branch) → 35×35×288.
 - **GridReductionB** → 17×17×768.
 - **5× InceptionC** (1×7 / 7×1, c7 = 128/160/160/192) → 17×17×768. BN auxiliary head on the last one.
 - **GridReductionD** → 8×8×1280.
 - **2× InceptionE** (expanded parallel 1×3 / 3×1) → 8×8×2048.
-- AvgPool → 2048 → linear → softmax 1000. 42 layers, ~2.5× the BN-Inception predecessor's compute.
+- AvgPool → 2048 → dropout keep probability 0.8 → linear → softmax 1000. 42 layers, ~2.5× the BN-Inception predecessor's compute.
 
 "Inception-v3" = this architecture + RMSProp + label smoothing + factorized-7×7 stem + batch-normalized auxiliary head.
 
 ## Training recipe
 
-BN (eps 0.001) after every conv. RMSProp, decay 0.9, ε=1.0. LR 0.045, ×0.94 every 2 epochs. Gradient clipping at 2.0. Evaluate on an EMA of parameters. ~50 GPU replicas, batch 32, ~100 epochs. Total loss = label-smoothed CE on the main head + 0.4 × label-smoothed CE on the auxiliary head.
+BN (eps 0.001) after every conv. Dropout with keep probability 0.8 before the main logits. RMSProp, decay 0.9, ε=1.0. LR 0.045, ×0.94 every 2 epochs. Gradient clipping at 2.0. Evaluate on an EMA of parameters. ~50 GPU replicas, batch 32, ~100 epochs. Total loss = label-smoothed CE on the main head + 0.4 × label-smoothed CE on the auxiliary head.
 
 ## Working code
 
@@ -56,7 +56,7 @@ class ConvBN(nn.Module):
         return F.relu(self.bn(self.conv(x)), inplace=True)
 
 
-class InceptionA(nn.Module):                   # 35x35: 5x5 -> two 3x3
+class InceptionA(nn.Module):                   # 35x35: reduced 5x5 + double 3x3
     def __init__(self, in_ch, pool_features):
         super().__init__()
         self.b1 = ConvBN(in_ch, 64, kernel_size=1)
@@ -185,6 +185,7 @@ class InceptionV3(nn.Module):
         self.Mixed_7b = InceptionE(1280)
         self.Mixed_7c = InceptionE(2048)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.dropout = nn.Dropout(p=0.2)       # keep probability 0.8
         self.fc = nn.Linear(2048, num_classes)
 
     def forward(self, x):
@@ -198,6 +199,7 @@ class InceptionV3(nn.Module):
         aux = self.aux(x) if (self.aux is not None and self.training) else None
         x = self.Mixed_7a(x); x = self.Mixed_7b(x); x = self.Mixed_7c(x)
         x = torch.flatten(self.avgpool(x), 1)
+        x = self.dropout(x)
         return self.fc(x), aux
 
 

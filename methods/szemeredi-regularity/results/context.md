@@ -110,34 +110,4 @@ are extremal and Ramsey-type:
   $H$, density thresholds. The yardstick parameters are the uniformity tolerance and the density
   floor below which a block is treated as empty.
 
-## Code framework
 
-The available primitives are elementary graph quantities and a generic "keep refining until a
-target is met" loop:
-
-```python
-def density(G, X, Y):
-    """Edge density between disjoint vertex sets X, Y: e(X,Y) / (|X||Y|)."""
-    e = sum(1 for x in X for y in Y if G.has_edge(x, y))
-    return e / (len(X) * len(Y))
-
-def is_uniform_pair(G, A, B, eps):
-    """Does (A,B) behave like a random block at tolerance eps?
-    TODO: fill in."""
-    pass
-
-def refine(G, parts, eps):
-    """Given a partition that is not yet good enough, produce a finer one.
-    TODO: fill in; re-balance to equal sizes and sweep leftovers into an
-    exceptional set."""
-    pass
-
-def decompose(G, eps, m):
-    """Iterate refinement until the partition is uniform enough.
-    Open question: does this loop
-    terminate after a number of steps bounded independently of |V(G)|?"""
-    parts = initial_equipartition(G, m)        # m equal parts + exceptional set
-    while not partition_is_good(G, parts, eps): # 'good' = few non-uniform pairs
-        parts = refine(G, parts, eps)
-    return parts
-```

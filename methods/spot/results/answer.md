@@ -36,15 +36,17 @@ Lagrangianized into the unconstrained actor objective
 J_pi(phi) = E_{s~D}[ -Q_theta(s, pi_phi(s)) - lambda * log pi_beta(pi_phi(s)|s) ],
 ```
 
-a pluggable penalty whose coefficient `lambda` is the constraint-strength lever controlling the
-same tradeoff as `eps`. Larger `lambda` -> tighter support; `lambda = 0` disables the support
-penalty and leaves the TD3 actor direction, up to Q-normalization.
+a pluggable penalty whose coefficient `lambda` controls constraint strength in the implemented
+soft objective. It is not literally the density threshold `eps`, but larger `lambda` pushes the
+actor toward higher-density behavior actions; `lambda = 0` disables the support penalty and leaves
+the TD3 actor direction, up to Q-normalization.
 
 The constraint is *safe*: with the supported backup operator
 `T_eps Q(s,a) = E[r + gamma max_{a': pi_beta(a'|s')>eps} Q(s',a')]` and
 `alpha(eps) = ||T Q* - T_eps Q*||_inf`, the supported optimal value function obeys
 `||Q* - Q*_eps||_inf <= alpha(eps)/(1-gamma)` (triangle inequality + gamma-contraction of `T_eps`).
-`eps` (hence `lambda`) trades extrapolation risk against suboptimality.
+The threshold `eps` trades extrapolation risk against supported-optimum suboptimality; `lambda`
+is the practical penalty coefficient used to tune that tradeoff.
 
 ## Density estimation (the regularizer)
 
@@ -99,8 +101,11 @@ Phase 2 (policy training, TD3):
       norm_q = 1 / mean(|q|).detach()                                              # Q normalization
       minimize  -norm_q * mean(q) + lambda * mean(neg_log_beta)
       soft-update targets with tau
-Online fine-tuning: same loop on a growing buffer, with
-  lambda_t = lambda * max(lambda_end, 1 - online_it / max_online_steps),  VAE frozen.
+Online fine-tuning: same loop on a growing buffer, with the VAE frozen and
+  lambda_t = lambda * max(lambda_end, 1 - t_online / 1_000_000).
+In THUML's split-file code this is `total_it / 1000000` inside `train_online`; because the
+fine-tune script constructs a fresh trainer and loads only weights/optimizers, `total_it` is the
+online-step counter. In CORL's single-file version the same role is an explicit `online_it`.
 ```
 
 Defaults: VAE hidden 750, 3-layer enc/dec, latent dim `2*action_dim`, lr 1e-3, `10^5` iters,
@@ -121,6 +126,9 @@ import torch.nn.functional as F
 import torch.distributions as td
 
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 class VAE(nn.Module):
     """Conditional VAE for the behavior-density penalty."""
 
@@ -135,6 +143,7 @@ class VAE(nn.Module):
         self.d3 = nn.Linear(hidden_dim, action_dim)
         self.max_action = max_action
         self.latent_dim = latent_dim
+        self.device = device
 
     def encode(self, state, action):
         h = F.relu(self.e1(torch.cat([state, action], -1)))
@@ -142,10 +151,14 @@ class VAE(nn.Module):
         log_std = self.log_std(h).clamp(-4, 15)
         return self.mean(h), torch.exp(log_std)
 
-    def decode(self, state, z):
+    def decode(self, state, z=None):
+        if z is None:
+            z = torch.randn((state.shape[0], self.latent_dim)).to(self.device).clamp(-0.5, 0.5)
         a = F.relu(self.d1(torch.cat([state, z], -1)))
         a = F.relu(self.d2(a))
-        return self.max_action * torch.tanh(self.d3(a))
+        if self.max_action is not None:
+            return self.max_action * torch.tanh(self.d3(a))
+        return self.d3(a)
 
     def forward(self, state, action):
         mean, std = self.encode(state, action)
@@ -321,6 +334,8 @@ class SPOT_TD3:
     def train_online(self, replay_buffer, batch_size=256, max_online_steps=None):
         self.online_it += 1
         max_online_steps = max_online_steps or self.max_online_steps
+        # THUML computes the same decay with total_it/1000000 inside train_online;
+        # this standalone form names the online-step counter explicitly.
         lambd = (self.lambd * max(self.lambd_end, 1.0 - self.online_it / max_online_steps)
                  if self.lambd_cool else self.lambd)
         self._train_step(replay_buffer, batch_size, lambd)

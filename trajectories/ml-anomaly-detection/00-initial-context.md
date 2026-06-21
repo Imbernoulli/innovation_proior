@@ -9,38 +9,25 @@ generalize across datasets that differ wildly in size (~1.8k to ~49k rows), dime
 36 features), and anomaly rate (~2.5% to ~32%), because there is no per-dataset label signal to
 tune against.
 
-## Prior art before the first rung (the unsupervised-detection lineage)
+## Prior art / Background / Baselines
 
-The ladder's first rung reacts to a line of classical unsupervised detectors. These precede the
-ladder; each is a way to answer "what is normal, and how far is this point from it," and each has
-a gap the rung below it inherits or tries to escape.
+- **Statistical tail rules (3σ, 1.5·IQR).** Core idea: flag a value when it exceeds a fixed
+  multiple of the feature's spread. Observed gap: a two-number caricature (mean/sd or quartiles)
+  assumes a roughly symmetric, Gaussian marginal; the yardstick is wrong on skewed or heavy-tailed
+  features.
+- **Distance-based detection (DB(p,D); D^k).** Core idea: score a point by its distance to its
+  k-th nearest neighbor, treating far-from-everything as anomalous. Observed gap: a single global
+  distance scale cannot separate a genuine anomaly beside a dense cluster from an ordinary member
+  of a sparse cluster, and the neighbor search is heavy and near-superlinear.
+- **Density estimation (histograms, KDE, HBOS).** Core idea: estimate a per-feature density and
+  score points by how low the density is where they land. Observed gap: it requires a bin count or
+  bandwidth that has no label-free way to be set, and it conflates tail rarity with low-density
+  valleys between clumps.
+- **Profiling / boundary models (clustering, one-class boundaries).** Core idea: build a model of
+  the normal bulk and flag whatever falls outside it. Observed gap: capacity goes into describing
+  the majority, while the quantity of interest is the rare minority at the edges.
 
-- **Statistical tail rules (3σ, 1.5·IQR; Hawkins 1980).** Flag a value if it lies beyond a fixed
-  multiple of the spread — three standard deviations, or 1.5 interquartile ranges past the
-  quartiles. Tuning-free and per-feature, but they describe each feature by two numbers (mean/sd
-  or the quartiles) and so implicitly assume a symmetric, roughly Gaussian shape; on a skewed or
-  heavy-tailed marginal the yardstick is wrong. Gap: a two-number caricature of each feature's
-  distribution.
-- **Distance-based detection (DB(p,D), Knorr & Ng 1998; D^k, Ramaswamy et al. 2000).** Score a
-  point by its distance to its k-th nearest neighbor; far-from-everything is anomalous.
-  Distribution-free and rankable, but it compares every point to a *single global distance scale*,
-  so it cannot tell a genuine anomaly beside a dense cluster from an ordinary member of a sparse
-  cluster — their absolute distances coincide. And the neighbor search is near-/super-linear with
-  heavy constants. Gap: one global scale, and a distance bill that does not scale.
-- **Density estimation (histograms, KDE, HBOS; Goldstein & Dengel 2012).** Estimate a per-feature
-  density and score by how low the density is where a point lands. Closer to the right object, but
-  it needs a bin count or a bandwidth — exactly the knob there is no label-free way to set — and
-  it conflates "rare because far out in a tail" with "rare because it fell in a low-density valley
-  between two clumps." Gap: a tuning knob, and density confused with extremeness.
-- **Profiling / boundary models (clustering, one-class boundaries).** Build a model of the normal
-  bulk and flag whatever falls outside. The objective is aimed at the wrong target: capacity goes
-  into describing the majority, while the thing of interest is the rare minority at the edges.
-  Gap: optimizes a description of normality rather than a separation of anomalies.
-
-The ladder below is a sequence of fills of the same scaffold slot, each reacting to the measured
-failure of the one before it.
-
-## The fixed substrate
+## Fixed substrate / Code framework
 
 A single-file benchmark harness is frozen and must not be touched. It loads one ADBench/ODDS
 dataset (Cardio, Thyroid, Satellite, Shuttle) as a feature matrix `X` and binary labels `y`
@@ -52,11 +39,11 @@ read off the test scores. The harness catches exceptions and falls back to AUROC
 a detector that throws scores at the floor. The labels are never visible to the detector — `fit(X)`
 receives features only.
 
-## The editable interface
+## Editable interface
 
 Exactly one region is editable: the `CustomAnomalyDetector` class in
-`scikit-learn/custom_anomaly.py` (lines 160–212). Every method on the ladder is a fill of this
-same three-method contract:
+`scikit-learn/custom_anomaly.py` (lines 160–212). Every method is a fill of this same three-method
+contract:
 
 - `__init__(self)` — set hyperparameters and build the internal model; no labels, no data yet.
 - `fit(self, X)` — train on the unlabeled, standardized training matrix `X` of shape
@@ -67,8 +54,8 @@ same three-method contract:
 Available, pre-installed: `numpy`, `scipy`, `scikit-learn` (PCA, KernelDensity, NearestNeighbors,
 GaussianMixture, …), and `pyod` (IForest, LOF, OCSVM, ECOD, COPOD, KNN, HBOS, PCA, LODA, …). The
 module-level `SEED` is in scope inside the class. The starting point is the scaffold default — a
-plain Isolation-Forest wrapper at PyOD defaults — and each later method replaces exactly this
-class body and nothing else.
+plain Isolation-Forest wrapper at PyOD defaults — and each method replaces exactly this class body
+and nothing else.
 
 ```python
 # EDITABLE region of scikit-learn/custom_anomaly.py (lines 160-212) — default fill

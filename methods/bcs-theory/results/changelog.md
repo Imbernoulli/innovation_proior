@@ -1,0 +1,24 @@
+# BCS Theory Review Changelog
+
+- `methods/bcs-theory/results/context.md:19` changed "microscopic answer" to "microscopic account" to keep the pre-method scaffold in-frame.
+- `methods/bcs-theory/results/reasoning.md:7` clarified that the product ranges over one representative of each time-reversed pair, avoiding double-counting of `(k up, -k down)`.
+- `methods/bcs-theory/results/reasoning.md:9` separated the minimum quasiparticle energy `Delta` from the pair-breaking/single-particle threshold `2 Delta`.
+- `methods/bcs-theory/results/answer.md:1` made the sign convention explicit: `V_{k k'} > 0` denotes the net attractive matrix element, so the reduced Hamiltonian carries a minus sign.
+- `methods/bcs-theory/results/answer.md:9` clarified the paired trial state's product index as one representative per time-reversed pair.
+- `methods/bcs-theory/results/answer.md:16` added the self-consistent pair-field formula `Delta_k = sum_{k'} V_{k k'} u_{k'} v_{k'} (1 - 2 f_{k'})`.
+- `methods/bcs-theory/results/answer.md:22` specified that `N(0)` is the single-spin density of states at the Fermi surface.
+- `methods/bcs-theory/results/answer.md:25` kept the Bogoliubov spectrum `E_k = sqrt(epsilon_k^2 + Delta^2)` tied to the occupation amplitudes.
+- `methods/bcs-theory/results/answer.md:28` rewrote the finite-temperature gap equation with the square-root energy explicitly in the integrand.
+- `methods/bcs-theory/results/answer.md:33` distinguished the quasiparticle gap from the observable pair-breaking gap width.
+- `methods/bcs-theory/results/answer.md:36` preserved the weak-coupling `1.14` transition-temperature constant.
+- `methods/bcs-theory/results/answer.md:37` preserved the primary derivation's rounded `3.50` gap-ratio constant.
+- `methods/bcs-theory/results/answer.md:40` removed meta "answer" phrasing and stated the mechanism directly.
+- `methods/bcs-theory/refs/final_artifact/bcs_variational_artifact.md:24` synchronized the canonical non-computational artifact with the single-spin `N(0)` convention.
+- `methods/bcs-theory/refs/final_artifact/bcs_variational_artifact.md:30` synchronized the artifact's finite-temperature gap equation with the corrected explicit-energy form.
+- `methods/bcs-theory/refs/final_artifact/bcs_variational_artifact.md:38` aligned the artifact's weak-coupling constants and ordering with `results/answer.md`.
+- `methods/bcs-theory/notes/discovery_synthesis.md:43` removed loose notation commentary from the gap-equation discussion.
+- `methods/bcs-theory/notes/discovery_synthesis.md:46` rewrote the finite-temperature gap condition with `E(epsilon)` defined before use.
+- `methods/bcs-theory/notes/discovery_synthesis.md:50` removed result-file process commentary while retaining the source-grounded `1.14` and `3.50` constants.
+- `methods/bcs-theory/notes/source_matrix.md:7` replaced notation commentary with neutral evidence wording for the explainer.
+- `methods/bcs-theory/notes/source_matrix.md:16` removed prior process/user-instruction leakage from the retrieval notes.
+- `methods/bcs-theory/results/.codex_review.json:4` recorded that manual audit was completed, no independent review gate is available, and `scripts/check_strict_method.py` is absent.

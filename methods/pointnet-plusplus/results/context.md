@@ -99,12 +99,12 @@ The yardsticks are 3D shape classification on ModelNet40 (CAD models, point clou
 of $(x,y,z)$ — typically around 1024 points — with the usual rotation/jitter
 augmentation; metric overall accuracy), 3D shape part segmentation on the ShapeNet
 part dataset (per-point part labels; metric mean part IoU), and indoor scene semantic
-segmentation on the Stanford 3D indoor dataset (per-point semantic labels over rooms).
-A defining protocol for this work is robustness to **non-uniform sampling density**:
-training and/or testing under random point dropout at varying ratios, so that a model
-must perform across densities rather than at a single fixed density. A normal-channel
-input variant (each point carries its surface normal in addition to coordinates) is
-part of the setting.
+segmentation on ScanNet indoor scenes (per-point semantic labels over rooms).
+A useful stress test is robustness to **non-uniform sampling density**: training
+and/or testing under random point dropout at varying ratios, so that a model must
+perform across densities rather than at a single fixed density. A normal-channel
+input variant (each point carries its surface normal in addition to coordinates)
+is part of the setting.
 
 ## Code framework
 

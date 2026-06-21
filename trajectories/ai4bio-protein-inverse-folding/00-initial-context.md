@@ -1,86 +1,32 @@
 ## Research question
 
-Protein inverse folding (fixed-backbone design): given a backbone — for each of `L` residues the
-3D coordinates of its four backbone atoms `N, CA, C, O` — predict a per-residue distribution over the
-20 standard amino acids that would fold into that shape. The map is degenerate (many sequences fold to
-nearly the same backbone), so the target is `p(s | X)`, not a deterministic inverse; and because a
-protein's identity is unchanged when the whole molecule is rotated, reflected, or translated, the
-prediction must be **invariant** to rigid motion. The single component being designed is the
-**structure encoder**: the GNN module that turns backbone geometry into per-residue embeddings
-`h_V` of shape `(B, L, hidden_dim)`. Everything downstream — a decoder head to amino-acid logits, the
-training loop, the loss, the evaluation — is fixed by the scaffold. The encoder is the critical
-component because all methods share the same input (backbone coordinates) and output (amino-acid
-log-probabilities) and differ only in how they transform structure into sequence-informative
-representations.
+Protein inverse folding (fixed-backbone design): given the backbone coordinates `X (B, L, 4, 3)` — the `N, CA, C, O` positions for each of `L` residues — predict a per-residue distribution over the 20 standard amino acids that would fold into that shape. The target is `p(s | X)`, not a deterministic inverse, and the prediction must be invariant to rigid motion. The design focus is the **structure encoder**, the GNN module that turns backbone geometry into per-residue embeddings `h_V (B, L, hidden_dim)`. The decoder head, training loop, loss, and evaluation are fixed by the scaffold.
 
-## Prior art before the first rung (the structure-graph lineage)
+## Prior art / Background / Baselines
 
-The first rung reacts to a line of structure-encoding methods that each capture one face of the problem
-and surrender the other. The two faces are **geometry** (which way a residue points, how the backbone
-curves, whether two neighbors sit on the same side of me or opposite sides — directions and angles in
-space) and **relation** (who contacts whom, the connectivity pattern, the order along the chain). The
-ancestors below are what the ladder is built against.
+Current approaches encode structure in different ways and leave different gaps.
 
-- **Voxelized 3D-CNN models (Anand et al. 2020; quality-assessment Ornate, 2019).** Rasterize atoms
-  into a 3D occupancy grid and run a 3D convolution; filters latch onto pocket shapes and motifs
-  directly in space. Gap: the grid is not invariant to how the molecule is oriented (one re-orients by
-  augmentation), resolution trades memory against geometric precision, and the residue-residue graph is
-  thrown away, so relational reasoning has to be re-learned through dense volumetric filters.
-- **Sequential / hand-crafted-feature models (SPIN2, O'Connell et al. 2018).** Summarize each residue's
-  3D environment as a hand-built feature vector and feed the protein to a 1D-CNN/RNN/dense net. Gap: the
-  structure is represented only indirectly, through whatever the features happen to capture; geometry
-  the features discard is unrecoverable downstream.
-- **Message passing on a proximity graph (Gilmer et al. 2017).** The substrate everything here is built
-  on: form a message per directed edge `m_{j→i} = g(h_i, h_j, e_{j→i})`, aggregate the incoming
-  messages at each node, update `h_i`. The neighbor sum is permutation-symmetric, so graph-index
-  invariance is free; relational reasoning is native and `O(L·k)` cheap on a `k`-nearest-neighbor graph.
-  What it leaves open — and what every method below answers differently — is *what the node/edge
-  features carry* and *how a step transforms them while staying invariant to rigid motion*.
-- **Graph encoders with invariant scalar geometry (Structured Transformer, Ingraham et al. 2019).** The
-  CPD state of the art before the ladder. Diagnosed that distance-only edges are *not locally
-  informative* — two neighbors at equal distance can be on the same or opposite side and the scalar
-  can't tell them apart — and fixed it by pinning a local frame `O_i = [b_i, n_i, b_i×n_i]` per node and
-  encoding each edge as `(RBF(‖x_j−x_i‖), O_i^T(x_j−x_i)/‖x_j−x_i‖, q(O_i^T O_j))`. Gap: all geometry is
-  collapsed into invariant scalars *at the input*; after that first projection the network can no longer
-  touch the directional quantities as geometric objects, and orientation is stored redundantly (once per
-  neighbor frame rather than once, absolutely, per node).
+- **Voxelized 3D-CNN models.** Rasterize atoms into a 3D occupancy grid and apply 3D convolutions. Gap: the grid is not orientation-invariant without augmentation, resolution trades against memory, and the residue-residue graph structure is discarded.
+- **Sequential / hand-crafted-feature models.** Summarize each residue's 3D environment with hand-built features and feed a 1D sequence model. Gap: geometry not captured by the chosen features is unavailable to the network.
+- **Message passing on a proximity graph.** Form messages over a `k`-nearest-neighbor graph and aggregate at each node. Gap: relational reasoning and permutation invariance are cheap, but the design of invariant node/edge features and update rules remains open.
+- **Graph encoders with invariant scalar geometry.** Pin a local frame per node and encode edges with distance, normalized relative direction, and relative orientation. Gap: geometry is collapsed into invariant scalars before message passing, so later layers cannot update the representation of direction.
 
-So the table is set with a tension: CNNs reason geometrically but discard the graph and the invariance;
-graph encoders reason relationally and cheaply but, to stay invariant, freeze the geometry into scalars
-at the door. The ladder is the search for an encoder that reasons geometrically *and* relationally,
-invariantly, at a cost that scales to whole proteins.
+## Fixed substrate / Code framework
 
-## The fixed substrate
+The inverse-folding harness is frozen and must not be changed. It supplies: datasets and structure-based train/validation/test splits; padding/masking of variable-length proteins into `X (B, L, 4, 3)`, sequence indices `S (B, L)`, and a residue `mask (B, L)`; the training loop (`AdamW`, `betas=(0.9, 0.98)`, `OneCycleLR`, gradient-norm clip 1.0, per-residue masked cross-entropy); NaN-coordinate handling; and evaluation reporting **recovery** (argmax-correct fraction) and **perplexity** (`exp` of the mean per-residue NLL).
 
-A self-contained inverse-folding harness is frozen and must not be touched. It supplies: the datasets
-and structure-based train/validation/test splits; padding/masking of variable-length proteins into
-`X (B, L, 4, 3)`, sequence indices `S (B, L)`, and a residue `mask (B, L)`; the training loop
-(`AdamW`, `betas=(0.9, 0.98)`, `OneCycleLR`, gradient-norm clip 1.0, per-residue masked cross-entropy);
-NaN-coordinate handling (masked out); and the evaluation that reports **recovery** (argmax-correct
-fraction) and **perplexity** (`exp` of the mean per-residue NLL). The harness also exposes four
-geometric helpers in the fixed region above the editable slot, which any encoder may reuse:
+Reusable geometric helpers above the editable slot:
 
 - `_rbf(D, ...)` — lift distances into 16 Gaussian radial basis functions (centers 0–20 Å).
 - `_dihedrals(X)` — backbone dihedrals `(φ, ψ, ω)` as `{sin, cos}`, `(B, L, 6)`.
 - `_orientations(X)` — local forward + binormal unit vectors, `(B, L, 6)`.
-- `knn_graph(X_ca, mask, k)` — build the `k`-nearest-neighbor graph from `CA` coordinates, returning
-  `E_idx (B, L, K)` and `D_neighbors (B, L, K)`.
+- `knn_graph(X_ca, mask, k)` — build the `k`-nearest-neighbor graph from `CA` coordinates, returning `E_idx (B, L, K)` and `D_neighbors (B, L, K)`.
 
-## The editable interface
+## Editable interface
 
-Exactly one region is editable: the `StructureEncoder` and `InverseFoldingModel` classes (and an
-optional `CONFIG_OVERRIDES` dict that may set only `learning_rate`, `dropout`, `num_encoder_layers`,
-`batch_size`). The contract is fixed: `StructureEncoder.forward(X, mask)` takes `X (B, L, 4, 3)` and
-`mask (B, L)` and returns per-residue embeddings `h_V (B, L, hidden_dim)`; `InverseFoldingModel.forward`
-wraps the encoder with a decoder head and returns `log_probs (B, L, 20)`. Every rung is a fill of this
-same contract. Note one thing the scaffold does *not* expose, which constrains every method here:
-there is **no autoregressive decoder, no sequence input to the model, no chain/multi-chain encoding,
-and no coordinate-noise augmentation** — the model sees only backbone geometry and must produce all 20
-marginals in **one shot** from the encoder embeddings through a small decoder head.
+Only the `StructureEncoder` and `InverseFoldingModel` classes are editable, plus an optional `CONFIG_OVERRIDES` dict that may set only `learning_rate`, `dropout`, `num_encoder_layers`, and `batch_size`. The contract is fixed: `StructureEncoder.forward(X, mask)` returns `h_V (B, L, hidden_dim)`; `InverseFoldingModel.forward` returns `log_probs (B, L, 20)`. The scaffold does not provide autoregressive decoding, sequence input, multi-chain encoding, or coordinate-noise augmentation: the model sees only backbone geometry and must produce all 20 marginals in one shot.
 
-The starting point is the scaffold default: a plain MPNN encoder (KNN graph, dihedral + orientation
-node features, RBF + direction edge features, three message-passing layers) feeding a two-layer MLP
-decoder.
+The starting fill is a plain MPNN encoder (KNN graph, dihedral + orientation node features, RBF + direction edge features, three message-passing layers) feeding a two-layer MLP decoder.
 
 ```python
 # EDITABLE region of custom_invfold.py — default fill (plain MPNN encoder + MLP decoder)
@@ -179,10 +125,4 @@ class InverseFoldingModel(nn.Module):
 
 ## Evaluation settings
 
-Three benchmarks. **CATH 4.2** — the standard single-chain design benchmark, structure-split so held-out
-folds are dissimilar to training (~18k train / 608 test). **CATH 4.3** — an updated, more diverse CATH
-(~21k train / 1120 test). **TS50** — 50 de novo designed proteins for out-of-distribution
-generalization, trained on CATH 4.2 with TS-overlapping training proteins removed. Primary metric:
-**recovery**, the fraction of residues whose argmax prediction matches the native amino acid (higher is
-better). Secondary metric: **perplexity**, `exp` of the mean per-residue cross-entropy (lower is
-better). One seed (42). Each method is trained under a fixed compute/time budget per benchmark.
+Three benchmarks: **CATH 4.2** (~18k train / 608 test, structure-split), **CATH 4.3** (~21k train / 1120 test), and **TS50** (50 de novo designed proteins, trained on CATH 4.2 with overlapping training proteins removed). Primary metric: **recovery** (argmax-correct fraction). Secondary metric: **perplexity**. One seed (42). Fixed compute/time budget per benchmark.

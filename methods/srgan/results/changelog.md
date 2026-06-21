@@ -1,0 +1,27 @@
+# File:Line Changelog
+
+- `results/context.md:114` through `results/context.md:119` removed answer leakage from the code-framework setup: no discriminator or frozen VGG object is handed to the reasoning step.
+- `results/context.md:127` through `results/context.md:148` replaced the old adversarial/VGG scaffold with a neutral residual SISR model plus unresolved `sr_objective`.
+- `results/context.md:151` through `results/context.md:153` clarified that the open problem is the objective, not a pre-selected adversarial feature-loss harness.
+- `results/reasoning.md:37` corrected the VGG scaling derivation: feature maps are scaled by `1/12.75`, so the squared VGG loss is scaled by `1/(12.75^2) ~= 0.006`.
+- `results/reasoning.md:113` through `results/reasoning.md:116` removed `AdaptiveAvgPool2d(6)` and made the discriminator flatten the paper-faithful `512x6x6` crop tensor.
+- `results/reasoning.md:120` through `results/reasoning.md:130` kept the VGG54 truncation code but removed a header-looking top-level code comment from the reasoning file.
+- `results/reasoning.md:135` through `results/reasoning.md:146` renamed the VGG scale constant and added ImageNet normalization for torchvision VGG inputs while preserving SR/HR tensors in `[-1,1]`.
+- `results/reasoning.md:148` through `results/reasoning.md:163` recomputed `G(lr)` separately for discriminator and generator updates, using `torch.no_grad()` for the discriminator fake batch.
+- `results/answer.md:35` through `results/answer.md:38` corrected the same VGG scaling statement in the final method artifact.
+- `results/answer.md:120` through `results/answer.md:122` removed adaptive pooling from the discriminator code and documented the `96x96 -> 512x6x6` geometry.
+- `results/answer.md:136` through `results/answer.md:147` added `VGG_LOSS_SCALE` and `vgg_input_from_tanh()` to make the embedded PyTorch VGG loss faithful to both the paper scale and torchvision preprocessing.
+- `results/answer.md:149` through `results/answer.md:161` updated the training step to detach fake images for the discriminator path and recompute SR for the generator objective.
+- `notes/synthesis.md:52` corrected the old ambiguous VGG-rescale note to distinguish feature-map scaling from squared-loss scaling.
+- `notes/synthesis.md:80` made the design-decision table use the squared VGG loss scale `~=0.006`.
+- `notes/source_matrix.md:12` added the primary source evidence and exact SRGAN math/training constants used for this review.
+- `notes/source_matrix.md:18` through `notes/source_matrix.md:22` added load-bearing ancestors for GAN, perceptual loss, sub-pixel convolution, DCGAN, and VGG.
+- `notes/source_matrix.md:28` through `notes/source_matrix.md:30` added third-party explainer captures.
+- `notes/source_matrix.md:36` through `notes/source_matrix.md:37` recorded the paper-stated Theano/Lasagne implementation and the cloned PyTorch reference used only as an implementation sanity check.
+- `refs/final_artifact/sgrvinod_models.py:131`, `refs/final_artifact/sgrvinod_models.py:191`, `refs/final_artifact/sgrvinod_models.py:233`, and `refs/final_artifact/sgrvinod_models.py:291` added tracked reference-code evidence for SRResNet, Generator, Discriminator, and VGG truncation.
+- `refs/final_artifact/sgrvinod_train_srgan.py:30` through `refs/final_artifact/sgrvinod_train_srgan.py:33` and `refs/final_artifact/sgrvinod_train_srresnet.py:24` added tracked training-constant evidence from the PyTorch reference.
+- `notes/discovery_synthesis.md:11` through `notes/discovery_synthesis.md:45` recorded the review decisions on VGG scaling, VGG preprocessing, discriminator crop geometry, scaffold purity, and code authority.
+- `notes/discovery_synthesis.md:77` through `notes/discovery_synthesis.md:83` recorded the posterior-leak and in-frame voice review.
+- `refs/self_accounts/search_log.md:5` through `refs/self_accounts/search_log.md:17` documented the author self-account search and the absence of a dedicated author retrospective.
+- `notes/strict_check_output.txt:1` through `notes/strict_check_output.txt:3` recorded that the requested strict checker could not be run because no checker script exists in this workspace.
+- `results/.codex_review.json:3` through `results/.codex_review.json:7` replaced the stale errored review marker with an explicit `not_run` record and reason.

@@ -36,7 +36,7 @@ Then the label: the composite contains class-A pixels and class-B pixels. Follow
 - input[:,:,bbx1:bbx2,bby1:bby2] = input[rand_index,:,bbx1:bbx2,bby1:bby2]  (paste B's patch into A).
 - **lam re-adjusted**: lam = 1 − ((bbx2−bbx1)*(bby2−bby1))/(W*H). NECESSARY because clipping the box at image borders changes the true pasted area away from the nominal 1−λ; the label weight must track the *actual* pasted area, not the nominal one.
 - loss = criterion(output,target_a)*lam + criterion(output,target_b)*(1−lam). Uses linearity of CE in target -> never materialize soft label (same trick as mixup).
-- cutmix_prob: apply CutMix with some probability r per iteration (ImageNet 0.5/1.0). For CIFAR headline, always.
+- cutmix_prob: apply CutMix with some probability r per iteration. Official README examples use CIFAR-100 `--cutmix_prob 0.5` and ImageNet `--cutmix_prob 1.0`; both use `--beta 1.0`.
 
 ## Design-decision -> why table
 - **Fill region with a real patch (vs zeros/noise):** zeros waste pixels (Cutout's flaw); real patch keeps all pixels informative AND keeps a "deleted region" semantics. Alternatives rejected by ablation: none beat it.
@@ -47,7 +47,7 @@ Then the label: the composite contains class-A pixels and class-B pixels. Follow
 - **Re-adjust λ to actual pasted area:** border clipping changes true area; label must match true area or it's miscalibrated.
 - **Apply at input level (vs feature level):** ablation right plot — input level best; feature-level CutMix at most layers still beats baseline but input is best (occlusion semantics live in pixel space).
 - **Shuffle within minibatch:** cheap random cross-image pairing, no second loader.
-- **cutmix_prob<1 on ImageNet:** mixing fraction of iterations balances clean vs augmented signal.
+- **cutmix_prob differs by training recipe:** CIFAR reference example mixes on half the iterations; ImageNet reference example mixes every iteration. The probability knob controls the clean-vs-augmented batch mix without changing the image/label formula.
 
 ## Evaluation settings (pre-method facts)
 CIFAR-10/100 (32×32, 50k/10k), ImageNet-2012 (1.28M, 1000 cls, top-1/5). Backbones: ResNet-50/101, PyramidNet-200, WideResNet, ResNeXt. SGD+momentum 0.9, weight decay, step LR. Augment underneath: pad-crop, flip, normalize. Also WSOL (CUB200, ImageNet-loc) via CAM, transfer to Pascal VOC detection / MS-COCO captioning, robustness (occlusion, adversarial FGSM), OOD detection. (Outcomes excluded.)

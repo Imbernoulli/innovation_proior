@@ -32,9 +32,9 @@ At inference, a random latent is iteratively denoised to $z_0$ and decoded, $x'=
 
 ## Evaluation settings
 
-- **Concepts.** A small collection of user-supplied concepts, each given by 3–5 (and in a size-sensitivity study, 1–25) casual images spanning varied backgrounds/poses.
+- **Concepts.** A small collection of user-supplied concepts, each given by a handful of casual images spanning varied backgrounds/poses.
 - **Reconstruction metric.** For each concept, generate 64 images from a neutral "A photo of [concept]" prompt; report the average pairwise CLIP-space cosine similarity between generated images and the concept's training images. (CLIP measures *semantic* similarity and is relatively insensitive to exact shape.)
-- **Editability metric.** Generate 64 samples (50 DDIM steps) for a battery of prompts of escalating difficulty — background change ("[concept] on the moon"), style change ("an oil painting of [concept]"), composition ("Elmo holding [concept]"); embed each sample in CLIP space, average, and take cosine similarity to the CLIP embedding of the *prompt with the concept marker removed*. Higher = more faithful to the requested edit.
+- **Editability metric.** Generate 64 samples (50 DDIM steps) for a battery of prompts of escalating difficulty — background change ("[concept] on the moon"), style change ("an oil painting of [concept]"), composition ("Elmo holding [concept]"); embed each sample in CLIP space, average, and compare it to the CLIP embedding of the requested edit text after dropping the new concept phrase. Higher = more faithful to the requested edit.
 - **Reference anchors.** "Image only" (always emit a training image, ignore the prompt) upper-bounds reconstruction; "Prompt only" (render the prompt without the concept) upper-bounds editability.
 - **Human study.** Two questionnaires — rank methods by similarity to reference images, and rank by similarity to a target text — totaling 1,200 responses.
 
@@ -56,13 +56,13 @@ scheduler    = load_noise_scheduler()             # alphas, add_noise
 def adapt_to_new_concept(images, coarse_word):
     """Given a few images of one concept, make the frozen model able to
     render that concept on demand inside arbitrary prompts.
-    TODO: what is the target of adaptation, what objective, what stays frozen?"""
+    Open question: what is adapted, what objective is used, what stays frozen?"""
     pass
 # ==========================================================================
 
 def build_conditioning(prompt):
     # tokenize -> embedding lookup -> transformer -> conditioning vectors
-    # TODO: how does the new concept enter this pipeline?
+    # Open question: how does the new concept enter this pipeline?
     pass
 
 def training_step(images, prompt):
@@ -73,6 +73,6 @@ def training_step(images, prompt):
     c   = build_conditioning(prompt)
     eps_pred = unet(z_t, t, c).sample
     loss = F.mse_loss(eps_pred, eps)          # the unchanged LDM objective
-    # TODO: which parameters does the gradient actually update?
+    # Open question: which parameters does the gradient actually update?
     return loss
 ```

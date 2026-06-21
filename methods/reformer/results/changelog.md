@@ -1,0 +1,39 @@
+# Changelog
+
+- `methods/reformer/results/context.md:16` corrected the opening memory estimate from "largest reported attention layer" to "largest reported Transformer layer."
+- `methods/reformer/results/reasoning.md:1` rewrote the reasoning trace as continuous first-person derivation with no markdown headers or code blocks.
+- `methods/reformer/results/reasoning.md:19` corrected the LSH chunk/bucket relation to $m=2l/n_{buckets}$, equivalently `n_buckets = 2l/m`.
+- `methods/reformer/results/reasoning.md:23` restored the exact multi-round duplicate-count correction using $N_{i,j}$ and subtracting $\log N_{i,j}$ in the mask.
+- `methods/reformer/results/reasoning.md:27` corrected the self-attention mask to a large finite positive penalty subtracted from the self logit, preserving the no-other-target case.
+- `methods/reformer/results/reasoning.md:31` kept the reversible-layer inversion signs in the correct reverse order.
+- `methods/reformer/results/reasoning.md:37` grounded FFN chunking in position-wise independence and removed implementation-listing material from the reasoning trace.
+- `methods/reformer/results/answer.md:20` corrected code-facing bucket default to `n_buckets = 2 * length // chunk_len`.
+- `methods/reformer/results/answer.md:26` separated the exact appendix union formula from implementation behavior and listed all mask cases with correct constants.
+- `methods/reformer/results/answer.md:55` kept the paper complexity constants, including $n_c=l/32$ and $c=128^2$.
+- `methods/reformer/results/answer.md:72` replaced third-party PyTorch grounding with the canonical Google Trax implementation commit.
+- `methods/reformer/results/answer.md:77` recorded the Trax bucket-count/factorization behavior.
+- `methods/reformer/results/answer.md:80` corrected shared-QK key scaling to Trax's `length_normalized(k) / sqrt(d)` behavior.
+- `methods/reformer/results/answer.md:83` corrected mask constants to Trax's `1e9` future/padding penalty and `1e5` self penalty.
+- `methods/reformer/results/answer.md:85` documented that current Trax combines hash rounds by log-partition weights without explicitly computing `log N_{i,j}`.
+- `methods/reformer/results/answer.md:90` corrected reversible output structure to Trax `Dup()` / `ReversibleSerial` / `Concatenate()`.
+- `methods/reformer/results/answer.md:101` replaced the stale PyTorch artifact with a compact Trax-shaped code skeleton for hashing, chunk attention, masks, round combination, and reversible inversion.
+- `methods/reformer/notes/synthesis.md:5` recorded the refreshed primary source and canonical implementation evidence spine.
+- `methods/reformer/notes/synthesis.md:13` listed the math corrections for parameter wording, scaling, bucket constants, duplicate correction, masks, and RevNet signs.
+- `methods/reformer/notes/synthesis.md:28` recorded the canonical-code correction away from a third-party PyTorch port and toward Google Trax.
+- `methods/reformer/notes/synthesis.md:38` recorded the posterior-leak/scaffold-purity review results.
+- `methods/reformer/notes/source_matrix.md:5` added the primary paper/source artifact record.
+- `methods/reformer/notes/source_matrix.md:6` added the Google Trax canonical implementation record.
+- `methods/reformer/notes/source_matrix.md:7` added the Google Research author/lab self-account record.
+- `methods/reformer/notes/source_matrix.md:8` added the Transformer ancestor record.
+- `methods/reformer/notes/source_matrix.md:9` added the angular-LSH ancestor record.
+- `methods/reformer/notes/source_matrix.md:10` added the RevNet ancestor record.
+- `methods/reformer/notes/source_matrix.md:11` added the Sparse Transformer baseline ancestor record.
+- `methods/reformer/notes/source_matrix.md:12` added the Adafactor supporting-background record.
+- `methods/reformer/notes/source_matrix.md:13` added the Hugging Face third-party explainer record.
+- `methods/reformer/notes/source_matrix.md:14` added the Weights & Biases third-party explainer record.
+- `methods/reformer/notes/discovery_synthesis.md:9` documented the bucket/chunk correction as a load-bearing synthesis point.
+- `methods/reformer/notes/discovery_synthesis.md:11` documented the paper-vs-Trax duplicate-correction distinction.
+- `methods/reformer/notes/discovery_synthesis.md:21` recorded the audit decisions: canonical code grounding, key scaling, duplicate-correction caveat, Trax concatenate structure, and reasoning voice cleanup.
+- `methods/reformer/refs/self_accounts/search_log.md:3` documented the author self-account search and the Google Research blog result.
+- `methods/reformer/results/.codex_review.json:4` replaced the stale errored review marker with an explicit independent-review-not-run marker.
+- `methods/reformer/notes/strict_check_output.txt:1` recorded the local structural check result and the missing `scripts/check_strict_method.py` blocker.

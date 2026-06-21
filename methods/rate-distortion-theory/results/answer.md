@@ -64,67 +64,6 @@ with `H(·)` the binary entropy. Lower bound `I = H(p) − H(X⊕X̂|X̂) ≥ H(
 
 `R(D)` for a finite source/distortion is the convex program `min_q I(X;X̂)` s.t. `E[d]≤D`; the closed forms above are the canonical checks.
 
-```python
-import numpy as np
-
-def mutual_information(P_x, Q):                 # I(X; X_hat), bits
-    P_x = np.asarray(P_x, float); Q = np.asarray(Q, float)
-    P_xhat = P_x @ Q
-    I = 0.0
-    for i, pi in enumerate(P_x):
-        for j, qij in enumerate(Q[i]):
-            if qij > 0 and P_xhat[j] > 0:
-                I += pi * qij * np.log2(qij / P_xhat[j])
-    return I
-
-def expected_distortion(P_x, Q, D_matrix):      # E[d] = sum_ij P_i q_i(j) d_ij
-    P_x = np.asarray(P_x, float); Q = np.asarray(Q, float)
-    return float(sum(P_x[i]*Q[i,j]*D_matrix[i,j]
-                     for i in range(Q.shape[0]) for j in range(Q.shape[1])))
-
-def entropy_bits(p):
-    p = np.asarray(p, float); p = p[p > 0]
-    return float(-(p*np.log2(p)).sum())
-
-# Closed-form R(D) for the canonical sources -------------------------------
-
-def rate_distortion_gaussian(sigma2, D):
-    if sigma2 <= 0:
-        raise ValueError("sigma2 must be positive")
-    if D < 0:
-        raise ValueError("D must be non-negative")
-    if D == 0:
-        return np.inf
-    if D >= sigma2:
-        return 0.0
-    return 0.5*np.log2(sigma2/D)
-
-def rate_distortion_bernoulli(p, D):
-    if not 0 <= p <= 1:
-        raise ValueError("p must be in [0, 1]")
-    if D < 0:
-        raise ValueError("D must be non-negative")
-    p = min(p, 1-p)
-    return entropy_bits([p, 1-p]) - entropy_bits([D, 1-D]) if D < p else 0.0
-
-# Blahut-Arimoto: minimize I(X;X_hat) over test channels at a Lagrange slope s<=0.
-# Solves R(D) for an arbitrary finite source/distortion by sweeping s.
-def blahut_arimoto(P_x, D_matrix, s, iters=200):
-    P_x = np.asarray(P_x, float)
-    D_matrix = np.asarray(D_matrix, float)
-    if s > 0:
-        raise ValueError("s must be non-positive for rate-distortion")
-    a, b = D_matrix.shape
-    q = np.ones(b)/b                                   # output marginal q(x_hat)
-    for _ in range(iters):
-        W = q[None, :] * np.exp(s * D_matrix)          # unnormalized q(x_hat|x)
-        W /= W.sum(axis=1, keepdims=True)              # normalize rows
-        q = P_x @ W                                    # update output marginal
-    R = mutual_information(P_x, W)                      # bits/symbol
-    D = expected_distortion(P_x, W, D_matrix)
-    return R, D                                        # a point (R(D), D) on the curve
-```
-
 ## One-line takeaway
 
 To reproduce a source within average distortion `D`, you need at least `R(D)=min_{q:E[d]≤D} I(X;X̂)` bits per symbol — convex, equal to `H(X)` at `D=0` for discrete exact-reproduction distortion, computable in closed form (`½log₂(σ²/D)` for the Gaussian at `D>0`, `H(p)−H(D)` for the binary source) — achievable above and impossible below, the lossy mirror of channel capacity and of the source-coding theorem.

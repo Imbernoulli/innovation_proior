@@ -3,58 +3,44 @@
 ## Research question
 
 Supervised deep learning has just become spectacularly effective at *discrimination* — mapping a
-rich, high-dimensional input (an image, a spectrogram, a sentence) to a label — by riding three
-well-behaved ingredients: backpropagation, dropout, and piecewise-linear units (ReLU, maxout),
-whose gradients neither vanish nor explode through many layers. Deep *generative* modeling has not
-had the same moment, and the gap is structural rather than accidental. The trouble is that the
-dominant way to *learn* a generative model is maximum likelihood, and maximum likelihood forces you
-to write down — and normalize, and differentiate — an explicit probability density over the data.
-For the deep models people actually want, that explicit density is intractable: an intractable
-normalizing constant in energy-based/undirected models, intractable posterior inference in directed
-latent-variable models, or a dependence on a Markov chain that must mix between modes. None of these
-composes cleanly with the piecewise-linear-unit + pure-backprop recipe that made deep classifiers
-take off — a feedback loop or an MCMC inner loop is exactly where well-behaved gradients stop being
-available.
+rich, high-dimensional input (an image, a spectrogram, a sentence) to a label — on the back of
+backpropagation, dropout, and piecewise-linear units (ReLU, maxout), whose gradients neither vanish
+nor explode through many layers. The dominant way to *learn* a generative model is maximum
+likelihood, which works with an explicit probability density over the data — written down,
+normalized, and differentiated. For the deep models people want, that density is reached through an
+intractable normalizing constant in energy-based/undirected models, through approximate posterior
+inference in directed latent-variable models, or through a Markov chain that must mix between modes.
 
-It helps to see the space of options as a tree. To do maximum likelihood you need a tractable handle
-on `p(x)`. One branch makes the density *explicit and tractable* (e.g. fully-visible belief networks
-that factor `p(x) = ∏ p(x_i | x_{<i})` — exact, but sampling is inherently sequential and slow, and
-there is no latent code). A second branch keeps the density explicit but only *tractable up to a
-constant or a bound* (Boltzmann machines, which carry an intractable partition function; variational
-autoencoders, which optimize a lower bound on the likelihood through an inference network). A third
-branch gives up on writing the density at all and only keeps the ability to *draw samples* — an
-*implicit* model. The implicit branch is the one nobody has made train cleanly with pure backprop and
-no Markov chain.
+The space of options is a tree on how you get a tractable handle on `p(x)`. One branch makes the
+density *explicit and tractable* (e.g. fully-visible belief networks that factor
+`p(x) = ∏ p(x_i | x_{<i})` — exact, sampled sequentially, no latent code). A second branch keeps the
+density explicit but *tractable up to a constant or a bound* (Boltzmann machines, which carry a
+partition function; variational autoencoders, which optimize a lower bound through an inference
+network). A third branch keeps only the ability to *draw samples* — an *implicit* model that never
+writes the density.
 
 The precise question, then: **is there a way to estimate a generative model — to fit a model
 distribution to a data distribution and draw samples from it — using only backpropagation and forward
 propagation, with no intractable partition function, no Markov chain in either training or sampling,
-and no approximate-inference network?** A solution would have to supply a learning signal that drives
-the model toward the data distribution without ever evaluating, or even analytically specifying, an
-explicit density — while staying compatible with the well-behaved-gradient units that make deep nets
-trainable. Matching that requirement is the whole difficulty: every existing route pays an
-explicit-probability tax somewhere.
+and no approximate-inference network?**
 
 ## Background
 
 The field state (the early-2010s deep-learning surge): discriminative deep nets are booming on the
-back of backprop, dropout, and rectified/maxout units, while generative models lag. The load-bearing
-concepts a new method rests on are:
+back of backprop, dropout, and rectified/maxout units, while generative modeling is pursued through
+several distinct routes. The load-bearing concepts a new method rests on are:
 
 - **The maximum-likelihood gradient for energy-based models.** For `p(x) = exp(-E(x))/Z`, the gradient
-  is `∂ log p(x)/∂θ = -E_data[∂E/∂θ] + E_model[∂E/∂θ]`. The negative-phase term, an expectation under
-  the *model*, is exactly what the partition function `Z` hides, forcing an MCMC approximation.
-  **Mixing** between modes is the chronic pain: local transition operators cannot cross
-  low-probability "deserts," so negative-phase samples are biased and learning is slow and fragile
-  (Bengio et al., ICML 2013/2014). This is the canonical example of the explicit-probability tax — the
-  price of having written `p(x)` down at all.
+  is `∂ log p(x)/∂θ = -E_data[∂E/∂θ] + E_model[∂E/∂θ]`. The negative-phase term is an expectation under
+  the *model*, which the partition function `Z` makes intractable, so it is approximated by MCMC.
+  **Mixing** between modes is the governing concern: local transition operators move samples through a
+  chain that must cross low-probability regions to reach separate modes (Bengio et al., ICML
+  2013/2014).
 
 - **Discriminative criteria for generative fitting.** A counter-tradition fits a generative model
   *without* maximizing likelihood, by setting up a classification-style objective — score matching
-  (Hyvärinen, 2005) and especially noise-contrastive estimation (Gutmann & Hyvärinen, 2010), which
-  turns density estimation into logistic regression. The observed weakness is that the contrast is
-  against a *fixed* distribution, so the classification problem becomes easy — and the gradient slack
-  — the moment the model is even approximately right.
+  (Hyvärinen, 2005) and noise-contrastive estimation (Gutmann & Hyvärinen, 2010), which turns density
+  estimation into logistic regression against a fixed contrast distribution.
 
 - **The density ratio.** Telling apart two distributions is governed by their ratio
   `p_data(x) / p_g(x)`; the Bayes-optimal classifier of "two classes" with equal class priors outputs
@@ -63,22 +49,22 @@ concepts a new method rests on are:
 
 - **The reparameterized / differentiable generator.** Express a continuous latent (or a whole sample)
   as a deterministic differentiable function of injected noise, `x = G(z; θ)` with `z ~ p_z`, so
-  gradients can pass through the sampling step. Then sampling is a single forward pass and `θ` can be
+  gradients pass through the sampling step. Sampling is then a single forward pass and `θ` can be
   trained by backprop through any differentiable downstream signal. This change-of-variable idea is old
-  in statistics (its derivative identities trace to Price 1958, Bonnet 1964) and is in active use — it
-  underlies stochastic backprop and the variational-autoencoder line, where it is paired with a
-  likelihood bound and an inference network to supply the training signal.
+  in statistics (derivative identities trace to Price 1958, Bonnet 1964) and is in active use — it
+  underlies stochastic backprop and the variational-autoencoder line, paired there with a likelihood
+  bound and an inference network to supply the training signal.
 
 - **Persistent negative chains.** SML/PCD (Younes, 1999; Tieleman, 2008) trains energy-based models by
   carrying a persistent set of Markov-chain samples across learning steps instead of burning in a fresh
-  chain inside the inner loop — the template for keeping an inner quantity *near* its optimum while the
-  outer parameters move slowly.
+  chain each inner loop — keeping an inner quantity *near* its optimum while the outer parameters move
+  slowly.
 
 - **Information-theoretic divergences.** KL divergence `KL(p‖q) = ∫ p log(p/q)` and the symmetric
   Jensen–Shannon divergence `JSD(p‖q) = ½KL(p‖m) + ½KL(q‖m)` with `m = (p+q)/2`; JSD is non-negative and
-  zero iff `p = q`, and is finite even when supports do not overlap. KL is asymmetric (it has a
-  mode-covering and a mode-seeking direction and can be infinite on disjoint supports), whereas JSD is
-  symmetric and bounded.
+  zero iff `p = q`, and is finite even when supports do not overlap. KL is asymmetric (a mode-covering
+  and a mode-seeking direction, possibly infinite on disjoint supports), whereas JSD is symmetric and
+  bounded.
 
 ## Baselines
 
@@ -87,49 +73,39 @@ The prior methods a new generative procedure would be measured against and react
 - **Restricted Boltzmann Machines (Smolensky, 1986; Hinton, 2006) and Deep Boltzmann Machines
   (Salakhutdinov & Hinton, 2009).** Undirected, energy-based: `p(x) = exp(-E(x))/Z` with `Z`
   summing/integrating over all states. Trained by approximating the negative-phase expectation with
-  MCMC (contrastive divergence, persistent CD). *Gap:* the intractable `Z` never goes away and learning
-  is at the mercy of Markov-chain mixing between modes; sampling itself needs a chain.
+  MCMC (contrastive divergence, persistent CD); sampling uses a chain.
 
 - **Deep Belief Networks (Hinton, 2006).** Hybrids: one undirected (RBM) top layer over several
-  directed layers, trained greedily layer-by-layer with a fast approximate criterion. *Gap:* being a
-  hybrid, they inherit the computational difficulties of *both* the undirected and the directed worlds.
+  directed layers, trained greedily layer-by-layer with a fast approximate criterion.
 
 - **Score matching (Hyvärinen, 2005).** Fits a model specified up to normalization by matching the
   gradient of the log-density `∇_x log p` between model and data, which cancels `Z`. Denoising
   autoencoders (Vincent et al., 2008) and contractive autoencoders end up with learning rules close to
-  score matching on an RBM. *Gap:* it still requires the unnormalized density to be written down
-  analytically; for models with several layers of latent variables you cannot even derive a tractable
-  unnormalized density, so it does not apply to the deep models in question.
+  score matching on an RBM. It works from an unnormalized density written analytically.
 
-- **Noise-Contrastive Estimation (Gutmann & Hyvärinen, 2010).** The closest ancestor in spirit. Turns
-  estimation into logistic regression: train a classifier to distinguish observed data from samples of
-  a *fixed* auxiliary noise distribution, using the model's own unnormalized log-density inside the
-  logistic nonlinearity and learning `Z` as a parameter. *Gaps:* (1) it still needs the model density
-  specified analytically up to `Z`; (2) the contrast distribution is fixed, so once the model is even
-  approximately right on a small subset of the variables, telling data from the fixed noise becomes
-  trivial, the classifier saturates, and learning slows dramatically.
+- **Noise-Contrastive Estimation (Gutmann & Hyvärinen, 2010).** Turns estimation into logistic
+  regression: train a classifier to distinguish observed data from samples of a *fixed* auxiliary noise
+  distribution, using the model's own unnormalized log-density inside the logistic nonlinearity and
+  learning `Z` as a parameter. The model density is specified analytically up to `Z`, and the contrast
+  is drawn from a fixed distribution.
 
 - **Generative Stochastic Networks (Bengio et al., ICML 2014), extending generalized denoising
   autoencoders (Bengio et al., NIPS 2013).** Give up an explicit density and train a generative
   *machine* that emits samples, parameterizing one step of a generative Markov chain so it is trainable
-  by backprop. The closest precedent for an implicit, sample-only model. *Gap:* sampling still requires
-  running a Markov chain (the mixing problem returns), and the feedback loop makes piecewise-linear
-  units awkward — they can blow up with unbounded activations inside the recurrence, so the very units
-  that make backprop nice become liabilities.
+  by backprop. Sampling runs the Markov chain.
 
 - **Auto-encoding variational Bayes / the variational autoencoder (Kingma & Welling, 2014) and
   stochastic backpropagation (Rezende et al., 2014).** Same-era backprop-into-a-generator methods: use
   the reparameterization trick so gradients flow through sampling, and maximize a variational lower
   bound (the ELBO) on the log-likelihood with a learned approximate-inference (encoder) network
-  regularized to match the prior. Genuinely close — a differentiable generator trained by backprop, no
-  Markov chain. *Gap:* still likelihood-based (a variational *bound*), still needs an inference network
-  during training, and the explicit reconstruction term in the ELBO tends toward blurry samples.
+  regularized to match the prior — a differentiable generator trained by backprop, no Markov chain,
+  with a likelihood bound and an inference network.
 
 - **SML/PCD (Younes, 1999; Tieleman, 2008)** as a *training-schedule* baseline: keep a persistent inner
   state near its optimum across outer steps rather than re-solving it from scratch each step.
 
 - **Wake-sleep (Hinton et al., 1995):** trains a separate recognition network to invert a generator —
-  the template for bolting learned approximate inference onto a model after the fact.
+  learned approximate inference fitted to a model after the fact.
 
 ## Evaluation settings
 
@@ -145,27 +121,25 @@ The benchmarks, datasets, and protocol that form the natural yardstick:
   choose the kernel bandwidth `σ` by cross-validation on a validation set, and report the mean
   log-likelihood of the held-out test set under that density. The procedure was introduced by
   Breuleux & Bengio (2011) and used for several generative models whose exact likelihood is intractable
-  (Rifai et al., 2012; Bengio et al., ICML 2013/2014). The estimate has high variance and behaves
-  poorly in high dimensions, but is the accepted yardstick for sample-only models.
+  (Rifai et al., 2012; Bengio et al., ICML 2013/2014). It is the accepted yardstick for sample-only
+  models.
 
-- **Qualitative protocol.** Display fair random draws from the model (not cherry-picked, not
-  conditional means over hidden units), and show, for each sample, its nearest training example to
-  demonstrate the model is not memorizing the training set. For latent-variable generators, interpolate
-  linearly between two points in `z`-space and decode along the path to inspect whether the learned
-  manifold is smooth.
+- **Qualitative protocol.** Display fair random draws (not cherry-picked, not conditional means over
+  hidden units), and show, for each sample, its nearest training example to check the model is not
+  memorizing the training set. For latent-variable generators, interpolate linearly between two points
+  in `z`-space and decode along the path to inspect whether the learned manifold is smooth.
 
 ## Code framework
 
 The available code substrate is a generic implicit-generative-model harness: noise sampling,
 differentiable feedforward modules, automatic differentiation, an optimizer that can move separate
-parameter groups, and a loop over minibatches. The missing part is the scalar training signal and the
-rule for which parameter group receives which gradient.
+parameter groups, and a minibatch loop. The scalar training signal is left open.
 
 - **Theano (Bergstra et al., 2010; Bastien et al., 2012).** A symbolic-expression compiler with GPU
   support and automatic differentiation. The load-bearing capability: given one scalar expression and a
-  named list of parameters, `T.grad(cost, params)` returns the gradient of the expression *with respect
-  to exactly those parameters*. It also supplies the noise sources (`MRG_RandomStreams.normal/uniform`)
-  needed to feed a noise-driven generator.
+  named list of parameters, `T.grad(cost, params)` returns the gradient *with respect to exactly those
+  parameters*. It also supplies the noise sources (`MRG_RandomStreams.normal/uniform`) for a
+  noise-driven generator.
 
 - **Pylearn2 (Goodfellow et al., 2013).** A research library on top of Theano supplying the
   model/training scaffolding: `MLP` and `Layer` (including maxout layers), dropout via `dropout_fprop`,
@@ -173,9 +147,8 @@ rule for which parameter group receives which gradient.
   `TrainExtension` callbacks.
 
 - **Piecewise-linear units and dropout.** ReLU (Jarrett et al., 2009; Glorot et al., 2011) and maxout
-  (Goodfellow et al., 2013), plus dropout (Hinton et al., 2012). These give the well-behaved gradients
-  that make deep feedforward nets train — provided there is no feedback loop forcing unbounded
-  activations back through themselves.
+  (Goodfellow et al., 2013), plus dropout (Hinton et al., 2012) — the well-behaved gradients that make
+  deep feedforward nets train.
 
 ```python
 # Bare harness for an implicit generative model with one open training-signal slot.
@@ -243,5 +216,5 @@ class SplitParameterSGD:
 ```
 
 This harness can backpropagate any scalar objective through a noise-driven sampler and any learned
-scalar signal, but by itself it supplies only sampling, parameter grouping, and optimization; the
-likelihood-free learning signal remains the open technical problem.
+scalar signal; by itself it supplies sampling, parameter grouping, and optimization, leaving the
+likelihood-free learning signal as the open slot.

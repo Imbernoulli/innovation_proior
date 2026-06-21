@@ -1,49 +1,47 @@
-## Research question
+## Research Question
 
-Conventional training of a deep network runs stochastic gradient descent (SGD) until it converges to a single point that minimizes the (regularized) training loss, and ships that point. But the training-loss surface and the test-error surface, while qualitatively similar, are *shifted* relative to each other: the weight vector that minimizes train loss is generally *not* the one that minimizes test error. So a procedure that drives hard toward the train-loss minimizer can land at a point that is off-center for test error — and the sharper the optimum, the worse the mismatch, because a small shift between the two surfaces moves a sharp minimizer a long way up the error.
+Standard deep-network training follows noisy gradients while steadily shrinking the learning rate, then returns the final weight vector. That final vector is usually excellent for the regularized training objective, but the goal at deployment is test error. The two surfaces are related but not perfectly aligned in weight space, so a point that is best for training loss can sit off-center for test performance.
 
-The question is whether there is a training procedure that ends at a *more central, broader* point of the high-performing region — one that stays near-optimal under the train→test shift and therefore generalizes better — while costing essentially nothing extra over ordinary SGD and serving as a drop-in replacement for it. The hypothesis tying these together is that the *width* (flatness) of the solution correlates with generalization: a broad, flat region of low loss is robust to perturbations and to the shift between train and test, whereas a narrow, sharp minimum is not.
+The practical question is whether a training tail can return a single network that is more robust to this train-to-test shift, without paying the cost of an ensemble and without changing the architecture, loss, dataset, or optimizer family. The desired point should not merely have low training loss; it should sit in a broad region where small movements in weight space do not sharply damage performance.
 
-## Background
+## Geometric Clues
 
-**SGD trajectories and the geometry of the loss surface.** SGD with a non-vanishing step size does not sit still at a point; it keeps moving through a region of weight space corresponding to high-performing networks. Keskar et al. (2017) argued that small-batch SGD tends to find *broad* optima that generalize better than the *sharp* optima found by large-batch methods, and that sharp optima can be flat in most directions yet extremely steep in a few. Chaudhari et al. (2016) built Entropy-SGD to bias optimization toward wide valleys. Dinh et al. (2017) cautioned that existing sharpness definitions are not on their own sufficient to explain generalization. The common thread: *where* in the good region you stop matters for test performance, and central/flat is better than peripheral/sharp.
+Several facts are already on the table before the new method exists. First, width is plausibly tied to generalization: large-batch training can land in sharp regions that generalize worse, while small-batch noise tends to avoid some sharp basins; local-entropy methods explicitly try to bias optimization toward wide valleys. Second, sharpness is not simply "steep in every direction"; a solution can be flat in most directions but have a few directions of sharp ascent.
 
-**Averaging the iterates.** In convex optimization, averaging the points visited by SGD has a long history: Ruppert (1988) and Polyak & Juditsky (1992) showed that averaging SGD iterates (with a decaying step size) provably accelerates convergence. This is rarely used to train neural nets; practitioners instead sometimes keep an *exponentially decaying* running average of the weights alongside a *decaying* learning rate, which merely smooths the SGD trajectory and performs about the same as plain SGD — no real generalization gain.
+Third, neural-network nonconvexity does not force the useful region to be a collection of isolated points. Independently trained optima can be joined by simple curves of near-constant loss, and nearby points on such paths can still make meaningfully different predictions. This makes it plausible that a training trajectory can move through a connected low-loss region rather than only converge to a single isolated endpoint.
 
-**Constant-learning-rate SGD as sampling.** Mandt et al. (2017) showed that, under simplifying assumptions, SGD with a *constant* learning rate behaves like sampling from a Gaussian centered at the loss minimum, with covariance controlled by the learning rate. A consequence: the sampled iterates from a high-dimensional Gaussian concentrate near the surface of an ellipsoid, or a sphere after whitening by the covariance, so each individual sample is on the periphery; the higher-density center of that set is not itself visited on any single step.
+Fourth, a non-vanishing learning rate changes the late-training picture. Under simplifying stochastic-process assumptions, constant-step SGD behaves like a stationary sampler around a local optimum, with covariance controlled by learning rate, minibatch size, curvature, and gradient noise. In high dimension, typical samples from such a distribution lie near a shell of an ellipsoid rather than at its center.
 
-**Cyclical learning rates and fast ensembling.** Garipov et al. (2018) found that local optima of deep nets are connected by simple curves of near-constant loss (mode connectivity), and built Fast Geometric Ensembling (FGE): run SGD with a *cyclical* learning rate to generate a sequence of weight-space points that are close together but produce *diverse* predictions, then ensemble those predictions — yielding a strong ensemble in the wall-clock time of training a single model. FGE's proposals sit on the *periphery* of the set of good weights. Smith (2017) introduced cyclical learning rates for exploration. The relevant supporting components — batch normalization (Ioffe & Szegedy 2015), which keeps running activation statistics collected during training — also figure in.
+## Existing Baselines
 
-## Baselines
+Conventional decayed-learning-rate training returns the last iterate. Its gap is geometric: it may overcommit to the training-loss minimum and end near a boundary of a good region for test error.
 
-**Conventional SGD training.** Decaying learning rate to convergence; ship the final iterate `w_SGD`, the (regularized) train-loss minimizer. Gap: lands at a point that is off-center for test error because the train and test surfaces are shifted, and tends to sit near the steep boundary of the good region rather than its flat interior — so it generalizes worse than a more central point would.
+Classical trajectory averaging in stochastic approximation averages iterates to improve convergence-rate or asymptotic variance. In neural-network practice, a related exponential moving average is often paired with a decaying learning rate. Its gap is that the trajectory collapses as the learning rate shrinks, so the average mostly smooths nearby late iterates.
 
-**Exponential moving average of weights + decaying LR.** Keep an EMA of SGD's weights while the learning rate decays. Gap: with a decaying learning rate the iterates collapse toward one point, so the average just smooths the trajectory and performs comparably to plain SGD — it does not explore enough distinct, diverse points to gain anything.
+Fast geometric ensembling uses a cyclical learning rate to collect nearby but diverse checkpoints, then averages their predictions at test time. Its gap is test-time cost: the method still stores and evaluates multiple networks.
 
-**Fast Geometric Ensembling (Garipov et al. 2018).** Cyclical-LR SGD generates diverse nearby proposals; *average their predictions* at test time. Achieves ensemble-level accuracy in single-model training time. Gap: it is still an *ensemble* — at test time you must store and run `n` networks and average their outputs, so test-time cost and memory scale with the ensemble size.
+Cyclical learning-rate training itself alternates exploration and lower-rate refinement. Its gap is that it does not by itself specify which single weight vector should be returned from the explored region.
 
-**Polyak–Ruppert iterate averaging (Ruppert 1988; Polyak & Juditsky 1992).** Average SGD iterates (decaying LR) for accelerated convex convergence. Gap: developed and analyzed for convex problems with decaying step sizes; not used for neural-net training and not designed to exploit exploration of a flat region.
+## Evaluation Setting
 
-The recurring gap: either the method ships a single off-center/sharp point (SGD), or it explores too little to help (EMA + decaying LR), or it gets the benefit only as a multi-model ensemble with multiplied test-time cost (FGE).
+The relevant empirical setting is image classification on CIFAR-10, CIFAR-100, and ImageNet, with architectures that were already standard in this line of work: VGG, Preactivation ResNets, Wide ResNets, PyramidNets, DenseNets, and Shake-Shake networks. Comparisons are against conventional SGD training and against fast geometric ensembling under matched or clearly accounted training budgets.
 
-## Evaluation settings
+The diagnostic geometry is as important as accuracy. One should inspect train loss and test error along random rays from a candidate solution and along the line connecting the candidate to the conventional endpoint. A useful method should produce a single model with competitive test error and a visibly wider, more central position in the same good region.
 
-The yardstick is image-classification test accuracy/error on CIFAR-10, CIFAR-100, and ImageNet, across a range of modern architectures (Preactivation ResNet-164, VGG-16, Wide ResNet-28-10, PyramidNet, DenseNet, Shake-Shake), measured against conventional SGD and against FGE, under matched training budgets (the number of epochs `B` a network normally takes to train). Diagnostic geometry is probed by evaluating train loss and test error along random rays from a solution and along the line segment connecting two solutions. All datasets, architectures, and metrics predate the method.
+## Code Scaffold
 
-## Code framework
-
-A standard SGD training loop in PyTorch fixes the model, the optimizer, the loss, and the mini-batch update. What is *not* decided is how the learning rate behaves in the tail of training and which weights are ultimately returned; by default, the learning rate decays and the last iterate is used. Those are the empty slots.
+The fixed substrate is an ordinary PyTorch training loop. The open slots are the late learning-rate schedule, the rule for collecting or summarizing late-training weights, and the batch-normalization treatment for whatever final weights are returned.
 
 ```python
 import torch
 
-def _set_lr(optimizer, lr):
+def set_lr(optimizer, lr):
     for group in optimizer.param_groups:
         group["lr"] = lr
 
 def tail_lr(step, cycle_len, high_lr, low_lr=None):
-    # TODO: schedule for the final phase of training.
-    pass
+    # TODO: choose the late-training schedule.
+    raise NotImplementedError
 
 def train_tail(model, loader, loss_fn, optimizer, tail_epochs,
                high_lr, low_lr=None, cycle_len=None, device=None):
@@ -54,11 +52,11 @@ def train_tail(model, loader, loss_fn, optimizer, tail_epochs,
             if device is not None:
                 x, y = x.to(device), y.to(device)
             step += 1
-            lr = tail_lr(step, cycle_len or 1, high_lr, low_lr)
-            _set_lr(optimizer, lr)
+            set_lr(optimizer, tail_lr(step, cycle_len or 1, high_lr, low_lr))
             optimizer.zero_grad()
             loss_fn(model(x), y).backward()
             optimizer.step()
-    # TODO: decide what this tail phase returns.
+
+    # TODO: decide which single set of weights should be returned.
     return model
 ```

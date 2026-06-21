@@ -2,85 +2,94 @@
 
 ## Research question
 
-The Transformer encoder has become the dominant backbone for language understanding, and at its heart is self-attention: a sublayer that lets every token in a length-`N` sequence form a representation as a relevance-weighted combination of every other token, with the weights computed from token–token (query–key) dot products. This token-dependent, all-pairs mixing is widely credited as the source of the architecture's power.
+The Transformer encoder has become the default backbone for language understanding, and its distinctive sublayer is self-attention. For a length-`N` sequence, self-attention lets each token form a representation from all other tokens, with the weights produced by query-key dot products and a softmax over an `N x N` score matrix.
 
-It is also its main cost. Self-attention is `O(N²)` in both time and memory in the sequence length, because it materializes and uses an `N×N` matrix of pairwise scores; encoders are frequently memory-bound, and the quadratic blowup caps the sequence lengths that are practical to train on. A large body of "efficient Transformer" work attacks this — sparsifying the attention matrix or linearizing it — but these methods either hide large constants behind their improved asymptotics or only approximate the very attention they are trying to cheapen, and they add machinery rather than removing it.
+That matrix is also the bottleneck. The standard encoder pays `O(N^2)` time and `O(N^2)` memory in the sequence length, and long-input encoders are often memory-bound. Efficient-attention variants try to reduce the cost by sparsifying the score matrix or by linearizing the attention computation, but these approaches still preserve attention as the object being approximated or constrained, and their favorable asymptotics can hide large constants.
 
-The question is therefore whether the *flexibility and cost* of attention are actually necessary. Concretely: can the self-attention sublayer of an encoder be replaced wholesale by a **simpler token-mixing mechanism** — while keeping the rest of the encoder (the position-wise feed-forward sublayers, the embeddings, the residual/normalization structure) untouched, and losing only a limited amount of accuracy? A solution would have to mix information across all token positions (so that the downstream feed-forward sublayers have access to the whole sequence), scale sub-quadratically in `N`, and be simple enough that it shrinks the model and stabilizes training rather than complicating it.
+The question is whether the encoder really needs token-dependent attention in every layer. Can the self-attention sublayer be replaced by a simpler token-mixing operation, while leaving embeddings, feed-forward sublayers, residual connections, layer normalization, and task heads essentially unchanged? A useful answer must mix information across positions, avoid quadratic length scaling when possible, and not add a complicated new parameterized mechanism in place of the old one.
 
 ## Background
 
-The encoder being modified is BERT-style (Devlin et al. 2018): an embedding layer (word + absolute-position + token-type embeddings), then a stack of `N` identical encoder blocks, each a self-attention sublayer followed by a position-wise feed-forward sublayer, with a residual connection and layer normalization around each, and a pooler for sentence-level tasks. Pre-training is masked-language-modeling plus next-sentence-prediction; the feed-forward width is `4·d_h` and attention uses `d_h/64` heads.
+The architectural template is BERT-style. Inputs are represented by word, absolute-position, and token-type embeddings, followed by a stack of post-LayerNorm encoder blocks. Each block has a mixing sublayer, a residual connection and layer norm, then a position-wise feed-forward sublayer, another residual connection, and another layer norm. The feed-forward width is typically `4 * d_model`, and the sentence-level pooler reads the first token through a dense layer and `tanh`.
 
-The load-bearing observation is that an encoder block does two separable kinds of mixing. The feed-forward sublayer mixes the **hidden** dimension, transforming each token independently across its features. Self-attention's distinctive job is to mix the **sequence** dimension — to combine information across token positions — so that the feed-forward sublayers downstream can act on representations that have already "seen" the whole sequence. Framed this way, attention is the encoder's *token-mixing* sublayer, and the question becomes whether that mixing must be the specific token-dependent dot-product form.
+This block separates two kinds of work. The feed-forward sublayer mixes the hidden dimension at each token independently. The self-attention sublayer is the part that mixes the sequence dimension, so downstream per-token transformations can use information that has already crossed positions. In that view, attention is one implementation of token mixing, not necessarily the only possible implementation.
 
-Several prior results suggest it need not be. Tay et al. (2020, Synthesizer) replaced the query–key dot product with learned token-mixing weights and found that the dot product, while expressive, is not crucial for accurate NLP models. You et al. (2020) replaced attention weights with fixed, unparameterized Gaussian distributions with minimal degradation (provided learnable cross-attention was kept). Raganato et al. (2020) replaced all but one attention head per encoder layer with fixed, non-learnable positional patterns and saw little accuracy loss. Tolstikhin et al. (2021, MLP-Mixer) replaced attention with plain MLPs in vision with limited degradation. Together these say: the *content-dependent, all-pairs* nature of attention is not the only way to mix tokens well.
-
-A piece of classical signal-processing machinery in the general background is the discrete Fourier transform. For a length-`N` sequence `{x_n}`, the DFT is `X_k = Σ_{n=0}^{N-1} x_n e^{-2πi nk/N}`, `0 ≤ k ≤ N-1`. It can be computed in `O(N log N)` by the Cooley–Tukey FFT (Cooley & Tukey 1965), or as a matrix multiply by the DFT matrix `W_{nk} = e^{-2πi nk/N}/√N` in `O(N²)`. By the convolution theorem, multiplication in the frequency domain corresponds to convolution in the time domain. Fourier transforms have been used to speed up convolutional and recurrent nets and to approximate dense linear layers, and the Performer (Choromanski et al. 2020) used random Fourier features to *approximate* the softmax attention kernel.
+Prior work already weakens the assumption that token mixing must be content-dependent dot-product attention. Synthesizer replaces query-key dot products with synthetic attention weights. Fixed-pattern and Gaussian attention variants show that some non-learned positional structure can carry useful signal. MLP-Mixer makes an analogous separation between token mixing and channel mixing in vision. These results do not solve the encoder problem, but they make it reasonable to ask for a simpler global mixer.
 
 ## Baselines
 
-**BERT encoder with self-attention (Devlin et al. 2018; Vaswani et al. 2017).** The reference. Self-attention `softmax(QKᵀ/√d_k)V` mixes tokens with content-dependent, all-pairs weights, the most expressive token mixer. Gaps: `O(N²)` time and memory in sequence length; many learnable parameters in the mixing layer; the dominant accuracy ceiling but also the dominant cost.
+**BERT encoder with self-attention.** This is the reference architecture. Its self-attention sublayer computes `softmax(QK^T / sqrt(d_k))V`, giving a flexible, token-dependent all-pairs mixer. Its gap is the `N x N` score matrix, with quadratic time and memory in sequence length and a substantial parameterized projection stack.
 
-**Dense linear token mixing ("Linear" baseline).** Replace attention with two ordinary learned matrix multiplications — one mixing the sequence dimension, one mixing the hidden dimension — no softmax, no dot products (a Synthesizer-/MLP-Mixer-style mixer). It mixes all tokens and trains faster than attention, and reaches close to BERT's accuracy. Gaps: a learned sequence-mixing matrix is `N×N`, so it scales as `O(N²)` in parameters and compute and is tied to a fixed maximum length (it cannot generalize across sequence lengths); it still carries many parameters in the mixing layer.
+**Dense learned token mixing.** One direct replacement is to use ordinary learned linear maps: one across sequence positions and one across hidden features. This preserves global mixing and removes the attention softmax and query-key interaction. Its gap is that a learned sequence mixer has an `N x N` matrix tied to a chosen maximum length, so it keeps quadratic sequence cost and does not naturally transfer to a different length.
 
-**Efficient/long-sequence Transformers (Longformer, ETC, BigBird, Performer, Linformer, Linear Transformer).** Sparsify or linearize attention to reach `O(N√N)` or `O(N)` asymptotic complexity. Gaps: the favorable asymptotics often hide large constants (e.g. attention linear in length but quadratic in the number of "global" tokens, which must be sizeable for good accuracy); and the linearizing methods *approximate* attention rather than removing it, adding machinery and approximation error.
+**Efficient and long-sequence attention variants.** Sparse and linearized attention models reduce or restructure attention cost. Their gap is that they remain attention mechanisms: they either approximate the dense attention calculation or restrict its connectivity pattern, often adding implementation complexity and constants that matter at practical lengths.
 
-The recurring gap: every baseline either keeps the quadratic cost (BERT, dense-linear) or buys lower asymptotics with large constants / approximation of attention (efficient Transformers) — each still pays in either compute, parameters, or added machinery.
+The shared gap is that these baselines either keep the expensive all-pairs attention object, or replace it with a learned dense object that is still tied to the sequence length.
 
 ## Evaluation settings
 
-Pre-training follows the BERT recipe: masked-language-modeling and next-sentence-prediction objectives on the C4 corpus (Raffel et al. 2019), with a 32k SentencePiece vocabulary (Kudo & Richardson 2018), in fixed "Base" and "Large" configurations (Turc et al. 2019) where the feed-forward size is `4·d_h`. The downstream language-understanding yardstick is the GLUE benchmark (Wang et al. 2018), reporting per-task accuracy. For long-sequence behavior the yardstick is the Long-Range Arena (LRA) benchmark (Tay et al. 2020), a suite of tasks requiring long-range dependencies. Efficiency is measured directly: training speed (steps/s), inference speed (ms/batch), and peak memory (GB), swept across sequence lengths from 512 up to ~16k and across model sizes, on both GPU (V100) and TPU (v3) hardware. All of these datasets, metrics, and protocols predate any particular mixing choice.
+The pre-training setting is the BERT recipe: masked-language modeling and next-sentence prediction over C4, with a 32k SentencePiece vocabulary and fixed Base/Large model sizes. Downstream language-understanding quality is measured on GLUE. Long-input behavior is measured on Long-Range Arena tasks, where sequence length and memory pressure are central.
+
+Efficiency is measured directly rather than inferred only from asymptotic notation: training speed, inference speed, FLOPs, and peak memory are swept over hardware and sequence lengths. The comparison keeps the rest of the encoder template fixed so the empty slot is specifically the token-mixing sublayer.
 
 ## Code framework
 
-A BERT-style encoder in JAX/Flax fixes everything except the token-mixing sublayer. Embeddings, the position-wise feed-forward sublayer, the residual + post-LayerNorm block structure, the pooler, and the loss are all standard; the body of the across-sequence mixing sublayer is the single empty slot.
-
 ```python
 import flax.linen as nn
-import jax, jax.numpy as jnp
+import jax.numpy as jnp
+
+
+LAYER_NORM_EPSILON = 1e-12
+
 
 class TokenMixingLayer(nn.Module):
-    """Mixes information across the sequence dimension. To be designed."""
+    """The across-sequence mixing operation to be designed."""
+
     @nn.compact
-    def __call__(self, x):                 # x: (batch, seq_len, d_model)
-        # TODO: the across-sequence mixing operator that replaces self-attention
+    def __call__(self, inputs, padding_mask=None, deterministic=False):
         raise NotImplementedError
+
 
 class FeedForwardLayer(nn.Module):
     d_ff: int
     dropout_rate: float
+
     @nn.compact
-    def __call__(self, x, deterministic):
-        x = nn.Dense(self.d_ff, name="intermediate")(x)
+    def __call__(self, inputs, deterministic=False):
+        d_model = inputs.shape[-1]
+        x = nn.Dense(self.d_ff, name="intermediate")(inputs)
         x = nn.gelu(x)
-        x = nn.Dense(x.shape[-1], name="output")(x)
-        return nn.Dropout(self.dropout_rate)(x, deterministic)
+        x = nn.Dense(d_model, name="output")(x)
+        return nn.Dropout(rate=self.dropout_rate)(x, deterministic=deterministic)
+
 
 class EncoderBlock(nn.Module):
     mixing_layer: nn.Module
-    ff_layer: FeedForwardLayer
+    feed_forward_layer: FeedForwardLayer
+
     @nn.compact
-    def __call__(self, x, deterministic):
-        mixing_output = self.mixing_layer(x)
-        x = nn.LayerNorm(1e-12, name="mixing_layer_norm")(x + mixing_output)
-        ff_output = self.ff_layer(x, deterministic)
-        return nn.LayerNorm(1e-12, name="output_layer_norm")(x + ff_output)
+    def __call__(self, inputs, padding_mask=None, deterministic=False):
+        mixed = self.mixing_layer(
+            inputs, padding_mask, deterministic=deterministic
+        )
+        x = nn.LayerNorm(
+            epsilon=LAYER_NORM_EPSILON, name="mixing_layer_norm"
+        )(inputs + mixed)
+        ff = self.feed_forward_layer(x, deterministic=deterministic)
+        return nn.LayerNorm(
+            epsilon=LAYER_NORM_EPSILON, name="output_layer_norm"
+        )(x + ff)
+
 
 class Encoder(nn.Module):
-    num_layers: int
+    blocks: list
     d_model: int
-    d_ff: int
-    dropout_rate: float
+
     def setup(self):
-        self.blocks = [EncoderBlock(TokenMixingLayer(),
-                                    FeedForwardLayer(self.d_ff, self.dropout_rate),
-                                    name=f"encoder_{i}")
-                       for i in range(self.num_layers)]
         self.pooler = nn.Dense(self.d_model, name="pooler")
-    def __call__(self, x, deterministic):
-        for blk in self.blocks:
-            x = blk(x, deterministic)
-        pooled = jnp.tanh(self.pooler(x[:, 0]))
-        return x, pooled
+
+    def __call__(self, x, padding_mask=None, deterministic=False):
+        for block in self.blocks:
+            x = block(x, padding_mask, deterministic=deterministic)
+        return x, jnp.tanh(self.pooler(x[:, 0]))
 ```

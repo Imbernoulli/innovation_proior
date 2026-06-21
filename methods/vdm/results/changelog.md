@@ -1,0 +1,23 @@
+# VDM Deliverables Changelog
+
+- `methods/vdm/results/context.md:35` fixed the deep-latent-chain description so the setup is a long progressively noisier Markov chain, not the erroneous repeated `z_1` chain.
+- `methods/vdm/results/context.md:37` clarified the finite grid as `z_0, z_{1/T}, ..., z_1`, preserving the continuous-limit framing without naming the target method in context.
+- `methods/vdm/results/reasoning.md:29` through `methods/vdm/results/reasoning.md:45` rechecked the Gaussian forward conditional and posterior formulas, including `alpha_{t|s}`, `sigma^2_{t|s}`, `sigma_Q^2`, and the posterior mean coefficients.
+- `methods/vdm/results/reasoning.md:61` through `methods/vdm/results/reasoning.md:74` verified the transition-KL coefficient simplification to `0.5(SNR(s)-SNR(t))||x-xhat||^2`.
+- `methods/vdm/results/reasoning.md:104` through `methods/vdm/results/reasoning.md:115` verified the continuous-limit sign and the reversed integration limits after changing variables to SNR.
+- `methods/vdm/results/reasoning.md:139` through `methods/vdm/results/reasoning.md:147` verified the VP/noise-prediction conversion, the positive continuous coefficient `0.5 gamma'(t)`, and the discrete coefficient `expm1(gamma(t)-gamma(s))`.
+- `methods/vdm/results/reasoning.md:151` corrected the Fourier-feature frequency explanation: primary-notation `n={7,8}` matches code `range(6,8)` because the implementation multiplies by `2*pi`.
+- `methods/vdm/results/reasoning.md:161` through `methods/vdm/results/reasoning.md:163` added code-faithfulness checks for VP sampling square roots, reconstruction rescaling, prior KL, antithetic time sampling, continuous/discrete loss branches, and sampler sign `c=-expm1(gamma_s-gamma_t)`.
+- `methods/vdm/results/reasoning.md:165` separated the schedule endpoints that affect the bound from the interior schedule role, and recorded that a simpler implementation may train configured schedules through summed BPD.
+- `methods/vdm/results/answer.md:37` through `methods/vdm/results/answer.md:43` revised the schedule and Fourier-feature bullets to avoid hindsight phrasing while preserving the variance-minimization and code-frequency distinctions.
+- `methods/vdm/results/answer.md:63` through `methods/vdm/results/answer.md:73` made the implementation sketch faithful to the released schedule classes: `learnable_nnet`, `fixed`, and `learnable_scalar`.
+- `methods/vdm/results/answer.md:91` through `methods/vdm/results/answer.md:114` aligned the forward pass with the canonical JAX implementation: antithetic/uniform time sampling, VP square-root sampling, `jax.jvp` for `gamma'(t)`, and `expm1(g_t-g_s)` for discrete time.
+- `methods/vdm/results/answer.md:118` through `methods/vdm/results/answer.md:128` aligned the sampler formula with the canonical implementation, including positive `c=-expm1(g_s-g_t)` and the posterior-noise scale.
+- `methods/vdm/results/answer.md:181` through `methods/vdm/results/answer.md:187` added the implementation caveat that the released training loop optimizes summed BPD through the configured schedule class and does not expose a separate squared-loss variance-gradient path.
+- `methods/vdm/notes/synthesis.md:57` through `methods/vdm/notes/synthesis.md:60` corrected the Fourier-feature note and distinguished primary frequency notation from code frequency construction.
+- `methods/vdm/notes/synthesis.md:75` through `methods/vdm/notes/synthesis.md:82` grounded the deliverables in `google-research/vdm` commit `dc27b98a554f65cdc654b800da5aa1846545d41b`, including square-root VP sampling, loss branches, Fourier features, sampler sign, and schedule-training caveat.
+- `methods/vdm/notes/source_matrix.md:5` through `methods/vdm/notes/source_matrix.md:21` added a source matrix covering primary source materials, canonical code, ancestors, explainer, self-account search, and audit notes for square roots, Fourier constants, and the schedule-gradient distinction.
+- `methods/vdm/notes/discovery_synthesis.md:5` through `methods/vdm/notes/discovery_synthesis.md:29` added the reconstructed derivation and code-faithfulness synthesis used for the audit.
+- `methods/vdm/refs/self_accounts/search_log.md:3` through `methods/vdm/refs/self_accounts/search_log.md:14` recorded the author self-account search and the absence of a richer accessible retrospective beyond SlidesLive metadata.
+- `methods/vdm/results/.codex_review.json:3` through `methods/vdm/results/.codex_review.json:21` updated the review marker to `fixed`, with evidence and check categories.
+- `methods/vdm/results/strict_check_output.txt:1` through `methods/vdm/results/strict_check_output.txt:13` recorded checker availability and supplemental lint/leak checks.

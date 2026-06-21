@@ -1,7 +1,7 @@
 # InfoGAN synthesis (Phase 1.5)
 
 Verified: arXiv 1606.03657, "InfoGAN: Interpretable Representation Learning by Information Maximizing GANs", Chen, Duan, Houthooft, Schulman, Sutskever, Abbeel (NIPS 2016).
-Canonical impl: original openai/InfoGAN (TensorFlow); clean PyTorch = eriklindernoren/PyTorch-GAN/implementations/infogan (saved in code/). NOTE: the eriklindernoren version uses MSE adversarial loss (LSGAN-style) and MSE continuous-code loss (fixed-variance Gaussian); the ORIGINAL uses standard BCE GAN adversarial loss and a learned-variance diagonal Gaussian for continuous codes (appendix C). I will present the original formulation.
+Canonical impl: original openai/InfoGAN (TensorFlow), saved in `code/openai_InfoGAN/`. The reference trainer uses standard log GAN losses with a non-saturating generator update and subtracts the MI estimate from both the discriminator/Q loss and the generator loss. The appendix describes a diagonal-Gaussian recognition model for continuous codes; the original MNIST launcher uses fixed std for those continuous codes.
 
 ## Pain point / research question
 - Unsupervised representation learning wants a DISENTANGLED representation: latent dims each map to ONE semantic factor of variation (digit identity, rotation, width, pose, lighting, glasses...).
@@ -49,14 +49,14 @@ Applying it lets us define the variational lower bound L_I(G,Q) (Eq 5) that need
            ≤ I(c; G(z,c)).
 Now L_I is sampled by: draw c~P(c), z~noise, x=G(z,c), evaluate log Q(c|x). Monte-Carlo simple. Maximize L_I w.r.t. Q directly and w.r.t. G via reparametrization (c and z are sampled from fixed priors, x=G(z,c) differentiable). H(c) treated as CONSTANT (fix the latent-code prior; though it could be optimized since common dists have analytic entropy).
 
-Bound max: L_I(G,Q) = H(c) when the bound is tight (Q=P), then maximal MI achieved.
+Bound max: for finite discrete codes, L_I(G,Q) = H(c) when the bound is tight and the generated sample determines c; do not state this as an unconditional continuous-code maximum.
 
 Final objective (Eq 6): min_{G,Q} max_D V_InfoGAN(D,G,Q) = V(D,G) - λ L_I(G,Q).
 
 ## Implementation (appendix C + canonical code) — design decisions
 - Q parameterized as a neural net that SHARES all convolutional layers with D, plus ONE final FC layer to output the params of Q(c|x). So InfoGAN adds negligible compute over GAN. (Q and D share body; D has its own real/fake output head, Q has its own code head.)
 - Categorical c_i: softmax nonlinearity → Q(c_i|x) is a categorical; log Q = -cross-entropy. So maximizing L_I term = minimizing cross-entropy between Q's softmax and the sampled one-hot code. λ=1 sufficient for discrete codes.
-- Continuous c_j: parameterize Q(c_j|x) as a diagonal/factored Gaussian; the recognition net outputs mean and std, std via exp-transform of the output to ensure positivity. Maximizing log Q = minimizing Gaussian NLL. (eriklindernoren simplifies to MSE = fixed-variance Gaussian.) Smaller λ (e.g. 0.1) for continuous so λL_I (which involves differential entropy) is on the same scale as V.
+- Continuous c_j: parameterize Q(c_j|x) as a diagonal/factored Gaussian; the recognition net outputs mean and std, std via exp-transform of the output to ensure positivity. Maximizing log Q = minimizing Gaussian NLL; with fixed std this reduces to MSE plus constants. Smaller λ can be used for continuous codes so λL_I (which involves differential entropy) is on the same scale as V.
 - DCGAN architecture: up-convolutional G, leaky-ReLU (rate 0.1) in D hidden layers, ReLU in G, batchnorm after most layers, Adam, lr 2e-4 for D and 1e-3 for G typically, λ=1 default.
 - L_I converges faster than the GAN objective → "essentially comes for free."
 

@@ -15,21 +15,18 @@ with `a` = mackerel inside, `b` = sardine inside. The net must satisfy: vertex c
 every edge axis-parallel; the polygon simple (no self-intersection); perimeter (total edge length)
 `≤ 4 × 10^5`. The design target is the geometry of the net; nothing else is tunable.
 
-## Why a rectangle first
+## Starting from a rectangle
 
-Before any clever region-shaping, we want the simplest *guaranteed legal* net and a concrete
-baseline objective. A single axis-aligned rectangle is always legal: four vertices (inside the `m`
-bounds), four axis-parallel edges, trivially simple, and its perimeter `2(w+h)` is controllable.
-The only question is which rectangle maximizes `a − b`.
+A single axis-aligned rectangle is one legal net: four vertices (inside the `m` bounds), four
+axis-parallel edges, simple, and its perimeter `2(w+h)` is controllable. The question is which
+rectangle maximizes `a − b`.
 
-## The structure that makes it tractable
+## The setting for scoring a box
 
 Stamp weight `+1` at every mackerel and `−1` at every sardine. The value `a − b` of any
-axis-aligned box equals the total signed weight it covers, so the best rectangle is the
-**maximum-weight axis-aligned rectangle** on a signed point set — a classic problem solvable by
-coordinate discretization plus 2D prefix sums: bucket fish into a coarse grid of candidate cut
-lines, build a prefix-sum table of per-cell `(#mackerel − #sardine)`, and read any grid-aligned
-box's value in O(1), sweeping all boxes under the perimeter budget.
+axis-aligned box equals the total signed weight it covers, so the task of picking the best
+rectangle is choosing the box of maximum signed weight on this point set, subject to the perimeter
+budget.
 
 ## Evaluation
 
@@ -41,10 +38,3 @@ Five seeded instances (seeds 1–5); the reported metric is the raw mean objecti
 independent Python evaluator are cross-checked to agree exactly. The AtCoder performance frontier
 for this task is ALE-Agent `2880` (5th) → ShinkaEvolve `3140` (2nd); those are on AtCoder's relative
 scale, not the raw objective reported here.
-
-## Limitation this baseline exposes
-
-A rectangle is convex and single-bodied: it cannot carve a sardine pocket out of a mackerel shoal
-nor bridge two separated mackerel pockets without swallowing the sardine-rich gap between them.
-That convex-body limitation — not any tuning — is what motivates moving to an arbitrary rectilinear
-region built from grid cells.

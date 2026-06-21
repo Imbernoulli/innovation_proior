@@ -1,8 +1,8 @@
-# Inception-v3 — synthesis (grounded in arXiv 1512.00567 source + torchvision)
+# Inception-v3 — synthesis (grounded in arXiv 1512.00567 source + TensorFlow-Slim / torchvision code)
 
 ## Source
 - arXiv 1512.00567 (verified). LaTeX source read in full (all .tex + model.txt).
-- Canonical code: torchvision/models/inception.py — Inception3 matches model.txt exactly. Stem 32/32/64/pool/80/192/pool; Mixed_5b/5c/5d = InceptionA (figure 5 / inceptionv2 fig, 5x5->two 3x3); Mixed_6a=InceptionB (grid reduction 35->17); Mixed_6b-6e=InceptionC (7x7 factorized 1x7+7x1); Mixed_7a=InceptionD (reduction 17->8); Mixed_7b/7c=InceptionE (expanded 8x8 modules); aux classifier on Mixed_6e (17x17); fc 2048->1000.
+- Canonical code: TensorFlow-Slim `inception_v3.py` constructs the exact model with default arguments; torchvision/models/inception.py is a faithful PyTorch port of the same topology. Stem 32/32/64/pool/80/192/pool; Mixed_5b/5c/5d = InceptionA with a reduced 5x5 branch plus a separate double-3x3 branch; Mixed_6a=grid reduction 35->17; Mixed_6b-6e=InceptionC (7x7 factorized 1x7+7x1); Mixed_7a=reduction 17->8; Mixed_7b/7c=expanded 8x8 modules; aux classifier on Mixed_6e (17x17); dropout before final logits; fc/1x1 logits 2048->1000.
 
 ## Naming clarification (in-frame: never reference "the paper")
 - The paper's Table 1 architecture is called "Inception-v2" in the text. "Inception-v3" = that architecture PLUS the cumulative tricks: BN-auxiliary classifier + RMSProp + Label Smoothing + factorized 7x7 (Table 3 in paper). The method we land on (the full recipe) is Inception-v3. The reasoning derives the whole package.
@@ -47,12 +47,12 @@
 ## Architecture (Table 1, the "Inception-v2" layout)
 - Input 299×299×3.
 - Stem: conv 3×3/2 (→149×149×32); conv 3×3/1 (→147×147×32); conv 3×3/1 padded (→147×147×64); pool 3×3/2 (→73×73×64); conv 3×3/1 (→73×73×80); conv 3×3/2 (→71×71×... wait model.txt: conv 1×80 then conv 3×192). Table 1 says: conv 3×3/2, conv 3×3/1, conv padded 3×3/1, pool 3×3/2, conv 3×3/1, conv 3×3/2 [80], conv 3×3/1 [192]. model.txt: conv(3,32,s2), conv(3,32), conv(3,64,SAME), maxpool(3,s2), conv(1,80,VALID), conv(3,192,VALID), maxpool(3,s2). Note the 7×7 stem of older nets is factorized into three 3×3.
-- 3× Inception (fig 5, "inceptionv2": 5x5 replaced by two 3x3) at 35×35×288.
+- 3× Inception at 35×35×288: the implementation has a 1×1 branch, a reduced 5×5 branch, a reduced double-3×3 branch, and a pooled projection branch. The conceptual 5×5→two-3×3 factorization motivates the double-3×3 path and later factorized stem/7×7 choices, but model.txt does not replace every 5×5 branch mechanically.
 - grid reduction → 17×17×768.
 - 5× Inception (fig 6, "inceptionv3": 1×7 + 7×1 factorized n×n) at 17×17×768.
 - grid reduction → 8×8×1280.
 - 2× Inception (fig 7, "inceptionv4": expanded filter banks, 1×3 and 3×1 in parallel) at 8×8×2048.
-- pool 8×8 → 2048; linear logits; softmax 1000.
+- pool 8×8 → 2048; dropout keep_probability=0.8; linear/1×1 logits; softmax 1000.
 - 42 layers deep; ~2.5× GoogLeNet compute; still cheaper than VGG.
 - model.txt exact filter banks: see file. Aux head on top of mixed_7 (last 17×17): AvgPool(5,s3) → Conv(1,128) → FC(768) → Softmax(weight=0.4, label_smoothing=0.1).
 
@@ -70,6 +70,7 @@
 - Learning rate 0.045, decayed every 2 epochs by exponential factor 0.94.
 - Gradient clipping threshold 2.0 stabilizes training.
 - Evaluations: running average (EMA) of parameters over time.
+- Final head: dropout keep_probability=0.8 before logits.
 
 ## Lower-resolution input (Sec)
 - Higher input resolution helps, but must separate effect of resolution vs model capacity/compute. Keep compute constant: reduce stride of first two layers or remove first pool for low-res input.

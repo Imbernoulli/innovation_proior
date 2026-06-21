@@ -116,3 +116,24 @@ The whole thing stays a drop-in guidance rule: the same two predictions per step
 one norm for the scale, an inert prefix at the unreliable start, and no retraining or extra network
 evaluation. The eps-space DDIM/CFG++ transplant — optimized-scale mix in the denoise, unconditional
 renoise, `if step < K: continue` prefix — is the form filled into the answer's scaffold.
+
+## Minimal reference implementation
+
+A concise Python stub that captures the optimized-scale guidance rule used by CFG-Zero*:
+
+```python
+import torch
+
+
+def optimized_scale(v_cond, v_uncond, eps=1e-8):
+    bsz = v_cond.shape[0]
+    c = v_cond.view(bsz, -1)
+    u = v_uncond.view(bsz, -1)
+    s_star = (c * u).sum(dim=1, keepdim=True) / ((u ** 2).sum(dim=1, keepdim=True) + eps)
+    return s_star.view(bsz, *([1] * (v_cond.dim() - 1))).to(v_cond.dtype)
+
+
+def cfg_zero_star_step(v_uncond, v_cond, guidance_scale=3.0):
+    alpha = optimized_scale(v_cond, v_uncond)
+    return v_uncond * alpha + guidance_scale * (v_cond - v_uncond * alpha)
+```

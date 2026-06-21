@@ -1,128 +1,40 @@
 # Deep Double Descent
 
-## Problem
+## Core Definition
 
-Classical statistics says test error is U-shaped in model complexity ("larger models are worse" past
-a threshold; early stopping helps); modern deep learning says "larger models are better" and training
-to zero training error helps. Both are empirically true. The goal is a single picture of test error
-vs. complexity that unifies them — and a notion of "complexity" general enough to cover model size,
-training time, regularization, and dataset size at once.
+Treat a training procedure `T` as the whole map from a labeled training set to a predictor: architecture, optimizer, number of steps, augmentation, regularization, and any other training choices.
 
-## Key idea
+For distribution `D` and small `epsilon`, define Effective Model Complexity:
 
-The two wisdoms are halves of one curve split at the **interpolation threshold** (where training
-error hits ≈0): test error follows the classical U up to it, then *descends again* in the
-over-parameterized regime — *double descent*. The right complexity axis is not parameter count but
-**Effective Model Complexity (EMC)**: the largest training-set size a procedure can fit to ≈0 train
-error. Test error peaks where EMC ≈ n (number of training samples).
+```text
+EMC_{D,epsilon}(T)
+  = max { n : E_{S ~ D^n}[ Error_S(T(S)) ] <= epsilon }.
+```
 
-## Effective Model Complexity
+The paper uses `epsilon = 0.1` heuristically as "approximately zero" training error. EMC rises with width, training time, weaker regularization, and easier fitting conditions. It also depends on the actual labels and the training procedure, which is why it can move with label noise, augmentation, and epochs in ways that VC dimension or Rademacher complexity cannot.
 
-For a training procedure T (architecture + optimizer + #steps + augmentation + regularization —
-anything mapping a labeled set S to a classifier T(S)), distribution D, and small ε:
+## Generalized Hypothesis
 
-  EMC_{D,ε}(T) := max { n : E_{S~D^n}[ Error_S(T(S)) ] ≤ ε }   (ε ≈ 0.1 heuristically).
+For a natural data distribution `D`, neural-network training procedure `T`, and training sample size `n`:
 
-EMC rises with width, but also with *training time*, with augmentation off, with less regularization.
-Unlike Rademacher complexity / VC dimension, EMC depends on (1) the *true labels* of the distribution
-and (2) the *training procedure* — the two ingredients needed to locate a peak that moves with label
-noise and with epochs.
+- If `EMC_{D,epsilon}(T) << n`, increasing effective complexity decreases test error.
+- If `EMC_{D,epsilon}(T) >> n`, increasing effective complexity also decreases test error.
+- If `EMC_{D,epsilon}(T) approx n`, increasing effective complexity can either increase or decrease test error.
 
-## Generalized Double Descent Hypothesis
+The interpolation threshold is therefore not the end of generalization. It is the critical boundary where the procedure is just able to fit the training set. Test error peaks or plateaus near that boundary, then can descend again in the over-parameterized regime.
 
-For natural D, neural-net procedure T, small ε, predicting n samples:
-- **Under-parameterized** (EMC ≪ n): increasing effective complexity *decreases* test error.
-- **Over-parameterized** (EMC ≫ n): increasing effective complexity *decreases* test error.
-- **Critically parameterized** (EMC ≈ n): increasing effective complexity *may increase or decrease*
-  test error.
+## Three Crossings
 
-Test error peaks at the interpolation threshold EMC ≈ n, with a "critical interval" around it (whose
-width depends on D and T) where more complexity can hurt.
+Model-wise: fix a long training budget and vary model width. Width changes EMC. Test error follows the classical descent/ascent up to the interpolation threshold, then descends again. This creates real regimes where bigger models are worse, but only near the critical region.
 
-## Three corollaries (three ways to cross EMC ≈ n)
+Epoch-wise: fix a sufficiently large model and vary training time. Training longer changes EMC even though parameter count is fixed. Test error can fall, rise near the epoch where train error becomes approximately zero, then fall again. Thus continued training can reverse apparent overfitting.
 
-- **Model-wise double descent:** fix a large #steps, vary model width. Test error: classical U, peak
-  at the size that first interpolates the train set, then a second descent. The hypothesis predicts
-  regimes where *bigger models are worse*. Label noise, data augmentation, and more samples raise the
-  interpolation threshold and shift the peak toward larger models.
-- **Epoch-wise double descent:** fix a large model, vary training time (training longer raises EMC, so
-  the model goes under→over-parameterized within one run). Test error: decreases, increases near
-  interpolation, decreases again — *training longer can correct overfitting*. Medium models follow the
-  classical U (early stopping best); small models decrease monotonically.
-- **Sample-wise non-monotonicity:** fix model + procedure, vary n (this crosses EMC ≈ n from the other
-  side). More data shrinks error overall but shifts the peak right; near the critical regime these
-  cancel (more data doesn't help) and can combine so that the hypothesis predicts *more data can
-  hurt*.
-
-Optimal early stopping removes the phenomena — consistent with the hypothesis, since stopping before
-≈0 train error keeps EMC below n.
+Sample-wise: fix model and procedure, then vary `n`. More data usually lowers the curve, but it also shifts the interpolation threshold because more samples require more effective complexity to fit. Near the critical region these effects can cancel, and in some settings more data hurts.
 
 ## Mechanism
 
-At EMC ≈ n there is essentially a *unique* interpolating model, highly sensitive to label noise /
-model mis-specification (forced to fit every point, slight noise destroys global structure → high
-test error). Over-parameterized, many interpolating models exist and the (minimum-norm) one gradient
-descent finds absorbs the noise while generalizing. Provable for linear least-squares and Random
-Fourier Features, where EMC = width d exactly and the high test-error ridge follows n = d. Label noise
-is a proxy for model mis-specification, not the fundamental cause; double descent appears without it
-under mis-specification.
+At `EMC approx n`, the learner has little slack. In linear and random-feature settings, this corresponds to a poorly conditioned or nearly unique interpolating solution, so fitting noise or misspecification can destroy global structure. In the over-parameterized regime, many interpolants exist, and the training rule can select a better one, such as the minimum-norm solution in least squares or random features.
 
-## Implementation (measurement harness)
+The deep-network mechanism is not fully proved. The paper uses the linear/random-feature theory as an anchor and treats label noise as an amplifier for the underlying sensitivity to noise or model misspecification.
 
-There is no new architecture or loss; the contribution is the EMC definition and hypothesis, realized
-by measuring EMC and sweeping one knob at a time.
-
-```python
-import numpy as np
-EPS = 0.1  # "approximately zero" train error
-
-def add_label_noise(labels, p, num_classes, rng):
-    flip = rng.random(len(labels)) < p           # corrupt w.p. p; otherwise keep original label
-    noisy = labels.copy()
-    replacement = rng.integers(0, num_classes - 1, size=int(flip.sum()))
-    original = labels[flip]
-    noisy[flip] = replacement + (replacement >= original)              # else uniform wrong label
-    return noisy                                 # drawn ONCE, fixed across epochs
-
-def make_model(width, fixed):
-    # Existing factory: ResNet18 [k,2k,4k,8k], 5-layer CNN [k,2k,4k,8k]+FC,
-    # Transformer d_model with d_ff=4*d_model, or RFF width d.
-    return fixed.make_model(width)
-
-def train(model, train_data, test_data, optimizer, num_steps, fixed, record_every=None):
-    # Existing training loop: cross-entropy for vision, label-smoothed CE for Transformers, MSE for RFF.
-    return fixed.train(model, train_data, test_data, optimizer, num_steps, record_every=record_every)
-
-def effective_complexity(procedure, distribution, sample_grid, trials, epsilon=EPS):
-    emc = 0
-    for n in sorted(sample_grid):
-        if np.mean([procedure(distribution.sample(n)).train_error()
-                    for _ in range(trials)]) <= epsilon:
-            emc = n
-    return emc
-
-def model_size_sweep(widths, fixed):
-    noisy_y = add_label_noise(fixed.y, fixed.p, fixed.num_classes, fixed.rng)
-    out = []
-    for w in widths:
-        m = make_model(w, fixed)
-        out.append((w, *train(m, (fixed.train_x, noisy_y), (fixed.test_x, fixed.test_y),
-                              fixed.make_optimizer(m), fixed.num_steps, fixed)[:2]))
-    return out
-
-def training_time_sweep(width, step_budget, fixed):
-    noisy_y = add_label_noise(fixed.y, fixed.p, fixed.num_classes, fixed.rng)
-    m = make_model(width, fixed)
-    return train(m, (fixed.train_x, noisy_y), (fixed.test_x, fixed.test_y),
-                 fixed.make_optimizer(m), step_budget, fixed, record_every=1)[2]
-
-def sample_count_sweep(width, sample_sizes, fixed):
-    out = []
-    for n in sample_sizes:
-        x, y = fixed.dataset.subset(n)
-        noisy_y = add_label_noise(y, fixed.p, fixed.num_classes, fixed.rng)
-        m = make_model(width, fixed)
-        out.append((n, train(m, (x, noisy_y), (fixed.test_x, fixed.test_y),
-                             fixed.make_optimizer(m), fixed.num_steps, fixed)[1]))
-    return out
-```
+The contribution is this coordinate change: organize generalization by the distance between sample count and the procedure's effective ability to fit, not by parameter count alone.

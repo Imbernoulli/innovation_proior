@@ -1,77 +1,36 @@
 ## Research question
 
-A single fixed-capacity network trains on a *sequence* of contexts, one at a time, and must keep
-performing on all the earlier ones. While training on a context the learner sees only that context's
-loss; the data of every earlier context is gone, and replaying it would cost memory growing with the
-number of contexts. Ordinary SGD on the current context drags the shared weights wherever the new loss
-demands, and those same weights encoded the old contexts, so old accuracy collapses — catastrophic
-forgetting. The one thing being designed is a **regularization strategy**: an *importance estimator*
-(which parameters mattered for each finished context) and a *penalty form* (how their changes are
-penalized while later contexts train), added on top of an otherwise-fixed training loop.
+A fixed-capacity network trains on a sequence of contexts, one at a time, and must keep performing on all earlier ones. During training on a context, the learner sees only that context's loss; the data of earlier contexts is gone, and replaying it would cost memory growing with the number of contexts. Ordinary SGD on the current context drags the shared weights wherever the new loss demands, and those same weights encoded the old contexts, so old accuracy collapses—catastrophic forgetting. The design task is a **regularization strategy**: an *importance estimator* (which parameters mattered for each finished context) and a *penalty form* (how their changes are penalized while later contexts train), added on top of an otherwise-fixed training loop.
 
-## Prior art before the first rung
+## Prior art / Background / Baselines
 
-The first rung reacts to one settled fact and the family of fixes it spawned. These precede the ladder;
-the substrate below is the harness they all plug into.
+- **Catastrophic interference.** A backprop network trained on a second set of associations abruptly loses the first, because the representation is shared and distributed—any weight move that helps the new context tends to corrupt the old one. Gap: it names the problem, not a solution.
+- **Joint / replay training.** Interleave all contexts' data and forgetting vanishes, because the weights are jointly fit. Gap: forbidden here—the old data is gone, and storing it costs memory linear in the number of contexts.
+- **Uniform-stiffness L2 anchor.** After a context finishes, snapshot `theta*` and add `sum_i (theta_i - theta*_i)^2` while later contexts train. No data, constant memory. Gap: one global stiffness cannot be right—large enough to hold the old context freezes the network so the new one cannot be learned; small enough to learn the new one fails to hold the old.
+- **Curvature framing.** Near a context's optimum, the loss locally approximates a quadratic whose Hessian describes which directions are stiff and which are free. The diagonal Fisher gives a cheap, positive-semidefinite proxy for that Hessian. Gap: it is a local description of one optimum, not yet a prescription for how to estimate, accumulate, or apply importance across a long sequence of contexts with changing data.
 
-- **Catastrophic interference (McCloskey & Cohen 1989; French 1999).** A backprop network trained on a
-  second set of associations abruptly loses the first, because the representation is *shared and
-  distributed* — any weight move that helps the new context tends to corrupt the old one. Gap: states the
-  disease, not the cure.
-- **Joint / replay training (the multitask regime).** Interleave all contexts' data and forgetting
-  vanishes, because the weights are jointly fit. Gap: forbidden here — the old data is gone, and storing
-  it costs memory linear in the number of contexts.
-- **Uniform-stiffness L2 anchor.** When a context finishes, snapshot `theta*` and add
-  `sum_i (theta_i - theta*_i)^2` while later contexts train. No data, constant memory. Gap: one *global*
-  stiffness cannot be right — large enough to hold the old context freezes the net so the new one cannot
-  be learned; small enough to learn the new one fails to hold the old. The stiffness must be *per
-  parameter*, set by how much each weight mattered.
-- **Curvature framing (MacKay 1992; Pascanu & Bengio 2013).** Near a context's optimum,
-  `L(theta) ~ L(theta*) + 0.5 (theta-theta*)^T H (theta-theta*)`: stiff (high-curvature) directions are
-  the ones the context cared about, flat ones are free. This turns "important parameter" into "high local
-  curvature," and the diagonal Fisher is a PSD, first-order-computable stand-in for that curvature — the
-  raw material every rung on this ladder builds its importance from.
+## Fixed substrate / Code framework
 
-## The fixed substrate
+The training loop is frozen. It sweeps contexts in sequence; on each step it forms `task_loss + (reg_strength * reg_strength_scale) * R(theta)` and backpropagates, where `R` is the penalty the editable region returns. It snapshots parameters at every context boundary, accumulates the returned importance additively into `model._custom_importance`, and exposes per-step bookkeeping a method may use. The hooks:
 
-The training loop is frozen and must not be touched. It sweeps contexts in sequence; on each step it
-forms `task_loss + (reg_strength * reg_strength_scale) * R(theta)` and backpropagates, where `R` is the
-penalty the editable region returns. It snapshots parameters at every context boundary, accumulates the
-returned importance *additively* into `model._custom_importance`, and exposes per-step bookkeeping a
-method may use. The hooks the framework provides:
+- `model.param_list` — list of generators yielding `(name, param)` over the regularized parameters (here, `[model.named_parameters]`). Names are stored with `.` replaced by `__`.
+- `model._custom_W` — dict the loop accumulates each step as `W[n] += -grad * (p - p_old[n])`: the running gradient-weighted parameter change.
+- `model._custom_p_old` — dict of per-step parameter snapshots.
+- `model._custom_importance` / `model._custom_prev_params` — the carried importance and the latest-boundary parameter anchor.
+- `model.gamma` — decay factor for Fisher accumulation (framework default `1.0`).
+- `model.epsilon` — damping constant (default `0.1`, used to bound importance when a weight barely moved).
+- `CONFIG_OVERRIDES` — a dict whose only honored key is `reg_strength_scale`, a multiplier on the per-benchmark `reg_strength`.
 
-- `model.param_list` — list of generators yielding `(name, param)` over the regularized parameters
-  (here, `[model.named_parameters]`). Names are stored with `.` replaced by `__`.
-- `model._custom_W` — dict the loop accumulates each step as `W[n] += -grad * (p - p_old[n])`: the
-  running gradient-weighted parameter change. The path-integral material for SI-style importance.
-- `model._custom_p_old` — dict of per-step parameter snapshots (the previous step's values).
-- `model._custom_importance` / `model._custom_prev_params` — the carried importance and the
-  latest-boundary parameter anchor; the loop adds new importance into the former and refreshes the latter.
-- `model.gamma` — decay factor for Fisher accumulation (framework default `1.0`; Online EWC uses `< 1`).
-- `model.epsilon` — damping constant (default `0.1`, used by SI to bound importance when a weight barely
-  moved).
-- `CONFIG_OVERRIDES` — a dict whose only honored key is `reg_strength_scale`, a multiplier on the
-  per-benchmark `reg_strength`.
+The benchmark networks are ordinary classifiers: a small MLP for Split-MNIST, a larger MLP for Permuted-MNIST, a CNN for Split-CIFAR100; all multi-head, Adam, cross-entropy. The loop computes the task loss only over the classes present in the current context.
 
-The benchmark networks are ordinary classifiers: a small MLP for Split-MNIST, a larger MLP for
-Permuted-MNIST, a CNN for Split-CIFAR100; all multi-head, Adam, cross-entropy. The loop computes the
-task loss only over the classes present in the current context.
+## Editable interface
 
-## The editable interface
+Exactly one region of `continual-learning/custom_regularization.py` is editable—two functions and the `CONFIG_OVERRIDES` dict. The contract:
 
-Exactly one region of `continual-learning/custom_regularization.py` is editable — two functions and the
-`CONFIG_OVERRIDES` dict. Every method on the ladder is a fill of this same contract:
+- `estimate_importance(model, dataset, prev_params, device) -> dict` — called once after each context finishes. Returns `{param_name: importance_tensor}`. May do forward/backward passes over `dataset` and may read the per-step bookkeeping. The loop sums the returned dict into the carried importance.
+- `compute_regularization_loss(model, importance_dict, prev_params_dict) -> Tensor` — called at every training step; must be cheap. Returns the scalar penalty added to the task loss.
 
-- `estimate_importance(model, dataset, prev_params, device) -> dict` — called *once* after each context
-  finishes. Returns `{param_name: importance_tensor}` (param shapes). May do forward/backward passes
-  over `dataset` and may read the per-step bookkeeping (`_custom_W`, `_custom_p_old`). The loop
-  **sums** the returned dict into the carried importance.
-- `compute_regularization_loss(model, importance_dict, prev_params_dict) -> Tensor` — called at *every*
-  training step; must be cheap. Returns the scalar penalty added to the task loss.
-
-The starting point is the scaffold default: **diagonal-Fisher importance with a `0.5 * F * (theta-theta*)^2`
-quadratic penalty** (an EWC-shaped default). Each method on the ladder replaces exactly these two
-definitions (SI also rewrites `CONFIG_OVERRIDES`).
+The starting point is the scaffold default: diagonal-Fisher importance with a `0.5 * F * (theta-theta*)^2` quadratic penalty.
 
 ```python
 # EDITABLE region of custom_regularization.py — default fill (diagonal Fisher + quadratic penalty)
@@ -140,9 +99,4 @@ CONFIG_OVERRIDES = {}
 
 ## Evaluation settings
 
-Three benchmarks span the difficulty range. **Split-MNIST** — task-incremental, 5 binary tasks (2
-classes each), a small MLP. **Permuted-MNIST** — domain-incremental, 10 contexts, each a fixed pixel
-permutation of the same digit classes, a larger MLP; the long sequence of uncorrelated-input contexts
-is where an over-strong or drifting penalty does the most damage. **Split-CIFAR100** — task-incremental,
-10 ten-way tasks, a CNN. One seed (42). Primary metric: **average accuracy across all contexts after
-training completes** (higher is better), reported per benchmark.
+Three benchmarks span the difficulty range. **Split-MNIST** — task-incremental, 5 binary tasks (2 classes each), a small MLP. **Permuted-MNIST** — domain-incremental, 10 contexts, each a fixed pixel permutation of the same digit classes, a larger MLP; the long sequence of uncorrelated-input contexts is where an over-strong or drifting penalty does the most damage. **Split-CIFAR100** — task-incremental, 10 ten-way tasks, a CNN. One seed (42). Primary metric: **average accuracy across all contexts after training completes** (higher is better), reported per benchmark.

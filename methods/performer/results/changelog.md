@@ -1,0 +1,44 @@
+# Changelog
+
+- `methods/performer/results/context.md:7` tightened the research question to keep dense softmax as the target without leaking the method.
+- `methods/performer/results/context.md:21` clarified orthogonal random features as blockwise orthogonal sampling with unchanged marginals.
+- `methods/performer/results/context.md:49` purified the scaffold so it exposes only a standard `Q, K, V` attention replacement slot.
+- `methods/performer/results/reasoning.md:13` corrected the overbroad unbiasedness claim: unbiasedness applies to kernel/attention-matrix entries before row-normalized ratio estimation.
+- `methods/performer/results/reasoning.md:25` corrected the trigonometric-feature conclusion to matrix-entry unbiasedness, not exact expected normalized attention.
+- `methods/performer/results/reasoning.md:75` corrected ORF constraints to `d`-row orthogonal blocks, matching the reference implementation for `m > d`.
+- `methods/performer/results/reasoning.md:101` removed an over-specific tail-bound correction and replaced it with the source-backed regularized-softmax statement.
+- `methods/performer/results/reasoning.md:111` corrected causal complexity to `O(Lrd)` work with streaming `O(rd)` state or parallel prefix-sum tensor.
+- `methods/performer/results/reasoning.md:113` corrected generalized attention: Google defaults to deterministic `ReLU(x)+1e-3`, with projected features optional.
+- `methods/performer/results/reasoning.md:115` replaced the old PyTorch-style code artifact with a Google-reference-shaped JAX skeleton.
+- `methods/performer/results/reasoning.md:201` corrected the final causal chain to "unbiased kernel estimator" and stable linear-time approximation, not unbiased normalized attention.
+- `methods/performer/results/answer.md:37` added the ratio-estimator caveat for row-normalized attention.
+- `methods/performer/results/answer.md:39` kept the paper's trig/positive/hyp+ MSE formulas with signs and constants checked.
+- `methods/performer/results/answer.md:54` kept the ORF MSE gap with the `2(m-1)/(m(d+2))` constant and the correct squared term.
+- `methods/performer/results/answer.md:60` qualified the feature-count theorem with `R`, `delta`, and precision dependence rather than an unqualified `Theta(d log d)`.
+- `methods/performer/results/answer.md:71` grounded code faithfulness in the canonical Google Research checkout and commit.
+- `methods/performer/results/answer.md:79` recorded the canonical softmax defaults: 256 features, orthogonal rows, `ortho_scaling=0`, redraw, and `1e-6` stabilizer.
+- `methods/performer/results/answer.md:88` recorded the canonical generalized defaults: deterministic ReLU, `kernel_epsilon=1e-3`, no redraw.
+- `methods/performer/results/answer.md:98` added the QR plus chi-length orthogonal projection construction.
+- `methods/performer/results/answer.md:120` added faithful softmax feature construction with `d^{-1/4}` normalization, query/key max subtraction, and positive eps.
+- `methods/performer/results/answer.md:131` added faithful generalized feature behavior, including the no-projection default.
+- `methods/performer/results/answer.md:136` added noncausal reassociation with denominator stabilizer.
+- `methods/performer/results/answer.md:143` added causal prefix-sum numerator/denominator computation.
+- `methods/performer/notes/synthesis.md:26` updated ORF notes for blockwise exact orthogonality and stacked blocks.
+- `methods/performer/notes/synthesis.md:29` fixed the stale unqualified `m = Theta(d log d)` note.
+- `methods/performer/notes/synthesis.md:30` fixed the stale generalized-attention default note.
+- `methods/performer/notes/synthesis.md:43` replaced third-party PyTorch grounding with the canonical Google reference code.
+- `methods/performer/notes/source_matrix.md:5` added the primary paper/source artifact record.
+- `methods/performer/notes/source_matrix.md:6` added the Google Research self-account record.
+- `methods/performer/notes/source_matrix.md:7` added the canonical code evidence record.
+- `methods/performer/notes/source_matrix.md:8` added the Rahimi-Recht random-features ancestor.
+- `methods/performer/notes/source_matrix.md:9` added the Yu et al. ORF ancestor.
+- `methods/performer/notes/source_matrix.md:10` added the Transformer ancestor/baseline.
+- `methods/performer/notes/source_matrix.md:11` added the Reformer baseline ancestor.
+- `methods/performer/notes/source_matrix.md:12` added the Linformer baseline ancestor.
+- `methods/performer/notes/source_matrix.md:13` added the Linear Transformer baseline ancestor.
+- `methods/performer/notes/source_matrix.md:14` added the Teddy Koker third-party explainer.
+- `methods/performer/notes/discovery_synthesis.md:15` recorded the key unbiasedness/ration-estimator correction.
+- `methods/performer/notes/discovery_synthesis.md:22` recorded the canonical-code corrections.
+- `methods/performer/refs/self_accounts/search_log.md:5` documented the found author/lab self-account.
+- `methods/performer/results/.codex_review.json:4` changed the stale errored review marker to an explicit independent-review-not-run marker.
+- `methods/performer/notes/strict_check_output.txt:1` recorded the strict checker result: `STRICT CHECK PASSED`.

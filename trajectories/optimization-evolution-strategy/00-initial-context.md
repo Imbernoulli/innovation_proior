@@ -1,72 +1,34 @@
 ## Research question
 
-Continuous black-box minimization: I am handed a scalar objective `f(x)` over a box of real vectors —
-nonlinear, multimodal, ill-conditioned, sometimes only pokeable (feed a vector, get a number). The one
-thing being designed is the **evolutionary strategy** — the selection, crossover, and mutation operators
-and the loop that drives them. Everything around it (the benchmark functions, the bounds, the
-fitness/individual types, the evaluation harness) is fixed. The bar is to minimize `f` across a panel of
-standard test functions that stress different landscape pathologies (multimodal Rastrigin, the curved
-Rosenbrock valley, the flat-then-needle Ackley), at two dimensionalities (30D and 100D).
+Continuous black-box minimization: minimize a scalar objective `f(x)` over a box of real vectors. `f` is nonlinear, multimodal, ill-conditioned, and available only through function queries (feed a vector, get a number). The task is to design the **evolutionary strategy** — selection, recombination, mutation, and the loop that drives them. The benchmark functions, bounds, fitness types, and evaluation harness are fixed. The target is low `f` on a panel of standard test functions: multimodal Rastrigin, curved Rosenbrock valley, flat-then-needle Ackley, at 30D and 100D.
 
-## Prior art before the first rung (continuous-EA lineage)
+## Prior art / Background / Baselines
 
-The first rung reacts to a line of population-based black-box optimizers; these are the ancestors the
-ladder climbs out of.
+Current population-based continuous optimizers and the gaps they leave:
 
-- **Genetic algorithms on binary strings (Holland 1975; Goldberg 1989).** Population + selection +
-  single-point crossover + bit-flip mutation, with the building-block story: crossover propagates short
-  high-fitness substrings. Gap on continuous problems: forcing reals through a bit encoding imports a
-  precision cap, a fixed string→real mapping, and the Hamming cliff (adjacent reals far apart in bits),
-  so the search fights the encoding instead of the function.
-- **Evolution strategies (Rechenberg 1973; Schwefel 1977).** Mutate a parent by adding a normal
-  perturbation `x_j ← x_j + N(0,σ²)`; σ *is* the search scale, controlled by the 1/5 success rule or
-  self-adapted alongside `x`. Gap: σ (and, in the full-covariance version, a `D×D` matrix) is a second
-  optimization problem bolted on — extra control variables that lag or mistrack the landscape.
-- **Real-coded crossovers (Wright 1991, linear; Eshelman & Schaffer 1993, BLX-α).** Recombine reals
-  directly. Gap: linear crossover is near-deterministic (three children per pair); BLX-α is genuinely
-  stochastic but flat-density inside its interval, ignoring single-point crossover's strong pull toward
-  children near the parents.
-- **Simulated annealing (Kirkpatrick et al. 1983).** Escapes local minima by accepting uphill moves
-  with probability `exp(−Δ/T)` and cooling `T`. Gap: the temperature schedule is a whole apparatus of
-  control variables, and it burns enormous numbers of function evaluations — exactly what is scarce when
-  each call is expensive.
+- **Binary genetic algorithms.** Core idea: represent real vectors as bit strings and apply selection, single-point crossover, and bit-flip mutation. Gap: the bit encoding imposes a precision limit and a Hamming cliff (adjacent reals can differ in many bits), so the search wastes effort on the encoding rather than the function.
+- **Classical evolution strategies.** Core idea: mutate a parent by adding isotropic normal noise `x ← x + N(0, σ²)` and adapt the global step size σ with the 1/5 success rule or by co-evolving it. Gap: σ is an extra control variable that must track the landscape; extensions add further step-size controls that are themselves difficult to tune.
+- **Real-coded crossovers.** Core idea: recombine parent reals directly (linear blending, or interval sampling like BLX-α). Gap: linear recombination produces nearly deterministic offspring; BLX-α samples uniformly inside a box around the parents, giving no higher density near either parent.
+- **Simulated annealing.** Core idea: escape local minima by accepting uphill moves with probability `exp(−Δ/T)` while cooling `T`. Gap: the cooling schedule is a sensitive external control, and the method consumes many function evaluations.
 
-The recurring wall: the perturbation's *scale and orientation* are set by an external device (σ, a
-cooling schedule, a fixed mutation width), which is brittle and must be re-tuned per landscape. The
-ladder is about answering the scale question from the population's own geometry instead.
+The common limitation: perturbation scale is set by an external device (encoding granularity, σ, a cooling schedule, a fixed mutation width) that is brittle and must be retuned per landscape.
 
-## The fixed substrate
+## Fixed substrate / Code framework
 
-Frozen and not to be touched: the three benchmark functions (`rastrigin`, `rosenbrock`, `ackley`, each
-returning a one-tuple `(value,)` for minimization), their bounds, the DEAP single-objective minimization
-types (`creator.FitnessMin` with `weights=(-1.0,)` and `creator.Individual` as a `list`), and the
-evaluation harness below the editable region. Two helpers are provided and may be reused:
-`make_individual(toolbox, dim, lo, hi)` (a uniform-random individual in the box) and
-`clip_individual(individual, lo, hi)` (clip genes back into `[lo, hi]`). The harness drives every run with
-`pop_size=200`, `n_generations=500` (group budget), `cx_prob=0.9`, `mut_prob=0.2`, and reports
-`best_fitness` (final best value, lower is better) and `convergence_gen` (the first generation within 1%
-of the final best).
+Frozen and not to be touched: the benchmark functions (`rastrigin`, `rosenbrock`, `ackley`, each returning a one-tuple `(value,)`), their bounds, DEAP single-objective minimization types (`creator.FitnessMin` with `weights=(-1.0,)` and `creator.Individual` as a `list`), and the evaluation harness below the editable region. Two helpers may be reused: `make_individual(toolbox, dim, lo, hi)` and `clip_individual(individual, lo, hi)`. The harness uses `pop_size=200`, `n_generations=500` (group budget), `cx_prob=0.9`, `mut_prob=0.2`, and reports `best_fitness` (final best value, lower is better) and `convergence_gen` (first generation within 1% of the final best).
 
-## The editable interface
+## Editable interface
 
-Exactly one region is editable — lines 87–225 of `deap/custom_evolution.py`, comprising four definitions.
-Every method on the ladder is a fill of this same contract:
+Exactly one region is editable — lines 87–225 of `deap/custom_evolution.py`, with four definitions:
 
 - `custom_select(population, k, toolbox)` — return `k` selected individuals.
 - `custom_crossover(ind1, ind2)` — recombine two parents in place, return the pair.
 - `custom_mutate(individual, lo, hi)` — perturb one individual in place, return a one-tuple.
-- `run_evolution(evaluate_func, dim, lo, hi, pop_size, n_generations, cx_prob, mut_prob, seed)` — the
-  full loop; must return `(best_individual, fitness_history)` where `fitness_history` is the best fitness
-  per generation, and print `TRAIN_METRICS gen=G best_fitness=F avg_fitness=A` every 50 generations.
+- `run_evolution(...)` — the full loop; must return `(best_individual, fitness_history)` and print `TRAIN_METRICS gen=G best_fitness=F avg_fitness=A` every 50 generations.
 
-A method that restructures the algorithm (DE, L-SHADE) ignores the three operator stubs (leaving them as
-no-ops) and writes the whole search inside `run_evolution`; an operator-suite method (GA) fills all three
-operators and uses the default generational loop. `numpy`, `scipy`, `math`, `random`, and
-`deap.{base,creator,tools,cma}` are available.
+A method that restructures the algorithm can ignore the operator stubs and write the whole search inside `run_evolution`; an operator-suite method fills all three operators and uses the default generational loop. `numpy`, `scipy`, `math`, `random`, and `deap.{base,creator,tools,cma}` are available.
 
-The starting point is the scaffold default below — tournament selection (size 3), simulated binary
-crossover (η=20), polynomial bounded mutation (η=20, indpb=1/n), in a generational loop. Each step
-replaces exactly this region.
+The starting scaffold is below — tournament selection, simulated binary crossover (η=20), polynomial bounded mutation (η=20, indpb=1/n), in a generational loop. Each step replaces exactly this region.
 
 ```python
 # EDITABLE region of deap/custom_evolution.py (lines 87-225) - scaffold default fill
@@ -153,8 +115,7 @@ def run_evolution(
 
 ## Evaluation settings
 
-Four benchmarks, all minimization (lower is better), each run at seed 42 (the leaderboard aggregates
-three internal seeds into a mean):
+Four minimization benchmarks (lower is better), each run at seed 42 (the leaderboard aggregates three internal seeds into a mean):
 
 | Benchmark | Function | Dim | Domain | Global min |
 |---|---|---|---|---|
@@ -163,6 +124,4 @@ three internal seeds into a mean):
 | ackley-30d | Ackley (flat plateau, needle at origin) | 30 | [-32.768, 32.768] | 0 |
 | rastrigin-100d | Rastrigin (high-dimensional, hidden eval) | 100 | [-5.12, 5.12] | 0 |
 
-Two metrics per benchmark: `best_fitness` (final best value, lower better) and `convergence_gen` (first
-generation within 1% of final best). Budget: `pop_size=200`, `n_generations=500` for the 30D functions
-(1000 for 100D), `cx_prob=0.9`, `mut_prob=0.2`.
+Metrics per benchmark: `best_fitness` (final best value) and `convergence_gen` (first generation within 1% of final best). Budget: `pop_size=200`, `n_generations=500` for the 30D functions (1000 for 100D), `cx_prob=0.9`, `mut_prob=0.2`.

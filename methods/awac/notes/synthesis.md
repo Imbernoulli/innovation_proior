@@ -62,9 +62,10 @@ Two steps, alternating (actor-critic):
 ### Derivation (full appendix, must re-derive in reasoning)
 Constrained problem with normalization ∫π=1. Lagrangian:
   L = E_{a~π}[A(s,a)] + λ(ε − KL(π‖π_β)) + α(1 − ∫π da).
-∂L/∂π = A(s,a) − λ log π_β(a|s) + λ log π(a|s) + λ − α  (since KL = E_π[log π − log π_β], its
-derivative wrt π(a|s) is log π − log π_β + 1).
-Set = 0, solve for log π: log π = (1/λ)A + log π_β + (α/λ − 1). Exponentiate:
+∂L/∂π = A(s,a) − λ(log π(a|s) − log π_β(a|s) + 1) − α  (since KL = E_π[log π − log π_β], its
+derivative wrt π(a|s) is log π − log π_β + 1). The appendix's printed derivative flips the log signs,
+but the displayed closed form and direct differentiation agree with this corrected derivative.
+Set = 0, solve for log π: log π = (1/λ)A + log π_β − 1 − α/λ. Exponentiate:
   π*(a|s) = (1/Z(s)) π_β(a|s) exp(A(s,a)/λ),  Z(s) the partition function.
 Project onto parametric π_θ by minimizing FORWARD KL under data state dist ρ_{π_β}(s):
   argmin_θ E_{ρ}[ KL(π* ‖ π_θ) ] = argmin_θ E_{ρ} E_{π*}[ −log π_θ ].
@@ -79,20 +80,21 @@ Pinsker bound (appendix): for discrete π_θ ≥ α_θ, KL(π*‖π_θ) ≤ (2/�
 minimizing reverse KL also bounds forward KL (justifies the equivalence loosely).
 
 ### Z(s) omission (appendix, must mention)
-Z(s) = ∫ π_θ exp(A/λ) da = E_{a~π_θ}[exp(A/λ)] is a per-STATE normalizer. Dropped because:
+Z(s) = ∫ π_β(a|s) exp(A/λ) da = E_{a~π_β}[exp(A/λ)] is a per-STATE normalizer. Dropped because:
 - empirically estimating it (K=10 per-batch samples) made performance WORSE (Table: use Z(s) gives
   pen 84%/door 0%/relocate 0% vs omit Z(s) pen 98%/door 95%/relocate 54%).
 - it only reweights STATES not actions; the buffer state dist already differs from π_θ's, so
   preserving it is low-value; bad estimates add variance like degenerate importance weights.
-- can be bounded C1 ≤ Z(s) ≤ C2 via Cauchy-Schwarz (upper) and Polya-Szego reverse-CS (lower) with
-  f=π, g=exp(A/λ): Z ≤ √(∫f² ∫g²)=C1; Z ≥ 2(√(M_fM_g/m_fm_g + m_fm_g/M_fM_g))^{-1} C1 = C2. (bounds
+- can be bounded C2 ≤ Z(s) ≤ C1 via Cauchy-Schwarz (upper) and Polya-Szego reverse-CS (lower) with
+  f=π_β, g=exp(A/λ): Z ≤ √(∫f² ∫g²)=C1; Z ≥ 2(√(M_fM_g/m_fm_g + m_fm_g/M_fM_g))^{-1} C1 = C2. (bounds
   loose.) In practice normalize over the BATCH instead.
 
 ### Practical actor weight
 weight = exp( A(s,a)/λ ), A = Q(s,a_data) − V(s), V(s) = Q(s, a~π(·|s)) (one sample; or min twin).
-λ (= 1/β, the Lagrange multiplier) is a fixed hyperparameter: λ=0.3 manipulation, λ=1.0 MuJoCo
-benchmark. Lower λ → sharper/greedier; higher λ → closer to BC. rlkit normalizes weights over the
-batch (softmax(score/β) or exp(score/β)); paper Eqn 9 is the per-state exp form.
+λ (called beta in rlkit, the exponent denominator / KL multiplier) is a fixed hyperparameter:
+paper λ=0.3 manipulation, λ=1.0 MuJoCo benchmark. Lower λ → sharper/greedier; higher λ → closer
+to BC. rlkit normalizes weights over the batch (softmax(score/beta)); paper Eqn 9 is the per-state
+exp form.
 
 ## Design-decision → why
 - Off-policy Q^π via bootstrapping (not MC V^{π_β} like AWR): bootstrapping reuses off-policy data and
@@ -113,9 +115,11 @@ batch (softmax(score/β) or exp(score/β)); paper Eqn 9 is the per-state exp for
 - built on twin SAC; qf/policy lr 3e-4, Adam; discount 0.99; target τ 5e-3 (Polyak).
 - policy 4×256 ReLU, Q 4×256 ReLU; policy weight decay 1e-4, Q weight decay 0.
 - batch 1024; replay 1e6; 25000 pretraining (offline) steps; 1 train batch per env step; reward scale 1.
-- λ (lagrange) = 0.3 manipulation / 1.0 MuJoCo. exploration noise = none (stochastic policy).
-- critic target uses min of twin target Q at a'~π; rlkit subtracts α·logπ (SAC entropy) by default but
-  AWAC's presented objective is the advantage-weighted MLE without entropy in the actor.
+- paper λ (lagrange) = 0.3 manipulation / 1.0 MuJoCo; rlkit examples call this beta and use/sweep
+  nearby values (hand beta=0.5 with clip_score=0.5; MuJoCo beta=2 in example script). exploration
+  noise = none (stochastic policy).
+- critic target uses min of twin target Q at a'~π; rlkit code can subtract α·logπ, but AWAC example
+  configs disable automatic entropy tuning and set alpha=0, matching the clean paper objective.
 - weights normalized over batch (default normalize_over_batch=True → softmax(score/β)); score = q_adv −
   v_pi; v_pi = min(qf1,qf2)(s, a~π). clip_score optional.
   (FLAG: rlkit default uses softmax-over-batch weighting and a SAC-entropy critic term; the paper's
@@ -123,7 +127,7 @@ batch (softmax(score/β) or exp(score/β)); paper Eqn 9 is the per-state exp for
   critic + min, which is the load-bearing structure both share.)
 
 ## Scaffold ↔ code correspondence
-Final code fills: twin Critic, tanh Gaussian policy, critic TD update (twin, min target), advantage
+Final code fills: twin Critic, tanh-bounded-mean Gaussian policy, critic TD update (twin, min target), advantage
 computation A=Q(s,a)−V(s) with V≈Q(s,π-sample), advantage-weighted actor loss
 −E_β[exp(A/λ)·logπ(a|s)] batch-normalized, Polyak, offline-pretrain-then-online loop. Scaffold =
 generic off-policy actor-critic harness with twin Q, policy, TD critic stub, "policy improvement"
@@ -135,7 +139,7 @@ stub, replay buffer shared by offline+online.
   + 1). Plus ∂(α(1−∫π))/∂π = −α. Plus ∂E_π[A]/∂π = A. Total: A − λ(log π − log π_β + 1) − α = 0.
   → λ log π = A − λ log π_β·(−1)... solve: A − λ log π + λ log π_β − λ − α = 0 → λ log π = A + λ log π_β
   − λ − α → log π = (1/λ)A + log π_β − 1 − α/λ → π = π_β exp(A/λ) exp(−1−α/λ) = (1/Z) π_β exp(A/λ). ✓
-  (paper writes ∂L/∂π = A − λ log π_β + λ log π + λ − α, i.e. with KL = E_π[log(π/π_β)], same result.)
+  (paper appendix prints a sign-flipped derivative line, but the closed form uses the corrected result.)
 - forward KL projection E_{π*}[−log π_θ], importance from β: E_{π*}[f] = E_β[(π*/π_β)f] =
   E_β[(1/Z)exp(A/λ) f]; π_β cancels. ✓
 - A = Q^{π_k}(s,a) − V^{π_k}(s); maximizing E_π[Q] ⟺ E_π[A] since V indep of a. ✓

@@ -1,0 +1,32 @@
+# R-CNN File:Line Changelog
+
+- `methods/r-cnn/results/context.md:1` rewrote the scaffold context as exactly five `##` sections.
+- `methods/r-cnn/results/context.md:3` framed the research question without naming the target method or leaking the final pipeline.
+- `methods/r-cnn/results/context.md:11` rebuilt the pre-method background around HOG/SIFT, ImageNet CNNs, localization choices, and selective-search proposals.
+- `methods/r-cnn/results/context.md:21` refreshed baselines for DPM, region-based bag-of-visual-words, and sliding-window CNN comparison without target-result leakage.
+- `methods/r-cnn/results/context.md:37` kept the code scaffold pure: primitives are available, but `detect` remains unimplemented.
+- `methods/r-cnn/results/reasoning.md:1` replaced the previous mixed prose/code draft with a continuous first-person reasoning monologue.
+- `methods/r-cnn/results/reasoning.md:11` corrected the crop-padding derivation to the official target-frame expansion rule `227 / (227 - 2p)` and mean-padding behavior.
+- `methods/r-cnn/results/reasoning.md:19` preserved the distinct SVM label regime: ground-truth-only positives, class-specific negatives below 0.3 IoU, grey-zone proposals ignored.
+- `methods/r-cnn/results/reasoning.md:27` rechecked bbox-regression targets for center shifts and log-scale width/height.
+- `methods/r-cnn/results/reasoning.md:29` explicitly verified the inverse transform signs and constants case by case.
+- `methods/r-cnn/results/reasoning.md:31` added code-faithful implementation details for bbox regression: feature scaling, bias, target centering/whitening, and prediction unwhitening.
+- `methods/r-cnn/results/answer.md:9` restated the final pipeline with selective search, warp, `fc7` SVM features, NMS, and `pool5` bbox regression.
+- `methods/r-cnn/results/answer.md:18` corrected fine-tuning thresholds, batch composition, and learning rate.
+- `methods/r-cnn/results/answer.md:24` rewrote the bbox-regression math with ASCII formulas and exact inversion.
+- `methods/r-cnn/results/answer.md:57` replaced the old proportional padding pseudocode with code-faithful crop expansion, clipping, aligned mean subtraction, and zero-filled off-image context.
+- `methods/r-cnn/results/answer.md:106` rewrote SVM training pseudocode to include feature scaling and hard-negative mining behavior matching the MATLAB reference.
+- `methods/r-cnn/results/answer.md:134` matched bbox target computation to the reference implementation's sign convention and `eps`-guarded widths/heights.
+- `methods/r-cnn/results/answer.md:145` added reference-code details for class-specific ridge regressors, target whitening, bias feature, and lambda 1000.
+- `methods/r-cnn/results/answer.md:187` separated SVM and bbox feature normalization at detection time and kept bbox prediction before clipping/NMS.
+- `methods/r-cnn/notes/source_matrix.md:3` added the primary paper/source evidence bundle.
+- `methods/r-cnn/notes/source_matrix.md:9` added load-bearing ancestors: selective search, DPM, AlexNet, recognition using regions, and the concurrent DNN-regression detector.
+- `methods/r-cnn/notes/source_matrix.md:19` added a third-party explainer source.
+- `methods/r-cnn/notes/source_matrix.md:25` documented author self-account search, including unavailable historical slide URLs.
+- `methods/r-cnn/notes/source_matrix.md:34` documented the canonical `rbgirshick/rcnn` implementation and the exact files used for code-faithfulness checks.
+- `methods/r-cnn/notes/discovery_synthesis.md:11` recorded the crop-padding correction found from `rcnn_im_crop.m`.
+- `methods/r-cnn/notes/discovery_synthesis.md:23` recorded math verification for bbox-regression signs, constants, and exact inversion.
+- `methods/r-cnn/notes/discovery_synthesis.md:45` listed code-faithfulness fixes applied to the results.
+- `methods/r-cnn/notes/discovery_synthesis.md:55` recorded posterior-leak and scaffold-purity review criteria.
+- `methods/r-cnn/notes/discovery_synthesis.md:63` recorded that `scripts/check_strict_method.py` is absent and local checks were used instead.
+- `methods/r-cnn/results/.codex_review.json:1` replaced the stale errored review record with an explicit `not_run` independent-review status and reason.

@@ -16,15 +16,13 @@ data term plus a separable penalty); a sum of $N$ data-block losses
 $\sum_i f_i(x)$ that share one parameter vector; model fitting where a regularizer sits on a shared
 variable — can be cast into this two-block form by an appropriate change of variables.
 
-A solution method has to clear two bars **at the same time**, and the difficulty is that the two
-bars are in tension. **Robustness:** the method must converge under weak assumptions — no strict
-convexity, no finiteness of $f$, no full rank of $A$ or $B$ — because the objectives we care about
-(an $\ell_1$ norm, an indicator of a polytope, an affine loss) routinely violate all of those.
-**Decomposition:** the dataset and the variable are large, often physically distributed across many
-machines, so the per-iteration work must split into independent pieces — each block $x_i$, or each
-data partition, updated on its own processor, with only a cheap gather/broadcast tying them
-together. The pain is that the existing tool that gives robustness destroys decomposition, and the
-existing tool that gives decomposition is not robust. We want both.
+Two properties matter for the solution method. **Robustness:** the objectives we care about (an
+$\ell_1$ norm, an indicator of a polytope, an affine loss) are often nondifferentiable, can take the
+value $+\infty$, are not strictly convex, and the maps $A,B$ need not be full rank, so we want
+convergence under such weak assumptions. **Decomposition:** the dataset and the variable are large,
+often physically distributed across many machines, so the per-iteration work should split into
+independent pieces — each block $x_i$, or each data partition, updated on its own processor, with
+only a cheap gather/broadcast tying them together.
 
 ## Background
 
@@ -32,51 +30,41 @@ The setting is large-scale convex optimization driven by "big data": datasets to
 distributed to gather centrally, objectives that are sums over data blocks or over features, and
 nonsmooth regularizers (the $\ell_1$ norm, total variation, indicators of constraint sets) that are
 ubiquitous in statistics and signal processing. The relevant theory is Lagrangian duality and the
-calculus of subgradients; the relevant pain points are inherited from three classical algorithms.
+calculus of subgradients. Three classical algorithms supply the building blocks.
 
 **Dual ascent.** For the equality-constrained problem $\min f(x)$ s.t. $Ax=b$, the Lagrangian is
 $L(x,y)=f(x)+y^\top(Ax-b)$ and the dual function is
 $g(y)=\inf_x L(x,y) = -f^*(-A^\top y)-b^\top y$, where $f^*$ is the convex conjugate. Maximizing the
 dual by gradient ascent gives the iteration
 $x^{k+1}=\arg\min_x L(x,y^k)$, $y^{k+1}=y^k+\alpha^k(Ax^{k+1}-b)$, because $\nabla g(y)=Ax^+ - b$ is
-exactly the constraint residual at the inner minimizer. It is elegant but **fragile**: the
-$x$-minimization is only well-defined when $f$ is strictly convex and finite. The cleanest way to
-see the failure: if $f$ is a nonzero affine function of any component of $x$, then for most $y$ the
-Lagrangian is unbounded below in $x$ and the $x$-update has no solution. When the dual is
-nondifferentiable one must fall back on the dual subgradient method, whose step sizes are delicate
-and whose dual ascent is nonmonotone.
+exactly the constraint residual at the inner minimizer. The $x$-minimization is well-defined when $f$
+is strictly convex and finite; when the dual is nondifferentiable one uses the dual subgradient
+method.
 
-**Dual decomposition.** Dual ascent's one great virtue is that it can decentralize. If the objective
-is separable, $f(x)=\sum_{i=1}^N f_i(x_i)$, and $A=[A_1\;\cdots\;A_N]$ is partitioned conformably,
-then $L(x,y)=\sum_i\big(f_i(x_i)+y^\top A_i x_i - \tfrac1N y^\top b\big)$ is separable in $x$, so the
+**Dual decomposition.** Dual ascent decentralizes when the objective is separable. If
+$f(x)=\sum_{i=1}^N f_i(x_i)$ and $A=[A_1\;\cdots\;A_N]$ is partitioned conformably, then
+$L(x,y)=\sum_i\big(f_i(x_i)+y^\top A_i x_i - \tfrac1N y^\top b\big)$ is separable in $x$, so the
 $x$-minimization splits into $N$ independent subproblems
 $x_i^{k+1}=\arg\min_{x_i}L_i(x_i,y^k)$ solved in parallel; each iteration is a broadcast of the price
 $y$ and a gather of the residual contributions $A_i x_i^{k+1}$. This idea goes back to Everett and to
 the large-scale linear-programming decompositions of Dantzig–Wolfe and Benders in the early 1960s.
-But it inherits dual ascent's fragility wholesale: the same strict-convexity/finiteness requirements
-that break the $x$-update are still in force.
 
-**The method of multipliers (augmented Lagrangian).** Robustness was bought, in the late 1960s, by
-Hestenes (1969) and Powell (1969), who added a quadratic penalty on the constraint residual to the
-Lagrangian:
+**The method of multipliers (augmented Lagrangian).** Hestenes (1969) and Powell (1969) added a
+quadratic penalty on the constraint residual to the Lagrangian:
 $$ L_\rho(x,y) = f(x) + y^\top(Ax-b) + (\rho/2)\|Ax-b\|_2^2, \qquad \rho>0. $$
 This is exactly the ordinary Lagrangian of the equivalent problem
-$\min f(x)+(\rho/2)\|Ax-b\|^2$ s.t. $Ax=b$ (the added term vanishes on the feasible set). The point
-of the penalty is that the associated dual function $g_\rho(y)=\inf_x L_\rho(x,y)$ is differentiable
-under mild conditions even when the original dual was not. Dual ascent on the modified problem is the
-**method of multipliers**:
+$\min f(x)+(\rho/2)\|Ax-b\|^2$ s.t. $Ax=b$ (the added term vanishes on the feasible set). The
+associated dual function $g_\rho(y)=\inf_x L_\rho(x,y)$ is differentiable under mild conditions even
+when the original dual was not. Dual ascent on the modified problem is the **method of multipliers**:
 $$ x^{k+1}=\arg\min_x L_\rho(x,y^k), \qquad y^{k+1}=y^k+\rho(Ax^{k+1}-b), $$
 where the dual step size is taken to be the penalty parameter $\rho$ itself. That particular step
 size is not arbitrary: since $x^{k+1}$ minimizes $L_\rho(\cdot,y^k)$, stationarity gives
 $0=\nabla f(x^{k+1})+A^\top(y^k+\rho(Ax^{k+1}-b))=\nabla f(x^{k+1})+A^\top y^{k+1}$, so each iterate is
 automatically *dual feasible*, and as the primal residual $Ax^{k+1}-b$ drives to zero the pair
 becomes optimal. The method of multipliers converges under far weaker conditions than dual ascent —
-including when $f$ is nonsmooth, takes the value $+\infty$, or is not strictly convex. The penalty
-bought robustness. But this development runs into a failure: the **quadratic penalty couples the
-variables**. With $f$ separable,
-$(\rho/2)\|\sum_i A_i x_i - b\|^2$ contains cross terms $\rho\,(A_i x_i)^\top(A_j x_j)$, so $L_\rho$
-is *not* separable, the joint $x$-minimization can no longer be split across processors, and
-decomposition is lost. Robustness and decomposition cannot both be had from these classical pieces.
+including when $f$ is nonsmooth, takes the value $+\infty$, or is not strictly convex. With $f$
+separable, the penalty $(\rho/2)\|\sum_i A_i x_i - b\|^2$ contains cross terms
+$\rho\,(A_i x_i)^\top(A_j x_j)$, so $L_\rho$ is not separable in $x$.
 
 **Operator-splitting ancestors.** Sitting underneath all of this is a second, more abstract line of
 work: solving monotone-operator problems by *splitting*. Many convex problems reduce to finding a
@@ -97,27 +85,21 @@ the augmented-Lagrangian one.
 
 - **Dual ascent.** $x^{k+1}=\arg\min_x L(x,y^k)$, $y^{k+1}=y^k+\alpha^k(Ax^{k+1}-b)$ with
   $L=f(x)+y^\top(Ax-b)$. Core idea: gradient-ascend the dual, recovering the primal at the inner
-  $\arg\min$. Gap: the inner minimization needs strict convexity/finiteness of $f$ — it simply fails
-  (unbounded below) for affine or nonstrictly-convex $f$; step sizes are delicate and ascent
-  nonmonotone in the nondifferentiable case.
+  $\arg\min$; the inner minimization is well-defined for strictly convex finite $f$.
 
 - **Dual decomposition.** Dual ascent with $f=\sum_i f_i(x_i)$, $A=[A_1\cdots A_N]$, so the
   $x$-update splits into $N$ parallel subproblems with a price broadcast and residual gather. Core
-  idea: exploit separability to decentralize. Gap: inherits dual ascent's fragility unchanged — no
-  robustness to nonsmooth/affine/non-strictly-convex $f$.
+  idea: exploit separability to decentralize.
 
 - **Method of multipliers (augmented Lagrangian).** $x^{k+1}=\arg\min_x L_\rho(x,y^k)$,
   $y^{k+1}=y^k+\rho(Ax^{k+1}-b)$ with $L_\rho=f(x)+y^\top(Ax-b)+(\rho/2)\|Ax-b\|^2$. Core idea: a
   quadratic penalty makes the dual differentiable and yields convergence without strict
-  convexity/finiteness; using $\rho$ as the dual step keeps every iterate dual feasible. Gap: the
-  penalty's cross terms couple a separable $f$, so $L_\rho$ is not separable and the $x$-update can
-  no longer be decomposed across processors — robustness at the cost of parallelism.
+  convexity/finiteness; using $\rho$ as the dual step keeps every iterate dual feasible.
 
 - **Douglas–Rachford / proximal-point splitting.** Find a zero of $S+T$ (maximal monotone) by
   alternating resolvents $(I+\lambda S)^{-1},(I+\lambda T)^{-1}$ (Lions–Mercier 1979; Rockafellar's
   proximal point algorithm 1976). Core idea: never touch $S+T$ jointly — split into per-operator prox
-  steps. Gap (at this point): stated abstractly for operators, not connected to the concrete
-  two-block constrained optimization template or to a distributed implementation.
+  steps.
 
 ## Evaluation settings
 
@@ -140,7 +122,7 @@ number of workers.
 What already exists: routines to apply the blocks $A,B$ and their adjoints; the two objective
 pieces $f,g$ and whatever simple sub-solver each admits; vector norms, factorizations, and a generic
 driver that can repeat a candidate update rule. The open slot is the iteration that uses those pieces
-without sacrificing either robustness or decomposition.
+to solve $\min f(x)+g(z)$ s.t. $Ax+Bz=c$.
 
 ```python
 import numpy as np

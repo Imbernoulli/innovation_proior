@@ -1,70 +1,32 @@
 ## Research question
 
-CIFAR-style ResNets stack the *same* residual block tens to hundreds of times. The single thing being
-designed is that block — the unit `H = ReLU(F(x) + shortcut(x))` that the backbone repeats. The goal is
-a block that raises test accuracy *across depths and datasets at once*: a shallow net (ResNet-20 on
-CIFAR-10), a deep net (ResNet-56 on CIFAR-100), and a very deep net (ResNet-110 on CIFAR-100). The whole
-training recipe around the block — initialization, data pipeline, optimizer, schedule, the global pool and
-linear classifier, the outer loop — is frozen. So every method on the ladder is one fill of the block, and
-nothing else moves; a design that helps at depth 20 must not break at depth 110, and vice versa.
+CIFAR-style ResNets repeat the same residual block tens to hundreds of times. The design task is that single block — the unit `H = ReLU(F(x) + shortcut(x))` that the backbone repeats. The goal is a block that raises test accuracy across depths and datasets at once: ResNet-20 on CIFAR-10, ResNet-56 on CIFAR-100, and ResNet-110 on CIFAR-100. The surrounding training recipe — initialization, data augmentation, optimizer, schedule, global pooling, linear classifier, outer loop — is frozen. Each candidate changes only the block; a design that helps at depth 20 must not break at depth 110, and vice versa.
 
-## Prior art before the first rung (the residual-block lineage)
+## Prior art / Background / Baselines
 
-The block the first rung edits is the plain post-activation residual block, and it is itself the
-resolution of a line of work on training depth. These are the ancestors the ladder reacts to; the fixed
-substrate below is what they converged to.
+The starting block is the plain post-activation residual block. The relevant prior work is:
 
-- **Plain deep stacks (VGG-style, Simonyan & Zisserman 2014).** Uniform 3×3 conv–BN–ReLU layers stacked
-  deep. More depth bought accuracy up to a point, then *degraded* — a deeper plain net reaches *higher
-  training error* than a shallower one, not from overfitting (training error itself rises) and not from
-  vanishing gradients (BN keeps the signals healthy). Gap: depth past ~20 layers is an optimization
-  failure, not a capacity one — the solver cannot find the good solution that provably exists.
-- **Residual block (He et al. 2015, arXiv:1512.03385).** Reparameterize: let the two-conv stack learn the
-  *residual* `F(x) = H(x) − x` and add a parameter-free identity shortcut, `H = ReLU(F(x) + x)`. Now "do
-  nothing useful" means `F → 0`, the easiest thing for weight-decayed SGD to reach, so a near-identity
-  layer is cheap to learn and degradation reverses. Gap: the *order* inside the block (Conv-BN-ReLU then a
-  ReLU **after** the addition) clamps what the shortcut can carry, and at extreme depth the after-add ReLU
-  still sits on the identity path.
-- **Highway Networks (Srivastava et al. 2015).** Gated skips, `y = H(x)·T(x) + x·C(x)`, LSTM-style learned
-  gates. Gap: a gate that drifts closed *removes* the identity path exactly where a deep net needs it, and
-  the gates cost parameters — ResNet's fixed identity skip trained better.
-- **Batch Normalization (Ioffe & Szegedy 2015).** Per-mini-batch standardization with a learnable scale
-  and shift after each conv; it is *why* the plain stack converges at all and is fixed inside the block
-  here (every conv is `bias=False` followed by `BatchNorm2d`).
+- **Plain deep stacks (VGG-style, Simonyan & Zisserman 2014).** Core idea: a uniform stack of 3×3 conv–BN–ReLU layers. Gap: beyond ~20 layers, training error rises with depth despite BN, so extra depth is an optimization failure, not a capacity shortage.
+- **Residual block (He et al. 2015).** Core idea: let a two-conv stack learn the residual `F(x) = H(x) − x` and add a parameter-free identity shortcut, `H = ReLU(F(x) + x)`, so "do nothing" means `F → 0`. Gap: at 110-layer scale, the original block still under-optimizes relative to shallower networks; depth scaling is not fully closed.
+- **Highway Networks (Srivastava et al. 2015).** Core idea: gated skip paths, `y = H(x)·T(x) + x·C(x)`, with learned LSTM-style gates. Gap: gates can suppress the skip path where depth needs it most, and the gate parameters make training less reliable than a fixed identity skip.
+- **Batch Normalization (Ioffe & Szegedy 2015).** Normalizes activations per mini-batch with learnable scale and shift; it is fixed inside every block here as `bias=False` convolutions followed by `BatchNorm2d`.
 
-There is room left in the block: the placement of normalization and activation relative to the
-convolutions and the shortcut, the scale on the residual branch, whether the branch is even present every
-step, and what recalibration (if any) the branch output gets before the addition. That space is the ladder.
+## Fixed substrate / Code framework
 
-## The fixed substrate
+The CIFAR-adapted ResNet backbone is frozen. A 3×3/16 stride-1 stem feeds three stages — 16 channels on 32×32, 32 on 16×16, 64 on 8×8 — each a run of `CustomBlock`s, then global average pooling and a single linear classifier. Depths are set by per-stage block counts: `[3,3,3]` for ResNet-20, `[9,9,9]` for ResNet-56, `[18,18,18]` for ResNet-110. The first block of stages 2 and 3 strides by 2 and doubles channels, so its shortcut must match spatial and channel changes; all other blocks use `stride=1` and identity shortcuts.
 
-A CIFAR-adapted ResNet is frozen and must not be touched. A 3×3/16 stride-1 stem (no 7×7 conv, no max
-pool), then three stages — 16 channels on 32×32, 32 on 16×16, 64 on 8×8 — each a run of `CustomBlock`s,
-then global average pool into a single linear classifier. Depth is set by the per-stage block counts:
-ResNet-20 is `[3,3,3]`, ResNet-56 is `[9,9,9]`, ResNet-110 is `[18,18,18]`. The first block of stages 2
-and 3 strides by 2 and doubles the channels, so the shortcut there must match a change in both spatial
-size and channel count; every other block sees `stride=1` and equal in/out channels, where the shortcut is
-a bare identity. Initialization is fixed (Kaiming `fan_out` on convs, BN weight 1 / bias 0, Kaiming
-`fan_in` on the linear head); the data pipeline is fixed (`RandomCrop(32, pad=4)` + `RandomHorizontalFlip`,
-per-dataset normalization); the optimizer is fixed (SGD `lr=0.1`, `momentum=0.9`, `weight_decay=5e-4`,
-cosine annealing over 200 epochs, batch 128). The metric is the **best test accuracy reached during
-training**, so a block that trains *faster* or more *stably* — not only to a higher final point — wins.
+Initialization is fixed: Kaiming `fan_out` for convs, BN weight 1 / bias 0, Kaiming `fan_in` for the linear head. The data pipeline is fixed: `RandomCrop(32, pad=4)` + `RandomHorizontalFlip` and per-dataset normalization. The optimizer is fixed: SGD `lr=0.1`, `momentum=0.9`, `weight_decay=5e-4`, cosine annealing over 200 epochs, batch size 128. The metric is the **best test accuracy reached during training**, so a block that trains faster or more stably wins.
 
-## The editable interface
+## Editable interface
 
-Exactly one region is editable — the `CustomBlock` class in `pytorch-vision/custom_residual.py` (the
-block lines 31–61). The backbone relies on a fixed contract that every rung's fill must honor:
+Only the `CustomBlock` class in `pytorch-vision/custom_residual.py` is editable. The backbone requires:
 
 - constructor signature `CustomBlock(in_planes, planes, stride)`;
-- a class attribute `expansion` (`1` for a basic block, `4` for a bottleneck) — the stem's linear head
-  reads `64 * expansion`, so changing it changes the whole backbone's channel arithmetic;
+- class attribute `expansion` (`1` for basic block, `4` for bottleneck), which sets the linear head input dimension to `64 * expansion`;
 - `forward(x)` returns a tensor with `planes * expansion` channels;
-- the shortcut handles the dimension mismatch when `stride != 1` or `in_planes != planes * expansion`.
+- the shortcut handles dimension mismatch when `stride != 1` or `in_planes != planes * expansion`.
 
-Inside that contract the block is free: the number, kernel size, and grouping of convolutions; the
-placement and type of normalization and activation; the shortcut/skip design; channel or spatial
-attention; the `expansion` factor; any extra modules. The starting point is the scaffold default — the
-plain post-activation basic block. Each rung replaces exactly this class and nothing else.
+Inside that contract the block is free to use any submodules and topology; the default fill is the plain post-activation basic block below.
 
 ```python
 # EDITABLE region of custom_residual.py (lines 31-61) -- default fill: plain post-activation block
@@ -103,9 +65,4 @@ class CustomBlock(nn.Module):
 
 ## Evaluation settings
 
-Three architecture/dataset pairs spanning the depth range, each at seed 42: **ResNet-20 on CIFAR-10**
-(shallow, easy dataset), **ResNet-56 on CIFAR-100** (deep, 100-way), and **ResNet-110 on CIFAR-100** (very
-deep, 100-way). One metric, higher is better: **best test accuracy (%)** reached at any epoch during the
-fixed 200-epoch cosine schedule. A block must clear the interface above and may not change dataset
-construction, the optimizer, the global pool, the classifier head, or the outer training loop — only the
-block itself.
+Three architecture/dataset pairs at seed 42: **ResNet-20 on CIFAR-10** (shallow, 10-way), **ResNet-56 on CIFAR-100** (deep, 100-way), and **ResNet-110 on CIFAR-100** (very deep, 100-way). One metric, higher is better: **best test accuracy (%)** reached at any epoch during the fixed 200-epoch cosine schedule. Candidates must respect the interface above and may not change dataset construction, optimizer, global pooling, classifier head, or the outer training loop — only the block.

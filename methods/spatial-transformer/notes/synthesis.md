@@ -20,7 +20,7 @@ Three parts, end-to-end differentiable, conditioned on input:
    V_i^c = Σ_n Σ_m U^c_{nm} max(0,1−|xˢ_i−m|) max(0,1−|yˢ_i−n|).
    Subgradients:
    ∂V_i^c/∂U^c_{nm} = max(0,1−|xˢ_i−m|) max(0,1−|yˢ_i−n|)   [the bilinear weight]
-   ∂V_i^c/∂xˢ_i = Σ_n Σ_m U^c_{nm} max(0,1−|yˢ_i−n|) · {0 if |m−xˢ_i|≥1; +1 if m≥xˢ_i; −1 if m<xˢ_i}
+   ∂V_i^c/∂xˢ_i = Σ_n Σ_m U^c_{nm} max(0,1−|yˢ_i−n|) · {0 if |m−xˢ_i|≥1; +1 if |m−xˢ_i|<1 and m≥xˢ_i; −1 if |m−xˢ_i|<1 and m<xˢ_i}
    (deriv of 1−|xˢ−m| w.r.t xˢ is −sign(xˢ−m): +1 when m≥xˢ, −1 when m<xˢ; 0 outside support). Similarly ∂V/∂yˢ.
    Then ∂xˢ/∂θ, ∂yˢ/∂θ trivial from affine (e.g. ∂xˢ/∂θ11 = xᵗ). Sub-gradients because of |·| kinks. GPU-efficient: only sum over the 4-pixel kernel support, not all HW.
 
@@ -36,8 +36,8 @@ Three parts, end-to-end differentiable, conditioned on input:
 - **Droppable anywhere / multiple / parallel:** self-contained, fast (~6% overhead); deeper ST acts on richer features; parallel ST = multiple objects/parts.
 - **No extra supervision:** gradient from the task loss flows through sampler→grid→θ→f_loc. The "how to transform" is cached in f_loc weights.
 
-## Canonical code: PyTorch tutorial STN (code/spatial_transformer_tutorial.py)
+## Reference code: PyTorch tutorial STN (code/spatial_transformer_tutorial.py)
 - localization = small conv stack; fc_loc → 6 values → theta.view(-1,2,3)
 - fc_loc last layer init to identity (weight.zero_(), bias=[1,0,0,0,1,0])
 - grid = F.affine_grid(theta, x.size()); x = F.grid_sample(x, grid)
-- affine_grid builds the normalized output grid and applies A_θ (output→input); grid_sample does bilinear sampling with the subgradients above.
+- affine_grid builds the normalized output grid and applies A_θ (output→input); grid_sample does bilinear sampling. Modern PyTorch defaults to align_corners=False, so result code should set the convention explicitly.

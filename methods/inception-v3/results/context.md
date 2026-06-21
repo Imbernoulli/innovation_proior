@@ -39,10 +39,10 @@ A diagnostic finding on resolution that informs the input design: at *constant* 
 ## Evaluation settings
 
 - **ILSVRC-2012 classification, 1000 classes.** ~1.28M training images. Metrics: top-1 and top-5 error. Both single-frame (single-crop) and multi-crop / multi-model-ensemble evaluation protocols are standard.
-- **Cost metrics.** Computational cost in multiply-adds (multiplications) per inference, and parameter count — these are first-class because the whole exercise is accuracy-per-compute. (A fully-convolutional net has one multiply per weight per activation, so reducing compute also reduces parameters.)
+- **Cost metrics.** Computational cost in multiply-adds (multiplications) per inference, and parameter count — these are first-class because the whole exercise is accuracy-per-compute. In the convolution-dominated body, any spatial-filter factorization that removes weights also removes the corresponding per-activation multiplies.
 - **Controlled comparisons that exist at the time.** Holding compute roughly constant while varying a single architectural axis (e.g. input resolution, above) to isolate the effect of that axis.
 - **Input pipeline.** Fixed 299×299×3 RGB input for the main network (with the option of reduced stride / removed first pool for lower-resolution inputs at matched compute).
-- **Training infrastructure.** Distributed synchronous/asynchronous SGD across tens of GPU replicas with small per-replica batches; evaluation on a parameter EMA.
+- **Training infrastructure.** Distributed stochastic-gradient training across tens of GPU replicas with small per-replica batches; evaluation on a parameter EMA.
 
 ## Code framework
 
@@ -106,14 +106,15 @@ class Net(nn.Module):
         self.stem = nn.Sequential()        # TODO
         self.body = nn.Sequential()        # TODO: stages of the modules above,
                                            # with grid reductions between them
-        self.aux = AuxHead(768, num_classes) if aux_logits else None
+        self.aux = None                    # TODO: optional AuxHead once its tap point is chosen
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(2048, num_classes)
+        self.dropout = nn.Dropout(p=0.0)   # TODO: choose head regularization
+        self.fc = None                     # TODO: nn.Linear(final_channels, num_classes)
 
     def forward(self, x):
         x = self.body(self.stem(x))
         x = torch.flatten(self.avgpool(x), 1)
-        return self.fc(x)
+        raise NotImplementedError("fill the classifier head once final_channels is known")
 
 
 def classification_loss(logits, target, num_classes):
@@ -124,7 +125,5 @@ def classification_loss(logits, target, num_classes):
 
 # --- training harness ---
 model = Net(num_classes=1000, aux_logits=True)
-optimizer = torch.optim.RMSprop(model.parameters(), lr=0.045, alpha=0.9, eps=1.0)
-scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.94)  # per 2 epochs
-# gradient clipping at 2.0; evaluation on an EMA of parameters
+# TODO: choose optimizer, learning-rate schedule, gradient clipping, EMA, and any dropout.
 ```

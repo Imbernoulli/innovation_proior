@@ -2,19 +2,18 @@
 
 ## Research Question
 
-Language systems are still built as narrow experts. A dataset is collected for one
-task, a model or head is trained for that task, and the resulting system is judged
-on held-out examples from the same distribution. Transfer learning weakens this
-dependence but does not remove it: a large unlabeled corpus initializes a model,
-then each downstream task still needs labeled examples, task-specific formatting,
-and supervised adaptation.
+Language systems are typically built as narrow experts. A dataset is collected for
+one task, a model or head is trained for that task, and the resulting system is
+judged on held-out examples from the same distribution. Transfer learning changes
+this pattern: a large unlabeled corpus initializes a model, and then each
+downstream task is approached with labeled examples, task-specific formatting, and
+supervised adaptation.
 
 The question is whether a single left-to-right language model can be trained once
 on unlabeled text and then perform many language tasks with no parameter updates
-and no architecture changes. The task must be invoked only by the text placed in
-the context. A successful answer has to specify the training data, the text
-representation, and the model changes needed to make that zero-shot setting
-plausible rather than a toy observation.
+and no architecture changes, where the task is invoked only by the text placed in
+the context. Answering it requires specifying the training data, the text
+representation, and the model so that this zero-shot setting can be evaluated.
 
 ## Background
 
@@ -25,56 +24,50 @@ usual left-to-right factorization,
 p(x) = product_{i=1}^n p(s_i | s_1, ..., s_{i-1}).
 ```
 
-This objective already gives conditionals of later tokens given earlier tokens. A
-single supervised task can be written as `p(output | input)`, while a general
-system needs `p(output | input, task)`. Prior multitask and meta-learning systems
-often encode the task in the architecture or optimization procedure, but natural
-language itself can also describe the task. A translation example, a question
-answering example, or a summary request can all be written as one sequence of
-tokens.
+This objective gives conditionals of later tokens given earlier tokens. A single
+supervised task can be written as `p(output | input)`, while a general system can
+be written as `p(output | input, task)`. Prior multitask and meta-learning systems
+encode the task in the architecture or optimization procedure, and natural language
+itself can also describe the task: a translation example, a question answering
+example, or a summary request can each be written as one sequence of tokens.
 
-The remaining difficulty is empirical. The corpus must contain many natural task
-demonstrations, not only one domain such as news, Wikipedia, or books. Web-scale
-text is attractive because it is broad, but raw web scrapes are noisy and contain
-many low-quality documents. Any corpus construction strategy must therefore find
-a cheap quality filter and must also avoid obvious overlap with evaluation
+The corpus is then the main empirical lever. Single domains such as news,
+Wikipedia, or books supply one style of text. Web-scale text is broad, and raw web
+scrapes also carry many low-quality documents, so corpus construction involves a
+quality filter and attention to overlap between the training text and evaluation
 benchmarks.
 
-The input representation has a separate constraint. A general model should assign
-probability to any string without lowercasing, task-specific tokenization, or an
-unknown-token escape hatch. Bytes satisfy coverage but make sequences long and
-low-level. Word-level vocabularies are compact for common words but lose rare
-strings. Subword methods sit between these extremes, yet a fully general subword
-system must handle Unicode without spending the entire vocabulary on base
-symbols.
+The input representation is a separate design choice. A general model assigns
+probability to strings, and several encodings are available. Byte-level modeling
+covers any string. Word-level vocabularies are compact for common words. Subword
+methods such as byte-pair encoding sit between these extremes, operating over a
+base alphabet of symbols that frequent adjacent pairs are merged from.
 
 ## Baselines
 
 The immediate predecessor is a decoder-only Transformer language model trained on
 unlabeled books and then fine-tuned with supervised examples and task-specific
 input transformations. It shows that a single Transformer stack can transfer
-widely, but it still depends on labeled data and adaptation for every task.
+across many tasks.
 
-The Transformer supplies the causal self-attention machinery: each position can
-attend only to previous positions, the attention scores are scaled by
+The Transformer supplies the causal self-attention machinery: each position
+attends only to previous positions, the attention scores are scaled by
 `1/sqrt(d_k)`, and each block combines attention, a position-wise feed-forward
 network, residual connections, and layer normalization. The original arrangement
-places normalization after the residual addition; deeper stacks raise stability
-questions for that choice.
+places normalization after the residual addition.
 
-Byte-pair encoding supplies a practical open-vocabulary subword mechanism by
-iteratively merging frequent adjacent symbols. In its standard form it operates
-over character/code-point strings, so using it for an arbitrary Unicode model
-raises the base-vocabulary problem. Raw byte-level modeling avoids that base
-vocabulary issue but has been weaker than word-level modeling at large scale.
+Byte-pair encoding supplies an open-vocabulary subword mechanism by iteratively
+merging frequent adjacent symbols. In its standard form it operates over
+character/code-point strings. Raw byte-level modeling operates directly over the
+256 byte values.
 
 ## Evaluation Settings
 
-The evaluation must be zero-shot: no fine-tuning, no task-specific learned heads,
-and no benchmark training split used for adaptation. The language model can only
-be conditioned by text prompts or by scoring candidate continuations.
+The evaluation is zero-shot: no fine-tuning, no task-specific learned heads, and
+no benchmark training split used for adaptation. The language model is conditioned
+by text prompts or by scoring candidate continuations.
 
-Useful tests include language-modeling transfer on Penn Treebank, WikiText-2,
+Tests include language-modeling transfer on Penn Treebank, WikiText-2,
 WikiText-103, enwik8, text8, LAMBADA, the Children's Book Test, and the One
 Billion Word Benchmark; task behavior on reading comprehension, summarization,
 translation, and open-domain question answering; and contamination checks that

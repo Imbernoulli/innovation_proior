@@ -3,16 +3,15 @@
 By mid-2021 diffusion models are an attractive image generator: they are likelihood-based,
 trained by a single stationary objective with no adversarial game to balance, they cover the data
 distribution well, and they scale cleanly with compute. On CIFAR-10 they already hold the
-state of the art. But on large, diverse datasets — ImageNet at 128×128 and 256×256, LSUN — their
-Fréchet Inception Distance still trails the best GANs (BigGAN-deep). The concrete goal is to close
-that gap on the hard datasets, measured by FID, **without** changing what makes diffusion
-attractive — the same epsilon-prediction objective, the same Gaussian noising process, the same
-class of samplers. The open question is whether the *denoising network's architecture* is leaving
-sample quality on the table: GAN generators and discriminators have been refined for years through
-intense architectural search, while the diffusion UNet has been comparatively unexplored on large
-data. If a better denoiser architecture exists, it must (a) keep the same input/output contract —
-take a noised image and a timestep, return a same-shaped noise prediction — and (b) transfer across
-resolution and dataset scale, so a single design choice pays off at every tier.
+state of the art. On large, diverse datasets — ImageNet at 128×128 and 256×256, LSUN — their
+Fréchet Inception Distance is compared against the best GANs (BigGAN-deep). The question taken
+up here is how to improve sample quality on these datasets, measured by FID, while holding fixed
+what makes diffusion attractive — the same epsilon-prediction objective, the same Gaussian noising
+process, the same class of samplers — and varying the *denoising network's architecture*. GAN
+generators and discriminators have been refined for years through intense architectural search,
+while the diffusion UNet has been comparatively unexplored on large data. A candidate denoiser
+architecture keeps the same input/output contract — take a noised image and a timestep, return a
+same-shaped noise prediction — and is evaluated across resolution and dataset scale.
 
 ## Background
 
@@ -32,16 +31,12 @@ open is the network that computes ε_θ.
 The denoiser is a UNet (Ronneberger et al. 2015): a contracting stack of residual blocks and
 downsampling convolutions, a symmetric expanding stack with upsampling, and skip connections
 joining encoder and decoder feature maps at equal spatial size. The conditioning on the noise
-level enters as a timestep embedding projected into each residual block. Two diagnostic facts about
-the prevailing diffusion UNet (Ho et al. 2020) frame the problem. First, it places a single global
-self-attention layer at exactly one feature resolution, 16×16, with a single head; everything else
-is convolutional. Second, it injects the timestep embedding *additively* — the embedding is
-projected and added to the residual block's activations. These were reasonable defaults on small
-data, but they were never stress-tested on large, diverse images, where long-range structure lives
-at more than one scale and the conditioning signal must modulate a much larger, deeper network.
-Song et al. (2021, score-SDE) already demonstrated that further UNet changes improve FID on CIFAR-10
-and CelebA-64, evidence that the architecture is not yet saturated — but whether such changes carry
-to ImageNet-scale data was unestablished.
+level enters as a timestep embedding projected into each residual block. Two facts describe the
+prevailing diffusion UNet (Ho et al. 2020). First, it places a single global self-attention layer
+at exactly one feature resolution, 16×16, with a single head; everything else is convolutional.
+Second, it injects the timestep embedding *additively* — the embedding is projected and added to
+the residual block's activations. These were the defaults established on small data. Song et al.
+(2021, score-SDE) demonstrated that further UNet changes improve FID on CIFAR-10 and CelebA-64.
 
 The architectural toolkit available at the time is mature and off the shelf. Multi-head
 self-attention (Vaswani et al. 2017): split the channel embedding into several heads, run an
@@ -59,12 +54,11 @@ resamples, with a parallel resampled skip path — giving a learned, residual up
 of a separate fixed pool or interpolation followed by a plain convolution. Residual-branch
 rescaling by 1/√2 (Karras et al.; Song et al. 2021): divide each residual sum by √2 to keep the
 activation variance from growing as residual branches accumulate down a deep stack. Each of these
-is a known building block; none has been systematically combined and ablated inside the diffusion
-denoiser on large data.
+is a known, off-the-shelf building block.
 
 ## Baselines
 
-The prior denoiser designs a new architecture would be measured against and react to.
+The prior denoiser designs a new architecture would be measured against.
 
 ### The DDPM UNet (Ho et al., 2020)
 
@@ -75,34 +69,18 @@ projected and *added* into each residual block; downsampling and upsampling are 
 convolution/pooling-and-interpolation operations outside the residual blocks. This is the design
 that made diffusion competitive on CIFAR-10.
 
-Gap: on large diverse datasets its FID trails GANs. Its global attention sees only one
-feature resolution, so coordination of structure at other scales has to be carried indirectly
-through the convolutional stack; it uses a single attention head, a narrower relevance pattern than
-the multi-head attention standard elsewhere; and the additive timestep injection gives the
-conditioning signal only an additive shift over the activations. Whether these specific choices
-limit sample quality at ImageNet scale is exactly what is untested.
-
 ### The improved-DDPM denoiser (Nichol & Dhariwal, 2021)
 
 Core idea: keep the Ho et al. UNet but learn the reverse-process variance (the v-interpolation
 above) and train with the hybrid L_simple + λ L_vlb objective, improving log-likelihood and
-few-step sampling. The training target and loss are inherited from here.
-
-Gap: the *architecture* of the denoiser is essentially unchanged from Ho et al. — same
-single-resolution single-head attention, same additive conditioning. The likelihood and sampling
-improvements do not by themselves bring FID on large data down to GAN levels; the network that
-produces ε_θ is still the open variable.
+few-step sampling. The training target and loss are inherited from here; the architecture of the
+denoiser matches Ho et al.
 
 ### The score-SDE denoiser (Song et al., 2021)
 
 Core idea: a continuous-time score model whose denoiser is a UNet with several changes relative to
 Ho et al. — among them BigGAN-style residual blocks for up/downsampling and 1/√2 residual
 rescaling — shown to improve FID on CIFAR-10 and CelebA-64.
-
-Gap: the demonstration is on small, low-resolution, relatively homogeneous datasets. It
-establishes that the diffusion UNet is improvable but leaves open which changes matter, in what
-combination, and whether the gains transfer to large, diverse, higher-resolution data like
-ImageNet — and it does not isolate the contribution of each change.
 
 ## Evaluation settings
 
@@ -115,8 +93,8 @@ primary metric is FID computed against the full training set as the reference ba
 better), with Inception Score / Precision for fidelity and Recall for diversity as auxiliary
 metrics; sFID for spatial structure. Optimization: Adam/AdamW with β₁ = 0.9, β₂ = 0.999, a
 parameter EMA at rate 0.9999, mixed-precision (fp16 compute with loss scaling, fp32 weights/EMA/
-optimizer state), 1000 diffusion steps. These are the settings into which a candidate architecture
-is dropped; none of them is what is being designed.
+optimizer state), 1000 diffusion steps. These are the fixed settings into which a candidate
+architecture is dropped.
 
 ## Code framework
 

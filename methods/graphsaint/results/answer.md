@@ -31,9 +31,10 @@ For the loss, L_batch = Σ_{v∈V_s} L_v/λ_v with **loss normalization** λ_v =
 E[L_batch] = (1/|V|) Σ_{v∈V} L_v (since each node contributes with probability p_v).
 
 Probabilities are estimated by preprocessing: run the sampler N times, count node appearances C_v and
-edge appearances C_{u,v}; then α_{u,v} = C_{u,v}/C_v and λ_v = |V|·C_v/N (in code, their reciprocals:
-each edge scaled by C_v/C_{u,v}, each node's loss by N/(C_v·|V|)). The N subgraphs are reused as
-minibatches.
+edge appearances C_{u,v}; then α_{u,v} = C_{u,v}/C_v and λ_v = |V|·C_v/N. In the reference
+implementation the stored quantities are reciprocals: each directed edge leaving v is scaled by
+C_v/C_{u,v}, and each training node's loss is scaled by N/(C_v·|V_train|). Zero-count fallbacks and
+clipping are implementation guards, not part of the unbiased estimator.
 
 ## Variance reduction (choosing the sampler)
 
@@ -58,8 +59,9 @@ co-sampled.
 ## Samplers
 
 All return a **node-induced** subgraph (induction adds back intra-subgraph edges, speeding convergence):
-- **Edge:** sample m edges (with replacement) ∝ 1/deg(u)+1/deg(v); take endpoints.
-- **Node:** sample n nodes ∝ ‖Â_{:,v}‖².
+- **Edge:** sample m undirected edges (with replacement) ∝ 1/deg(u)+1/deg(v); take endpoints.
+- **Node:** paper-level distribution ∝ ‖Â_{:,v}‖²; the public code path samples from a cumulative
+  distribution built from training-CSR row counts.
 - **Random walk:** r roots, each an h-hop uniform walk (proxy for an h-layer GCN, B = Â^L).
 - **Multi-dimensional random walk (frontier):** r-node frontier, repeatedly pick u ∝ deg(u), step to a
   random neighbor, swap in.
@@ -72,7 +74,8 @@ import scipy.sparse as sp
 import torch, torch.nn as nn, torch.nn.functional as F
 
 def sampler_edge(adj_train, budget_m, deg):
-    rows, cols = adj_train.nonzero()
+    coo = sp.triu(adj_train, k=1).tocoo()                  # undirected edges counted once
+    rows, cols = coo.row, coo.col
     pe = 1.0 / deg[rows] + 1.0 / deg[cols]; pe /= pe.sum()        # p_e ∝ 1/deg(u)+1/deg(v)
     pick = np.random.choice(len(rows), size=budget_m, replace=True, p=pe)
     return np.unique(np.concatenate([rows[pick], cols[pick]]))
@@ -87,17 +90,32 @@ def sampler_rw(adj_train, num_roots, walk_len):
             u = np.random.choice(nbrs); nodes.add(u)
     return np.array(sorted(nodes))
 
-def induce(adj_train, sub):
-    return adj_train[sub][:, sub].tocsr()                         # node-induced subgraph
+def induce_with_edge_ids(adj_train, sub):
+    sub = np.array(sorted(np.unique(sub)))
+    pos = {v: i for i, v in enumerate(sub)}
+    indptr, indices, edge_ids = [0], [], []
+    for v in sub:
+        for eid in range(adj_train.indptr[v], adj_train.indptr[v + 1]):
+            u = adj_train.indices[eid]
+            if u in pos:
+                indices.append(pos[u]); edge_ids.append(eid)
+        indptr.append(len(indices))
+    return sp.csr_matrix((np.ones(len(indices)), indices, indptr), shape=(len(sub), len(sub))), np.array(edge_ids)
 
-def estimate_norms(adj_train, sampler, num_train, coverage=50):
+def estimate_norms(adj_train, sampler, train_nodes, coverage=50):
     n = adj_train.shape[0]
-    C_v = np.zeros(n); subgraphs = []; total = 0
+    num_train = len(train_nodes)
+    C_v = np.zeros(n); C_uv = np.zeros(adj_train.nnz); subgraphs = []; total = 0
     while total <= coverage * num_train:
         sub = sampler(adj_train); subgraphs.append(sub); total += len(sub); C_v[sub] += 1
+        _, edge_ids = induce_with_edge_ids(adj_train, sub); C_uv[edge_ids] += 1
     N = len(subgraphs)
-    loss_norm = np.where(C_v > 0, N / np.clip(C_v, 1, None) / num_train, 0.1)   # 1/lambda_v = N/(C_v|V|)
-    return subgraphs, loss_norm                                  # aggr 1/alpha = C_v/C_uv computed per edge
+    rows = np.repeat(np.arange(n), np.diff(adj_train.indptr))
+    aggr_norm = np.divide(C_v[rows], C_uv, out=np.full_like(C_uv, 0.1), where=C_uv > 0)
+    aggr_norm = np.clip(aggr_norm, 0, 1e4)                       # 1/alpha = C_v/C_uv
+    loss_norm = np.zeros(n)
+    loss_norm[train_nodes] = np.where(C_v[train_nodes] > 0, N / C_v[train_nodes] / num_train, 0.1)
+    return subgraphs, aggr_norm, loss_norm
 
 class GCN(nn.Module):
     def __init__(self, in_dim, hidden, num_classes, num_layers):
@@ -111,19 +129,27 @@ class GCN(nn.Module):
             h = F.relu(torch.sparse.mm(adj_norm, W(h)))           # complete GCN on the subgraph
         return self.out(h)
 
-def train(adj_train, features, labels, model, opt, sampler, num_train, steps):
-    subgraphs, loss_norm = estimate_norms(adj_train, sampler, num_train)
+def to_torch_sparse(adj):
+    coo = adj.tocoo()
+    idx = torch.LongTensor(np.vstack([coo.row, coo.col]))
+    val = torch.FloatTensor(coo.data)
+    return torch.sparse.FloatTensor(idx, val, torch.Size(coo.shape))
+
+def train(adj_train, features, labels, model, opt, sampler, train_nodes, loss_fn, steps):
+    deg_train = np.asarray(adj_train.sum(1)).ravel()
+    subgraphs, aggr_norm, loss_norm = estimate_norms(adj_train, sampler, train_nodes)
     loss_norm = torch.tensor(loss_norm, dtype=torch.float32)
     i = 0
     for _ in range(steps):
         if i >= len(subgraphs):
             subgraphs += [sampler(adj_train) for _ in range(len(subgraphs))]
         sub = subgraphs[i]; i += 1
-        sub_adj = induce(adj_train, sub)
-        sub_adj = sp.diags(1.0/np.clip(sub_adj.sum(1).A1, 1, None)).dot(sub_adj)  # Â = D^{-1}A on subgraph
-        adj_norm = scale_by_aggr_norm(sub_adj, sub)               # each edge × C_v/C_uv  (aggregator norm)
+        sub_adj, edge_ids = induce_with_edge_ids(adj_train, sub)
+        sub_adj.data = aggr_norm[edge_ids]                        # each edge × C_v/C_uv
+        adj_norm = sp.diags(1.0/np.clip(deg_train[sub], 1, None)).dot(sub_adj)  # D_train^{-1}(A_s/alpha)
+        adj_norm = to_torch_sparse(adj_norm)
         logits = model(adj_norm, features[sub])
-        per_node = F.cross_entropy(logits, labels[sub], reduction='none')
+        per_node = loss_fn(logits, labels[sub], reduction='none')
         loss = (per_node * loss_norm[sub]).sum()                 # loss norm: each L_v ÷ lambda_v
         opt.zero_grad(); loss.backward(); opt.step()
 ```

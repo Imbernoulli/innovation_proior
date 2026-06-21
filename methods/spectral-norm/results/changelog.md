@@ -1,0 +1,55 @@
+# Changelog
+
+- `methods/spectral-norm/results/context.md:5` rebuilt the research question around discriminator-gradient conditioning and removed proposed-method phrasing from the setup.
+- `methods/spectral-norm/results/context.md:12` softened the disjoint-support failure to "can vanish" rather than an unconditional guarantee for all discriminator behavior.
+- `methods/spectral-norm/results/context.md:18` restored the optimal-discriminator and log-density-ratio derivative setup with signs checked.
+- `methods/spectral-norm/results/context.md:29` kept Lipschitz continuity and the `argmax_{||f||_Lip <= K}` scaffold as pre-method background, without naming the target method.
+- `methods/spectral-norm/results/context.md:37` stated the Jacobian/spectral-norm fact and the linear-layer `sigma(W)` consequence before the answer is introduced.
+- `methods/spectral-norm/results/context.md:47` added power iteration as an available numerical primitive, not as the final algorithm.
+- `methods/spectral-norm/results/context.md:56` reframed WGAN clipping as an entrywise baseline and avoided claiming the final singular-value comparison as prior knowledge.
+- `methods/spectral-norm/results/context.md:58` checked the WGAN-GP penalty form, interpolation definition, and `lambda = 10` constant.
+- `methods/spectral-norm/results/context.md:65` corrected the weight-normalization comparison: original WN has learned scales, while the Lipschitz comparison removes them before deriving `sum sigma_t^2 = d_out`.
+- `methods/spectral-norm/results/context.md:71` kept orthonormal regularization as an all-singular-values-to-one over-constraint.
+- `methods/spectral-norm/results/context.md:73` separated spectral norm regularization as a soft penalty, not a hard scale-setting transform.
+- `methods/spectral-norm/results/context.md:75` reduced evaluation content to settings and metrics only, with no target-method outcomes.
+- `methods/spectral-norm/results/context.md:81` purified the code scaffold to a single `constrain_weight(...)` slot.
+- `methods/spectral-norm/results/reasoning.md:16` corrected the Lipschitz claim: it is an upper sensitivity control, not a promise of nonzero generator gradients.
+- `methods/spectral-norm/results/reasoning.md:22` re-derived the layer product bound from Jacobian spectral norms and 1-Lipschitz activations.
+- `methods/spectral-norm/results/reasoning.md:36` corrected the row-normalization/Frobenius low-rank pressure argument and kept learned-scale removal explicit.
+- `methods/spectral-norm/results/reasoning.md:42` derived `W_bar_SN = W / sigma(W)` as a top-singular-value scale control, preserving lower singular-value ratios.
+- `methods/spectral-norm/results/reasoning.md:48` fixed the convolution case: the method controls the flattened-kernel proxy, while the exact discrete convolution norm depends on stride/padding/input geometry.
+- `methods/spectral-norm/results/reasoning.md:50` rechecked power iteration and warm-starting, including the caveat that one iteration is practical/empirical rather than universally convergent.
+- `methods/spectral-norm/results/reasoning.md:63` re-derived the normalized-weight derivative with the correct `1/sigma` and `1/sigma^2` factors.
+- `methods/spectral-norm/results/reasoning.md:81` checked the raw-weight gradient sign and constant: `dV/dW = (1/sigma)(Ehat[delta h^T] - lambda u_1 v_1^T)`.
+- `methods/spectral-norm/results/reasoning.md:86` softened the adaptive penalty language from "prevents collapse" to "pushes against increasing the dominant singular component."
+- `methods/spectral-norm/results/reasoning.md:90` kept the generic normalizer formula and verified Frobenius versus spectral correction directions.
+- `methods/spectral-norm/results/reasoning.md:97` qualified the optional `gamma W_bar_SN` reparametrization as giving up the fixed per-layer 1-Lipschitz matrix scale.
+- `methods/spectral-norm/results/reasoning.md:103` aligned the implementation reasoning with the canonical layer shape: raw `W`, persistent `u`, recomputed `v`, differentiable `sigma`, and `W_bar`.
+- `methods/spectral-norm/results/answer.md:17` restated the final method as hard division by `sigma(W)` after the product-bound derivation.
+- `methods/spectral-norm/results/answer.md:21` added the convolution proxy caveat directly to the method summary.
+- `methods/spectral-norm/results/answer.md:25` recorded the warm-started power-iteration algorithm and the fact that only `u` persists.
+- `methods/spectral-norm/results/answer.md:35` checked the gradient formula, including the negative leading-singular-direction correction and the `lambda` definition.
+- `methods/spectral-norm/results/answer.md:53` replaced the previous PyTorch hook artifact with a Chainer-shaped canonical-code artifact.
+- `methods/spectral-norm/results/answer.md:71` implemented `max_singular_value(W, u, n_power_iterations)` with data-only power iteration and differentiable `sigma`.
+- `methods/spectral-norm/results/answer.md:85` implemented `SNLinear.W_bar` with persistent `u`, optional `factor`, optional `gamma`, and `linear(..., W_bar, b)`.
+- `methods/spectral-norm/results/answer.md:123` implemented `SNConvolution2D.W_bar` with `W.reshape(out_channels, -1)`, training-time `u` update, optional `gamma`, and `convolution_2d(..., W_bar, b, stride, pad)`.
+- `methods/spectral-norm/results/answer.md:169` kept the optional scalar reparametrization but stated that another Lipschitz control is needed when it is used.
+- `methods/spectral-norm/notes/source_matrix.md:5` added the primary paper/source evidence record.
+- `methods/spectral-norm/notes/source_matrix.md:6` added the canonical PFN Chainer code record with commit `e84b1a5f604de5fec268f37c3f26478e80b7f475`.
+- `methods/spectral-norm/notes/source_matrix.md:7` added the original GAN ancestor.
+- `methods/spectral-norm/notes/source_matrix.md:8` added the Arjovsky-Bottou disjoint-support ancestor.
+- `methods/spectral-norm/notes/source_matrix.md:9` added the WGAN/weight-clipping ancestor.
+- `methods/spectral-norm/notes/source_matrix.md:10` added the WGAN-GP ancestor and constants.
+- `methods/spectral-norm/notes/source_matrix.md:11` added the weight-normalization ancestor.
+- `methods/spectral-norm/notes/source_matrix.md:12` added the spectral-norm-regularization ancestor.
+- `methods/spectral-norm/notes/source_matrix.md:13` added the orthonormal-regularization ancestor.
+- `methods/spectral-norm/notes/source_matrix.md:14` added the third-party explainer.
+- `methods/spectral-norm/notes/source_matrix.md:15` recorded the PFN publication page as author-organization metadata, not a reasoning-rich self-account.
+- `methods/spectral-norm/notes/discovery_synthesis.md:3` recorded the corrected discriminator-function-class reconstruction.
+- `methods/spectral-norm/notes/discovery_synthesis.md:9` recorded the convolution proxy caveat.
+- `methods/spectral-norm/notes/discovery_synthesis.md:11` recorded the prior-method nuance around learned scales and low-rank pressure.
+- `methods/spectral-norm/notes/discovery_synthesis.md:21` recorded the gradient-sign and constant check.
+- `methods/spectral-norm/notes/discovery_synthesis.md:29` recorded the canonical-code correction from PyTorch hook to Chainer layer shape.
+- `methods/spectral-norm/refs/self_accounts/search_log.md:3` documented the self-account search and absence of a reasoning-rich author retrospective.
+- `methods/spectral-norm/notes/strict_check_output.txt:1` recorded that `scripts/check_strict_method.py` was unavailable and listed replacement checks.
+- `methods/spectral-norm/results/.codex_review.json:3` replaced the stale errored review marker with an honest independent-review-not-run record.

@@ -103,11 +103,11 @@ Proof skeleton (must reproduce every step):
 2. R V_1 − R V_2 = E_μ[ Σ_{t≥0} γ^t (∏_{s=0}^{t-2} c_s) (ρ_{t-1} − c_{t-1} ρ_t)
    (V_1(x_t) − V_2(x_t)) ], with c_{-1}=ρ_{-1}=1, empty product=1.
 3. Coefficients α_t = ρ_{t-1} − c_{t-1} ρ_t are ≥0 in expectation:
-   E_μ α_t = E[ρ_{t-1} − c_{t-1} ρ_t] ≥ E_μ[c_{t-1}(1 − ρ_t)] ≥ 0
-   because c_{t-1} ≤ ρ_{t-1} (since c̄≤ρ̄ and same ratio), and E_μ ρ_t ≤ E_μ[π/μ]=1.
-   (The first ≥: ρ_{t-1} − c_{t-1}ρ_t ≥ c_{t-1} − c_{t-1}ρ_t = c_{t-1}(1−ρ_t)
-   when ρ_{t-1} ≥ c_{t-1}. Then E[c_{t-1}(1−ρ_t)]: c_{t-1}≥0 and E[1−ρ_t]≥0... need
-   measurability; the bound E_μρ_t≤1 gives it.)
+   E_μ α_t = E[ρ_{t-1} − c_{t-1} ρ_t] ≥ E_μ[c_{t-1}(1 − ρ_t)] ≥ 0.
+   The first inequality uses c_{t-1} ≤ ρ_{t-1} (same ratio clipped at c̄≤ρ̄).
+   The second needs the conditional form: given the history through x_t, c_{t-1}
+   is fixed and non-negative, while E_μ[ρ_t | x_t] ≤ E_μ[π(a_t|x_t)/μ(a_t|x_t)|x_t]=1.
+   Thus E[c_{t-1}(1−ρ_t)] = E[c_{t-1} E[1−ρ_t | x_t]] ≥ 0.
 4. Sum of the non-negative coefficients telescopes:
    Σ γ^t E[(∏_{s=0}^{t-2}c_s)(ρ_{t-1}−c_{t-1}ρ_t)]
    = Σ γ^t E[(∏_{0}^{t-2}c_s)ρ_{t-1}] − γ^{-1}(Σ γ^t E[(∏_{0}^{t-2}c_s)ρ_{t-1}] − 1)

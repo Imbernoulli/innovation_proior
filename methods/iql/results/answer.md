@@ -48,9 +48,10 @@ Theory: with `V_τ(s) = E^τ_{a~π_β}[Q_τ(s,a)]`, `Q_τ(s,a) = r + γ E_{s'}[V
 
 Canonical hyperparameters: 2-layer 256-unit MLPs, ReLU; Adam lr 3e-4 for all three nets; cosine decay
 on the actor lr; `γ = 0.99`, Polyak `α = 0.005`; batch 256; 1M gradient steps. `τ = 0.7, β = 3.0` for
-MuJoCo locomotion; `τ = 0.9, β = 10.0` for Ant Maze; `τ = 0.7, β = 0.5` for Kitchen/Adroit. Gaussian
-policy with state-independent std. Rewards preprocessed per D4RL convention (locomotion scaled by the
-spread of trajectory returns; ant-maze shifted by −1).
+MuJoCo locomotion; `τ = 0.9, β = 10.0` for Ant Maze; `τ = 0.7, β = 0.5` and actor dropout 0.1 for
+Kitchen/Adroit. The Gaussian policy has a state-independent std and a tanh-bounded mean, without a
+tanh-squashed log-prob distribution. Rewards are preprocessed per D4RL convention (locomotion scaled
+by the spread of trajectory returns; ant-maze shifted by −1).
 
 ## Code
 
@@ -99,11 +100,12 @@ class GaussianPolicy(nn.Module):
         self.mean = mlp([obs_dim, *hidden, act_dim])
         self.log_std = nn.Parameter(torch.zeros(act_dim))      # state-independent std
     def dist(self, s):
-        return Normal(self.mean(s), self.log_std.clamp(-5.0, 2.0).exp())
+        mean = torch.tanh(self.mean(s))                        # official code bounds the Gaussian mean
+        return Normal(mean, self.log_std.clamp(-5.0, 2.0).exp())
     def log_prob(self, s, a):
         return self.dist(s).log_prob(a).sum(-1)
     def act(self, s):
-        return self.mean(s).clamp(-1.0, 1.0)
+        return torch.tanh(self.mean(s))
 
 
 def expectile_loss(diff, tau):                                 # asymmetric L2
@@ -114,14 +116,16 @@ def expectile_loss(diff, tau):                                 # asymmetric L2
 def update_v(value, target_critic, batch, tau):
     s, a = batch["obs"], batch["act"]
     with torch.no_grad():
-        q = torch.min(*target_critic(s, a))                    # clipped double-Q
+        q1, q2 = target_critic(s, a)
+        q = torch.minimum(q1, q2)                              # clipped double-Q
     return expectile_loss(q - value(s), tau)                   # V <- tau-expectile of Q over data actions
 
 
 def update_actor(policy, target_critic, value, batch, beta):
     s, a = batch["obs"], batch["act"]
     with torch.no_grad():
-        q = torch.min(*target_critic(s, a))
+        q1, q2 = target_critic(s, a)
+        q = torch.minimum(q1, q2)
         adv = q - value(s)
         weight = torch.clamp(torch.exp(beta * adv), max=100.0)
     return -(weight * policy.log_prob(s, a)).mean()            # advantage-weighted regression

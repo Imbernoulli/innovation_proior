@@ -1,0 +1,25 @@
+# Mask R-CNN File:Line Changelog
+
+- `results/context.md:3` Audited scaffold purity: exactly five `##` sections, no target-method name in the pre-method setup, and no answer leakage; no edit needed.
+- `results/reasoning.md:21` Removed hindsight-level precision from the class-agnostic mask control while keeping the decoupling test.
+- `results/reasoning.md:23` Removed a numeric FCN-vs-MLP performance prediction and reframed it as an experiment to run.
+- `results/reasoning.md:44` Removed the stride-32 RoIAlign numeric gain prediction and kept only the causal expectation that larger stride amplifies quantization error.
+- `results/reasoning.md:62` Reworded the RoIAlign import comment so it does not conflate the paper's no-quantization idea with torchvision's `aligned` keyword.
+- `results/reasoning.md:65` Indented Python comments inside the code block so the strict checker no longer treats them as markdown headers.
+- `results/answer.md:60` Clarified code provenance: Detectron is the original paper reference implementation; the shown artifact is a compact torchvision-style PyTorch skeleton cross-checked against Detectron.
+- `results/answer.md:69` Reworded the RoIAlign code comment around continuous coordinates and bilinear sampling.
+- `results/answer.md:134` Added the missing implementation note that `matched_idxs` selects the ground-truth mask plane used for each positive proposal target crop.
+- `results/.codex_review.json:3` Replaced the old errored review marker with a completed review record for this rerun.
+- `notes/source_matrix.md:7` Added primary paper provenance and the exact method claims checked.
+- `notes/source_matrix.md:8` Added Fast/Faster R-CNN, FCN, FPN, STN, MNC, and FCIS ancestor evidence.
+- `notes/source_matrix.md:15` Added the third-party UCSD CSE 252C lecture explainer.
+- `notes/source_matrix.md:16` Added the Kaiming He ICCV 2017 tutorial self-account and search log.
+- `notes/source_matrix.md:17` Added Detectron and torchvision code provenance for implementation-faithfulness checks.
+- `notes/source_matrix.md:19` Recorded the math/case audit for mask BCE signs, empty positives, RoIAlign sampling, and keypoint softmax.
+- `notes/discovery_synthesis.md:17` Recorded the formula, sign, channel-selection, positive-RoI, empty-case, and keypoint-loss checks.
+- `notes/discovery_synthesis.md:26` Recorded the Detectron and torchvision implementation comparison.
+- `notes/discovery_synthesis.md:42` Recorded the posterior-leak and in-frame voice review.
+- `notes/discovery_synthesis.md:48` Summarized the result-file edits made.
+- `refs/self_accounts/search_log.md:5` Documented the self-account searches.
+- `refs/self_accounts/search_log.md:10` Recorded the author tutorial found and how it was used.
+- `notes/strict_check_output.txt:1` Recorded the strict checker result: `STRICT CHECK PASSED`.

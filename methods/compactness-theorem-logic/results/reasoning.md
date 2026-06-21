@@ -1,0 +1,49 @@
+I keep wanting to solve the infinite problem directly: here is a theory `T`, maybe with infinitely many sentences, and I need one structure that satisfies all of them. But that is the wrong pressure point. A first-order sentence is finite. A formal proof is finite. If a contradiction appears, it cannot have used the whole infinite theory in any literal sense; it must have used only finitely many premises. So the infinite object may be controlled by its finite shadows.
+
+Let me separate the two directions. If `T` has a model, then every finite `T0 subset T` has that same model. That direction says nothing deep. The hard direction is the one that feels like it should fail: every finite fragment has some model, perhaps a different model every time, and I want one model for all of `T`.
+
+Try the most naive gluing idea. For each finite `Delta subset T`, choose a model `M_Delta` of `Delta`. I cannot just take their union; the domains are unrelated, and even when the domains match, the interpretations of symbols need not be compatible. So finite satisfiability gives me many local witnesses but no map between them.
+
+Maybe syntax is the right place to use the finite nature. Suppose every finite fragment of `T` has a model. If `T` were inconsistent, there would be a formal derivation of a contradiction from assumptions in `T`. That derivation is a finite sequence, and only finitely many sentences of `T` occur in it. Call that finite set `T0`. Then `T0` would be inconsistent. Soundness says an inconsistent finite theory has no model, because a model cannot make both a sentence and its negation true. But `T0` is supposed to have a model. So `T` is consistent.
+
+Now I have reduced the semantic finite-fragment hypothesis to syntactic consistency. Completeness is exactly the machine that turns consistency back into a model. But I should not say "by completeness" and hide the model-building step, because the construction is the point: the model appears by making the theory maximal enough that truth can be read off syntactically.
+
+Start with a consistent first-order theory `T`. Existential sentences are the first nuisance. If the theory says `exists x phi(x)`, a model should contain a witness, but the syntax may not have a name for one. Add fresh constants. For every formula `exists x phi(x)` in the expanded language, add a new constant `c_phi` and the Henkin sentence
+
+`exists x phi(x) -> phi(c_phi)`.
+
+I need this expansion to preserve consistency. Take only finitely many added Henkin sentences at a time. If adding them produced a contradiction, then from the old theory I could derive that the conjunction of those Henkin sentences is impossible. For one new constant, the bad situation would amount to deriving `exists x phi(x)` while also deriving `not phi(c)` for a constant `c` that was fresh. Since `c` occurs nowhere in the old assumptions, it cannot have any special property; replacing it by a variable and using the usual quantifier rules would say that no witness can satisfy `phi`, contradicting the derivation of `exists x phi(x)`. Iterating over finitely many fresh constants gives the same result. So every finite stage remains consistent, and by repeating this process, or by using a standard enumeration/chain argument and then Zorn-style extension in the general case, I can get a consistent Henkin theory in a language with enough constants.
+
+The next nuisance is decisiveness. To build a term model, I want every sentence or its negation to be selected, because then "truth" can be made identical with membership in the theory. Extend the consistent Henkin theory to a maximal consistent theory `H`: for each sentence `sigma`, add `sigma` if consistency survives, otherwise add `not sigma`. At each finite step consistency is preserved by the choice; in the arbitrary case, take unions of chains of consistent theories, because any finite proof of contradiction from the union would already lie inside one chain member. Zorn's lemma gives a maximal consistent extension.
+
+What does maximal consistency buy me? For any sentence `sigma`, exactly one of `sigma` and `not sigma` is in `H`. It is closed under derivability: if `H proves sigma` and `sigma` were not in `H`, then `not sigma` would be in `H`, making `H` inconsistent. It also behaves like a Boolean truth assignment for sentences: conjunction belongs exactly when both conjuncts belong, negation belongs exactly when the original sentence does not belong, and so on. The quantifier case is where Henkin constants matter. If `exists x phi(x)` is in `H`, then the Henkin axiom gives `phi(c_phi)` in `H` for some constant. Conversely, if `phi(t)` is in `H` for a term `t`, then first-order logic proves `exists x phi(x)`, so `exists x phi(x)` is in `H`.
+
+Now build the domain out of syntax. Closed terms should be the elements, but equality can identify two terms. Define `s ~ t` when the sentence `s = t` is in `H`. The equality axioms make this an equivalence relation and make functions and relations respect it. The term model `M_H` has domain the equivalence classes `[t]` of closed terms. A constant symbol `c` is interpreted as `[c]`; a function symbol `f` sends `[t1], ..., [tn]` to `[f(t1,...,tn)]`; a relation symbol `R` holds of `[t1], ..., [tn]` exactly when `R(t1,...,tn)` is in `H`.
+
+The key induction is now forced. For every formula `phi(x1,...,xn)` and closed terms `t1,...,tn`,
+
+`M_H |= phi([t1],...,[tn])` exactly when `phi(t1,...,tn)` is in `H`.
+
+Atomic formulas hold by definition of the interpretation. Boolean connectives follow from maximal consistency. For the existential step, if `M_H |= exists x phi(x,[t])`, then some element of the term model is `[s]`, so by the induction hypothesis `phi(s,t)` is in `H`, hence `exists x phi(x,t)` is in `H`. Conversely, if `exists x phi(x,t)` is in `H`, the Henkin property gives a closed term, in fact a witness constant in the relevant instance, such that `phi(c,t)` is in `H`; by induction, the model satisfies `phi([c],[t])`, so it satisfies the existential sentence. Universal quantifiers can be handled through negation and existence.
+
+For a sentence `sigma`, there are no parameters, so the induction says `M_H |= sigma` exactly when `sigma in H`. Since `T subset H`, the term model satisfies every sentence in `T`. That proves the compactness theorem through the model-existence path: finite satisfiability prevents a finite proof of contradiction; completeness/Henkin construction turns consistency into a model.
+
+There is another way to see the same finite-control idea without routing through proofs. I can keep the many local models and combine them with an ultraproduct, provided I choose "large" subsets of indices so that each sentence is true on a large set of local models.
+
+Let the index set `I` be the set of finite subsets of `T`. For each `Delta in I`, choose a model `M_Delta` satisfying `Delta`. For every sentence `sigma in T`, define
+
+`A_sigma = { Delta in I : sigma in Delta }`.
+
+Finite intersections of these sets are nonempty in the right strong sense: `A_sigma1 cap ... cap A_sigman` contains every finite `Delta` that includes `{sigma1,...,sigman}`. The family generated by the `A_sigma` has the finite intersection property, so it extends to an ultrafilter `U` on `I`.
+
+Form the ultraproduct `M = prod_Delta M_Delta / U`. Los's theorem says that for any first-order sentence `sigma`,
+
+`M |= sigma` exactly when `{ Delta : M_Delta |= sigma } in U`.
+
+But if `Delta` contains `sigma`, then `M_Delta |= sigma`, because `M_Delta` models all of `Delta`. Thus `A_sigma subset { Delta : M_Delta |= sigma }`. Since `A_sigma in U` and ultrafilters are upward closed, `{ Delta : M_Delta |= sigma } in U`. Los's theorem gives `M |= sigma`. This holds for every `sigma in T`, so the ultraproduct is a model of `T`.
+
+This proof is not recombination in the loose sense of stitching partial structures together by hand. The ultrafilter hides the incompatibilities by asking only first-order questions and declaring that a statement is true when it is true on a large set of finite-fragment models. Los's theorem is exactly the preservation rule that makes this legitimate. The Henkin proof does the same job syntactically: it does not satisfy infinitely many sentences one by one inside a half-built structure; it extends the theory until syntactic membership itself can be interpreted as truth in a canonical model.
+
+The consequences now look inevitable. Add to arithmetic a new constant `c` and the infinite set of sentences `c > 0`, `c > 1`, `c > 2`, and so on, one for each standard numeral. Any finite subset only asks `c` to be larger than finitely many numerals, so the usual natural numbers can satisfy it by interpreting `c` as a sufficiently large number. Compactness gives a model satisfying all of them. In that model, `c` is larger than every standard numeral. So the model cannot be the intended standard natural numbers, even if it satisfies the same first-order arithmetic axioms being carried along. The finite fragments never see the global demand as impossible, and first-order compactness forces a model where the demand is realized.
+
+The theorem I land on is clean: a first-order theory has a model exactly when every finite subset has a model. The proof lands in two equivalent-looking artifacts. In the Henkin artifact, finite satisfiability implies consistency, consistency extends to a maximal Henkin theory, and the term model realizes it. In the ultraproduct artifact, finite-fragment models are indexed by finite subsets, an ultrafilter containing the "fragments that mention this sentence" sets is chosen, and Los's theorem transfers each sentence to the product. In both routes, the insight is the same: infinite satisfiability is not attacked as an infinite checklist; it is controlled by the absence of finite obstruction.

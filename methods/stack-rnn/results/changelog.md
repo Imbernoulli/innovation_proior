@@ -1,0 +1,52 @@
+# Stack RNN Review/Fix Changelog
+
+- `methods/stack-rnn/notes/source_matrix.md:3` added the primary arXiv/NeurIPS source row used for method equations, hidden update, stack cases, empty sentinel, optimization, and rounding.
+- `methods/stack-rnn/notes/source_matrix.md:4` added Elman 1990 as the SRN/context-unit ancestor.
+- `methods/stack-rnn/notes/source_matrix.md:5` added Hochreiter-Schmidhuber 1997 as the LSTM long-memory/gating ancestor.
+- `methods/stack-rnn/notes/source_matrix.md:6` added Das-Giles-Sun 1992 as the neural pushdown automaton ancestor.
+- `methods/stack-rnn/notes/source_matrix.md:7` added Neural Turing Machines as the differentiable fixed-memory baseline.
+- `methods/stack-rnn/notes/source_matrix.md:8` added Mikolov et al. 2014 as the constrained-recurrence longer-memory ancestor.
+- `methods/stack-rnn/notes/source_matrix.md:9` added the Distill augmented-RNN explainer for differentiable fractional-action intuition.
+- `methods/stack-rnn/notes/source_matrix.md:10` added the Suzgun et al. source only as a descendant/explainer and marked the vector/tanh variant distinction.
+- `methods/stack-rnn/notes/source_matrix.md:11` recorded the official `facebook/Stack-RNN` code checkout and the code-faithfulness facts that govern the answer.
+- `methods/stack-rnn/refs/self_accounts/search_log.md:7` documented author self-account search queries.
+- `methods/stack-rnn/refs/self_accounts/search_log.md:14` recorded found official paper/code provenance and the absence of a separate technical retrospective.
+- `methods/stack-rnn/notes/discovery_synthesis.md:17` recorded the exact top-cell two-action formula.
+- `methods/stack-rnn/notes/discovery_synthesis.md:21` recorded the exact deeper-cell push/pop formula and index directions.
+- `methods/stack-rnn/notes/discovery_synthesis.md:25` recorded the exact no-op additive terms.
+- `methods/stack-rnn/notes/discovery_synthesis.md:29` recorded the stack-feedback hidden update and `k = 2`.
+- `methods/stack-rnn/notes/discovery_synthesis.md:31` recorded the official implementation corrections: scalar stack slots, `-1` initialization, pop-bottom sentinel, sigmoid clipping, no bias terms, optional hard actions, and output from `h_t`.
+- `methods/stack-rnn/notes/discovery_synthesis.md:35` documented the context scaffold/answer-leak fixes.
+- `methods/stack-rnn/notes/discovery_synthesis.md:36` documented replacement of the descendant-style vector/tanh reasoning implementation with the scalar/sigmoid reference behavior.
+- `methods/stack-rnn/notes/discovery_synthesis.md:37` documented replacement of the noncanonical PyTorch answer code with a C++-faithful port.
+- `methods/stack-rnn/notes/discovery_synthesis.md:38` documented posterior/hindsight leak containment.
+- `methods/stack-rnn/notes/discovery_synthesis.md:39` documented the math/case audit against primary source and `StackRNN.h`.
+- `methods/stack-rnn/results/context.md:1` rewrote the context into exactly five pre-method `##` sections with no target method name.
+- `methods/stack-rnn/results/context.md:57` reframed prior memory-augmented baselines without leaking the final differentiable stack update.
+- `methods/stack-rnn/results/context.md:83` replaced the previous modern/answer-adjacent code frame with a neutral recurrent harness and open controller slot.
+- `methods/stack-rnn/results/reasoning.md:7` fixed the derivation to use the exact PUSH/POP top and deeper-cell formulas with correct indices.
+- `methods/stack-rnn/results/reasoning.md:9` added the empty-stack `-1` sentinel and freed-bottom pop case.
+- `methods/stack-rnn/results/reasoning.md:11` fixed hidden feedback/output faithfulness: read top `k` previous stack entries into `h_t`, and output from `h_t`.
+- `methods/stack-rnn/results/reasoning.md:13` added the exact no-op top/deeper-cell cases.
+- `methods/stack-rnn/results/reasoning.md:17` tightened the training constants: BPTT about 50, hard clipping, learning rate `0.1`, validation-halving, curriculum, and random restarts.
+- `methods/stack-rnn/results/reasoning.md:19` added the test-time argmax rounding rationale while keeping the reasoning in first-person monologue with no markdown headers.
+- `methods/stack-rnn/results/answer.md:23` rewrote the final equations section around the exact stack index cases.
+- `methods/stack-rnn/results/answer.md:37` added the finite-stack pop-bottom `-1 * a_t[POP]` case that the earlier draft omitted.
+- `methods/stack-rnn/results/answer.md:41` fixed the hidden-feedback equation and `k = 2` note.
+- `methods/stack-rnn/results/answer.md:51` stated the official implementation-shape constraints before the code.
+- `methods/stack-rnn/results/answer.md:90` used no-bias PyTorch layers to match the C++ `Linear` helper.
+- `methods/stack-rnn/results/answer.md:106` initialized every stack slot to `-1`.
+- `methods/stack-rnn/results/answer.md:124` implemented the canonical hidden update modes (`mod = 0, 1, 2`).
+- `methods/stack-rnn/results/answer.md:141` implemented the PUSH shift and new top case.
+- `methods/stack-rnn/results/answer.md:146` implemented the POP shift and freed-bottom sentinel case.
+- `methods/stack-rnn/results/answer.md:150` implemented the optional NO-OP unchanged-cell case.
+- `methods/stack-rnn/results/answer.md:155` returned output logits from `h_t` only, not `[h_t, top]`.
+- `methods/stack-rnn/results/answer.md:160` restored the reference training constants and test-time hard-action setting.
+- `methods/stack-rnn/results/.codex_review.json:8` refreshed the review marker with the actual evidence used in this pass.
+- `methods/stack-rnn/results/.codex_review.json:10` recorded the manual audit checks, including stack cases, hidden/output path, scaffold leak check, no-header reasoning, and scalar-stack code faithfulness.
+- `methods/stack-rnn/notes/strict_check_output.txt:1` recorded the strict checker command.
+- `methods/stack-rnn/notes/strict_check_output.txt:5` recorded `STRICT CHECK PASSED`.
+- `methods/stack-rnn/notes/strict_check_output.txt:8` recorded the context leak grep check.
+- `methods/stack-rnn/notes/strict_check_output.txt:9` recorded the reasoning no-header check.
+- `methods/stack-rnn/notes/strict_check_output.txt:10` recorded the embedded answer-code smoke test.
+- `methods/stack-rnn/notes/strict_check_output.txt:11` recorded the stack-rnn-scoped whitespace check.

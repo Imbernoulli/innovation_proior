@@ -1,0 +1,59 @@
+We want to minimize a finite average of smooth losses, $P(w) = \frac{1}{n}\sum_{i=1}^n \psi_i(w)$, where each $\psi_i$ is a convex $L$-smooth per-example loss and $P$ is $\gamma$-strongly convex (typically through an L2 regularizer), with $L \ge \gamma > 0$. The two standard tools sit at opposite corners of a trade-off that should not have to exist. Full-batch gradient descent, $w \leftarrow w - \eta\,\nabla P(w)$, enjoys a clean linear rate $P(w_t) - P(w^*) = O\big((1-\gamma/L)^t\big)$ with a constant step $\eta < 1/L$, but every step is a full pass over the data, so reaching accuracy $\varepsilon$ costs on the order of $n\kappa\ln(1/\varepsilon)$ gradient evaluations with $\kappa = L/\gamma$ the condition number — brutal for large $n$. Stochastic gradient descent, $w \leftarrow w - \eta_t\,\nabla\psi_{i_t}(w)$, makes each step independent of $n$, but converges only sublinearly at $O(1/k)$ and is forced onto a decaying step size $\eta_t = O(1/t)$ to get even that.
+
+It is worth being precise about why SGD is stuck, because the diagnosis dictates the cure. The estimator is unbiased, $\mathbb{E}_i[\nabla\psi_i(w)] = \nabla P(w)$, so the obstruction is not bias — it is variance. At the optimum the full gradient vanishes, $\nabla P(w^*) = 0$, yet the individual gradients do not: generically $\nabla\psi_i(w^*) \ne 0$, so $\sigma^2 := \mathbb{E}_i\|\nabla\psi_i(w^*)\|^2 > 0$. Sitting exactly at $w^*$ and taking one SGD step moves along a nonzero vector and walks out of the solution. Quantitatively, expanding the squared distance gives the schematic recursion $\mathbb{E}\|w_t - w^*\|^2 \lesssim (1 - 2\eta\gamma)\|w_{t-1} - w^*\|^2 + \eta^2\sigma^2$, whose fixed point is a noise ball of squared radius $\approx \eta\sigma^2/(2\gamma)$. Shrinking the ball to zero demands $\eta \to 0$, but that also kills the contraction $(1-2\eta\gamma)$, which is exactly what forces the $1/t$ schedule and the sublinear rate. And this is not a tuning failure one can out-clever: against an oracle restricted to *fixed-noise* unbiased gradient samples, $O(1/k)$ is the minimax-optimal rate for strongly convex problems (the Nemirovski–Yudin lower bound, sharpened by Nemirovski, Juditsky, Lan and Shapiro). The only slack is that a finite sum is *not* an endless stream of fresh draws — there are exactly $n$ fixed functions, revisited every epoch, and that extra structure is information the lower bound does not assume. SAG (Le Roux, Schmidt and Bach) and SDCA (Shalev-Shwartz and Zhang) already exploited it to reach a genuine linear rate, but both carry a *per-example memory* — an $n\times d$ table of stored gradients, or $n$ dual variables. For least-squares or plain logistic models that compresses to one scalar per example, but for structured-prediction or neural-network models, where $\nabla\psi_i$ is a full dense parameter-sized vector with no such compression, the table is impractical. We want their vanishing-variance effect with only $O(d)$ memory.
+
+I propose SVRG — Stochastic Variance Reduced Gradient. The mechanism is a control variate. The classical Monte Carlo identity says that to estimate $\mathbb{E}[X]$ using a second variable $Y$ correlated with $X$ whose mean $\mathbb{E}[Y]$ is computable, the estimator $g = X - Y + \mathbb{E}[Y]$ is unbiased for *any* such $Y$, with variance $\mathrm{Var}(X) + \mathrm{Var}(Y) - 2\,\mathrm{Cov}(X,Y)$, small precisely when $X$ and $Y$ are strongly correlated. Map $X = \nabla\psi_i(w)$, whose mean over $i$ is the gradient we want. For $Y$, take the *same example's* gradient evaluated at a fixed reference point $\tilde w$ kept close to $w$: $Y = \nabla\psi_i(\tilde w)$. This is a good control variate for two reasons that are both load-bearing. First, for a fixed $i$, $\nabla\psi_i(w)$ and $\nabla\psi_i(\tilde w)$ are the *same* smooth function at two nearby points, so they are tightly correlated — exactly the regime where the control variate kills variance. Second, its mean is exactly computable in one pass: $\mathbb{E}_i[\nabla\psi_i(\tilde w)] = \frac{1}{n}\sum_i \nabla\psi_i(\tilde w) = \nabla P(\tilde w) =: \tilde\mu$. The update direction is therefore
+
+$$g = \nabla\psi_i(w) - \nabla\psi_i(\tilde w) + \tilde\mu, \qquad \tilde\mu = \nabla P(\tilde w).$$
+
+Each piece earns its place. Taking $\mathbb{E}_i$ gives $\nabla P(w) - \nabla P(\tilde w) + \tilde\mu = \nabla P(w)$, so the estimator is unbiased — and this is precisely *why* $+\tilde\mu$ is added back rather than just using $\nabla\psi_i(w) - \nabla\psi_i(\tilde w)$: the correction restores the mean, since otherwise we would subtract a nonzero-mean quantity and bias the iterate toward the wrong point. As both $w \to w^*$ and $\tilde w \to w^*$, the snapshot mean $\tilde\mu = \nabla P(\tilde w) \to 0$ and, term by term, $\nabla\psi_i(w) - \nabla\psi_i(\tilde w) \to \nabla\psi_i(w^*) - \nabla\psi_i(w^*) = 0$, so $g \to 0$. The *matched index* is the whole trick: subtracting $\nabla\psi_i$ at the *same* $i$ makes the persistent per-sample offset $\nabla\psi_i(w^*)$ — the very thing that was $\sigma^2$ and floored SGD — cancel against itself. Using a different index would give $\mathrm{Cov}(X,Y)\approx 0$ and variance $\mathrm{Var}(X)+\mathrm{Var}(Y)$, *larger* not smaller. Forming $g$ needs only $\tilde w$ and the single vector $\tilde\mu$: $O(d)$ memory, no $n\times d$ table. (Equivalently, $g = \nabla\tilde\psi_i(w)$ for the reparameterized sum $\tilde\psi_i(w) = \psi_i(w) - (\nabla\psi_i(\tilde w) - \tilde\mu)^\top w$, which has the same average $P$ since $\sum_i(\nabla\psi_i(\tilde w) - \tilde\mu)=0$ — so SVRG is plain SGD on a finite sum reshaped to have per-example gradients that agree near $\tilde w$.)
+
+The one price is that $\tilde\mu$ is an *exact* full gradient, costing a full pass; recomputing it every step would just be gradient descent again. So it is amortized over an epoch: snapshot $\tilde w$, pay one pass for $\tilde\mu$, take $m$ cheap inner steps that all reference the same $(\tilde w, \tilde\mu)$, then refresh the snapshot. Concretely, for each outer stage set $\tilde w = \tilde w_{s-1}$, compute $\tilde\mu = \nabla P(\tilde w)$, start $w_0 = \tilde w$, and for $t = 1,\dots,m$ draw a random $i_t$ and update $w_t = w_{t-1} - \eta\big(\nabla\psi_{i_t}(w_{t-1}) - \nabla\psi_{i_t}(\tilde w) + \tilde\mu\big)$. Each stage costs $n + 2m$ gradient evaluations, so $m = O(n)$ is chosen large enough that the $m$ cheap steps earn back the full pass but not so large that $w$ drifts far from $\tilde w$. For the next reference, the practical choice is the last inner iterate $\tilde w_s = w_m$ (or an average); the analysis instead takes $\tilde w_s = w_t$ for $t$ uniform on $\{0,\dots,m-1\}$, which makes the telescoped sum collapse cleanly into the next snapshot's suboptimality.
+
+What makes it provably linear is that the update's *variance is bounded by suboptimality*, so it vanishes as we converge. The bridge is a smoothness lemma: fixing $i$ and $g_i(w) = \psi_i(w) - \psi_i(w^*) - \nabla\psi_i(w^*)^\top(w-w^*)$, one has $\nabla g_i(w^*) = 0$ and $g_i \ge 0$, and minimizing the smoothness upper bound of a single gradient step gives $0 = g_i(w^*) \le g_i(w) - \frac{1}{2L}\|\nabla g_i(w)\|^2$, hence $\|\nabla\psi_i(w) - \nabla\psi_i(w^*)\|^2 \le 2L[\psi_i(w) - \psi_i(w^*) - \nabla\psi_i(w^*)^\top(w-w^*)]$. Averaging over $i$ with $\nabla P(w^*)=0$,
+
+$$\frac{1}{n}\sum_i \|\nabla\psi_i(w) - \nabla\psi_i(w^*)\|^2 \le 2L\,[P(w) - P(w^*)]. \tag{$\star$}$$
+
+Writing $v_t = \nabla\psi_{i_t}(w_{t-1}) - \nabla\psi_{i_t}(\tilde w) + \tilde\mu$, inserting $\nabla\psi_{i_t}(w^*)$ and splitting into a current-point bracket and a *centered* snapshot bracket (using $\tilde\mu = \nabla P(\tilde w) - \nabla P(w^*)$), then applying $\|a-b\|^2 \le 2\|a\|^2 + 2\|b\|^2$, the variance-vs-second-moment inequality $\mathbb{E}\|\xi - \mathbb{E}\xi\|^2 \le \mathbb{E}\|\xi\|^2$, and $(\star)$ at both $w_{t-1}$ and $\tilde w$ yields
+
+$$\mathbb{E}\|v_t\|^2 \le 4L\,[P(w_{t-1}) - P(w^*)] + 4L\,[P(\tilde w) - P(w^*)]. \tag{$\diamond$}$$
+
+Since the direction is unbiased, $\mathbb{E}_{i_t}[v_t] = \nabla P(w_{t-1})$, expanding the squared distance and using convexity $-(w_{t-1}-w^*)^\top\nabla P(w_{t-1}) \le P(w^*) - P(w_{t-1})$ together with $(\diamond)$ gives the one-step contraction
+
+$$\mathbb{E}\|w_t - w^*\|^2 \le \|w_{t-1} - w^*\|^2 - 2\eta(1 - 2L\eta)[P(w_{t-1}) - P(w^*)] + 4L\eta^2[P(\tilde w) - P(w^*)].$$
+
+The negative term proportional to the current suboptimality is the engine; its coefficient $2\eta(1-2L\eta)$ stays positive precisely when $\eta < 1/(2L)$ — the only step-size constraint, a constant one, no decay. Fixing $\tilde w$ over the stage and summing $t=1,\dots,m$ telescopes the $\|\cdot - w^*\|^2$ terms; using $w_0 = \tilde w$, dropping $\mathbb{E}\|w_m - w^*\|^2 \ge 0$, the random-iterate snapshot choice so $\frac{1}{m}\sum_t \mathbb{E}[P(w_{t-1}) - P(w^*)] = \mathbb{E}[P(\tilde w_s) - P(w^*)]$, and strong convexity $\|\tilde w - w^*\|^2 \le \frac{2}{\gamma}[P(\tilde w) - P(w^*)]$ gives $2\eta(1-2L\eta)m\cdot\mathbb{E}[P(\tilde w_s) - P(w^*)] \le \big(\tfrac{2}{\gamma} + 4Lm\eta^2\big)\mathbb{E}[P(\tilde w) - P(w^*)]$. Dividing through,
+
+$$\mathbb{E}[P(\tilde w_s) - P(w^*)] \le \alpha\,\mathbb{E}[P(\tilde w_{s-1}) - P(w^*)], \qquad \alpha = \frac{1}{\gamma\eta(1-2L\eta)m} + \frac{2L\eta}{1-2L\eta},$$
+
+so iterating over stages gives $\mathbb{E}[P(\tilde w_s) - P(w^*)] \le \alpha^s[P(\tilde w_0) - P(w^*)]$ — geometric, with a constant step. The second term of $\alpha$ is the snapshot-residual floor, small for small $\eta$ (e.g. $\eta = 0.1/L$ makes it $0.25$); the first term $\to 0$ as $m \to \infty$, so $\alpha < 1$ is attainable. At conditioning $\kappa = L/\gamma = n$, taking $\eta = 0.1/L$ and $m = 50n$ gives $\alpha = 1/2$; more generally $m = O(n)$ yields $O(n\ln(1/\varepsilon))$ gradient evaluations to reach $\varepsilon$, versus $n^2\ln(1/\varepsilon)$ for batch gradient descent — matching SAG and SDCA but with $O(d)$ memory and a much simpler argument. This does not violate the unbiased-oracle lower bound: that bound assumes a *fixed* noise level $\sigma^2$, whereas $(\diamond)$ shows this oracle's noise *shrinks* toward zero as we approach the optimum, because the finite set of functions is reused through the snapshot. For smooth convex $P$ without strong convexity the same machinery degrades gracefully to $O(1/T)$, and for a nonconvex model warm-started near a locally strongly convex minimum the theorem applies locally for local geometric convergence with a constant step — exactly the regime where plain SGD crawls.
+
+```python
+import numpy as np
+
+class FiniteSumProblem:
+    def __init__(self, X, y, reg):
+        self.X, self.y, self.reg = X, y, reg
+        self.n, self.d = X.shape
+    def grad_i(self, w, i):
+        # e.g. logistic loss + L2: -y_i/(1+exp(y_i x_i.w)) x_i + reg*w
+        z = self.y[i] * (self.X[i] @ w)
+        return -self.y[i] / (1.0 + np.exp(z)) * self.X[i] + self.reg * w
+    def full_grad(self, w):
+        return np.mean([self.grad_i(w, i) for i in range(self.n)], axis=0)
+
+def svrg(problem, w0, eta, m, n_outer):
+    """g = grad_i(w) - grad_i(w_tilde) + mu_tilde: unbiased estimate of grad P(w)
+    whose variance vanishes as w, w_tilde -> w*, so constant eta < 1/(2L) converges
+    geometrically. Only w_tilde and mu_tilde stored (O(d), no per-example table)."""
+    w_tilde = w0.copy()
+    for s in range(n_outer):
+        mu_tilde = problem.full_grad(w_tilde)          # snapshot: one full pass
+        w = w_tilde.copy()
+        for t in range(m):
+            i = np.random.randint(problem.n)
+            g = problem.grad_i(w, i) - problem.grad_i(w_tilde, i) + mu_tilde
+            w = w - eta * g                            # constant step, no decay
+        w_tilde = w                                    # refresh reference (last iterate)
+    return w_tilde
+```

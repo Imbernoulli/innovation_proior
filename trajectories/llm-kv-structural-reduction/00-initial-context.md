@@ -1,74 +1,35 @@
 ## Research question
 
-GPT-style autoregressive decoding is dominated not by arithmetic but by memory bandwidth: at every
-decode step the accelerator must stream the entire stored history of attention keys and values — the
-KV cache — across the bus to produce a single token. That cache grows with sequence length, batch, and
-the number of materialized KV heads, and it is what caps context length and batch size at serving time.
-The single thing being designed here is the **attention block's KV structure** — how the keys and values
-are materialized, shared, or compressed — under one fixed nanoGPT-style pretraining loop. The question
-is sharp and two-sided: how much language-model quality survives a reduction in the *realized* KV state,
-and whether **head sharing** (collapse the number of KV heads) or a **latent KV bottleneck** (compress
-K/V into a low-rank vector decompressed on the fly) gives the better quality-per-byte tradeoff at a
-fixed small-scale pretraining budget. Everything outside the attention block is frozen.
+Autoregressive decoding is memory-bandwidth bound: at each step the accelerator streams the entire stored history of attention keys and values — the KV cache — to produce one token. The cache grows with sequence length, batch size, and the number of materialized KV heads, and it is what limits context length and batch size at serving time.
 
-## Prior art before the first rung (the attention lineage)
+The design space here is the **attention block's KV structure** — how keys and values are materialized, shared, or compressed — under one fixed nanoGPT-style pretraining loop. The question is how much language-model quality survives a reduction in the *realized* KV state, and whether **head sharing** (fewer KV heads than query heads) or a **latent KV bottleneck** (compressing K/V into a low-rank vector decompressed on the fly) gives the better quality-per-byte tradeoff at a fixed small-scale pretraining budget. Everything outside the attention block is frozen.
 
-The first rung is dense multi-head attention itself — the unreduced control the whole task reacts
-against. The KV-reduction designs that follow it are responses to one structural fact: the KV cache is
-large *because* it stores a separate key and value per head. The lineage that precedes the ladder:
+## Prior art / Background / Baselines
 
-- **Scaled dot-product attention (Vaswani et al., 2017).** A head projects the input into queries,
-  keys, and values and returns $\mathrm{softmax}(QK^\top/\sqrt{k})V$; $h$ heads run in parallel, each
-  with its own projections, so the layer attends to several relationships at once. Gap: it says nothing
-  about *decoding* cost — the per-head K/V are exactly what must be cached and reloaded.
-- **The KV cache.** During generation, position $i$ attends over all $j\le i$; recomputing past K/V
-  each step is wasteful, so they are computed once and cached. This makes per-step arithmetic linear in
-  history but introduces a stored tensor whose size grows with the sequence — and, critically, with the
-  head count. Gap: nothing here bounds how many KV heads must be stored.
-- **The memory-bandwidth diagnostic (roofline; Williams, Waterman, Patterson, 2009).** Counting bytes
-  vs ops over a decode of length $n$, batch $b$, width $d$, $h$ heads, head dim $k=d/h$: arithmetic is
-  $\Theta(b\,n\,d^2)$ (the projections dominate), while the cached K/V touched over all steps is
-  $\Theta(b\,h\,n^2 k)=\Theta(b\,n^2 d)$. The memory-to-compute ratio is $n/d + 1/b$; the $n/d$ term —
-  the cost of streaming the cache — is the offender, and it carries an $h$ inside ($b\,h\,n^2k$). Gap:
-  the diagnostic pins the cost on *one key and one value per head*, but does not say how to shrink it.
+The control and the baselines all share one structural fact: the KV cache is large because it stores separate keys and values per head.
 
-The fixed substrate below is the standard dense layer those three converged on, and the editable
-interface is precisely the region where the $h$ in the cache term can be cut or compressed away.
+- **Dense multi-head attention (Vaswani et al., 2017).** Each query head has its own key and value projection, so the layer attends over multiple relations in parallel. Gap: every head materializes separate K and V, so the cache stores one K/V pair per head and scales directly with head count.
+- **The KV cache.** During generation, past K/V are stored rather than recomputed, making per-step arithmetic linear in history. Gap: it does not bound the number of stored KV heads; the cache still grows with sequence length, batch size, and head count.
+- **Roofline memory-bandwidth model (Williams et al., 2009).** Counting bytes versus operations shows that, for long-sequence decoding, streaming the cache dominates the arithmetic cost. Gap: the diagnostic identifies per-head K/V as the source of bandwidth pressure but does not itself say how to shrink the stored state.
 
-## The fixed substrate
+The fixed substrate below is the standard dense layer these converged on, and the editable interface is exactly the region where the per-head KV state can be reduced.
 
-A nanoGPT pretraining loop is frozen and must not be touched: token + learned absolute position
-embeddings, a stack of `n_layer` pre-LayerNorm `Block`s (attention then a 4× GELU MLP, residual around
-each), a tied LM head, AdamW with weight decay split (decay on 2-D params only), cosine LR schedule with
-warmup, bf16 autocast, DDP. Training is on ClimbMix; held-out cross-entropy is measured on
-WikiText-2/103 + LAMBADA, and 0-shot downstream accuracy via lm-eval. The loop also computes the KV
-footprint itself: `GPT.structural_metrics()` walks every block's attention module and reports
-`head_sharing_ratio = n_head / n_kv_head`, `latent_rank_ratio`, and the headline efficiency number
-`kv_bytes_per_token`. That last is **derived from the realized attention structure**, not measured at
-runtime — for a plain block it is `2 * n_kv_head * head_dim * 2`; for a latent-compression block (one
-exposing `kv_a_proj_with_mqa` and `kv_b_proj`) it is `2 * (kv_lora_rank + qk_rope_head_dim)`; for a
-layer that borrows the previous layer's K/V (`share_across_layers`) it is `0`. So the design choices in
-the attention block *are* what the efficiency metric reads off.
+## Fixed substrate / Code framework
 
-## The editable interface
+The nanoGPT pretraining loop is frozen: token + learned absolute position embeddings, a stack of `n_layer` pre-LayerNorm `Block`s (attention then a 4× GELU MLP, residual around each), a tied LM head, AdamW with weight-decay split, cosine LR schedule with warmup, bf16 autocast, DDP. Training is on ClimbMix; held-out cross-entropy is measured on WikiText-2/103 + LAMBADA, and 0-shot downstream accuracy is measured via lm-eval.
 
-Exactly one region is editable — the span between the read-only `# BEGIN/END KV EDITABLE REGION`
-markers in `custom_pretrain.py`. An AST validator enforces that only the allowed helper functions plus
-`CausalSelfAttention` appear at the top level of that span; the contract is the three required helpers
-and the attention class:
+The loop also reports structural efficiency metrics through `GPT.structural_metrics()`: `head_sharing_ratio`, `latent_rank_ratio`, and `kv_bytes_per_token`. The last is derived from the realized attention structure — for a plain block it is `2 * n_kv_head * head_dim * 2`; for a latent-compression block it is `2 * (latent_rank + rope_head_dim)`; for a layer that borrows the previous layer's K/V (`share_across_layers`) it is `0`. The design choices in the attention block are what this metric reads off.
 
-- `build_kv_heads(config)` → `(n_kv_head, head_dim)`: how many KV heads are materialized relative to
-  the `config.n_head` query heads.
-- `cross_layer_share(layer_idx, config)` → `bool`: an optional structural hook to reuse a previous
-  layer's K/V (auxiliary; not the main axis).
+## Editable interface
+
+Only the span between the `# BEGIN/END KV EDITABLE REGION` markers in `custom_pretrain.py` may be edited. An AST validator enforces that only the allowed helper functions plus `CausalSelfAttention` appear in that span. The contract is:
+
+- `build_kv_heads(config)` → `(n_kv_head, head_dim)`: how many KV heads are materialized relative to `config.n_head` query heads.
+- `cross_layer_share(layer_idx, config)` → `bool`: an optional structural hook to reuse a previous layer's K/V.
 - `latent_kv_project(k, v, config)` → `(k, v, latent_ratio)`: an optional latent KV bottleneck.
-- `CausalSelfAttention(nn.Module)`: how the above choices are instantiated inside the block — the
-  internal Q/KV projection, any per-head expansion, and the attention mixing path. Its contents are
-  flexible (it may define its own RMSNorm / rotary helpers from the allowed name list), but it must set
-  `self.n_kv_head`, `self.head_dim`, and the `_last_*` diagnostic attributes the metric reads.
+- `CausalSelfAttention(nn.Module)`: how the above choices are instantiated — the internal Q/KV projection, any per-head expansion, and the attention mixing path. It must set `self.n_kv_head`, `self.head_dim`, and the `_last_*` diagnostic attributes the metric reads.
 
-The starting point is the scaffold default: **dense multi-head attention** — one KV head per query
-head, no sharing, no compression. Each rung on the ladder replaces exactly this region.
+The starting point is dense multi-head attention: one KV head per query head, no sharing, no compression. Each rung on the ladder replaces exactly this region.
 
 ```python
 # EDITABLE region of custom_pretrain.py — default fill (dense MHA)
@@ -190,16 +151,12 @@ class CausalSelfAttention(nn.Module):
 
 ## Evaluation settings
 
-Primary evaluation at **345M** scale (24 layers, 16 heads, width 1024), seed 42, on the Chinchilla-optimal
-~7.1B-token schedule (13535 steps, 2-GPU DDP, LR 3e-4, bf16). Metrics, with directions:
+Primary evaluation at **345M** scale (24 layers, 16 heads, width 1024), seed 42, on the Chinchilla-optimal ~7.1B-token schedule (13535 steps, 2-GPU DDP, LR 3e-4, bf16). Metrics, with directions:
 
-- `val_loss` (primary; cross-entropy on the ClimbMix validation split, **lower is better**).
-- `kv_bytes_per_token` (the efficiency axis; evaluator-derived from the realized attention structure,
-  **lower is better**).
-- `heldout_loss` (mean cross-entropy on WikiText-2/103 + LAMBADA at the final checkpoint, lower is
-  better), with per-corpus breakdowns.
+- `val_loss` (primary; cross-entropy on the ClimbMix validation split, lower is better).
+- `kv_bytes_per_token` (efficiency axis; derived from the realized attention structure, lower is better).
+- `heldout_loss` (mean cross-entropy on WikiText-2/103 + LAMBADA at the final checkpoint, lower is better), with per-corpus breakdowns.
 - `arc_easy`, `hellaswag` (0-shot downstream accuracy via lm-eval, higher is better).
 - `head_sharing_ratio`, `latent_rank_ratio` (structural descriptors of the chosen design).
 
-The research question is the **quality-per-byte tradeoff**, so a rung is "stronger" when it Pareto-improves
-the relevant prior: lower KV bytes at equal-or-better loss, or better loss at equal-or-lower bytes.
+The research question is the quality-per-byte tradeoff, so a rung is stronger when it Pareto-improves the relevant prior: lower KV bytes at equal-or-better loss, or better loss at equal-or-lower bytes.

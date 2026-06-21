@@ -1,0 +1,43 @@
+# Changelog
+
+- `results/context.md:23` Reframed the pooling limitation as a structural failure mode rather than a hindsight claim about reported outcomes.
+- `results/context.md:28` Clarified pooling variants as fixed symmetric reductions whose aggregation rule is not learned from the current set contents.
+- `results/context.md:45` Added the implementation caveat that the official module is size-agnostic per tensor call but mixed-length padded batches need masking that the canonical code does not provide.
+- `results/reasoning.md:7` Clarified size-agnostic function behavior versus concrete minibatch masking.
+- `results/reasoning.md:32` Corrected the SAB equivariance derivation for the case where query, key, and value rows are permuted together.
+- `results/reasoning.md:70` Corrected the power-mean construction: uniform attention requires zero query projection and zero bias, not coordinate-matched query/key logits.
+- `results/reasoning.md:72` Corrected the sum-pooling derivation: zero-query softmax gives a mean; exact sum pooling needs the broader non-normalizing activation family `omega(t)=1+f(t)` with `f(0)=0`.
+- `results/reasoning.md:74` Distinguished the theoretical universality construction from the practical canonical softmax module and stated how the attention path can be suppressed.
+- `results/reasoning.md:104` Preserved the official implementation's scale constant, `sqrt(dim_V)`, rather than replacing it with per-head scaling.
+- `results/reasoning.md:144` Made the PMA code explanation faithful to the official repository by noting that the practical module omits the paper formula's leading `rFF(Z)`.
+- `results/reasoning.md:178` Updated the closing summary so mean and power means are attributed to softmax attention and exact sum pooling to the wider non-normalizing attention family.
+- `results/answer.md:19` Added the canonical-code note that PMA omits the leading `rFF(Z)` because the previous block already ends with row-wise feed-forward processing.
+- `results/answer.md:29` Corrected the universality summary to separate softmax mean/power means from exact sum pooling in the broader attention family.
+- `results/answer.md:31` Added the official-code caveat that no padding-mask argument is present for mixed-length padded batches.
+- `results/answer.md:58` Kept the code faithful to the official module's exact softmax scale `math.sqrt(self.dim_V)`.
+- `results/.codex_review.json:3` Marked the deliverables as Codex-reviewed.
+- `results/.codex_review.json:4` Marked the audit outcome as completed.
+- `results/.codex_review.json:8` Recorded the evidence basis: companion review completed, official code/source bundle rechecked, repository-root checker absent, bundled strict checker passed.
+- `notes/source_matrix.md:3` Added the strict evidence-bundle status.
+- `notes/source_matrix.md:7` Recorded primary paper/source evidence for MAB, SAB, ISAB, PMA, permutation claims, universality lemmas, and PMA implementation omission.
+- `notes/source_matrix.md:8` Recorded Deep Sets ancestor evidence for `rho(sum(phi(x)))` and universality.
+- `notes/source_matrix.md:9` Recorded Transformer ancestor evidence for scaled dot-product attention, multi-head projections, residual sublayers, layer normalization, positional encoding, and dropout.
+- `notes/source_matrix.md:10` Recorded sparse-GP pseudo-input evidence for the inducing-point bottleneck analogy.
+- `notes/source_matrix.md:11` Recorded Nystrom evidence for low-rank approximation through a representative subset.
+- `notes/source_matrix.md:12` Recorded independent explainer evidence for MAB/SAB/ISAB/PMA and ISAB cost.
+- `notes/source_matrix.md:13` Recorded third-party implementation evidence for ISAB and mask-aware practical variants.
+- `notes/source_matrix.md:14` Recorded author-slide evidence for Deep Sets limitations, attention equivariance, ISAB cost, PMA readout, and the code URL.
+- `notes/source_matrix.md:15` Recorded official GitHub issue evidence on decoder SAB task dependence, PMA size handling, and absent built-in masking.
+- `notes/source_matrix.md:16` Recorded canonical-code evidence for class definitions, residual placement, learned parameter shapes, exact scaling, mask omission, and PMA `rFF(Z)` omission.
+- `notes/source_matrix.md:20` Documented the sigmoid subtlety in the supplementary sum-pooling lemma; standard sigmoid does not satisfy `f(0)=0`.
+- `notes/source_matrix.md:21` Documented that exact sum pooling belongs to the general attention activation proof, not the default softmax implementation.
+- `notes/source_matrix.md:22` Documented the official code's `sqrt(dim_V)` scale constant.
+- `notes/discovery_synthesis.md:5` Added the primary-source synthesis used to audit definitions, invariance/equivariance, and implementation defaults.
+- `notes/discovery_synthesis.md:9` Added the canonical-code synthesis for projection shapes, head splitting, softmax scaling, residual placement, and PMA implementation behavior.
+- `notes/discovery_synthesis.md:13` Summarized the corrected mean-versus-sum universality derivation.
+- `notes/discovery_synthesis.md:14` Summarized the corrected zero-logit power-mean construction.
+- `notes/discovery_synthesis.md:15` Summarized the distinction between paper-level attention suppression and simplified code-path suppression.
+- `notes/discovery_synthesis.md:16` Recorded the decision to keep `sqrt(dim_V)` for code faithfulness.
+- `notes/discovery_synthesis.md:17` Recorded the masking caveat from the official code and issue evidence.
+- `notes/discovery_synthesis.md:33` Recorded the audit order and final strict-check disposition.
+- `notes/strict_check_output.txt:1` Added the validation transcript summary for strict checking, in-frame linting, leakage detection, official-code diff, official-code commit, and whitespace validation.

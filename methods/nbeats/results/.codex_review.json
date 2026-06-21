@@ -1,0 +1,24 @@
+{
+  "method": "nbeats",
+  "reviewer": "codex",
+  "thread_id": "019ed773-c6d7-7492-bc85-7d518b7f59b5",
+  "date": "2026-06-17",
+  "focus": "code-vs-canonical-reference correctness (ServiceNow/N-BEATS, arXiv:1905.10437)",
+  "files_reviewed": [
+    "methods/nbeats/results/answer.md",
+    "trajectories/ts-short-term-forecast/05-nbeats-answer.md"
+  ],
+  "outcome": "pass",
+  "bugs_found": 0,
+  "edits_made": false,
+  "verification": {
+    "ast_parse": "both python blocks parse",
+    "smoke_test": "scaffold Custom.py runs under d_model=512, x_mark=None; output shape (3,5,1), finite values, 6 block calls (shared within each stack, distinct across stacks)",
+    "standalone": "generic/trend/seasonality basis shapes smoke-tested successfully"
+  },
+  "findings": [
+    "No correctness bugs. methods/nbeats answer matches canonical NBeatsBlock, GenericBasis, TrendBasis, SeasonalityBasis, and NBeats.forward: FC stack with ReLU, single basis_parameters projection, identity split, polynomial/Fourier templates, reversed residuals, last-value forecast seed, masked backcast peel, forecast accumulation.",
+    "trajectory 05-nbeats-answer is a correct runnable Custom.py fill for the univariate M4 protocol: Model(configs), forecast([B,L,1]) -> [B,H,1], forward returns last pred_len steps, ignores marks safely, dense-mask equivalent of the reference loop. The broadcast forecast=x[:,-1:] ([B,1]) plus block_forecast [B,pred_len] works as intended.",
+    "Reference-fidelity caveat (not a bug): the scaffold originally weight-shared a generic block within each stack; ServiceNow's exact generic() factory instantiates a fresh NBeatsBlock per stack. ADDRESSED after review: the finale 05-nbeats-answer.md now ships a flat stack of distinct generic blocks (n_blocks=6), an exact clone of the ServiceNow generic factory; the reasoning notes within-stack weight-sharing is the interpretable configuration's regularizer. Re-verified: forward output shape (3,8,1), 6 distinct blocks."
+  ]
+}

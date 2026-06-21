@@ -1,0 +1,25 @@
+# File:Line Changelog
+
+- `results/context.md:3` through `results/context.md:51` rebuilt the context as exactly five `##` sections and kept it pre-method: no `SSD` or `Single Shot` target-name leak, with the detector-head details left as open slots.
+- `results/context.md:13` through `results/context.md:21` tightened the ancestor framing for Fast/Faster R-CNN, MultiBox, YOLO, OverFeat, feature-map scale, VGG, and dilation without revealing the final construction.
+- `results/reasoning.md:1` through `results/reasoning.md:13` rewrote the discovery path as first-person present-tense reasoning from the proposal-stage bottleneck to local reference-box prediction and multi-resolution feature maps.
+- `results/reasoning.md:15` through `results/reasoning.md:33` corrected default-box center/scale reasoning, including explicit SSD300 steps and the 8732-box count.
+- `results/reasoning.md:41` through `results/reasoning.md:56` rechecked signs and constants for center/log-size targets, variance scaling, `alpha = 1`, and the `N = 0` zero-loss case.
+- `results/reasoning.md:58` through `results/reasoning.md:68` added hard-negative mining, boundary-box retention, VGG/dilated-conv backbone setup, augmentation, and inference constants in-frame, with zero markdown headers.
+- `results/answer.md:13` records the paper-vs-Caffe source-layer naming difference so `conv8_2..conv11_2` and `conv6_2..conv9_2` are not treated as conflicting architectures.
+- `results/answer.md:17` through `results/answer.md:49` corrects default-box math and SSD300 constants: special `conv4_3` scale `0.1`, min/max sizes, steps, aspect ratios, `clip=False`, `[4,6,6,6,4,4]`, and total priors `8732`.
+- `results/answer.md:53` through `results/answer.md:74` corrects matching and loss details: best-prior forcing, threshold positives, four-element variances `[0.1,0.1,0.2,0.2]`, `alpha = 1`, background class `0`, and hard-negative mining at `3:1`.
+- `results/answer.md:76` through `results/answer.md:78` records inference constants: confidence threshold `0.01`, per-class NMS `0.45`, `top_k = 400`, and keep top `200`.
+- `results/answer.md:91` through `results/answer.md:123` replaces the detector-head code with faithful 3x3 localization/confidence predictors and L2 normalization.
+- `results/answer.md:126` through `results/answer.md:155` replaces prior generation with the official SSD300 steps/min-sizes/max-sizes/aspect-ratio configuration and removes unconditional clipping.
+- `results/answer.md:183` through `results/answer.md:198` fixes encode/decode to use four Caffe variances and the correct center/log-size signs.
+- `results/answer.md:201` through `results/answer.md:217` fixes matching, including no-ground-truth handling, best-prior forcing, `>= 0.5` positives via `< threshold` background assignment, and class-index offset for background.
+- `results/answer.md:220` through `results/answer.md:267` fixes the MultiBox loss code: device-correct targets, exact zero loss when no positives exist, Smooth L1 over positives only, per-image hard-negative cap, and normalization by matched positives.
+- `notes/source_matrix.md:5` through `notes/source_matrix.md:14` adds the strict evidence matrix for primary source, ancestors, explainers, self-account search, and canonical Caffe code.
+- `notes/source_matrix.md:16` records that no mandatory source class is missing, while noting the limited author self-account result.
+- `notes/discovery_synthesis.md:13` through `notes/discovery_synthesis.md:28` records the math audit for loss, offsets, variances, SSD300 sizes, matching cases, threshold convention, and negative mining.
+- `notes/discovery_synthesis.md:32` through `notes/discovery_synthesis.md:39` records the code-faithfulness fixes against the official Caffe branch.
+- `notes/discovery_synthesis.md:43` through `notes/discovery_synthesis.md:47` records the posterior-leak, scaffold-purity, and voice review decisions.
+- `refs/self_accounts/search_log.md:3` through `refs/self_accounts/search_log.md:21` documents the author self-account search and why the Google Research publication page is only a publication listing.
+- `results/.codex_review.json:1` through `results/.codex_review.json:8` replaces the previous errored review marker with an explicit `not_run` record because no independent review gate is available.
+- `notes/strict_check_output.txt:1` through `notes/strict_check_output.txt:5` records that `scripts/check_strict_method.py` is absent, so the requested strict checker could not be run.

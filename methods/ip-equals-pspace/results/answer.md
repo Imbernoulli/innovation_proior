@@ -1,135 +1,56 @@
 # IP = PSPACE
 
-## The result
+## The Theorem
 
-A polynomial-time **randomized** verifier interacting with an **all-powerful but untrusted** prover can
-verify exactly the languages decidable in polynomial space:
+`IP = PSPACE`: the languages with polynomial-round interactive proofs are exactly the languages decidable in polynomial space.
 
-> **Theorem (IP = PSPACE).** A language `L` has an interactive proof system if and only if `L ∈ PSPACE`.
+The easy direction is `IP subseteq PSPACE`. For any fixed verifier, the optimal prover acceptance probability is the value of a polynomial-depth game tree: prover nodes take maxima, verifier-randomness nodes take averages, and leaves are accept/reject. A depth-first evaluation reuses space, so the value is computable in PSPACE.
 
-This is far beyond NP: it places coNP, the entire polynomial-time hierarchy, `P^{#P}`, and all of
-PSPACE inside IP. It was the first major **non-relativizing** result — there is an oracle
-(Fortnow–Sipser) under which coNP has no interactive proofs, so the proof cannot treat computation as a
-black box; it must, and does, exploit algebraic structure.
+## The Protocol Idea
 
-## The key idea: arithmetization + sum-check + Schwartz–Zippel
+Reduce every PSPACE computation to TQBF:
 
-1. **Arithmetization.** Lift Boolean objects to low-degree polynomials over a large prime field `F_p`:
-   `x∧y ↦ XY`, `¬x ↦ 1−X`, `x∨y ↦ 1−(1−X)(1−Y)`, and a clause `A∨B∨C` becomes
-   `1−(1−A)(1−B)(1−C)`. A 3-CNF with `m` clauses becomes, as a product of the clause-polynomials kept
-   un-expanded, a size-`O(m)` polynomial `Φ` of degree `≤ 3m` that equals the formula on `{0,1}^n`. Off
-   the cube, `Φ` gives the verifier random points the prover can't anticipate.
-2. **Sum-check.** To verify a claim `K = Σ_{b∈{0,1}^n} g(b)` for a polynomial `g` of degree `≤ d` per
-   variable, strip one variable per round: the prover sends the univariate
-   `h_j(X_j) = Σ_{rest∈{0,1}} g(r_1,…,r_{j-1}, X_j, rest)`, the verifier checks `h_j(0)+h_j(1)` against
-   the running claim, then binds `X_j` to a fresh random `r_j` and recurses.
-3. **Schwartz–Zippel soundness.** A cheating prover must lie about some round's polynomial; two distinct
-   degree-`d` univariates agree on `≤ d` points, so a random field point exposes the lie with
-   probability `≥ 1 − d/|F|`. This randomness is what lifts the verifier past NP.
+`Psi = Q_1 x_1 ... Q_n x_n phi(x_1,...,x_n)`,
 
-## Sum-check, stated and proved
+with `phi` a 3-CNF. Arithmetize `phi` over a large prime field:
 
-**Protocol.** Input: prime `p`, polynomial `g(X_1,…,X_n)` of degree `≤ d` in each variable, claimed sum
-`K`. If one variable remains, the verifier evaluates `g(0)+g(1)` directly and compares it to the running
-claim. Otherwise the prover sends the degree-`≤ d` univariate
-`s_1(X_1) = Σ_{b_2,…,b_n} g(X_1,b_2,…,b_n)`; the verifier checks `s_1(0)+s_1(1)=K`, samples
-`r_1 ∈ F_p`, and recurses on the smaller claim
-`s_1(r_1)=Σ_{b_2,…,b_n} g(r_1,b_2,…,b_n)`. Iterating peels one variable per round until the direct
-one-variable check applies.
+- `x AND y -> XY`
+- `NOT x -> 1-X`
+- `x OR y -> 1-(1-X)(1-Y)`
 
-**Completeness.** The honest prover sends the true `h_j` each round; all checks pass; accept w.p. 1.
+The resulting polynomial `Phi` agrees with `phi` on `{0,1}^n` and can be evaluated compactly from the clauses.
 
-**Soundness.** If `K ≠ Σ_b g(b)` then `Pr[reject] ≥ (1 − d/p)^n`. *Proof by induction on `n`.* For
-`n=1`, the verifier evaluates `g(0)+g(1)` directly and rejects with probability 1 if it differs from `K`.
-For `n>1`, a true `h_1` fails the round-1 check, so the prover sends `s_1 ≠ h_1`; the nonzero polynomial
-`s_1−h_1` has `≤ d` roots, so `Pr_{r_1}[s_1(r_1) ≠ h_1(r_1)] ≥ 1 − d/p`. On that event the prover faces
-a false `(n−1)`-variable claim and, by the induction hypothesis, fails it with probability
-`≥ (1−d/p)^{n−1}`. Hence
-`Pr[reject] ≥ (1−d/p)·(1−d/p)^{n−1} = (1−d/p)^n`. ∎ With `p ≫ dn`, this is `≈ 1`.
+Arithmetize quantifiers:
 
-Applied to the arithmetized 3-CNF `Φ` (degree `d ≤ 3m`), with a prover-chosen prime `p ∈ (2^n, 2^{2n}]`
-(so the integer count equals the count mod `p`), this gives `#SAT ∈ IP`, hence coNP ⊆ IP and PH ⊆ IP.
+- `forall x` becomes product over `x in {0,1}`.
+- `exists x` becomes `1-(1-a)(1-b)` over the two branch values.
 
-## PSPACE ⊆ IP via TQBF
+Naively stripping these operators causes exponential degree growth. The proof's critical step is degree reduction on the Boolean cube:
 
-`Ψ = Q_1 x_1 … Q_n x_n φ(x)` (PSPACE-complete TQBF, `φ` a 3-CNF). Arithmetize the quantifiers:
-`∀x_i ↦ ∏_{x_i∈{0,1}} (·) = (·)|_{x_i=0}·(·)|_{x_i=1}` and
-`∃x_i ↦ ⊔⊔_{x_i∈{0,1}}(·) = 1−(1−(·)|_{x_i=0})(1−(·)|_{x_i=1})`. Then `Ψ` is true iff the operator-applied
-arithmetic value is `1`.
+`L_i(P) = x_i P(...,1,...) + (1-x_i) P(...,0,...)`.
 
-**The degree wall and the fix.** The product/OR operators *multiply* the two branches, so a variable's
-degree **doubles** per operator, reaching `2^n · 3m` — untransmittable, breaking even completeness. Fix:
-since `x^k = x` on `{0,1}`, insert a **linearization (degree-reduction) operator** after each quantifier
-for every live variable,
-> `L_i(P) = x_i · P(…,x_i=1,…) + (1−x_i) · P(…,x_i=0,…)`,
+`L_i(P)` agrees with `P` at `x_i=0,1` and is linear in `x_i`. Interleaving these reductions keeps all round polynomials low-degree while preserving the quantified Boolean truth value.
 
-the unique polynomial of degree `≤ 1` in `x_i` that agrees with `P` on `{0,1}` (single-variable Lagrange
-interpolation through `0,1`). This restores per-variable degree `≤ 1` without changing any cube value.
-The verified object is the `O(n²)`-operator string
-`1 = Q'_1 L_1 Q'_2 L_1 L_2 Q'_3 L_1 L_2 L_3 … Q'_n L_1…L_n Φ`,
-where each `Q'_i` is `∏_{x_i}` for `∀x_i` or `⊔⊔_{x_i}` for `∃x_i`.
+## Verification
 
-**Protocol.** Maintain a running claim `v` (start `v=1`). For each operator on variable `x_i`, the prover
-sends a univariate `P̂(x_i)`; the verifier checks operator-consistency against `v`
-— `P̂(0)P̂(1)=v` (`∏`), `1−(1−P̂(0))(1−P̂(1))=v` (`⊔⊔`), or `r_i P̂(1)+(1−r_i)P̂(0)=v` at the current
-binding (`L_i`) — then binds `x_i` to a fresh random `r_i` and sets `v ← P̂(r_i)`. At the end all
-variables are random; the verifier evaluates `Φ(r_1,…,r_n)` itself and checks it against `v`.
+The verifier maintains a running claim `v` for the remaining operator suffix.
 
-**Completeness:** honest prover ⇒ accept w.p. 1. **Soundness:** a false claim forces a lie about a round
-polynomial. Quantifier rounds have degree `≤ 1`; the innermost `n` linearization rounds, where `Φ` enters,
-have degree `≤ 3m`; all other linearization rounds have degree `≤ 2`. The lie survives a fresh random
-point with probability `≤ deg/p`, so the union bound gives
-`Pr[falsely accept] ≤ n/p + 3mn/p + (2/p)Σ_{i=1}^{n-1} i = (3mn+n²)/p`, negligible for a poly-bit prime
-`p ≫ 3mn+n²`. Hence TQBF ∈ IP, so **PSPACE ⊆ IP**.
+- Universal round: prover sends `p(x_i)`; verifier checks `p(0)p(1)=v`.
+- Existential round: verifier checks `1-(1-p(0))(1-p(1))=v`.
+- Linearization round: verifier checks `r_i p(1)+(1-r_i)p(0)=v` at the current binding.
 
-## IP ⊆ PSPACE (the easy direction)
+After each check, the verifier samples a fresh random field point `r_i`, sets `v = p(r_i)`, and continues. At the end, it evaluates `Phi(r_1,...,r_n)` itself and accepts iff it equals the final claim.
 
-For any verifier `V`, the maximum acceptance probability is the value of a game tree of polynomial depth
-(poly rounds), branching `≤ 2^{poly}` (poly-length messages): prover nodes take the **max** over
-children, verifier nodes take the coin-weighted **average**, leaves are accept/reject. Evaluate it
-depth-first, reusing space — computable in polynomial space. Root `> 2/3` ⇒ accept, `< 1/3` ⇒ reject.
-So `IP ⊆ PSPACE`. With `PSPACE ⊆ IP`, **IP = PSPACE**. ∎
+## Soundness
 
-## Verifier sketch
+If the original claim is false, a cheating prover must at some round send a univariate different from the true low-degree polynomial. Two different degree-`d` univariates agree on at most `d` field points, so a fresh random challenge lets the lie survive with probability at most `d/q`.
 
-```python
-# IP = PSPACE.  Verify TQBF  Psi = Q_1 x_1 ... Q_n x_n phi(x)  (phi a 3-CNF, m clauses)
-# in F_p, p a poly-bit prime the verifier certifies.
+With Katz's operator proof bounds, the total false-accept probability is at most:
 
-def lit_value(binding, lit, F):               # lit = (var, negated?)
-    x = binding[lit.var]
-    return F.sub(1, x) if lit.negated else x
+`(3mn+n^2)/q`.
 
-def Phi(binding, clauses, F):                 # arithmetized 3-CNF: AND of clauses (product)
-    val = 1
-    for clause in clauses:                    # clause = list of (var, negated?)
-        all_false = prod(F, (F.sub(1, lit_value(binding, lit, F)) for lit in clause))
-        val = F.mul(val, F.sub(1, all_false)) # 1 - (1-A)(1-B)(1-C), degree <= 3
-    return val                                # total degree <= 3m
+Choosing a polynomial-bit prime `q` much larger than `3mn+n^2` gives bounded error, and repetition amplifies it.
 
-def verify_TQBF(Psi, prover, F):
-    ops = build_operator_string(Psi)          # Q'_x1 L1 Q'_x2 L1 L2 ... ; O(n^2) ops
-    binding, v = {}, 1                         # running claim: stripped expression == 1
-    for op, i in ops:
-        bound = degree_bound(op, i, Psi)                    # 1, 2, or 3m
-        Phat = prover.send_univariate(op, i, dict(binding)) # univariate in x_i
-        if degree(Phat) > bound: return False
-        if op == 'PROD':                                   # forall : product over {0,1}
-            if F.mul(ev(Phat,0,F), ev(Phat,1,F)) != v: return False
-        elif op == 'OR':                                   # exists : 1-(1-.)(1-.)
-            if F.sub(1, F.mul(F.sub(1,ev(Phat,0,F)), F.sub(1,ev(Phat,1,F)))) != v: return False
-        else:                                              # L_i : linearization check
-            r = binding[i]
-            if F.add(F.mul(r,ev(Phat,1,F)), F.mul(F.sub(1,r),ev(Phat,0,F))) != v: return False
-        r_i = F.random()                       # fresh random point => per-round error <= deg/p
-        binding[i] = r_i
-        v = ev(Phat, r_i, F)                    # carry claim to the reduced sub-problem
-    return Phi(binding, Psi.clauses, F) == v    # final self-check at random point
+## Why It Was Distinctive
 
-def value_of_game_tree(history, V):             # IP subseteq PSPACE: poly depth, reused space
-    if is_leaf(history):  return 1 if V.accepts(history) else 0
-    if prover_moves_next(history):              # prover maximizes
-        return max(value_of_game_tree(history+m, V) for m in prover_messages(history))
-    return weighted_average(value_of_game_tree(history+c, V)  # verifier averages over coins
-                            for c in coin_outcomes(history))
-```
+The proof does not trust the prover and does not ask for a static certificate. It turns a PSPACE computation into algebraic low-degree claims, uses interaction to reduce exponentially large assertions one random challenge at a time, and uses finite-field root-counting to police lies. That non-black-box arithmetization step is why the theorem goes beyond earlier NP/proof-system examples and why it bypasses relativized oracle barriers.

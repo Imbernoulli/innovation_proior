@@ -1,70 +1,29 @@
 ## Research question
 
-CIFAR-100 ships its 100 fine classes pre-grouped into 20 coarse superclasses, so a single image
-carries two labels at two granularities. The single thing being designed is the **multi-task loss
-combination strategy** — how the fine-head loss and the coarse-head loss are folded into one scalar
-that the optimizer descends — with one objective only: maximize **fine-class test accuracy**. The
-coarse task is purely auxiliary; the coarse label is a free, semantically structured extra signal,
-and the question is whether and how it can be made to *help* the fine objective rather than steal
-capacity from it. Everything else — the backbone, the two heads, the data pipeline, the optimizer,
-the schedule — is fixed. Only the combination rule moves.
+CIFAR-100 ships its 100 fine classes pre-grouped into 20 coarse superclasses, so a single image carries two labels at two granularities. The single design object is the **multi-task loss combination strategy** — how the fine-head loss and the coarse-head loss are folded into one scalar that the optimizer descends — with one objective only: maximize **fine-class test accuracy**. The coarse task is purely auxiliary; the coarse label is a free, semantically structured extra signal, and the question is whether and how it can be made to help the fine objective rather than steal capacity from it. Everything else — the backbone, the two heads, the data pipeline, the optimizer, the schedule — is fixed. Only the combination rule moves.
 
-## Prior art before the first rung
+## Prior art / Background / Baselines
 
-The first rung reacts to the way joint multi-task training is normally done and to its standard
-failure. The lineage it answers:
+- **Hard parameter sharing (Caruana, 1997).** A shared trunk with small task-specific heads is trained on the summed loss `L = Σ_i L_i`, under the premise that related tasks provide a useful inductive bias. Gap: the bare sum is acutely sensitive to the implicit relative weighting, and equal weighting rarely puts the primary task at its peak.
 
-- **Hard parameter sharing (Caruana, *Multitask Learning*, 1997).** A shared trunk with small
-  task-specific heads, trained on the summed loss `L = Σ_i L_i`. The premise is that an inductive
-  bias from a related task improves generalization. Gap: the bare sum is acutely sensitive to the
-  implicit relative weighting, and "just add them" is rarely where the primary task peaks.
-- **Hand-tuned / grid-searched weighting `L = Σ_i w_i L_i`.** Sweep `w_i` and keep the best. Gap:
-  one full training run per grid point, combinatorial in the number of tasks, and the good band is
-  narrow; the static weight also cannot adapt to where training currently is.
-- **Loss-magnitude balancing (the family the auxiliary-weighting baselines come from).** Observe
-  that fine cross-entropy (100-way) and coarse cross-entropy (20-way) sit at different magnitudes
-  and at different difficulties, so a fixed sum lets one dominate the shared gradient; rescale per
-  task to equalize them. Gap: scaling the losses changes *how much* each task counts but not the
-  *geometry* of how their gradients interact on the shared trunk.
-- **Gradient-interference accounts (Caruana; later multi-objective MTL).** The shared trunk sees
-  `g = Σ_i g_i`; when two task gradients point partly against each other the sum cancels in the
-  overlap, and joint training can land *below* single-task training. This is the observation the
-  gradient-surgery rung picks up: the cancellation is *directional*, so a magnitude rescale cannot
-  reach it.
+- **Hand-tuned / grid-searched weighting `L = Σ_i w_i L_i`.** Static task weights are set by search and kept for the whole run. Gap: one full training run per grid point, combinatorial in the number of tasks, and a fixed weight cannot adapt to where training currently is.
 
-## The fixed substrate
+- **Loss-magnitude balancing.** Per-task losses are rescaled so that tasks at different magnitudes or difficulties contribute comparably to the shared gradient. Gap: scaling changes how much each task counts but does not alter how their gradients interact on the shared trunk.
 
-The whole pipeline is frozen and must not be touched. A CIFAR-adapted backbone (ResNet-20 = `[3,3,3]`
-basic blocks, ResNet-56 = `[9,9,9]`, or VGG-16-BN) ends in a global average pool feeding **two linear
-heads** off the *same* features: `fc_fine` (100-way) and `fc_coarse` (20-way). The coarse label of
-each image is derived from its fine label by the fixed CIFAR-100 superclass map. Training is SGD
-(`lr=0.1`, `momentum=0.9`, `weight_decay=5e-4`) under cosine annealing over **200 epochs**, batch
-size 128, with `RandomCrop(32, pad=4)` + `RandomHorizontalFlip`. Each step the loop computes
-`fine_loss = CE(fine_logits, fine_targets)` and `coarse_loss = CE(coarse_logits, coarse_targets)`,
-hands both (plus `epoch`, `total_epochs`) to the combination module, calls `.backward()` on the
-returned scalar, and steps. One detail is load-bearing for everything that follows: the optimizer is
-built over `model.parameters() + mtl_loss.parameters()`, so **any learnable tensor the module
-registers as a `Parameter` is trained jointly with the network by the same SGD**. Test-time accuracy
-is read off `fc_fine` only.
+- **Gradient-interference accounts.** When task gradients on shared parameters partially oppose each other, the summed gradient can cancel information and joint training can underperform single-task training. Gap: the observed cancellation lowers fine-task accuracy when the auxiliary gradient conflicts with the primary gradient on shared parameters, and existing combination rules do not address it.
 
-## The editable interface
+## Fixed substrate / Code framework
 
-Exactly one region is editable — the `MultiTaskLoss` class in `pytorch-vision/custom_mtl.py`
-(lines 195–216). Every method on the ladder is a fill of this same contract:
+The whole pipeline is frozen and must not be touched. A CIFAR-adapted backbone (ResNet-20 = `[3,3,3]` basic blocks, ResNet-56 = `[9,9,9]`, or VGG-16-BN) ends in a global average pool feeding **two linear heads** off the same features: `fc_fine` (100-way) and `fc_coarse` (20-way). The coarse label of each image is derived from its fine label by the fixed CIFAR-100 superclass map. Training is SGD (`lr=0.1`, `momentum=0.9`, `weight_decay=5e-4`) under cosine annealing over **200 epochs**, batch size 128, with `RandomCrop(32, pad=4)` + `RandomHorizontalFlip`. Each step the loop computes `fine_loss = CE(fine_logits, fine_targets)` and `coarse_loss = CE(coarse_logits, coarse_targets)`, hands both (plus `epoch`, `total_epochs`) to the combination module, calls `.backward()` on the returned scalar, and steps. The optimizer is built over `model.parameters() + mtl_loss.parameters()`, so **any learnable tensor the module registers as a `Parameter` is trained jointly with the network by the same SGD**. Test-time accuracy is read off `fc_fine` only.
 
-- `__init__(self, num_tasks=2)` — may register learnable parameters (log-variances, weights) or
-  non-learnable buffers, and may hold auxiliary state such as a loss-history buffer.
-- `forward(self, fine_loss, coarse_loss, epoch, total_epochs)` — receives the **two scalar task
-  losses** plus the current `epoch` (0-indexed) and `total_epochs`, and returns **one scalar** for
-  `.backward()`. It must stay differentiable and must not touch labels, heads, datasets, backbones,
-  or the outer loop.
+## Editable interface
 
-What the interface does and does not expose decides the whole space. The module is handed the two
-*already-reduced scalar* losses, not the logits, not the targets, not the shared features — so a
-pure loss-weighting rule reads only those scalars; a gradient-geometry rule must *reach back into
-the graph* from `fine_loss`/`coarse_loss` (e.g. via `torch.autograd.grad`) to recover the shared
-parameters, since the module is never given them directly. The `epoch`/`total_epochs` arguments are
-the only curriculum/scheduling handle.
+Exactly one region is editable — the `MultiTaskLoss` class in `pytorch-vision/custom_mtl.py` (lines 195–216). Every method fills the same contract:
+
+- `__init__(self, num_tasks=2)` — may register learnable parameters (log-variances, weights) or non-learnable buffers, and may hold auxiliary state such as a loss-history buffer.
+- `forward(self, fine_loss, coarse_loss, epoch, total_epochs)` — receives the **two scalar task losses** plus the current `epoch` (0-indexed) and `total_epochs`, and returns **one scalar** for `.backward()`. It must stay differentiable and must not touch labels, heads, datasets, backbones, or the outer loop.
+
+The module only sees the two already-reduced scalar losses, not the logits, targets, or shared features. Any rule needing more than the loss magnitudes must recover it from `fine_loss`/`coarse_loss` via autograd. The `epoch`/`total_epochs` arguments are the only curriculum/scheduling handle.
 
 The starting point is the scaffold default: **equal weighting** — sum the two losses.
 
@@ -96,9 +55,4 @@ class MultiTaskLoss(nn.Module):
 
 ## Evaluation settings
 
-Three backbones span the capacity range — **ResNet-20** (small), **ResNet-56** (deeper residual),
-and **VGG-16-BN** (a different family, larger heads) — each trained on CIFAR-100 with the fine+coarse
-two-head setup for 200 epochs, seed 42. The reported metric is **best fine-class test accuracy
-(%, higher is better)** reached during training, per backbone; the task score is the geometric mean
-across the three. The combination module must remain differentiable and may not change labels, heads,
-datasets, backbones, or the outer training loop.
+Three backbones span the capacity range — **ResNet-20** (small), **ResNet-56** (deeper residual), and **VGG-16-BN** (a different family, larger heads) — each trained on CIFAR-100 with the fine+coarse two-head setup for 200 epochs, seed 42. The reported metric is **best fine-class test accuracy (%, higher is better)** reached during training, per backbone; the task score is the geometric mean across the three. The combination module must remain differentiable and may not change labels, heads, datasets, backbones, or the outer training loop.

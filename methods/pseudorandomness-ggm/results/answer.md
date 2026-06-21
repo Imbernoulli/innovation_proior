@@ -117,23 +117,4 @@ from the ideal to every efficient adversary.
 
 ## Construction (concrete)
 
-```python
-# G: {0,1}^k -> {0,1}^{2k}; G0, G1 its left/right k-bit halves.
-def G0(s, k): return prg_double(s, k)[:k]
-def G1(s, k): return prg_double(s, k)[k:]
-
-# Blum-Micali-Yao PRG: one hard-core bit per step of a one-way permutation.
-def prg_bits(seed, length):
-    s, out = seed, []
-    for _ in range(length):
-        out.append(hard_core_bit(s))     # provably-unpredictable bit
-        s = one_way_permutation(s)        # advance the orbit (stays uniform)
-    return out                            # order-independent: emit forward in real time
-
-# GGM tree: short key K -> random-looking function on k-bit inputs.
-def f_K(K, x, k):
-    label = K                             # root = key
-    for bit in x:                         # walk the k-bit input down the tree
-        label = G0(label, k) if bit == 0 else G1(label, k)   # child = one doubling
-    return label                          # leaf label = f_K(x); k PRG calls, never 2^k
-```
+GGM uses a length-doubling PRG G: {0,1}^k → {0,1}^{2k} with left/right halves G₀,G₁. The Blum–Micali–Yao generator iterates a one-way permutation, emitting one hard-core bit per step. The PRF is built by walking a depth-k binary tree: root label K, internal node label v has children G₀(v), G₁(v), and the leaf reached by input path x is F_K(x).

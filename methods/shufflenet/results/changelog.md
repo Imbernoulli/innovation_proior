@@ -1,0 +1,37 @@
+# Changelog
+
+- `methods/shufflenet/results/context.md:1` Rebuilt the context as exactly five `##` sections with no top-level H1 and no target-method name.
+- `methods/shufflenet/results/context.md:9` Re-grounded the residual bottleneck cost as `hw(2cm + 9m^2)`, with the `2cm` and `9m^2` constants explained.
+- `methods/shufflenet/results/context.md:15` Restored the exact `93.4%` pointwise-convolution diagnostic for ResNeXt cardinality 32.
+- `methods/shufflenet/results/context.md:31` Corrected the small-network training constants: weight decay `4e-5`, linear LR `0.5 -> 0`, batch 1024, and about `3e5` iterations.
+- `methods/shufflenet/results/context.md:35` Replaced the old answer-shaped scaffold with an in-frame residual harness and an empty `Unit` slot.
+- `methods/shufflenet/results/reasoning.md:3` Re-derived why grouped `3x3` alone leaves dense `1x1` pointwise layers as the tiny-budget bottleneck.
+- `methods/shufflenet/results/reasoning.md:13` Rechecked formula signs/constants for the final unit: `hw(2cm/g + 9m)`, with `2` pointwise layers and a `3 x 3` depthwise term.
+- `methods/shufflenet/results/reasoning.md:15` Added the stride-2 case explicitly: depthwise stride 2, shortcut average pool, and channel concatenation instead of residual add.
+- `methods/shufflenet/results/reasoning.md:21` Kept the reasoning in-frame while placing the permutation where the released reference code places it: after depthwise BN and before the second grouped pointwise layer.
+- `methods/shufflenet/results/reasoning.md:73` Aligned the embedded implementation with the Megvii V1 stage-repeat and channel-table structure for groups `3` and `8`.
+- `methods/shufflenet/results/reasoning.md:119` Added the reference initializer call to the embedded code.
+- `methods/shufflenet/results/reasoning.md:129` Added the Megvii-style initializer details for convolutions, BN layers, and linear layers.
+- `methods/shufflenet/results/answer.md:11` Replaced the old formula summary with the verified ResNet/ResNeXt/ShuffleNet FLOP comparison.
+- `methods/shufflenet/results/answer.md:19` Documented the primary-description versus Megvii-code channel-shuffle placement difference.
+- `methods/shufflenet/results/answer.md:27` Replaced the old shuffle helper with the Megvii-compatible reshape/permute order.
+- `methods/shufflenet/results/answer.md:71` Replaced the generic all-group model with the Megvii `ShuffleNetV1` class and exact `stage_repeats = [4, 8, 4]`.
+- `methods/shufflenet/results/answer.md:87` Added the exact Megvii `model_size` and group validation for `g in {3, 8}`.
+- `methods/shufflenet/results/answer.md:122` Added the reference initializer call.
+- `methods/shufflenet/results/answer.md:132` Added the Megvii-style initializer body.
+- `methods/shufflenet/results/answer.md:160` Preserved the paper Table 1 all-group width table separately from the Megvii reference-code specialization.
+- `methods/shufflenet/notes/source_matrix.md:5` Added the primary-source evidence row with formulas, architecture constants, training details, and the pointwise diagnostic.
+- `methods/shufflenet/notes/source_matrix.md:13` Added Megvii `ShuffleNet-Series` V1 as the canonical code source and listed the implementation facts used for code faithfulness.
+- `methods/shufflenet/notes/source_matrix.md:17` Recorded the formula-constant verification notes.
+- `methods/shufflenet/notes/discovery_synthesis.md:13` Recorded the code-faithfulness review findings against the Megvii reference.
+- `methods/shufflenet/notes/discovery_synthesis.md:19` Added the reference initializer as a repaired code-faithfulness item.
+- `methods/shufflenet/notes/discovery_synthesis.md:25` Documented the scaffold purity fixes: five context sections, no H1, no target-method name.
+- `methods/shufflenet/notes/discovery_synthesis.md:33` Recorded the V2 hindsight-leak guardrail.
+- `methods/shufflenet/notes/discovery_synthesis.md:37` Recorded that no author self-account was found.
+- `methods/shufflenet/notes/discovery_synthesis.md:39` Recorded the missing strict checker and the manual replacement check.
+- `methods/shufflenet/refs/self_accounts/search_log.md:7` Added the `SELF_ACCOUNT_SOURCES.md` lookup result.
+- `methods/shufflenet/refs/self_accounts/search_log.md:11` Added the web-search queries used for the self-account search.
+- `methods/shufflenet/notes/strict_check_output.txt:1` Recorded that `scripts/check_strict_method.py methods/shufflenet` cannot run because the script is absent.
+- `methods/shufflenet/notes/strict_check_output.txt:4` Recorded replacement structural checks: five context sections, no context H1, no context/reasoning leakage, no reasoning headers, and code-block compilation.
+- `methods/shufflenet/notes/strict_check_output.txt:12` Recorded the final formula/code audit scope, including Megvii shuffle placement, classifier bias, and initializer.
+- `methods/shufflenet/results/.codex_review.json:1` Replaced the stale errored marker with an honest `not_run` independent-review marker plus manual-audit evidence.

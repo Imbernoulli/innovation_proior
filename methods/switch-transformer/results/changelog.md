@@ -1,0 +1,42 @@
+# Switch Transformer File:Line Changelog
+
+- `results/context.md:3` rebuilt the setup into exactly five `##` sections and kept it pre-method, with no target method name or final top-1/loss constants.
+- `results/context.md:9` reframed conditional computation and MoE as background constraints: dense hardware, router collapse, static expert capacity, and residual handling for dropped tokens.
+- `results/context.md:25` tightened baselines around dense FFNs, top-k MoE, top-2 routing costs, and full-float32 stability costs without revealing the final simplification.
+- `results/context.md:45` replaced the code scaffold with pure TODO stubs for router, capacity, overflow, and balancing loss.
+- `results/reasoning.md:5` added the exact top-1 router-gradient derivation through the selected gate value \(p_e(x)\), including the softmax sign cases.
+- `results/reasoning.md:14` verified every capacity indexing case: exclusive cumsum with `position < C` and equivalent inclusive cumsum with `count <= C`.
+- `results/reasoning.md:26` corrected the auxiliary-loss derivative sign: gradient descent lowers overloaded-expert logits and raises underloaded-expert logits relative to the probability-weighted load average.
+- `results/reasoning.md:31` kept the uniform-value constant check \(N\sum_i(1/N)(1/N)=1\) before multiplying by `alpha`.
+- `results/reasoning.md:33` clarified selective precision as local router float32 followed by model-dtype combine/dispatch tensors before all-to-all communication.
+- `results/reasoning.md:37` aligned router exploration with canonical multiplicative input jitter before the router projection.
+- `results/reasoning.md:39` kept no-token-left-behind rerouting and sparse attention as excluded branches rather than core-method leakage.
+- `results/reasoning.md:41` restated the final method in in-frame prose with no markdown headers and no code block.
+- `results/answer.md:23` rewrote expert capacity with the correct floor/implementation-padding caveat and residual behavior for overflowed tokens.
+- `results/answer.md:29` restated \(f_i\) and \(P_i\) exactly as hard top-1 load and mean router probability.
+- `results/answer.md:35` restated the auxiliary loss as \(L_{aux}=\alpha N\sum_i f_iP_i\) with `alpha=1e-2`.
+- `results/answer.md:39` reconciled the paper equation with the canonical Mesh code form `reduce_mean(f * P) * N**2`.
+- `results/answer.md:41` recorded source-faithful stability and regularization constants: selective precision, 10x smaller init scale, input jitter, and higher expert dropout.
+- `results/answer.md:64` rebuilt the router code to keep router internals in float32 and handle mixed-precision classifier weights faithfully.
+- `results/answer.md:89` made capacity integer rounding explicit and added a minimum-capacity guard for standalone execution.
+- `results/answer.md:93` matched Mesh `_switch_gating` with 0-based cumulative positions and `position < capacity`.
+- `results/answer.md:103` kept the load-balancing loss on pre-capacity top-1 assignments and float32 router probabilities.
+- `results/answer.md:122` rebuilt the sparse FFN forward path so dropped tokens contribute zero sparse update and rely on the outer residual.
+- `results/answer.md:141` excluded router z-loss from the core reconstruction because it is a later/optional library addition.
+- `notes/source_matrix.md:7` added the primary JMLR/arXiv source artifacts and the exact equation/constant review notes.
+- `notes/source_matrix.md:13` through `notes/source_matrix.md:19` added load-bearing ancestors for dense Transformer, sparsely gated MoE, Mesh TensorFlow, GShard, T5, scaling laws, and per-example routing.
+- `notes/source_matrix.md:25` through `notes/source_matrix.md:27` added third-party explainers from Hugging Face, Keras, and labml.
+- `notes/source_matrix.md:33` documented the author self-account search result and the absence of a stable written technical retrospective.
+- `notes/source_matrix.md:39` through `notes/source_matrix.md:40` added canonical code evidence from TensorFlow Mesh and Hugging Face, including the z-loss exclusion note.
+- `notes/source_matrix.md:44` through `notes/source_matrix.md:47` recorded the math/code/leak/scaffold audit conclusions.
+- `notes/discovery_synthesis.md:5` recorded the reconstruction spine and the selected-gate gradient path.
+- `notes/discovery_synthesis.md:16` through `notes/discovery_synthesis.md:22` documented capacity rounding, exclusive cumsum, overflow, and no-token-left-behind exclusion.
+- `notes/discovery_synthesis.md:31` through `notes/discovery_synthesis.md:42` documented the load-balancing loss, uniform constant, Mesh equivalence, and corrected gradient-sign analysis.
+- `notes/discovery_synthesis.md:46` through `notes/discovery_synthesis.md:50` documented selective precision, initialization scale, expert dropout, and input jitter.
+- `notes/discovery_synthesis.md:54` through `notes/discovery_synthesis.md:67` documented code-faithfulness checks against `code/tensorflow_mesh_moe.py` and `code/hf_modeling_switch_transformers.py`.
+- `notes/discovery_synthesis.md:71` through `notes/discovery_synthesis.md:75` documented posterior-leak cleanup, scaffold purity, and in-frame voice.
+- `refs/self_accounts/search_log.md:5` through `refs/self_accounts/search_log.md:16` recorded the self-account search and why no exact equations/constants rely on the surfaced video interview.
+- `results/.codex_review.json:3` replaced the stale errored marker with an explicit independent-review-not-run marker while recording that the main review/fix pass completed.
+- `notes/strict_check_output.txt:3` recorded the strict checker command.
+- `notes/strict_check_output.txt:6` recorded `STRICT CHECK PASSED`.
+- `notes/strict_check_output.txt:8` through `notes/strict_check_output.txt:14` recorded AST parsing, runtime smoke test, overflow case, uniform-loss check, context leak scan, and reasoning style scan.

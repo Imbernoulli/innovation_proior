@@ -1,0 +1,57 @@
+# File-Line Changelog
+
+- `methods/salun/notes/source_matrix.md:3`: Added the evidence-bundle status and noted that `methods.json` has no `salun` entry, so identity is grounded through the primary paper and official code.
+- `methods/salun/notes/source_matrix.md:9`: Added the primary arXiv PDF, extracted text, and TeX source as the math source of truth.
+- `methods/salun/notes/source_matrix.md:10`: Added Thudi et al. as ancestor grounding for approximate unlearning, retraining reference, gradient ascent, and verification error.
+- `methods/salun/notes/source_matrix.md:11`: Added Golatkar et al. as ancestor grounding for selective forgetting and privacy/weight-distribution framing.
+- `methods/salun/notes/source_matrix.md:12`: Added Jia et al. as ancestor grounding for model-side sparsity and the MUSparse baseline.
+- `methods/salun/notes/source_matrix.md:13`: Added SmoothGrad as ancestor grounding for gradient-magnitude saliency.
+- `methods/salun/notes/source_matrix.md:14`: Added OpenReview notes as third-party explainer evidence.
+- `methods/salun/notes/source_matrix.md:15`: Added an independent Stanford machine-unlearning overview for evaluation framing.
+- `methods/salun/notes/source_matrix.md:16`: Added the OPTML project page as author self-account evidence.
+- `methods/salun/notes/source_matrix.md:17`: Added the ICLR poster as author self-account evidence.
+- `methods/salun/notes/source_matrix.md:18`: Added YouTube oEmbed metadata for the author-linked spotlight video.
+- `methods/salun/notes/source_matrix.md:19`: Added the MSU MAIR lab publication page as author/lab self-account evidence.
+- `methods/salun/notes/source_matrix.md:20`: Added the canonical `OPTML-Group/Unlearn-Saliency` clone and pinned commit `a6e89fd17ff737c24c6aa16c9574469a234ffd91`.
+- `methods/salun/notes/discovery_synthesis.md:10`: Corrected the method reconstruction from "random labeling" to a global hard binary parameter mask built from absolute forget gradients.
+- `methods/salun/notes/discovery_synthesis.md:16`: Documented why negative setup losses in code do not change the mask after absolute-value ranking.
+- `methods/salun/notes/discovery_synthesis.md:21`: Corrected the threshold interpretation to a global median/top-ratio threshold rather than a layerwise rule.
+- `methods/salun/notes/discovery_synthesis.md:27`: Separated the paper's `y' != y` classification objective from the public code's all-class random-label sampling.
+- `methods/salun/notes/discovery_synthesis.md:33`: Replaced the unsupported lazy first-minibatch mask with the official setup pass over the forget loader.
+- `methods/salun/notes/discovery_synthesis.md:35`: Added code-faithful gradient masking before optimizer steps.
+- `methods/salun/notes/discovery_synthesis.md:36`: Added the current canonical restoration of masked-out coordinates and momentum clearing.
+- `methods/salun/notes/discovery_synthesis.md:39`: Added the DDPM case: forget-class diffusion mask, pseudo class `(label_to_forget + 1) % 10`, detached pseudo output, and retain-weighted loss.
+- `methods/salun/notes/discovery_synthesis.md:46`: Added the Stable Diffusion class-removal and NSFW prompt-removal cases.
+- `methods/salun/notes/discovery_synthesis.md:54`: Recorded the `context.md` leak fix and five-section pre-method scaffold.
+- `methods/salun/notes/discovery_synthesis.md:58`: Recorded the `reasoning.md` rewrite into first-person, present-tense, header-free reasoning.
+- `methods/salun/notes/discovery_synthesis.md:63`: Recorded the `answer.md` rewrite with equations, objectives, code discrepancy notes, and code-faithful skeleton.
+- `methods/salun/notes/discovery_synthesis.md:81`: Recorded that no posterior/hindsight claims from later work were used in the deliverables.
+- `methods/salun/results/context.md:1`: Replaced the old context with a pure pre-method task and gold-standard setup.
+- `methods/salun/results/context.md:16`: Reframed classification baselines without naming the target method or giving the mask answer.
+- `methods/salun/results/context.md:30`: Added the whole-model update-footprint bottleneck as the motivating gap.
+- `methods/salun/results/context.md:43`: Added the generative-unlearning problem frame without leaking the later pseudo-conditioning mechanism.
+- `methods/salun/results/context.md:55`: Added a minimal implementation slot that keeps the answer unresolved.
+- `methods/salun/results/reasoning.md:17`: Fixed sign handling for setup gradients, including the code's `-CE`/`-MSE` convention.
+- `methods/salun/results/reasoning.md:22`: Derived the binary mask from absolute forget-gradient scores.
+- `methods/salun/results/reasoning.md:27`: Corrected the hard threshold to a global top-ratio/median-style choice.
+- `methods/salun/results/reasoning.md:34`: Corrected the masked-model equation and clarified that the mask constrains updates rather than pruning the forward pass.
+- `methods/salun/results/reasoning.md:41`: Added gradient masking before optimizer steps plus post-step restoration and momentum clearing.
+- `methods/salun/results/reasoning.md:46`: Corrected the classification objective with `alpha > 0`.
+- `methods/salun/results/reasoning.md:52`: Added the public-code discrepancy where random labels are sampled from all classes.
+- `methods/salun/results/reasoning.md:58`: Corrected the classifier retain-term cases for CIFAR-10/SVHN versus CIFAR-100/TinyImageNet.
+- `methods/salun/results/reasoning.md:64`: Added the diffusion pseudo-conditioning objective and retain MSE case.
+- `methods/salun/results/reasoning.md:70`: Added DDPM, Stable Diffusion, and NSFW code-faithful pseudo-condition handling.
+- `methods/salun/results/reasoning.md:77`: Explicitly rejected the unsupported lazy first-minibatch mask.
+- `methods/salun/results/answer.md:12`: Corrected the core mask formula.
+- `methods/salun/results/answer.md:13`: Corrected the masked-parameter equation.
+- `methods/salun/results/answer.md:16`: Corrected the global threshold/default `with_0.5.pt` interpretation and sign invariance.
+- `methods/salun/results/answer.md:23`: Corrected the paper classification objective and `alpha > 0` retain term.
+- `methods/salun/results/answer.md:27`: Added the code-faithful all-class random-label caveat.
+- `methods/salun/results/answer.md:34`: Corrected the diffusion objective and `beta > 0` retain term.
+- `methods/salun/results/answer.md:39`: Added DDPM/Stable Diffusion pseudo-class and NSFW pseudo-prompt cases.
+- `methods/salun/results/answer.md:49`: Replaced the mask builder with full-forget-loader setup pass, absolute gradients, and global ranking.
+- `methods/salun/results/answer.md:83`: Added gradient masking before optimizer steps.
+- `methods/salun/results/answer.md:89`: Added exact restoration of masked-out coordinates and momentum-buffer masking.
+- `methods/salun/results/answer.md:101`: Added a CIFAR-10/SVHN-style epoch skeleton faithful to public random-label and retain-update behavior.
+- `methods/salun/results/.codex_review.json:1`: Added review metadata documenting that no independent review gate was available and listing checked sources.
+- `methods/salun/notes/strict_check_output.txt:1`: Recorded the strict scaffold checker result.

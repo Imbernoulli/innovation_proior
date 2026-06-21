@@ -1,85 +1,85 @@
 ## Research question
 
-The task is deliberately tiny to state and brutal to optimize: read a text file of one billion lines,
-each `station;temperature` (a UTF-8 station name of 1–100 bytes containing neither `;` nor `\n`, then a
-temperature in [−99.9, 99.9] with exactly one fractional digit), and for every distinct station compute
-its **minimum, mean, and maximum**. Emit the stations sorted alphabetically, each as `<min>/<mean>/<max>`
-rounded to one decimal place with IEEE-754 `roundTowardPositive` semantics. The file is ~12 GB on disk;
-there are at most 10,000 distinct station names (the reference dataset has 413). It must run as a single
-Java source file with no external dependencies, and the result must be computed at runtime — no baking the
-answer into a native image at build time.
+Read one billion `station;temperature` lines and emit, for each distinct station, its min/mean/max sorted alphabetically as `<min>/<mean>/<max>` rounded to one decimal with IEEE-754 `roundTowardPositive`. Stations are UTF-8, 1–100 bytes, with no `;` or `\n`. Temperatures are in [−99.9, 99.9] with exactly one fractional digit. Input is ~12 GB; there are at most 10,000 distinct stations. The entry is a single Java source file with no external dependencies, and the answer must be computed at runtime.
 
-Everything that defines the *problem* is frozen: the billion rows, the output format, the rounding rule,
-the 10,000-station ceiling, and the hardware. The hardware is a Hetzner AX161 — a 32-core AMD EPYC 7502P
-(Zen2) at 2.5 GHz with 128 GB RAM — but the evaluation pins each entry to **eight cores**, with SMT
-disabled and Turbo Boost off, on an ext4 filesystem. Because the answer is fixed and the machine is fixed,
-the only free variable is *how fast the program runs end to end* — wall-clock from launch to the last byte
-of output. That is the single number the ladder is ranked on, and lower is better.
+Evaluation pins each entry to **eight cores** of a Hetzner AX161 (32-core AMD EPYC 7502P, Zen2, 2.5 GHz, 128 GB RAM), SMT off, Turbo off, ext4. The input, output format, rounding rule, and hardware are fixed; the ranking is wall-clock time from process launch to the last output byte. Lower is better.
 
-What makes the problem interesting is that it is almost entirely **memory- and parse-bound**, not
-compute-bound. A billion lines is a billion delimiter searches, a billion number parses, a billion
-hash-map probes, and ~12 GB of bytes that have to move from the page cache through the cores. The
-arithmetic per row — three comparisons and an add — is trivial; the cost is everywhere *around* it: I/O,
-branch mispredictions, cache misses, allocation, UTF-8 decoding, and the JVM's own startup and JIT
-warmup. Every rung below is one structural attack on that overhead.
+The task is almost entirely **memory- and parse-bound**: a billion delimiter searches, parses, hash-map probes, and ~12 GB of bytes moving through the cores. Arithmetic per row is trivial; the cost lies in I/O, branch mispredictions, cache misses, allocation, UTF-8 handling, and JVM startup/JIT warmup.
 
-## Prior art before the first rung
+## Prior art / Background / Baselines
 
-There is no published literature to climb out of here — the lineage is the leaderboard itself, a public
-record where each entry is a single self-contained Java program and the only currency is wall-clock
-seconds. The relevant background is the toolbox modern Java hands a systems programmer, and which parts
-of it the early entries had not yet reached for:
+Current entries apply these techniques; each leaves a concrete gap:
 
-- **The Java streams + collections idiom.** `Files.lines()` returns a `Stream<String>` of decoded lines;
-  `String.split(";")` cuts each into fields; `Collectors.groupingBy` plus a custom `Collector` folds them
-  into per-key aggregates; a `TreeMap` gives the sorted output for free. This is the natural, idiomatic
-  way to express the task, and it is where the baseline lives.
-- **Memory-mapped I/O.** `FileChannel.map` (and, in newer JDKs, `MemorySegment` over an `Arena`) maps the
-  file into the address space so the program reads bytes directly from the page cache without
-  `read()` syscalls or intermediate buffers. The file can be sliced into segments and a thread given each.
-- **`java.util.concurrent` and bare `Thread`s.** Eight cores sit idle unless the work is split across them;
-  `Stream.parallel()`, an `ExecutorService`, or hand-managed `Thread[]` all spread segments over cores,
-  with a final merge step combining the per-thread partial results.
-- **The incubating Vector API (`jdk.incubator.vector`).** `ByteVector` exposes the CPU's SIMD lanes
-  portably: load 16 or 32 bytes at once, compare them all against `';'` in one instruction, and read off
-  a bitmask of matches. It needs `--add-modules jdk.incubator.vector` / `--enable-preview`.
-- **SWAR — "SIMD within a register".** The same data-parallel idea using only plain 64-bit `long`
-  arithmetic: load 8 bytes as one `long` and find a target byte with the classic bit-twiddling identity
-  `(w - 0x0101…01) & ~w & 0x8080…80`, which lights up the high bit of any zero byte. No special
-  instructions, no incubator module — just multiply, subtract, and `Long.numberOfTrailingZeros`.
-- **`sun.misc.Unsafe` and `java.lang.foreign`.** Raw off-heap reads: given a memory address, `getLong`
-  fetches 8 bytes with no bounds check and no object header. `MemorySegment` is the supported successor;
-  `Unsafe` is the unsupported but maximally bare path the fastest entries still use.
-- **GraalVM `native-image`.** Ahead-of-time compilation to a standalone native binary, eliminating JVM
-  startup and JIT warmup — which, on a job that finishes in seconds, is a meaningful slice of wall-clock.
+- **Java streams + collections.** Core idea: express the pipeline idiomatically with `Files.lines()`, `String.split(";")`, `Double.parseDouble`, and `Collectors.groupingBy` into a `TreeMap`. Gap: it allocates a `String`, a `String[]`, and a boxed `Double` per row, plus `TreeMap` sorting. The reference implementation finishes in **04:49.679** (m:ss.mmm); every entry must beat this number.
 
-The baseline the ladder starts from is the challenge's own reference implementation: `Files.lines()` over
-the file, `String.split(";")` per line, `Double.parseDouble` on the value, `groupingBy(station, …)` with a
-custom min/max/sum/count collector, collected into a `TreeMap` and printed. Single-threaded, fully
-idiomatic, allocating a `String` and a `String[]` and a boxed `Double` per row. On the evaluation machine
-it finishes in **04:49.679** (m:ss.mmm). That is the number every rung below has to beat.
+- **Memory-mapped I/O.** Core idea: map the file with `FileChannel.map` or `MemorySegment` so threads read directly from the page cache without `read()` syscalls or intermediate buffers. Gap: once syscalls are gone, per-byte scanning, parsing, and aggregation dominate.
 
-## The fixed substrate
+- **Multithreading.** Core idea: split the file into segments, run one per core, then merge partial results. Gap: the merge step and segment load imbalance become visible as per-core aggregation speeds up.
 
-The contract every entry fills is the same: a `main` that reads `./measurements.txt`, aggregates min/mean/
-max per station, and prints `{Station=min/mean/max, …}` sorted by station, with each value rounded to one
-decimal. The mean is computed as `sum/count` and only the *output* is rounded; internally the fast entries
-keep temperatures as scaled integers (one fractional digit means the value times ten is an integer in
-[−999, 999], so a `short` or `int` holds it exactly and min/max/sum become pure integer ops). The merge of
-two partial aggregates is associative — `min`/`max`/`sum`/`count` combine elementwise — which is what makes
-the whole thing parallelizable: split the file, aggregate each piece independently, combine at the end.
+- **Vector API.** Core idea: use `ByteVector` to load 16–32 bytes and compare against `';'` in one SIMD instruction, producing a bitmask of delimiter positions. Gap: it requires `--add-modules jdk.incubator.vector` / `--enable-preview`, and the scalar parsing and aggregation stages remain.
 
-The frozen scaffold, then, is "read bytes → split key from value → parse value → look up the key's
-aggregate and update it → merge partials → sort and print." Each rung is one structural change to *how*
-those steps are done — the I/O path, the delimiter search, the number parse, the hash map, the threading,
-the runtime — that drives the wall-clock number down, while the output stays byte-for-byte identical.
+- **SWAR.** Core idea: find delimiter bytes in a 64-bit `long` with the bit-twiddling identity `(w - 0x0101…01) & ~w & 0x8080…80` and `Long.numberOfTrailingZeros`. Gap: it processes only eight bytes per operation and leaves the surrounding parse and aggregate pipeline unchanged.
+
+- **Raw off-heap access.** Core idea: read mapped memory directly with `sun.misc.Unsafe.getLong` or `java.lang.foreign.MemorySegment`, avoiding bounds checks and object headers. Gap: it removes access overhead but does not reduce the work done per row.
+
+- **GraalVM `native-image`.** Core idea: compile the program ahead of time to a standalone binary, eliminating JVM startup and JIT warmup. Gap: parsing and aggregation still account for most of the wall-clock.
+
+## Fixed substrate / Code framework
+
+Every entry implements a `main` that reads `./measurements.txt`, aggregates min/mean/max per station, and prints `{Station=min/mean/max, …}` sorted by station. The mean is `sum/count`; only the output is rounded. Fast entries store temperatures as scaled integers (×10, so [−999, 999] fits in `short` or `int`) and perform min/max/sum/count as integer operations.
+
+The pipeline is fixed: read bytes → split key from value → parse value → look up and update the station aggregate → merge partial aggregates → sort and print. A minimal runnable scaffold that satisfies the contract is:
+
+```java
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
+
+public class CalculateAverage {
+    static class Result {
+        int min = Integer.MAX_VALUE, max = Integer.MIN_VALUE;
+        long sum;
+        int count;
+        void add(int v) {
+            min = Math.min(min, v);
+            max = Math.max(max, v);
+            sum += v;
+            count++;
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        Map<String, Result> map = new TreeMap<>();
+        try (var br = Files.newBufferedReader(Path.of("./measurements.txt"))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                int sep = line.indexOf(';');
+                String station = line.substring(0, sep);
+                int v = (int) Math.round(Double.parseDouble(line.substring(sep + 1)) * 10);
+                map.computeIfAbsent(station, k -> new Result()).add(v);
+            }
+        }
+        StringBuilder out = new StringBuilder("{");
+        for (var e : map.entrySet()) {
+            Result r = e.getValue();
+            if (out.length() > 1) out.append(", ");
+            double mean = Math.ceil((double) r.sum / r.count) / 10.0;
+            out.append(e.getKey()).append('=')
+               .append(r.min / 10.0).append('/')
+               .append(mean).append('/')
+               .append(r.max / 10.0);
+        }
+        System.out.println(out.append('}'));
+    }
+}
+```
+
+This scaffold is correct and runnable, but it is only a structural starting point.
+
+## Editable interface
+
+The editable part is the implementation of the five pipeline stages: I/O and byte supply, delimiter search, temperature parse, per-station aggregate lookup/update, and final merge/sort/output. The evaluation harness fixes the input path, the output format, the JDK/JVM flags, and the core count. A valid entry may use any language feature or API available under those flags, including memory mapping, threads, SIMD intrinsics, off-heap access, or ahead-of-time compilation.
 
 ## Evaluation settings
 
-The ranking metric is **wall-clock time** (m:ss.mmm) from process launch to last output byte, measured on
-the fixed evaluation machine: eight cores of the AMD EPYC 7502P, 128 GB RAM, SMT and Turbo off, ext4, with
-the input being 1,000,000,000 rows generated by the challenge's own generator (413 distinct stations in
-the primary dataset; a separate 10,000-station run stresses the key-set ceiling). Each entry is launched
-via its own shell script, which fixes the JDK build and JVM flags (several rungs use a GraalVM build or
-`--enable-preview`); correctness is checked against the reference output before timing. The numbers each
-rung reports are the published leaderboard results for that exact entry — not re-run here. Lower is better.
+The ranking metric is wall-clock time (m:ss.mmm) from process launch to last output byte on the fixed machine: eight cores of the AMD EPYC 7502P, 128 GB RAM, SMT and Turbo off, ext4. The input is 1,000,000,000 rows generated by the challenge's own generator (413 distinct stations in the primary dataset; a separate 10,000-station run stresses the key-set ceiling). Correctness is checked against the reference output before timing. Reported numbers are the published leaderboard results for each entry. Lower is better.

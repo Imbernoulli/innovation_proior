@@ -2,29 +2,22 @@
 
 A learner is shown a sequence of tasks `t = 1, ..., T`, one after another. It trains on task 1,
 then task 2, and so on, and after the whole sequence is finished it is evaluated on *every*
-task it ever saw. The data arrives as a stream — ideally each task's examples are seen once,
-in a single pass, because the point of the setting is to learn quickly and cheaply from a
-continuum, not to replay a fixed dataset many times. The central failure mode is
-**catastrophic forgetting**: when ordinary training (gradient descent on the current task's
-loss) moves the parameters to fit task `t`, the accuracy on tasks `1, ..., t-1` collapses,
-because nothing in the objective ties the parameters to what made the old tasks work.
+task it ever saw. The data arrives as a stream, with each task's examples seen once in a single
+pass, so the learner picks up tasks quickly and cheaply from a continuum rather than replaying
+a fixed dataset many times. The central phenomenon is **catastrophic forgetting**: when
+ordinary training (gradient descent on the current task's loss) moves the parameters to fit
+task `t`, the accuracy on tasks `1, ..., t-1` drops, because nothing in the objective ties the
+parameters to what made the old tasks work.
 
-The precise goal is an algorithm that, while training on the current task, keeps the loss on
-the earlier tasks from going up — but it must do so under hard *deployment* constraints that
-rule out the obvious cures. It may **not** simply store and retrain on all past data (that
-turns lifelong learning back into ordinary multitask learning and defeats the streaming
-premise), and its memory must not grow without bound. Just as important, the **per-step
-compute** must stay close to that of plain SGD: a method whose cost per gradient step grows
-with the number of tasks already seen does not scale to a long stream. And it should keep
-*positive backward transfer* on the table — learning a new task is allowed to *improve* old
-ones, so a cure that freezes old behavior outright is giving something up. A solution has to
-hit all of these at once: limited samples (single pass), limited memory, limited per-step
-compute, forgetting under control, transfer not forbidden.
+The question is how to train on the current task while keeping the loss on the earlier tasks
+from going up, in a streaming regime with a bounded memory budget rather than free access to
+all past data. Within that setting, learning a new task may also be allowed to *improve* old
+ones (*positive backward transfer*), so the constraint is on the past loss not rising rather
+than on freezing old behavior outright.
 
 ## Background
 
-By this time the field has settled into a few broad families of cure, each with a
-characteristic cost.
+The field has settled into a few broad families of method.
 
 **Regularization-based methods** add a penalty that anchors the parameters near the values
 that solved past tasks. The prototype is Elastic Weight Consolidation (Kirkpatrick et al.,
@@ -34,34 +27,27 @@ log-likelihood — and while learning task `t` it adds `Σ_i (λ/2) F_i (θ_i �
 important parameters back toward their old values `θ*` and letting unimportant ones move
 freely. Synaptic Intelligence (Zenke et al., 2017) and RWalk (Chaudhry et al., 2018) compute
 the per-parameter importance differently (path integral of the loss; a KL-based importance)
-but share the quadratic-anchor shape. These are extremely cheap — a single extra penalty
-term, memory linear in the number of parameters, no stored examples.
+but share the quadratic-anchor shape. These use a single extra penalty term and memory linear
+in the number of parameters, with no stored examples.
 
-**Modular / architectural methods** sidestep interference by giving each task its own
-capacity. Progressive Networks (Rusu et al., 2016) add a fresh column of units per task and
-freeze the old ones, so old tasks are literally untouched. PathNet and expert-gate variants
-route each task through a learned subset of modules.
+**Modular / architectural methods** give each task its own capacity. Progressive Networks
+(Rusu et al., 2016) add a fresh column of units per task and freeze the old ones, with lateral
+connections so a new task can reuse old features. PathNet and expert-gate variants route each
+task through a learned subset of modules.
 
 **Episodic-memory methods** keep a *small* buffer of raw examples from past tasks and use it
 to constrain or rehearse. iCaRL (Rebuffi et al., 2017) stores a handful of exemplars per
-class and uses them with a distillation loss. The line that matters most here treats the
-stored examples not as a rehearsal set to fit, but as a way to *measure* whether a proposed
-update would harm past tasks.
+class and uses them with a distillation loss. One line within this family treats the stored
+examples not as a rehearsal set to fit, but as a way to *measure* whether a proposed update
+would change past-task loss.
 
-The empirical facts that frame the problem are well established. Plain sequential fine-tuning
-forgets badly: accuracy on task `j` drops sharply once training moves on to later tasks.
-Regularization methods, which were validated mostly in the **multi-epoch** regime where the
-network can settle into a good basin, are observed to be much weaker in the **single-pass**
-streaming regime, and their behavior is sensitive to the regularization strength `λ` — too
-small and they forget, too large and they cannot learn the new task. Modular methods either
-grow memory/parameters with the number of tasks (Progressive Networks) or require searching
-over architectures, which is not sample-efficient under a single-pass budget. And it is a
-basic geometric fact about gradient descent that the harm a single update does to a past task
-is, to first order, governed by the **angle** between the current update direction and the
-direction that would reduce the past task's loss: if the proposed step has a positive inner
-product with the past-task gradient it tends to *decrease* that task's loss, and if the inner
-product is negative it tends to *increase* it. This linear-around-a-small-step picture is the
-diagnostic everything below is built on.
+A basic geometric fact about gradient descent frames this last line: to first order, a single
+update changes a past task's loss by an amount governed by the inner product between the
+current update direction and the direction that would reduce the past task's loss. If the
+proposed step has a positive inner product with the past-task gradient it tends to *decrease*
+that task's loss, and if the inner product is negative it tends to *increase* it. This
+linear-around-a-small-step picture is the diagnostic the episodic-memory constraint methods
+build on.
 
 ## Baselines
 
@@ -70,32 +56,25 @@ would react to.
 
 **Sequential fine-tuning (the naive baseline).** Just minimize the current task's loss with
 SGD/AdamW and move on: at each step `θ ← θ − α ∇_θ ℓ(f_θ, D_t)`. Nothing constrains the
-parameters relative to past tasks. **Gap:** maximal forgetting — it is the failure mode the
-whole field is trying to fix.
+parameters relative to past tasks.
 
 **Elastic Weight Consolidation and the regularization family (Kirkpatrick et al., 2017;
 Zenke et al., 2017; Chaudhry et al., 2018).** While learning task `t`, optimize
 `ℓ(f_θ, D_t) + Σ_i (λ/2) F_i (θ_i − θ*_i)^2`, where `F_i` is the estimated importance of
 parameter `i` for past tasks and `θ*` are the post-task-`t-1` values. Importance is computed
-from the diagonal Fisher (EWC), a path integral (SI), or a KL/Riemannian measure (RWalk).
-This is memory-cheap (per-parameter importances, no stored data) and compute-cheap (one extra
-penalty). **Gap:** it bakes the constraint into a soft scalar penalty whose strength `λ` must
-be tuned and is fragile; it was designed for and works best with many epochs per task, where
-the optimizer has time to find a basin that satisfies both old and new tasks, and is observed
-to underperform when the learner gets only a single pass over each task's data. It also tends
-to *forbid* movement of important parameters rather than allow movement that happens to help
-old tasks, so it does not naturally support positive backward transfer.
+from the diagonal Fisher (EWC), a path integral (SI), or a KL/Riemannian measure (RWalk). It
+uses per-parameter importances, no stored data, and one extra penalty term, with a
+regularization strength `λ` that trades off old against new tasks.
 
 **Progressive Networks (Rusu et al., 2016).** Allocate a new network column per task and
 freeze previous columns, with lateral connections so a new task can reuse old features.
-Forgetting is zero by construction. **Gap:** memory and parameter count grow linearly with
-the number of tasks, and at test time every column is kept around — infeasible for a long
-stream under a fixed memory budget.
+Forgetting is zero by construction, and memory and parameter count grow with the number of
+tasks.
 
-**Gradient Episodic Memory (Lopez-Paz & Ranzato, 2017).** The closest relative and the one to
-study in detail. Keep a small episodic memory `M_k` of raw examples for each past task `k`.
-The idea is to phrase "don't make past tasks worse" as a *hard inequality constraint* rather
-than a soft penalty: while learning task `t`,
+**Gradient Episodic Memory (Lopez-Paz & Ranzato, 2017).** A close relative, worth studying in
+detail. Keep a small episodic memory `M_k` of raw examples for each past task `k`. It phrases
+"don't make past tasks worse" as a *hard inequality constraint* rather than a soft penalty:
+while learning task `t`,
 
 ```
 minimize_θ   ℓ(f_θ, D_t)
@@ -131,14 +110,10 @@ past task):
 minimize_v   (1/2) vᵀ G Gᵀ v + gᵀ Gᵀ v   subject to   v ≥ 0,
 ```
 
-with `G = −(g_1, ..., g_{t-1})` and the recovered update `g̃ = Gᵀ v* + g`. **Gap:** the cost
-is structural and grows with the stream. At *every* training step, GEM must compute the full
-matrix `G` — one backward pass over each of the `t − 1` past-task memories — and then solve a
-QP with a numerical solver (quadprog). As the number of tasks and the memory size grow, both
-the `t − 1` extra backward passes per step and the per-step QP become prohibitive, and it must
-also keep gradients for all tasks in memory. GEM gives a strong *worst-case* guarantee — no
-individual past task's (memory) loss is allowed to rise — but pays for it with a per-step cost
-that scales with how much it has already learned.
+with `G = −(g_1, ..., g_{t-1})` and the recovered update `g̃ = Gᵀ v* + g`. At each training
+step, GEM computes the matrix `G` — one backward pass over each of the `t − 1` past-task
+memories — and then solves the QP with a numerical solver (quadprog). The guarantee is a
+worst-case one: no individual past task's (memory) loss is allowed to rise.
 
 ## Evaluation settings
 

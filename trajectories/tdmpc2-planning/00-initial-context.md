@@ -1,65 +1,33 @@
 ## Research question
 
-TD-MPC2 learns a latent world model and then *plans* at every environment step: given the current
-observation it must pick one action by optimizing a short-horizon sequence of actions through the
-learned dynamics. The single thing being designed is the **trajectory optimizer** — the rule that, at
-each step, turns a population of sampled action sequences (scored by rolling them through the model)
-into the action to execute. Everything else — the world model, its value/reward heads, the policy
-prior, the training loop — is fixed and pretrained. The question is narrow: at a fixed planning budget
-(comparable to 6 iterations × 512 samples), which sampling-based optimizer extracts the most return
-from the same world model, both during data collection in training and during evaluation?
+TD-MPC2 plans at every environment step through a learned latent world model. The design target is the **trajectory optimizer**: the rule that, given the current observation, turns a population of sampled action sequences into the single action to execute. The world model, value/reward heads, learned policy prior, and training loop are fixed and pretrained. At a fixed planning budget of 6 iterations × 512 samples, which zeroth-order, sampling-based optimizer extracts the most return from the same world model during both data collection and evaluation?
 
-## Prior art before the first rung (zeroth-order trajectory optimization)
+## Prior art / Background / Baselines
 
-The optimizer the ladder fills is a *zeroth-order* planner: it may only query the model (roll out an
-action sequence, read a scalar value), never differentiate through it (the whole function runs under
-`@torch.no_grad()`). These are the methods that line precedes the ladder; the scaffold below is the
-shape they all share.
+The optimizer may only query the model by rolling out an action sequence and reading a scalar value; it runs under `@torch.no_grad()`. The relevant prior methods share the scaffold below.
 
-- **Random shooting (Rao 2009; Nagabandi et al. 2018).** Draw a batch of action sequences from a fixed
-  distribution, roll each through the model, execute the first action of the best one. Gradient-free and
-  global, but it *never learns from its own evaluations* — the sampling distribution on the hundredth
-  step is identical to the first, so the budget is wasted re-drawing in regions already shown to be bad.
-  Gap: no adaptation of where to sample.
-- **Differential dynamic programming / iLQG (Jacobson & Mayne 1970; Todorov & Li 2005).** Taylor-expand
-  the dynamics and quadratize the cost along a nominal trajectory, then a backward Riccati sweep gives a
-  local feedback law — fast near a good nominal. Gap: built entirely on derivatives, so it needs a
-  differentiable model and an honest quadratic cost; under `no_grad` over a learned latent model it is
-  simply unavailable.
-- **Model-predictive control (the wrapper, García et al. 1989).** Re-optimize the horizon every step,
-  execute only the first action, re-observe, re-plan; warm-start the next step from the un-executed tail.
-  This receding-horizon wrapper is *given* by the scaffold (the `_prev_mean` warm-start buffer and the
-  per-step call); the ladder only fills the inner optimizer.
+- **Random shooting.** Draw action sequences from a fixed distribution, roll each through the model, and execute the first action of the best sequence. Gap: it never updates where it samples, so later iterations keep redrawing from regions already shown to be poor.
+- **Differential dynamic programming / iLQG.** Linearize the dynamics and quadratize the cost around a nominal trajectory, then use a backward Riccati sweep to obtain a local feedback law. Gap: it requires a differentiable model and an explicit cost; it is unavailable when the model is a learned latent network evaluated without gradients.
+- **Model-predictive control wrapper.** Re-optimize at every step, execute only the first action, re-observe, and warm-start the next plan from the un-executed tail. This receding-horizon wrapper is already provided by the scaffold; the inner optimizer is the design target.
 
-## The fixed substrate
+## Fixed substrate / Code framework
 
-A pretrained TD-MPC2 agent is frozen and must not be touched. It supplies a latent world model
-(`agent.model`) with `encode(obs, task) → z`, latent transition `next(z, a, task) → z'`, a policy prior
-`pi(z, task) → (a, info)`, a reward head `reward`, and an ensemble value head `Q`; a value-estimation
-helper `agent._estimate_value(z, actions, task)` that rolls a batch of horizon-length action sequences
-through the model and returns each sequence's predicted discounted return (predicted rewards plus a
-bootstrapped terminal Q at the policy action); a warm-start buffer `agent._prev_mean` of shape
-`(horizon, action_dim)`; and a config `agent.cfg` carrying the planning knobs — `horizon=3`,
-`num_samples=512`, `num_elites=64`, `num_pi_trajs=24`, `iterations=6`, `temperature=0.5`,
-`min_std`, `max_std`, `action_dim`, `multitask`. The loop also exposes `common.math` utilities
-(`gumbel_softmax_sample`, `two_hot_inv`). The substrate already mixes a **policy prior** into planning:
-`num_pi_trajs=24` of the `num_samples` trajectories are warm-started by rolling the learned policy
-forward through the latent model, so the optimizer always sees the policy's own guess alongside the
-sampled candidates.
+A pretrained TD-MPC2 agent is frozen. It exposes:
+- `agent.model.encode(obs, task) → z`, latent transition `next(z, a, task) → z'`, policy prior `pi(z, task) → (a, info)`, reward head, and ensemble value head `Q`;
+- `agent._estimate_value(z, actions, task)` — rolls a batch of horizon-length action sequences through the model and returns each sequence's predicted discounted return;
+- warm-start buffer `agent._prev_mean` of shape `(horizon, action_dim)`;
+- config `agent.cfg` with planning knobs: `horizon=3`, `num_samples=512`, `num_elites=64`, `num_pi_trajs=24`, `iterations=6`, `temperature=0.5`, `min_std`, `max_std`, `action_dim`, `multitask`;
+- `common.math` utilities such as `gumbel_softmax_sample` and `two_hot_inv`.
 
-## The editable interface
+The scaffold already mixes the learned policy into planning: `num_pi_trajs=24` of the `num_samples` sequences are warm-started by unrolling the policy through the latent model.
 
-Exactly one region is editable — the `custom_plan(agent, obs, t0, eval_mode, task)` function in
-`custom_planner.py` (lines 15–120). It runs under `@torch.no_grad()`, must update `agent._prev_mean`
-for temporal warm-starting, and must return one action tensor of shape `(action_dim,)` clamped to
-`[-1, 1]`. Every method on the ladder is a fill of this same contract: encode the observation, warm-start
-`num_pi_trajs` policy trajectories, initialize a per-timestep Gaussian over the action sequence (mean
-shifted from `_prev_mean`, std at `max_std`), then iterate `cfg.iterations` rounds of *sample → roll out
-→ score → select elites → refit the distribution*, and finally commit one action. The methods differ
-only in the refit rule (and how the final action is drawn).
+## Editable interface
 
-The starting point is the scaffold default: the TD-MPC2 **MPPI** fill, shown below. Each later method
-replaces exactly this function body and nothing else.
+Only one region is editable: `custom_plan(agent, obs, t0, eval_mode, task)` in `custom_planner.py` (lines 15–120). It runs under `@torch.no_grad()`, must update `agent._prev_mean` for temporal warm-starting, and must return one action tensor of shape `(action_dim,)` clamped to `[-1, 1]`.
+
+The contract is: encode the observation; generate `num_pi_trajs` policy warm-start trajectories; initialize a per-timestep Gaussian over the action sequence (mean shifted from `_prev_mean`, std at `max_std`); iterate `cfg.iterations` rounds of sample → roll out → score → select elites → refit the distribution; then commit one action.
+
+The default fill is the **MPPI** baseline shown below. Each candidate replaces exactly this function body.
 
 ```python
 # EDITABLE region of custom_planner.py — default fill (TD-MPC2 MPPI)
@@ -136,10 +104,4 @@ def custom_plan(agent, obs, t0=False, eval_mode=False, task=None):
 
 ## Evaluation settings
 
-Three DMControl continuous-control tasks spanning the difficulty range — **walker-walk** (easy, a smooth
-gait), **cheetah-run** (hard, a fast high-frequency running gait) and **cartpole-swingup** (a swing-up
-then balance) — each over three seeds {42, 123, 456}. The world model is the same 1M-parameter TD-MPC2
-trained for 200K steps; only the planner changes. Metric: **episode reward, higher is better** on all
-three. The planner affects both the quality of data collected during training and action selection at
-evaluation, so a better optimizer compounds. Planning budget is held comparable to the default
-(6 iterations × 512 samples).
+Three DMControl continuous-control tasks — **walker-walk**, **cheetah-run**, and **cartpole-swingup** — over seeds {42, 123, 456}. The same 1M-parameter TD-MPC2 agent trained for 200K steps is used throughout; only the planner changes. Metric: **episode reward**, higher is better. Planning budget stays at the default 6 iterations × 512 samples.

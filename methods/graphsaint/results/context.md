@@ -86,8 +86,8 @@ propagate through the sampled GCN.
 - **ClusterGCN (Chiang et al. 2019).** Skip layer sampling entirely: partition the graph into dense
   clusters in preprocessing, and form each minibatch from a random set of clusters (keeping
   intra-cluster edges). Core idea: a cluster is a self-contained subgraph, so no neighbor explosion.
-  Gap: the clustering is a heuristic, and because clusters are fixed and selected non-uniformly the
-  minibatch is a *biased* estimator of the full-batch loss, with no correction.
+  Gap: the clustering is heuristic, and there is no inverse-probability correction for unequal
+  node or edge inclusion probabilities in the minibatch estimator.
 
 ## Evaluation settings
 

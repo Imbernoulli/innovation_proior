@@ -57,5 +57,3 @@ Maximize MI across views / global-to-local. Achieve the view-prediction task by 
 1. Composition of augmentations (esp. random crop + color distortion) defines the predictive task and is crucial; color histograms otherwise leak a shortcut.
 2. Nonlinear projection head g() before the loss; keep h (before g) for downstream because g is trained to be invariant and throws away color/orientation info.
 3. NT-Xent with L2 norm + temperature; benefits from large batch (more negatives) and longer training.
-</content>
-</invoke>

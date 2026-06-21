@@ -112,31 +112,4 @@ The finite-field instances include prime and prime-power fields. The executable
 checks here use small prime fields, where ordinary integer residues implement
 field arithmetic directly.
 
-## Code framework
 
-The fixed primitives are the standard pieces of the polynomial method over a
-finite field, each of which is settled before any line data enters. First,
-*counting monomials of bounded degree*: the polynomials in `n` variables of
-total degree at most `d` form a vector space with monomial basis
-`x_1^{e_1}...x_n^{e_n}`, `e_1 + ... + e_n ≤ d`, of dimension `C(n+d, n)`, and the
-homogeneous degree-`d` slice has dimension `C(d+n-1, n-1)`. Second, *existence of
-a low-degree polynomial vanishing on a small set by parameter counting*: imposing
-vanishing at a point is one homogeneous linear equation in the coefficients, so
-whenever a set `S` has strictly fewer points than the dimension of the chosen
-polynomial space, linear algebra produces a nonzero polynomial of degree at most
-`d` that vanishes on all of `S`. Third, *a polynomial vanishing on too many
-points must be zero*: by Schwartz-Zippel a nonzero polynomial of total degree at
-most `d` has at most `d q^{n-1}` zeros, and in one variable a nonzero polynomial
-of degree at most `q-1` cannot vanish at all `q` field elements; combined with
-the homogeneity remark, ordinary vanishing on a set extends to the cone through
-it, so a line through the origin that meets the zero set in more than `deg`
-points forces the relevant univariate restriction to vanish identically.
-
-The open slot is the bridge that turns these fixed primitives into a size bound
-without adding new combinatorial estimates. It must start from the hypothesis
-that a Kakeya set `K` is small enough for interpolation to produce a nonzero
-low-degree polynomial vanishing on `K`, then use only the affine-line data in all
-directions to force a contradiction with the zero-counting primitives above. The
-certificate has to specify which polynomial space is counted, how the line
-directions impose global vanishing information, and how the resulting dimension
-count becomes a constant-times-`q^n` lower bound.

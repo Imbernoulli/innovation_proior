@@ -1,6 +1,6 @@
 # Research notes — Adam (Kingma & Ba, ICLR 2015, arXiv 1412.6980)
 
-Primary paper read in full by main agent: 15-page source PDF (src/0_adam_main.pdf),
+Primary paper read in full by main agent: 15-page source PDF (`refs/primary/adam_1412.6980v9_iclr2015.pdf`),
 including Sections 1-9 and Appendix 10 (full convergence proof: Def 10.1, Lemmas 10.2-10.4,
 Theorem 10.5). Math verified against the paper directly.
 
@@ -72,29 +72,36 @@ Theorem 10.5). Math verified against the paper directly.
 - m_hat/sqrt(v_hat) ~ SNR; small SNR => smaller steps => automatic annealing near optimum.
 - Scale-invariant: scaling g by c cancels (c*m)/sqrt(c^2*v)=m/sqrt(v).
 
-## Regret proof (Appendix 10, verified)
-- Lemma 10.2 convexity hyperplane bound. Lemma 10.3 induction: sum sqrt(g_{t,i}^2/t) <= 2 G_inf ||g_{1:T,i}||_2.
-- Lemma 10.4: sum m_hat^2/sqrt(t v_hat) <= (2/(1-gamma)) (1/sqrt(1-beta_2)) ||g_{1:T,i}||_2,
+## Regret proof (Appendix 10, verified with caveats)
+- Lemma 10.2 convexity hyperplane bound. The paper states Lemma 10.3 as
+  `sum sqrt(g_{t,i}^2/t) <= 2 G_inf ||g_{1:T,i}||_2`.
+- Lemma 10.3's printed induction has a hidden normalization/scale issue; the draft treats the clean
+  theorem as using the sharper summation control `sum |g_{t,i}|/sqrt(t) <= 2 G_inf ||g_{1:T,i}||_2`.
+  Cauchy-Schwarz gives an unconditional fallback with `sqrt(1 + log T)`.
+- Lemma 10.4: sum m_hat^2/sqrt(t v_hat) <= (2 G_inf/((1-gamma)^2 sqrt(1-beta_2))) ||g_{1:T,i}||_2,
   gamma = beta_1^2/sqrt(beta_2) < 1, uses arithmetic-geometric series sum t gamma^t < 1/(1-gamma)^2.
 - Theorem 10.5: with alpha_t=alpha/sqrt(t), beta_{1,t}=beta_1 lambda^{t-1}, get
   R(T) <= D^2/(2alpha(1-beta_1)) sum sqrt(T v_hat_{T,i})
         + alpha(1+beta_1)G_inf/((1-beta_1)sqrt(1-beta_2)(1-gamma)^2) sum ||g_{1:T,i}||_2
-        + sum D_inf^2 G_inf sqrt(1-beta_2)/(2 alpha beta_1 (1-lambda)^2).
+        + sum D_inf^2 G_inf sqrt(1-beta_2)/(2 alpha (1-beta_1) (1-lambda)^2).
   => R(T)=O(sqrt(T)); Corollary 4.2: R(T)/T = O(1/sqrt(T)) -> 0.
+  Note: the final displayed line of Appendix 10 prints `2 alpha beta_1 (1-lambda)^2`, but the
+  theorem statement and preceding arithmetic-geometric bound give `2 alpha (1-beta_1)(1-lambda)^2`.
 
 ## AdaMax (Sec 7.1, verified, eqs 6-12)
 - Generalize L2 to Lp on the second moment; let p->inf: u_t = max(beta_2 u_{t-1}, |g_t|).
 - Update theta -= (alpha/(1-beta_1^t)) m_t / u_t. No bias correction needed for u (max, init 0 ok).
-  |Delta_t| <= alpha.
+  Paper states `|Delta_t| <= alpha`; exact sequence envelope is alpha-scale and can be slightly
+  above one for the default pair in an adversarial all-same-sign sequence.
 
 ## Temporal averaging (Sec 7.2)
 - Polyak-Ruppert; EMA of parameters theta_bar = beta_2 theta_bar + (1-beta_2) theta, de-bias by (1-beta_2^t).
 
 ## Canonical code (code/)
-- adam_pytorch_v0.4.py (PyTorch v0.4.1 torch/optim/adam.py): clean canonical step():
+- pytorch_v0.3.1_adam.py (PyTorch v0.3.1 torch/optim/adam.py): clean pre-AMSGrad reference step():
   exp_avg.mul_(beta1).add_(1-beta1, grad); exp_avg_sq.mul_(beta2).addcmul_(1-beta2,grad,grad);
   bias_correction1=1-beta1**t; bias_correction2=1-beta2**t;
   step_size=lr*sqrt(bc2)/bc1; p.addcdiv_(-step_size, exp_avg, exp_avg_sq.sqrt().add_(eps)).
   Uses the "efficient" reordering from the paper (folds bias corrections into step_size).
-  NOTE: contains amsgrad branch = POSTERIOR (2018, Reddi et al.) -> exclude from context/reasoning.
-- adamax_pytorch.py, adam_pytorch.py (v2.0.0) also fetched for reference.
+- pytorch_v0.3.1_adamax.py is the AdaMax reference. Later AMSGrad/AdamW/Reddi/Yogi material is
+  posterior and excluded from context/reasoning.

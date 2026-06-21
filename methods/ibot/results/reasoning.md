@@ -57,28 +57,23 @@ Now the masking ratio. How much should I mask? Sweeping the prediction ratio, pe
 
 Then I try to bolt on multi-crop, because every strong view-agreement method (SwAV, DINO) leans on it: 2 global crops at 224² plus 10 local crops at 96², where local crops go only to the student. And here I hit a wall. Naively masking the global crops and running multi-crop makes training *unstable* — I watch the clustering quality (NMI) during training and it dips. Let me figure out why before patching it. The student is being fed masked global crops and *non-masked* local crops; the teacher only ever sees clean images. So the student's input distribution is a mismatch — some inputs masked, some not — and the agreement targets are computed from clean images throughout. The obvious fix is to also mask the local crops so everything's consistent. I try it: it doesn't fix the instability, and actually a local 96² crop is so small that an individual patch in it has almost no meaningful content to predict — masking there is just noise. (Confirmed indirectly: restricting the local crops to be less tiny mitigates the drop.) So masking-everything is the wrong patch.
 
-The right way to read the instability: the problem is the *mismatch* between masked global crops and non-masked crops in the same batch, not masking per se. So let me make the masking itself stochastic at the image level. With probability one-half, set the masking ratio to 0 — meaning that image contributes *no* MIM term and the framework reduces exactly to DINO on a clean image; with probability one-half, mask at a nonzero ratio (drawn from the 0.3 ± 0.2 range) and apply MIM to both global crops. This "random MIM" interleaves clean and masked images across the batch, removing the systematic mismatch. It's stable, and it's better — the clean-image passes keep the `[CLS]` bootstrapping healthy while the masked passes drive the local objective. So multi-crop with random MIM it is.
+The right way to read the instability: the problem is the *mismatch* between masked global crops and non-masked crops in the same batch, not masking per se. So let me make the masking itself stochastic at the image level. With probability one-half, set the masking ratio to 0 — meaning that image is clean, its masked-patch numerator is zero, and it behaves like a DINO image for the `[CLS]` term; with probability one-half, mask at a nonzero ratio (drawn from the 0.3 ± 0.2 range) and apply MIM to both global crops. This "random MIM" interleaves clean and masked images across the batch, removing the systematic mismatch. It's stable, and it's better — the clean-image passes keep the `[CLS]` bootstrapping healthy while the masked passes drive the local objective. So multi-crop with random MIM it is.
 
 Let me also nail the optimization recipe, inheriting what the view-agreement methods established: AdamW, batch size 1024, learning rate linearly warmed for the first 10 epochs to a base value that scales with batch size, lr = 5e−4 × batch_size / 256, then cosine-annealed; weight decay cosine-annealed up over training. The teacher EMA momentum follows a cosine schedule from 0.996 toward 1 — slow at first, slower later, so the tokenizer is a stable target. Student temperature 0.1; teacher temperatures warmed up from low values, separately for the `[CLS]` and patch streams. The projection head is the DINO head: 3-layer MLP, hidden 2048, GELU, ℓ₂-normalized bottleneck, weight-normalized last layer to K = 8192, batch-norm-free. ViT-S/16 or B/16 backbone, 224 input, patch 16, so N = 196 patch tokens; a learnable `[MASK]` embedding replaces masked patch embeddings before the transformer.
 
 Let me put the whole thing down as code, mirroring how I'd actually wire it.
 
 ```python
+import numpy as np
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
 
-# ---------------------------------------------------------------
-# Projection head: shared between [CLS] and patch tokens.
-# A 3-layer MLP -> L2-normalized bottleneck -> weight-normed last
-# layer to K. The SAME head serves the [CLS] token (x[:,0]) and the
-# patch tokens (x[:,1:]) so the semantics learned on [CLS] flows
-# into the per-patch tokenizer outputs.
-# ---------------------------------------------------------------
 class iBOTHead(nn.Module):
-    def __init__(self, in_dim, out_dim, patch_out_dim, nlayers=3,
-                 hidden_dim=2048, bottleneck_dim=256, shared_head=True):
+    def __init__(self, in_dim, out_dim, patch_out_dim=8192, nlayers=3,
+                 hidden_dim=2048, bottleneck_dim=256, norm_last_layer=True,
+                 shared_head=True):
         super().__init__()
         layers = [nn.Linear(in_dim, hidden_dim), nn.GELU()]
         for _ in range(nlayers - 2):
@@ -86,40 +81,60 @@ class iBOTHead(nn.Module):
         layers += [nn.Linear(hidden_dim, bottleneck_dim)]
         self.mlp = nn.Sequential(*layers)
         self.last_layer = nn.utils.weight_norm(nn.Linear(bottleneck_dim, out_dim, bias=False))
-        self.last_layer.weight_g.data.fill_(1); self.last_layer.weight_g.requires_grad = False
-        # shared head: the patch path reuses the SAME final layer as [CLS]
-        self.last_layer2 = self.last_layer if shared_head else \
-            nn.utils.weight_norm(nn.Linear(bottleneck_dim, patch_out_dim, bias=False))
+        self.last_layer.weight_g.data.fill_(1)
+        if norm_last_layer:
+            self.last_layer.weight_g.requires_grad = False
+        if shared_head:
+            self.last_layer2 = self.last_layer
+        else:
+            self.last_layer2 = nn.utils.weight_norm(nn.Linear(bottleneck_dim, patch_out_dim, bias=False))
+            self.last_layer2.weight_g.data.fill_(1)
+            if norm_last_layer:
+                self.last_layer2.weight_g.requires_grad = False
 
     def forward(self, x):                       # x: [n, 1+N, in_dim]
+        if x.ndim == 2:
+            x = F.normalize(self.mlp(x), dim=-1, p=2)
+            return self.last_layer(x)
         x = self.mlp(x)
         x = F.normalize(x, dim=-1, p=2)         # L2-normalized bottleneck
         cls = self.last_layer(x[:, 0])          # [n, K]      -> [CLS] target/logit
         patch = self.last_layer2(x[:, 1:])      # [n, N, K]   -> per-patch logits
         return cls, patch
 
-# ---------------------------------------------------------------
-# iBOT loss: L_[CLS] (cross-view) + L_MIM (in-view, masked patches).
-# Centering + sharpening on the teacher (the online tokenizer),
-# with SEPARATE centers/temperatures for [CLS] (C) and patches (C').
-# ---------------------------------------------------------------
 class iBOTLoss(nn.Module):
-    def __init__(self, out_dim, patch_out_dim, ngcrops, ncrops,
+    def __init__(self, out_dim, patch_out_dim, ngcrops, nlcrops,
+                 warmup_teacher_temp=0.04, teacher_temp=0.07,
+                 warmup_teacher_patch_temp=0.04, teacher_patch_temp=0.07,
+                 warmup_epochs=30, nepochs=800,
                  student_temp=0.1, center_momentum=0.9, center_momentum2=0.9,
                  lambda1=1.0, lambda2=1.0):
         super().__init__()
         self.student_temp = student_temp
-        self.ngcrops, self.ncrops = ngcrops, ncrops
+        self.ngcrops, self.nlcrops = ngcrops, nlcrops
+        self.ncrops = ngcrops + nlcrops
         self.cm, self.cm2 = center_momentum, center_momentum2
         self.lambda1, self.lambda2 = lambda1, lambda2
         self.register_buffer("center",  torch.zeros(1, out_dim))        # [CLS] center
         self.register_buffer("center2", torch.zeros(1, 1, patch_out_dim))  # patch center
+        self.teacher_temp_schedule = np.concatenate((
+            np.linspace(warmup_teacher_temp, teacher_temp, warmup_epochs),
+            np.ones(nepochs - warmup_epochs) * teacher_temp,
+        ))
+        self.teacher_temp2_schedule = np.concatenate((
+            np.linspace(warmup_teacher_patch_temp, teacher_patch_temp, warmup_epochs),
+            np.ones(nepochs - warmup_epochs) * teacher_patch_temp,
+        ))
 
-    def forward(self, student_out, teacher_out, student_mask, temp, temp2):
+    def forward(self, student_out, teacher_out, student_local_cls, student_mask, epoch):
         s_cls, s_patch = student_out                # student sees MASKED views
         t_cls, t_patch = teacher_out                # teacher sees CLEAN views (the tokenizer)
+        if student_local_cls is not None:
+            s_cls = torch.cat([s_cls, student_local_cls])
         s_cls   = (s_cls   / self.student_temp).chunk(self.ncrops)
         s_patch = (s_patch / self.student_temp).chunk(self.ngcrops)
+        temp = self.teacher_temp_schedule[epoch]
+        temp2 = self.teacher_temp2_schedule[epoch]
         # teacher: center then sharpen -> soft target (NOT one-hot), detached
         t_cls_c   = F.softmax((t_cls   - self.center)  / temp,  dim=-1).detach().chunk(self.ngcrops)
         t_patch_c = F.softmax((t_patch - self.center2) / temp2, dim=-1).detach().chunk(self.ngcrops)
@@ -138,37 +153,59 @@ class iBOTLoss(nn.Module):
         L_cls = L_cls / n1 * self.lambda1
         L_mim = L_mim / n2 * self.lambda2
         self.update_center(t_cls, t_patch)
-        return L_cls + L_mim                        # summed without scaling (1:1)
+        return {"cls": L_cls, "patch": L_mim, "loss": L_cls + L_mim}
 
     @torch.no_grad()
     def update_center(self, t_cls, t_patch):        # EMA of teacher batch-mean
-        self.center  = self.center  * self.cm  + t_cls.mean(0, keepdim=True)          * (1 - self.cm)
-        self.center2 = self.center2 * self.cm2 + t_patch.mean(1).mean(0, keepdim=True) * (1 - self.cm2)
+        cls_center = torch.sum(t_cls, dim=0, keepdim=True)
+        patch_center = torch.sum(t_patch.mean(1), dim=0, keepdim=True)
+        if dist.is_available() and dist.is_initialized():
+            dist.all_reduce(cls_center)
+            dist.all_reduce(patch_center)
+            world = dist.get_world_size()
+        else:
+            world = 1
+        cls_center = cls_center / (len(t_cls) * world)
+        patch_center = patch_center / (len(t_patch) * world)
+        self.center = self.center * self.cm + cls_center * (1 - self.cm)
+        self.center2 = self.center2 * self.cm2 + patch_center * (1 - self.cm2)
 
-# ---------------------------------------------------------------
-# Blockwise masking (BEiT-style): mask contiguous blocks, ratio r.
-# ---------------------------------------------------------------
-def blockwise_mask(H, W, ratio, log_aspect=(np.log(0.3), np.log(1/0.3))):
-    mask = np.zeros((H, W), dtype=bool); target = int(ratio * H * W)
-    while mask.sum() < target:
+def sample_mask(H, W, ratio, shape="block", log_aspect=(np.log(0.3), np.log(1 / 0.3))):
+    high = ratio * H * W
+    if shape == "rand":
+        mask = np.hstack([np.zeros(H * W - int(high)), np.ones(int(high))]).astype(bool)
+        np.random.shuffle(mask)
+        return mask.reshape(H, W)
+
+    mask = np.zeros((H, W), dtype=bool)
+    mask_count = 0
+    while mask_count < high:
+        max_mask_patches = high - mask_count
+        delta = 0
         for _ in range(10):
-            area = np.random.uniform(16, target - mask.sum())
-            ar = np.exp(np.random.uniform(*log_aspect))
-            h, w = int(round((area * ar) ** .5)), int(round((area / ar) ** .5))
-            if h < H and w < W:
-                top, left = np.random.randint(0, H - h), np.random.randint(0, W - w)
-                if mask[top:top+h, left:left+w].sum() != h * w:   # not already full
-                    mask[top:top+h, left:left+w] = True; break
+            low = (min(H, W) // 3) ** 2
+            target_area = np.random.uniform(low, max_mask_patches)
+            aspect_ratio = np.exp(np.random.uniform(*log_aspect))
+            h = int(round(np.sqrt(target_area * aspect_ratio)))
+            w = int(round(np.sqrt(target_area / aspect_ratio)))
+            if w < W and h < H:
+                top = np.random.randint(0, H - h + 1)
+                left = np.random.randint(0, W - w + 1)
+                num_masked = mask[top: top + h, left: left + w].sum()
+                if 0 < h * w - num_masked <= max_mask_patches:
+                    for i in range(top, top + h):
+                        for j in range(left, left + w):
+                            if not mask[i, j]:
+                                mask[i, j] = True
+                                delta += 1
+            if delta > 0:
+                break
+        if delta == 0:
+            break
+        mask_count += delta
     return mask
 
-# ---------------------------------------------------------------
-# Training step. Random MIM: ratio is 0 (pure DINO) or in 0.3 +/- 0.2,
-# chosen per image, so masked and clean images coexist in a batch and
-# the masked-vs-clean distribution mismatch (which destabilized naive
-# multi-crop) is removed.
-# ---------------------------------------------------------------
-def train_step(images, masks, student, teacher, loss_fn, opt, ema_m, temp, temp2,
-               n_global):
+def train_step(images, masks, student, teacher, loss_fn, opt, ema_m, epoch, n_global):
     # teacher: CLEAN global crops -> the online tokenizer
     t_out = teacher(images[:n_global])
     # student: MASKED global crops
@@ -177,10 +214,8 @@ def train_step(images, masks, student, teacher, loss_fn, opt, ema_m, temp, temp2
     student.backbone.masked_im_modeling = False
     s_local_cls = student(images[n_global:])[0] if len(images) > n_global else None
     student.backbone.masked_im_modeling = True
-    if s_local_cls is not None:
-        s_out = (torch.cat([s_out[0], s_local_cls]), s_out[1])
 
-    loss = loss_fn(s_out, t_out, masks, temp, temp2)
+    loss = loss_fn(s_out, t_out, s_local_cls, masks, epoch)["loss"]
     opt.zero_grad(); loss.backward(); opt.step()
     with torch.no_grad():                           # teacher = EMA of student
         for ps, pt in zip(student.parameters(), teacher.parameters()):

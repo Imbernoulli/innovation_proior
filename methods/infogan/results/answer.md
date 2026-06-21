@@ -2,12 +2,12 @@
 
 ## The problem it solves
 
-Learn a *disentangled*, interpretable representation — one latent coordinate per semantic factor
-(digit identity, rotation, width, pose, lighting, glasses) — fully **unsupervised**, on complex image
-datasets, at negligible extra cost over a normal adversarial network. Generation alone cannot deliver
-this: a perfect generator can carry an arbitrarily entangled latent code, and the adversarial
-objective is indifferent to *how* the generator uses its input, so a plain latent vector entangles all
-factors.
+Learn a *disentangled*, interpretable representation — a small set of latent variables that tend to
+control separate semantic factors (digit identity, rotation, width, pose, lighting, glasses) — fully
+**unsupervised**, on complex image datasets, at negligible extra cost over a normal adversarial
+network. Generation alone cannot deliver this: a perfect generator can carry an arbitrarily entangled
+latent code, and the adversarial objective is indifferent to *how* the generator uses its input, so a
+plain latent vector can entangle all factors.
 
 ## The key idea
 
@@ -22,7 +22,8 @@ i.e. the generator actually used it.
 
     min_{G,Q}  max_D   V_InfoGAN(D, G, Q) = V(D, G) − λ L_I(G, Q),
 
-with `V(D,G) = E_{x~p_data}[log D(x)] + E_z[log(1 − D(G(z,c)))]` the usual adversarial value function.
+with `V(D,G) = E_{x~p_data}[log D(x)] + E_{z~p(z),c~P(c)}[log(1 − D(G(z,c)))]` the usual adversarial
+value function on the full generator input.
 
 **Why a bound.** `I(c; G(z,c)) = H(c) − H(c | G(z,c))` requires the intractable posterior `P(c|x)`.
 Introduce an auxiliary distribution `Q(c|x)` ≈ `P(c|x)` and lower-bound (Variational Information
@@ -31,22 +32,23 @@ Maximization):
     I(c; G(z,c)) = H(c) + E_{x~G(z,c)}[ D_KL(P(·|x) ‖ Q(·|x)) + E_{c'~P(c|x)}[log Q(c'|x)] ]
                  ≥ H(c) + E_{x~G(z,c)}[ E_{c'~P(c|x)}[log Q(c'|x)] ]      (drop KL ≥ 0; tight when Q = P).
 
-**Removing the posterior sample.** A change-of-variables identity — for `X, Y, f`:
+**Removing the posterior sample.** An expectation identity — for `X, Y, f`:
 `E_{x~X, y~Y|x}[f(x,y)] = E_{x~X, y~Y|x, x'~X|y}[f(x',y)]` (proved by inserting `∫ P(x'|y)dx' = 1`) —
 lets the inner posterior expectation be replaced by sampling the code from its prior and generating:
 
     L_I(G, Q) = E_{c ~ P(c), x ~ G(z,c)}[ log Q(c | x) ] + H(c)   ≤   I(c; G(z, c)).
 
 `L_I` is Monte-Carlo-able: sample `c ~ P(c)`, `z ~ noise`, form `x = G(z,c)`, evaluate `log Q(c|x)`.
-`H(c)` is treated as a constant (fixed code prior). Maximize `L_I` w.r.t. `Q` directly and w.r.t. `G`
-through the differentiable `x = G(z,c)`. At tightness `L_I = H(c)` and the mutual information is
-maximized.
+`H(c)` is treated as a constant because the code prior is fixed. Maximize `L_I` w.r.t. `Q` directly
+and w.r.t. `G` through the generated image. For finite discrete codes, when `Q` matches the true
+posterior and the generated image determines `c`, `L_I` reaches `H(c)` and the mutual information is
+maximal.
 
 ## How L_I becomes a concrete loss
 
-`Q` is a recognition network that **shares the entire convolutional body of the discriminator** plus
-one final fully-connected layer — so InfoGAN adds negligible compute over a plain adversarial network.
-The head's parameterization follows the code type:
+`Q` is a recognition network that shares the discriminator's convolutional feature extractor and adds
+a small fully-connected recognition head — so InfoGAN adds negligible compute over a plain adversarial
+network. The head's parameterization follows the code type:
 
 - **Categorical `c_i`** (e.g. 1-of-10): `Q(c_i|x)` = softmax. Then `−log Q` = cross-entropy between
   the softmax and the sampled one-hot code; `λ = 1` works.
@@ -55,102 +57,100 @@ The head's parameterization follows the code type:
   smaller `λ` (e.g. 0.1) because the continuous `L_I` involves differential entropy.
 
 Built on the stable convolutional adversarial recipe (up-convolutional generator, leaky-ReLU
-discriminator, batchnorm, Adam, `lr ≈ 2e-4`); no new stabilization trick is needed, and `L_I`
-typically converges faster than the adversarial objective.
+discriminator, batchnorm, Adam). A typical setup uses `lr = 2e-4` for `D`, `lr = 1e-3` for `G`,
+`lambda = 1`, leaky-ReLU slope `0.1`, and fixed-variance Gaussian NLL for continuous MNIST codes.
+No new stabilization trick is needed, and `L_I` typically converges faster than the adversarial
+objective.
 
 **Interpretation.** `(P_G(x|c), Q(c|x))` is a Helmholtz machine; maximizing `L_I` w.r.t. `Q` is the
 Wake-Sleep "sleep" update, and InfoGAN *additionally* applies it to `G` (a second sleep-like update on
 generated samples), explicitly forcing the generator to convey information through the code.
 
-## Working code
+## Training core
 
 ```python
+import math
 import torch
-import torch.nn as nn
-import itertools
+import torch.nn.functional as F
 
-latent_dim, n_classes, code_dim = 62, 10, 2    # 62 noise + 1 ten-way categorical + 2 continuous
+TINY = 1e-8
+latent_dim, n_classes, code_dim = 62, 10, 2
+info_reg_coeff = 1.0
 
-class Generator(nn.Module):
-    def __init__(self):
-        super().__init__()
-        input_dim = latent_dim + n_classes + code_dim
-        self.init_size = 32 // 4
-        self.l1 = nn.Sequential(nn.Linear(input_dim, 128 * self.init_size ** 2))
-        self.conv = nn.Sequential(
-            nn.BatchNorm2d(128),
-            nn.Upsample(scale_factor=2), nn.Conv2d(128, 128, 3, 1, 1),
-            nn.BatchNorm2d(128, 0.8), nn.LeakyReLU(0.2, inplace=True),
-            nn.Upsample(scale_factor=2), nn.Conv2d(128, 64, 3, 1, 1),
-            nn.BatchNorm2d(64, 0.8), nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(64, 1, 3, 1, 1), nn.Tanh(),
-        )
-    def forward(self, noise, code_cat, code_cont):
-        x = torch.cat((noise, code_cat, code_cont), -1)
-        out = self.l1(x).view(x.size(0), 128, self.init_size, self.init_size)
-        return self.conv(out)
+# G maps concat(noise, one_hot_category, continuous_code) -> image.
+# D_Q shares one image feature trunk, then returns:
+#   d_prob: sigmoid real/fake probability
+#   q_cat_logits: logits for Q(c_discrete | x)
+#   q_cont_mean, q_cont_log_std: diagonal-Gaussian parameters for Q(c_continuous | x)
+G, D_Q = Generator(), DiscriminatorWithRecognitionHead()
+opt_g = torch.optim.Adam(G.parameters(), lr=1e-3, betas=(0.5, 0.999))
+opt_dq = torch.optim.Adam(D_Q.parameters(), lr=2e-4, betas=(0.5, 0.999))
 
-class Discriminator(nn.Module):
-    def __init__(self):
-        super().__init__()
-        def block(i, o, bn=True):
-            b = [nn.Conv2d(i, o, 3, 2, 1), nn.LeakyReLU(0.2, inplace=True), nn.Dropout2d(0.25)]
-            if bn: b.append(nn.BatchNorm2d(o, 0.8))
-            return b
-        self.body = nn.Sequential(*block(1, 16, bn=False), *block(16, 32),
-                                  *block(32, 64), *block(64, 128))
-        ds = 32 // (2 ** 4)
-        self.validity = nn.Linear(128 * ds ** 2, 1)
-        self.q_cat  = nn.Sequential(nn.Linear(128 * ds ** 2, n_classes), nn.Softmax(dim=1))
-        self.q_cont = nn.Linear(128 * ds ** 2, code_dim)
-    def forward(self, x):
-        f = self.body(x).view(x.size(0), -1)
-        return self.validity(f), self.q_cat(f), self.q_cont(f)
+def sample_codes(batch, device):
+    noise = torch.randn(batch, latent_dim, device=device)
+    label = torch.randint(n_classes, (batch,), device=device)
+    one_hot = F.one_hot(label, n_classes).float()
+    cont = torch.empty(batch, code_dim, device=device).uniform_(-1.0, 1.0)
+    return noise, one_hot, cont
 
-adversarial_loss = nn.BCEWithLogitsLoss()
-categorical_loss = nn.CrossEntropyLoss()        # -log Q, categorical
-continuous_loss  = nn.MSELoss()                 # -log Q, fixed-variance Gaussian
-lambda_cat, lambda_con = 1.0, 0.1
+def log_q_categorical(one_hot, q_cat_logits):
+    return (one_hot * F.log_softmax(q_cat_logits, dim=1)).sum(dim=1)
 
-G, D = Generator(), Discriminator()
-opt_G = torch.optim.Adam(G.parameters(), lr=2e-4, betas=(0.5, 0.999))
-opt_D = torch.optim.Adam(D.parameters(), lr=2e-4, betas=(0.5, 0.999))
-opt_info = torch.optim.Adam(itertools.chain(G.parameters(), D.parameters()),
-                            lr=2e-4, betas=(0.5, 0.999))
+def log_q_gaussian(value, mean, log_std=None):
+    # Use learned std when supplied; omitting it gives fixed-variance Gaussian NLL.
+    if log_std is None:
+        log_std = torch.zeros_like(mean)
+    std = torch.exp(log_std)
+    return (-0.5 * math.log(2.0 * math.pi) - log_std - 0.5 * ((value - mean) / std).pow(2)).sum(dim=1)
 
-def sample_codes(b):
-    z   = torch.randn(b, latent_dim)
-    lab = torch.randint(0, n_classes, (b,))
-    oh  = torch.eye(n_classes)[lab]
-    con = torch.empty(b, code_dim).uniform_(-1, 1)
-    return z, oh, lab, con
+def mi_estimate(one_hot, cont, q_cat_logits, q_cont_mean, q_cont_log_std=None):
+    cat_prior = math.log(n_classes)
+    zero = torch.zeros_like(cont)
+    cont_prior = -log_q_gaussian(cont, zero, zero).mean()
+    return (
+        cat_prior + log_q_categorical(one_hot, q_cat_logits).mean()
+        + cont_prior + log_q_gaussian(cont, q_cont_mean, q_cont_log_std).mean()
+    )
 
 def train_step(real):
-    b = real.size(0)
-    valid = torch.ones(b, 1); fake = torch.zeros(b, 1)
-    z, oh, lab, con = sample_codes(b)
-    # 1) G adversarial
-    opt_G.zero_grad()
-    gen = G(z, oh, con); v, _, _ = D(gen)
-    adversarial_loss(v, valid).backward(); opt_G.step()
-    # 2) D adversarial
-    opt_D.zero_grad()
-    v_real, _, _ = D(real); v_fake, _, _ = D(gen.detach())
-    ((adversarial_loss(v_real, valid) + adversarial_loss(v_fake, fake)) / 2).backward(); opt_D.step()
-    # 3) information: maximize L_I (over G and Q jointly)
-    opt_info.zero_grad()
-    z, oh, lab, con = sample_codes(b)
-    gen = G(z, oh, con); _, q_cat, q_cont = D(gen)
-    info = lambda_cat * categorical_loss(q_cat, lab) + lambda_con * continuous_loss(q_cont, con)
-    info.backward(); opt_info.step()
-    return info
+    batch, device = real.size(0), real.device
+    noise, one_hot, cont = sample_codes(batch, device)
+    latent = torch.cat([noise, one_hot, cont], dim=1)
+
+    # D/Q update: canonical loss is -log D(real)-log(1-D(fake)) - lambda * L_I.
+    with torch.no_grad():
+        fake = G(latent)
+    real_prob, _, _, _ = D_Q(real)
+    fake_prob, q_cat_logits, q_cont_mean, q_cont_log_std = D_Q(fake)
+    d_adv = -(torch.log(real_prob + TINY) + torch.log(1.0 - fake_prob + TINY)).mean()
+    mi = mi_estimate(one_hot, cont, q_cat_logits, q_cont_mean, q_cont_log_std)
+    d_loss = d_adv - info_reg_coeff * mi
+    opt_dq.zero_grad()
+    d_loss.backward()
+    opt_dq.step()
+
+    # G update: the reference trainer uses the non-saturating -log D(fake) generator loss
+    # and subtracts the same MI estimate, but optimizes only generator parameters.
+    for p in D_Q.parameters():
+        p.requires_grad_(False)
+    noise, one_hot, cont = sample_codes(batch, device)
+    fake = G(torch.cat([noise, one_hot, cont], dim=1))
+    fake_prob, q_cat_logits, q_cont_mean, q_cont_log_std = D_Q(fake)
+    mi = mi_estimate(one_hot, cont, q_cat_logits, q_cont_mean, q_cont_log_std)
+    g_loss = -torch.log(fake_prob + TINY).mean() - info_reg_coeff * mi
+    opt_g.zero_grad()
+    g_loss.backward()
+    opt_g.step()
+    for p in D_Q.parameters():
+        p.requires_grad_(True)
+    return d_loss.detach(), g_loss.detach(), mi.detach()
 ```
 
 ## Why it works
 
-The mutual-information regularizer makes "ignore the code" a high-loss solution: the generator can
-only avoid the penalty by producing images from which the code is recoverable, which is exactly the
-condition that each code coordinate maps to a distinct, recoverable factor of variation. The
-variational bound `L_I` makes that intractable information term differentiable and cheap (one shared
-recognition head), and the factored code prior means the recovered factors come out independent — so
-sweeping one coordinate moves one interpretable attribute, learned with no labels.
+The mutual-information regularizer makes "ignore the code" a bad solution: the generator can only
+raise the bound by producing images from which the sampled code is recoverable. The variational bound
+`L_I` makes that intractable information term differentiable and cheap, and the factored code prior
+pushes separate code variables to carry separate recoverable factors. The method still validates
+disentanglement empirically by sweeping one code variable while holding the others fixed; it is a
+training pressure, not a theorem that every coordinate must become a human factor.

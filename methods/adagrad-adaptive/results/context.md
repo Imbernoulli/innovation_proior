@@ -4,23 +4,14 @@
 
 We want to learn a weight vector `x ∈ R^d` from a stream of convex losses `f_1, f_2, …`,
 where `d` is enormous (text/NLP feature spaces, click models, ranking) but each instance
-touches only a handful of coordinates — the gradients `g_t` are extremely sparse. The
-practical headache is the learning rate. Stochastic and online (sub)gradient methods all run
-the update `x_{t+1} = x_t − η_t g_t` (with a projection), and `η_t` is a single global scalar,
-typically `η/√t`. That one knob has to be hand-tuned, and — more fundamentally — it is the
-*same* for every coordinate. In sparse high-dimensional data the coordinates are wildly
-heterogeneous: a few features fire on almost every example, while many are rare. And the rare
-ones are often the most informative — practitioners already pre-emphasize them by hand with
-schemes like TF-IDF (Salton & Buckley 1988). A global `η_t` does exactly the wrong thing to
-them: by the time a rare-but-decisive feature finally appears, the shared schedule `η/√t` has
-already decayed, so the one informative gradient it produces is multiplied by a tiny step and
-barely moves the weight. The precise goal: an online (sub)gradient method that (1) gives each
-coordinate its own, data-driven step size; (2) takes a large step on a rare feature when it
-finally fires and a small step on a feature seen constantly; (3) still has a provable,
-sub-linear regret bound — ideally one that improves on the worst-case rate when the data is
-structured and degrades back to it gracefully when it is not; and (4) has a step-size knob that
-is easy to set a priori, not coupled to the unknown magnitudes of the gradients. None of the
-methods on the table does all of this.
+touches only a handful of coordinates — the gradients `g_t` are extremely sparse. Stochastic
+and online (sub)gradient methods all run the update `x_{t+1} = x_t − η_t g_t` (with a
+projection), and `η_t` is a single global scalar, typically `η/√t`, shared across every
+coordinate. In sparse high-dimensional data the coordinates are heterogeneous: a few features
+fire on almost every example, while many are rare. The rare ones are often the most
+informative — practitioners already pre-emphasize them by hand with schemes like TF-IDF
+(Salton & Buckley 1988). The question is how to set the learning rate in an online
+(sub)gradient method on such data, while retaining a provable sub-linear regret bound.
 
 ## Background
 
@@ -47,23 +38,19 @@ gradient against a strongly convex `ψ`. For all of these the regret has the sam
 norm under which `ψ` is strongly convex. Choosing `η ∝ 1/√T` (or, with bounded Bregman
 diameter, `η_t ∝ 1/√t`, equivalently `ψ_t = √t·ψ`) yields `O(√T)` regret.
 
-Two facts about this landscape are decisive. First, the `ψ` (the geometry) is
-chosen by hand and **held fixed** for the whole run — at most it is scaled by a time-dependent
-scalar `√t`. The bound then depends entirely on the single norm `‖·‖` you picked up front, and
-on the gradient magnitudes in its dual norm. Second, for the Euclidean choice the resulting
-`O(√T)` rate, `≈ √2·D₂·√(Σ_t‖g_t‖₂²)` with `D₂` the `ℓ₂` diameter, is **minimax optimal** and
-cannot be improved in the worst case (Abernethy et al. 2008). So a better bound is impossible
-without further assumptions on the data; any improvement would have to come from *structure* the
-worst-case analysis ignores — the sparsity and coordinate heterogeneity that these problems
-actually exhibit, none of which the fixed-`ψ` bound is set up to register.
+Two facts about this landscape are standard. First, the `ψ` (the geometry) is
+chosen by hand and held fixed for the whole run — at most it is scaled by a time-dependent
+scalar `√t`. The bound then depends on the single norm `‖·‖` picked up front and on the
+gradient magnitudes in its dual norm. Second, for the Euclidean choice the resulting
+`O(√T)` rate, `≈ √2·D₂·√(Σ_t‖g_t‖₂²)` with `D₂` the `ℓ₂` diameter, is **minimax optimal** in
+the worst case (Abernethy et al. 2008).
 
-The motivating empirical regime is exactly where this structure exists. In high-dimensional
+The motivating empirical regime has measurable structure. In high-dimensional
 text/ranking problems the data and hence the gradients are sparse and **heavy-tailed**: if
 feature `i` appears with probability `p_i = min{1, c·i^{-α}}`, then over `T` rounds it fires
 only about `p_i T` times, so the per-coordinate sum `Σ_i √(p_i)` is `O(log d)` for `α ≥ 2` and
-`O(d^{1−α/2})` for `α ∈ (1,2)` — far smaller than the `√d` that an isotropic Euclidean bound
-charges. The structure is real and quantifiable before any new method exists; the question is
-whether an algorithm can be made to *see* it.
+`O(d^{1−α/2})` for `α ∈ (1,2)` — smaller than the `√d` that an isotropic Euclidean bound
+charges.
 
 ## Baselines
 
@@ -72,40 +59,32 @@ whether an algorithm can be made to *see* it.
   is bounded by telescoping the Euclidean contraction: `Σ_t (x_t−x*)·g_t ≤ Σ_t [‖x_t−x*‖² −
   ‖x_{t+1}−x*‖²]/(2η_t) + (η_t/2)Σ_t‖g_t‖²`; after summing the telescoping term and choosing the
   scalar step to balance distance and gradient mass, this gives
-  `R(T) = O(D₂√(Σ_t‖g_t‖₂²))`. It
-  is simple, general (no smoothness, no strong convexity needed), and minimax-optimal. The gap:
-  the metric is the fixed Euclidean one and the step is a single global scalar, identical for
-  every coordinate. It cannot give a rare informative feature a different, larger step, and
-  being minimax-optimal it leaves on the table all the improvement available from sparsity.
+  `R(T) = O(D₂√(Σ_t‖g_t‖₂²))`. It uses the fixed Euclidean metric and a single global scalar
+  step, identical for every coordinate; it needs no smoothness or strong convexity, and is
+  minimax-optimal.
 
 - **Online mirror descent / Bregman-proximal methods (Nemirovski–Yudin; Beck & Teboulle 2003;
   Bartlett et al. 2007).** Generalize the Euclidean step to an arbitrary
-  strongly convex `ψ`, letting you *match* the geometry to the problem — e.g. negative entropy
+  strongly convex `ψ`, matching the geometry to the problem — e.g. negative entropy
   on the simplex gives the multiplicative-weights `√(log d)` dependence instead of `√d`. The
-  same `(1/η)B_ψ(x*,x_1) + (η/2)Σ‖g_t‖²_{ψ*}` bound holds. The gap: `ψ` is picked by hand and a
-  priori, and stays fixed for the run. You must know the right geometry before you see the
-  data, and once chosen it never responds to what the data turns out to look like.
+  same `(1/η)B_ψ(x*,x_1) + (η/2)Σ‖g_t‖²_{ψ*}` bound holds. `ψ` is picked by hand and a priori,
+  and stays fixed for the run.
 
 - **Regularized dual averaging / FTRL (Nesterov 2009; Xiao 2010; Kalai & Vempala 2003; Hazan et
   al. 2006).** Predict from the running average gradient against a strongly convex `ψ` scaled by
   `√t`: `x_{t+1} = argmin_x{ η⟨ḡ_{1:t},x⟩ + ηφ(x) + (1/t)ψ_t(x) }`, regret `≤ √T·ψ(x*) +
-  (1/2√T)Σ‖g_t‖²_{*}`. Clean handling of composite `φ` (genuine sparsity from `ℓ_1`), no need
-  to fix the horizon. Same gap: the time scaling of `ψ` is a scalar `√t`; the underlying metric
-  is fixed and isotropic.
+  (1/2√T)Σ‖g_t‖²_{*}`. It handles composite `φ` (genuine sparsity from `ℓ_1`) and needs no fixed
+  horizon. The time scaling of `ψ` is a scalar `√t` over a fixed, isotropic metric.
 
 - **Variable-metric / quasi-Newton subgradient methods (Shor 1972 space-dilation; BFGS,
-  Fletcher 1970; Nedić 2002; Bordes et al. 2009).** Adapt a metric to local curvature, the
-  classical way to escape isotropy. The gap for this setting: they assume a differentiable, even
-  smooth objective with positive-definite Hessian bounded away from zero (Bordes), are
-  deterministic, and come with no regret rate for online, composite, or nonsmooth problems; in
-  high `d` maintaining and inverting a full metric is also prohibitive.
+  Fletcher 1970; Nedić 2002; Bordes et al. 2009).** Adapt a metric to local curvature. They
+  assume a differentiable, often smooth objective with positive-definite Hessian bounded away
+  from zero (Bordes), are deterministic, and maintain a full metric matrix.
 
 - **Confidence-weighted / AROW (Crammer et al. 2008, 2009); second-order Perceptron
   (Cesa-Bianchi et al. 2005).** Maintain a mean `μ_t` and a covariance `Σ_t` over the weights
   and shrink the variance in the directions of observed features — second-order, per-feature
-  adaptive in spirit. The gap: these come with *mistake* bounds tied to the specific run of the
-  algorithm, not regret bounds, so they are hard to compare or to certify against the best
-  metric in hindsight, and they do not address the general composite/regret objective.
+  adaptive in spirit. They come with *mistake* bounds tied to the specific run of the algorithm.
 
 ## Evaluation settings
 

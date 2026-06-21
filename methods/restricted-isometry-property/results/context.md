@@ -143,49 +143,4 @@ random linear maps.
   bound on the minimal reconstruction error achievable from $m$ linear functionals by *any*
   method — the benchmark a near-optimal scheme should match up to constants.
 
-## Code framework
 
-Available primitives: dense linear algebra to form and apply $\Phi$ and $\Phi^\top$, a
-random Gaussian sampler, and a generic linear-programming routine (an
-$\ell_1$-minimization-as-LP is standard). The empty slots are (i) whatever it takes to settle
-when recovery succeeds, (ii) the recovery program, and (iii) the sample-complexity relation for
-random $\Phi$.
-
-```python
-import numpy as np
-from scipy.optimize import linprog
-
-def sample_gaussian(m, n, rng):
-    """Sample an i.i.d. Gaussian matrix with variance 1/m."""
-    return rng.standard_normal((m, n)) / np.sqrt(m)
-
-def make_sparse(n, s, rng):
-    """Sample a random s-sparse signal."""
-    x = np.zeros(n)
-    T = rng.choice(n, size=s, replace=False)
-    x[T] = rng.standard_normal(s)
-    return x
-
-def recovery_certificate(Phi, s):
-    """Whatever certifies, for this Phi and sparsity level s, that recovery succeeds.
-    # TODO: fill in.
-    """
-    pass
-
-def recover(Phi, y):
-    """The tractable recovery program filled into the empty slot.
-    # TODO: the convex program we will derive (solved as an LP).
-    """
-    pass
-
-def measurements_needed(n, s):
-    """How many rows m suffice for a random Phi to admit recovery.
-    # TODO: the sample-complexity m as a function of (n, s).
-    """
-    pass
-
-# Driver (exact-recovery protocol):
-#   Phi = sample_gaussian(m, n, rng); x = make_sparse(n, s, rng); y = Phi @ x
-#   x_hat = recover(Phi, y)
-#   success = np.linalg.norm(x_hat - x) < tol
-```

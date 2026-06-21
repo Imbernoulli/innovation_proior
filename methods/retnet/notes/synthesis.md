@@ -1,106 +1,108 @@
 # RetNet synthesis notes
 
 ## Pain point / research question
-Transformer trains in parallel (teacher-forced, all positions at once via QK^T) but its
-autoregressive *inference* is bad: O(N) per step (each new token attends to all past keys),
-and the KV cache grows linearly with sequence length -> O(N) memory, memory-bound decode.
-RNNs invert this: O(1) per-step inference with fixed state, but the recurrence is sequential
-so training does not parallelize over the time axis. Add the third corner: strong performance.
-"Impossible triangle" = train parallelism + O(1) inference + Transformer-level performance, all at once.
 
-## The three strands that fall short (baselines)
-- **Linear attention (Katharopoulos et al. 2020, "Transformers are RNNs")**: replace exp(q·k) with
-  phi(q)·phi(k); associativity lets the KV sum be reused -> O(1) recurrent inference, O(N) train.
-  BUT: dividing by sum of phi(q)·phi(k) (the normalizer) is the issue; performance < Transformer,
-  and it "struggles to encode position." The normalization is unstable / dilutes.
-- **Return-to-RNN with element-wise ops (RWKV, Peng et al. 2023)**: gets O(1) inference and competitive
-  performance via token-shift + exponential decay, but token-mixing is element-wise (channel-wise scalars)
-  -> lower capacity; and the WKV recurrence is essentially sequential to train (element-wise, not matmul state).
-- **Replace attention with SSM/long-conv (S4 Gu et al. 2021; H3; Hyena)**: O(1) or O(N log N), parallel via
-  convolution / FFT, decent performance, but content-unaware mixing (the SSM kernel doesn't depend on the
-  token content the way QK does). S4 = content-unaware special case.
+Transformer training is parallel because teacher forcing exposes the whole sequence and self-attention
+forms \(QK^\top\) for all positions at once. Autoregressive inference has the opposite profile:
+each new query must interact with all previous keys, so decode work is \(O(N)\) per step and the
+KV cache grows linearly with context length. RNNs have fixed state and \(O(1)\) per-step decode,
+but their state dependency blocks time-axis parallel training. The target problem is the paper's
+"impossible triangle": parallel training, \(O(1)\) inference, and Transformer-level quality.
 
-## Core derivation (the heart)
-Start from a *linear recurrence with a state matrix*:
-  s_n = A s_{n-1} + k_n^T v_n   (s_n in R^{d x ...}, k_n row in R^{1xd}, v_n scalar/row)
-  o_n = q_n s_n
-Unroll: o_n = sum_{m<=n} q_n A^{n-m} k_m^T v_m.   <-- this is the bridge: a recurrence already
-*equals* a weighted sum over the past, like attention, with weight q_n A^{n-m} k_m^T.
+## Load-bearing ancestors and contrasts
 
-Make q,k content-aware: Q = X W_Q, K = X W_K.
+- Transformer: self-attention removes recurrent sequential dependence and makes each layer
+  parallel over positions, but decoder self-attention still masks future positions and keeps all
+  previous keys/values for generation.
+- Linear Transformer: replaces \(\exp(q\cdot k)\) with a factored kernel
+  \(\phi(q)^\top\phi(k)\), allowing a causal running state. It shows the attention-to-recurrence
+  route, but the normalizer and feature-map choice weaken quality and position modeling.
+- RoPE/xPos: rotate query/key representations so their inner product depends on relative
+  position; xPos adds reciprocal magnitude factors. RetNet's diagonalized state matrix produces
+  exactly this sort of query/key position factor.
+- S4/H3/Hyena: state-space and long-convolution models give efficient long-range modeling, but
+  the core kernels are not the same high-dimensional content-addressed \(QK\) interaction unless
+  additional gates/hybrids are introduced.
+- RWKV/AFT line: efficient recurrent or elementwise time-mixing paths give low-cost inference,
+  but the state is channelwise/elementwise rather than a \(d_k\times d_v\) outer-product memory.
 
-Diagonalize A = Lambda (gamma e^{i theta}) Lambda^{-1}, gamma,theta in R^d.
-A^{n-m} = Lambda (gamma e^{i theta})^{n-m} Lambda^{-1}. Absorb Lambda into W_Q, W_K:
-  o_n = sum_{m<=n} q_n (gamma e^{i theta})^{n-m} k_m^T v_m
-      = sum_{m<=n} [q_n (gamma e^{i theta})^n] [k_m (gamma e^{i theta})^{-m}]^T v_m.
-The factor (gamma e^{i theta})^n on q and (...)^{-m} on k => xPos / rotary-like: relative
-position appears as n-m. The magnitude part gamma^{n-m} = decay, the phase part e^{i theta (n-m)} = rotation (RoPE).
+## Core derivation checks
 
-Simplify gamma to a *scalar* (per head): pull gamma^{n-m} out:
-  o_n = sum_{m<=n} gamma^{n-m} (Q_n e^{in theta})(K_m e^{im theta})^dagger v_m.
+Start from
+\[
+s_n=A s_{n-1}+K_n^\top v_n,\qquad
+o_n=Q_n s_n=\sum_{m=1}^n Q_n A^{n-m}K_m^\top v_m .
+\]
+Make \(Q=XW_Q,K=XW_K\), diagonalize
+\(A=\Lambda\mathrm{diag}(\gamma e^{i\theta})\Lambda^{-1}\), and absorb the basis into the
+learned projections. The source equation becomes
+\[
+o_n=\sum_{m=1}^n(Q_n(\gamma e^{i\theta})^n)(K_m(\gamma e^{i\theta})^{-m})^\top v_m .
+\]
+With scalar \(\gamma\):
+\[
+o_n=\sum_{m=1}^n \gamma^{n-m}(Q_n e^{in\theta})(K_m e^{im\theta})^\dagger v_m .
+\]
+The sign-sensitive point is the dagger: the key is written with \(e^{im\theta}\) before the
+conjugate transpose, so the score contains the relative phase. TorchScale applies the same real
+RoPE `theta_shift` to \(q\) and \(k\); the dot product supplies the transpose/conjugate effect.
 
-### (a) Parallel form (training)
-Q = (X W_Q) ⊙ Θ, K = (X W_K) ⊙ Θbar, V = X W_V, Θ_n = e^{i n theta}.
-D_{nm} = gamma^{n-m} if n>=m else 0   (causal mask + decay in one matrix).
-Retention(X) = (Q K^T ⊙ D) V.   No softmax. O(N^2 d) train, parallel over positions.
+Parallel form:
+\[
+Q=(XW_Q)\odot\Theta,\quad K=(XW_K)\odot\overline{\Theta},\quad
+D_{nm}=\gamma^{n-m}\mathbf{1}_{n\ge m},\quad
+\mathrm{Retention}(X)=(QK^\top\odot D)V.
+\]
 
-### (b) Recurrent form (inference) — O(1)/step
-S_n = gamma S_{n-1} + K_n^T V_n   (S_n in R^{d_k x d_v}, outer product accumulation)
-Retention(X_n) = Q_n S_n.
-Equivalence proof: unroll S_n = sum_{m<=n} gamma^{n-m} K_m^T V_m. Then
-Q_n S_n = sum_{m<=n} gamma^{n-m} Q_n K_m^T V_m = sum_{m<=n} (Q_n K_m^T) gamma^{n-m} V_m,
-which is exactly row n of (QK^T ⊙ D)V. QED. (Θ absorbed into Q,K as content-aware rotation.)
+Recurrent form:
+\[
+S_n=\gamma S_{n-1}+K_n^\top V_n,\quad \mathrm{Retention}(X_n)=Q_n S_n.
+\]
+Unrolling gives exactly row \(n\) of the parallel form.
 
-### (c) Chunkwise form (long-seq training)
-Chunk length B. Chunk i covers positions [Bi, B(i+1)).
-Within-chunk index j = 0..B-1 (local). Global pos = Bi + j.
-- Inner-chunk (parallel within chunk): (Q_{[i]} K_{[i]}^T ⊙ D) V_{[i]}, D the BxB decay-mask.
-- Cross-chunk state R_i = state summarizing all chunks <= i, carried recurrently:
-  R_i = K_{[i]}^T (V_{[i]} ⊙ zeta) + gamma^B R_{i-1},  zeta_{j} = gamma^{B-1-j}  (paper writes zeta_{ij}=gamma^{B-i-1}, i=local idx)
-  Rationale: when R_i is read by a *later* chunk, the contribution of local key at position j inside chunk i
-  must carry decay from j to the chunk boundary B-1, i.e. gamma^{(B-1)-j}; the remaining gamma to the reader
-  is supplied by the reader's own offset and the gamma^B cross-chunk factor.
-- Cross-chunk output for query at local position j in chunk i: (Q_{[i]} R_{i-1}) ⊙ xi, xi_{j} = gamma^{j+1}.
-  Rationale: query at local pos j is global pos Bi+j. R_{i-1} holds keys from chunks < i, summed up to the
-  boundary of chunk i-1 (local index B-1 of that chunk = global B i -1). Distance from that boundary to the
-  query is (Bi+j) - (Bi-1) = j+1, so multiply by gamma^{j+1}. QED.
-Total: Retention(X_{[i]}) = inner + cross. Complexity O(B^2 d + B d^2) per chunk -> O(N(B+d)d) linear in N.
+Chunkwise form with zero-based local indices: chunk \(i\) covers positions \(Bi,\ldots,B(i+1)-1\).
+For a key at local \(j'\), store it in the chunk state with
+\(\zeta_{j'}=\gamma^{B-1-j'}\). For a query at local \(j\) in the next chunk, read the previous
+state with \(\xi_j=\gamma^{j+1}\). The exponents add:
+\[
+(B-1-j')+(j+1)=B+j-j',
+\]
+which is the true distance from that key to that query. This fixes the paper's overloaded local
+index notation \(\zeta_{ij}, \xi_{ij}\).
 
-## Gated multi-scale retention (MSR)
-- h heads, each head uses a *different* gamma (multi-scale): gamma = 1 - 2^{-5-arange(0,h)}.
-  Why multi-scale: a single decay forces one timescale; different gamma per head = different effective
-  context windows / memory horizons, like multi-head gives different subspaces. Ablation: helps.
-- head_i = Retention(X, gamma_i).
-- GroupNorm over concatenated heads (SubLN/Magneto): because different gamma -> different output variance per
-  head, normalize each head separately so variances are balanced. Scale-invariant property of GroupNorm is
-  exploited for the normalization tricks below.
-- Swish gate: MSR(X) = (swish(X W_G) ⊙ Y) W_O, Y = GroupNorm(Concat(heads)).
-  Why gate: retention removed softmax -> lost a nonlinearity; the swish gate restores non-linearity / gating.
-  Ablation: removing it hurts.
+## Canonical implementation mapping
 
-## Normalization tricks (numerical stability, exploiting GroupNorm scale-invariance)
-GroupNorm(alpha * head) = GroupNorm(head), so we can rescale retention scores freely.
-1. QK^T / sqrt(d)  (like attention scaling).
-2. Replace D with Dtilde_{nm} = D_{nm} / sqrt(sum_i D_{ni})  (row-normalize the decay mask).
-3. R = QK^T ⊙ D, normalize Rtilde_{nm} = R_{nm} / max(|sum_i R_{ni}|, 1). Then Retention = Rtilde V.
-These keep forward/backward numerics bounded without changing the result.
+Canonical code: `methods/retnet/code/torchscale` at commit
+`4d1e0e82e5adf86dd424f1463192635b73fc8efc`.
 
-## Architecture / params
-- Block: Y = MSR(LN(X)) + X ; X' = FFN(LN(Y)) + Y. FFN = gelu(X W1) W2.
-- DeepNorm init for stability.
-- Param allocation: W_Q,W_K in R^{dxd}; W_V,W_G in R^{dx2d}; W_O in R^{2dxd} (value dim 2x q/k);
-  FFN intermediate 2d (vs 4d in Transformer) to match param count. head_dim 256 (q/k), 512 (v).
-- gamma in experiments: 1 - exp(linspace(log 1/32, log 1/512, h)).
+- `torchscale/architecture/retnet.py`: `RetNetRelPos` builds RoPE angles and log decays
+  \(\log(1-2^{-5-h})\). It has three branches: recurrent `(sin, cos), gamma`; parallel
+  `(sin, cos), mask`; and chunkwise `(sin, cos), (inner_mask, cross_decay,
+  query_inner_decay, value_inner_decay)`.
+- `torchscale/component/multiscale_retention.py`: `k *= key_dim ** -0.5` implements
+  \(QK^\top/\sqrt d\). Parallel path applies the normalized decay mask, then divides score
+  rows by a clamped detached absolute row sum.
+- Recurrent path is not just `gamma * prev + kv` in code: it carries `prev_key_value` plus a
+  `scale` buffer, combines old/new terms with square-root scale factors, then sums over the
+  key dimension. This is the stabilized version of the same normalized retention function.
+- Chunkwise path normalizes inner scores, stores recurrent states divided by `kv_scale`, tracks
+  `cross_scale`, and aligns inner/cross terms by `all_scale = maximum(inner_scale, cross_scale)`.
+- The paper says GroupNorm per head; maintained TorchScale uses `RMSNorm(head_dim,
+  elementwise_affine=False)` applied per head after the retention path. The retained property is
+  scale-invariance of each head before final gating/projection.
+- The maintained decoder uses RMSNorm pre-norm, GLU FFN, optional DeepNorm residual scaling, and
+  padding to `recurrent_chunk_size` when chunkwise mode sees a non-multiple sequence length.
 
-## Canonical impl mapping (torchscale)
-- multiscale_retention.py: parallel_forward (QK^T * mask, normalize by abs row-sum clamp, @ v, groupnorm),
-  recurrent_forward (kv = decay*prev + k*v, output = sum(q*kv)), chunk_recurrent_forward (inner qk*mask@v +
-  cross (q*query_inner_decay)@kv_recurrent, with scale alignment). theta_shift = rotary (rotate_every_two).
-  group_norm = RMSNorm elementwise_affine=False. gate = silu(g)*output, then out_proj.
-- retnet.py: RetNetRelPos builds (sin,cos) for rotation + decay mask; angle=1/(10000^...) rotary base;
-  decay=log(1-2^{-5-arange(h)}). DecoderLayer = retention + FFN(GLU) with RMSNorm pre-norm, deepnorm alpha.
+## Review findings applied
 
-## In-frame rule
-Do NOT name RetNet/the paper in context.md/reasoning.md as an artifact. May name "retention"/"RetNet"
-as the thing being built in answer.md. Ancestors (Katharopoulos 2020, Gu 2021/S4, RWKV/Peng 2023,
-Su 2021/RoPE, xPos) cited freely.
+- Math: fixed/clarified the RoPE conjugate sign convention, chunk local-index notation, and
+  "exponents add" wording. Kept the \(D_{nm}=0\) future case and \(D_{nm}=\gamma^{n-m}\) past
+  case explicit.
+- Code faithfulness: replaced illustrative `nn.GroupNorm` and bare recurrence with
+  TorchScale-shaped RMSNorm, recurrent scale tracking, chunkwise relative-position masks, and
+  scale alignment.
+- Leak/scaffold: `context.md` keeps the target method unnamed and exposes only a generic token
+  mixer slot. Tightened Transformer cost language so KV-cache inference memory is not confused
+  with quadratic full-attention training memory.
+- Voice: `reasoning.md` remains a first-person present-tense derivation with no markdown
+  headers; `answer.md` is allowed to name RetNet as the final artifact.

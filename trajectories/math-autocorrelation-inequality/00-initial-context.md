@@ -1,96 +1,58 @@
 ## Research question
 
-Among all non-negative functions `f` on the real line, how large can the ratio
+Among non-negative functions `f` on the real line, how large can the ratio
 
 ```
 R(f) = ||f*f||_2^2 / ( ||f*f||_inf · ||f*f||_1 )
 ```
 
-be made, where `f*f` is the autoconvolution `(f*f)(x) = ∫ f(t) f(x−t) dt`? Hölder's inequality
-gives `R(f) ≤ 1` for *any* function, with equality only when `f*f` is (a scalar multiple of) an
-indicator — but the autoconvolution of a non-negative function is a smooth, bump-shaped object, never
-an indicator, so the trivial bound is not attained and the real question is the supremum `C2 :=
-sup_f R(f)`. This is the **second autocorrelation inequality** of Barnard and Steinerberger
-(arXiv:1903.08731); they asked whether `C2` can be pushed close to `1`, and every published advance
-since has been a *constructive lower bound* — an explicit `f` with a measured `R(f)`. The single thing
-being designed here is exactly that: a constructor that emits one concrete non-negative function, scored
-by `R(f)` alone, higher being better.
+be made, where `f*f` is the autoconvolution `(f*f)(x) = ∫ f(t) f(x−t) dt`? Hölder's inequality gives `R(f) ≤ 1` for any function, with equality only when `f*f` is an indicator; an autoconvolution is always a smooth bump, never an indicator, so the supremum is strictly below 1. The problem of finding `C2 := sup_f R(f)` is the **second autocorrelation inequality** of Barnard and Steinerberger (arXiv:1903.08731). The design task is to produce one concrete non-negative function `f` with as large a value of `R(f)` as possible.
 
-The construction class is fixed and is the one used by every modern result on this problem. A candidate
-is a non-negative **piecewise-constant step function**
+The standard construction class is a non-negative **piecewise-constant step function**
 
 ```
 f = Σ_{n=0}^{N−1} v_n · 1_[n, n+1),   v_n ≥ 0,
 ```
 
-`N` pieces of unit width with heights `v_n`. The objective is invariant under translation and dilation
-of `f`, so only the heights and their count matter — the grid spacing and offset wash out. This is what
-makes the problem cleanly computable: the autoconvolution of a step function is **piecewise linear**, so
-it is fully determined by its values at the integer nodes.
+with `N` pieces of unit width and heights `v_n`. The objective is invariant under translation and dilation of `f`, so only the heights and their count matter; the autoconvolution of a step function is piecewise linear and fully determined by its values at the integer nodes.
 
-## How the score is defined
+## Prior art / Background / Baselines
 
-Write `L_j = (f*f)(j)` for the node values of the autoconvolution, `0 ≤ j ≤ 2N`. Because `f` is constant
-on each unit interval, the overlap integral collapses to a discrete autocorrelation of the heights:
-
-```
-L_j = Σ_n v_n · v_{j−n−1}     (sum over the valid overlap range),   L_0 = L_{2N} = 0.
-```
-
-Equivalently `L_j = c_{j−1}` where `c = v * v` is the length-`(2N−1)` discrete convolution of the height
-vector with itself. On each unit cell `[j, j+1)` the autoconvolution is the straight line from `L_j` to
-`L_{j+1}`, and the three norms are exact integrals of that piecewise-linear curve:
+Write `L_j = (f*f)(j)` for the node values, `0 ≤ j ≤ 2N`. These are the discrete self-convolution of the height vector: `L_j = c_{j−1}` where `c = v * v`. On each unit cell `[j, j+1)` the autoconvolution is the straight line from `L_j` to `L_{j+1}`, so the three norms are exact integrals:
 
 ```
 ||f*f||_inf = max_j L_j
-||f*f||_1   = ½ Σ_j (L_j + L_{j+1})                       (trapezoid areas)
-||f*f||_2^2 = ⅓ Σ_j (L_j^2 + L_j·L_{j+1} + L_{j+1}^2)     (∫ of a linear segment squared)
+||f*f||_1   = ½ Σ_j (L_j + L_{j+1})
+||f*f||_2^2 = ⅓ Σ_j (L_j^2 + L_j·L_{j+1} + L_{j+1}^2)
 ```
 
-and the score is `R = ||f*f||_2^2 / (||f*f||_inf · ||f*f||_1)`. There is no held-out set and no way to
-game the metric: the number is a deterministic functional of the heights, and `R ≤ 1` always.
+The score is `R = ||f*f||_2^2 / (||f*f||_inf · ||f*f||_1)`, a deterministic functional bounded by 1.
 
-A few fixed yardsticks anchor every rung. A **flat** step function (the discretized indicator) has a
-triangular autoconvolution and scores exactly `2/3 ≈ 0.6667` — the floor. Matolcsi and Vinuesa found a
-`20`-step function reaching `0.88922` (Canad. Math. Bull., 2024). Google DeepMind's **AlphaEvolve** gave
-a `50`-step function at `0.89628` (arXiv:2506.13131, App. B.2). **Boyer & Li** pushed a `575`-step
-function to `0.901564` with simulated annealing plus gradient refinement (arXiv:2506.16750); Jaech &
-Joseph reached `~0.9016` independently with a `539`-step function (arXiv:2508.02803). The current record
-is **AlphaEvolve-V2** at `C2 ≥ 0.96102`, a deliberately irregular `~50000`-step function. The headline
-numbers to keep in view:
+Published lower bounds for `C2`:
 
-| Reference point | steps `N` | `R` |
+| Baseline | steps `N` | `R` |
 |---|---|---|
-| Hölder ceiling (provable, unattained) | — | 1.0 |
-| **AlphaEvolve-V2 record** (irregular step fn) | ~50000 | **0.96102** |
-| Boyer–Li / Jaech–Joseph | 575 / 539 | ~0.9016 |
-| AlphaEvolve | 50 | 0.89628 |
+| Flat indicator (uniform heights) | any | 0.6667 |
 | Matolcsi–Vinuesa | 20 | 0.88922 |
-| Flat indicator (this scaffold's floor) | any | 0.6667 |
+| AlphaEvolve | 50 | 0.89628 |
+| Boyer–Li | 575 | 0.901564 |
+| Jaech–Joseph | 539 | ~0.9016 |
+| AlphaEvolve-V2 | ~50000 | 0.96102 |
 
-The record has been climbed by dedicated optimization spending enormous compute (Boyer–Li ran `~10^6`
-gradient trajectories; AlphaEvolve-V2 is an evolutionary search). Reproducing `0.96102` from scratch in a
-single bounded constructor is not expected — so the ladder here is not chasing a known-easy target, it is
-climbing from the trivial flat floor toward the published frontier, and the gap to `0.96102` is the
-honest measure of how open the problem still is.
+Each baseline leaves a visible gap:
 
-## The related constants (for orientation)
+- **Flat indicator.** A single uniform height produces a triangular autoconvolution, the lowest meaningful score.
+- **Matolcsi–Vinuesa.** A small hand-tuned step profile reaches `0.88922`, but the construction does not generalize to larger `N`.
+- **AlphaEvolve.** A learned 50-step shape improves on hand tuning, yet the score is still far below 1.
+- **Boyer–Li.** Simulated annealing plus gradient refinement on 575 steps reaches `~0.9016`, but only after roughly `10^6` gradient trajectories.
+- **Jaech–Joseph.** Independent search on 539 steps matches `~0.9016`, confirming the difficulty of pushing past that regime rather than offering a transferable design.
+- **AlphaEvolve-V2.** An evolutionary search on `~50000` irregular steps reaches `0.96102`, the highest published score, at an enormous search cost and with no compact description of the resulting function.
 
-This task focuses on `C2` because it is cleanly runnable, but it sits in a small family. The **first**
-autocorrelation inequality (`C1`) is a *minimization*: the smallest constant `c` with `max_x (f*f)(x) ≥
-c·(∫f)^2 / supp(f)` over non-negative `f` supported on an interval — an *upper* bound problem where
-*lower* is better; the record there is `C1 ≤ 1.5028628969`, held by Claude Code / Opus via "aspiration
-prompting" in AutoEvolver (beating TTT-Discover `1.5028628983` and AlphaEvolve `1.5053`). The **third**
-(`C3`) is a related ratio variant. Only `C2` is built here; `C1`/`C3` are cited as the surrounding
-landscape.
+The gap between `0.96102` and the Hölder ceiling `1` remains open.
 
-## The fixed substrate
+## Fixed substrate / Code framework
 
-The harness is a thin, deterministic evaluator. It receives a height vector `v` (a Python list of
-non-negative floats), clips negatives to `0`, forms the autoconvolution nodes `L` by self-convolution,
-computes the three piecewise-linear norms by the exact formulas above, and returns `R`. Self-convolution
-is done with an FFT (`scipy.signal.fftconvolve`), so the evaluator is `O(N log N)` and scales to tens of
-thousands of pieces. The formulas, the norm conventions, and `R ≤ 1` are frozen.
+The harness receives a height vector `v`, clips any negative entries to `0`, forms the autoconvolution nodes `L` by self-convolution, computes the three piecewise-linear norms by the exact formulas above, and returns `R`. Self-convolution uses an FFT (`scipy.signal.fftconvolve`), so the evaluator is `O(N log N)` and scales to tens of thousands of pieces. The norm conventions and the score definition are frozen.
 
 ```python
 import numpy as np
@@ -110,13 +72,10 @@ def autoconv_ratio(v):
     return float(l2sq / (linf * l1))
 ```
 
-Every valid candidate is a list of non-negative finite floats of any length `N ≥ 1`. There are no other
-constraints — the constructor is free to return any height vector, structured, optimized, or searched.
+## Editable interface
+
+The editable output is a list or one-dimensional array of non-negative finite floats `v = [v_0, ..., v_{N−1}]` with arbitrary length `N ≥ 1`. The harness clips negatives and computes `R(v)`; no other constraints or side channels are available. The constructor may search, optimize, or hand-design the heights, but the final returned object must be the height vector itself.
 
 ## Evaluation settings
 
-A single deterministic functional `R(v)` above. Because a constructor may search internally, the harness
-reports `R` of the *returned* vector and fixes any stochastic run to a stated seed so the number is
-reproducible. The fixed yardsticks — flat floor `0.6667`, Matolcsi–Vinuesa `0.88922`, AlphaEvolve
-`0.89628`, Boyer–Li `~0.9016`, AlphaEvolve-V2 record `0.96102` — are the rulers every rung is read
-against. The score is the whole result; there is no partial credit beyond the ratio itself.
+A single deterministic functional `R(v)`. The harness reports the ratio of the returned vector; any internal randomness is fixed to a stated seed so the reported number is reproducible. The fixed yardsticks are the Hölder ceiling `1` and the published lower bounds `0.6667`, `0.88922`, `0.89628`, `0.901564`/`~0.9016`, and `0.96102`. The score is the entire result; there is no partial credit beyond the ratio.

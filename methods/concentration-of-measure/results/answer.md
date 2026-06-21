@@ -47,30 +47,3 @@ and the two-sided bound carries a factor $2$.
 
 Markov $\to$ (apply to $e^{hZ}$) Chernoff, whose optimum is the Legendre dual, with the Gaussian as the target shape $\to$ (convexity of $e^{hx}$) Hoeffding's lemma: a bounded centered variable has a sub-Gaussian MGF with proxy variance $(b-a)^2/4$ $\to$ (Chernoff over an independent sum, optimize $h$) Hoeffding's inequality $\to$ (only independence-via-factorization was used; the tower property preserves it for martingale differences) Azuma–Hoeffding $\to$ (the Doob martingale turns any function of independent inputs into martingale increments, bounded differences cap each one) McDiarmid. A not-too-sensitive function of many independent variables is sharply concentrated around its mean.
 
-## Numerical check
-
-```python
-import numpy as np
-
-def hoeffding_tail(t, ranges):
-    """Upper bound on P{ sum_i (X_i - E X_i) >= t } for X_i in [a_i, b_i]."""
-    D = float(np.sum(np.square(ranges)))          # sum_i (b_i - a_i)^2
-    return np.exp(-2.0 * t * t / D)
-
-def mcdiarmid_tail(t, c):
-    """Upper bound on P{ f - E f >= t } under bounded differences c_i."""
-    return np.exp(-2.0 * t * t / float(np.sum(np.square(c))))
-
-def azuma_tail(t, half_widths):
-    """Upper bound on P{Z_n - Z_0 >= t} when |d_k| <= c_k."""
-    return np.exp(-(t * t) / (2.0 * float(np.sum(np.square(half_widths)))))
-
-# Sanity check: n fair coins in [0,1], deviation t of the *sum* S = sum X_i.
-rng = np.random.default_rng(0)
-n, t, trials = 100, 8.0, 400_000
-X = rng.integers(0, 2, size=(trials, n)).astype(float)   # Bernoulli(1/2) in {0,1}
-S = X.sum(axis=1) - n * 0.5                               # S - E S, since E X_i = 1/2
-emp = np.mean(S >= t)
-bnd = hoeffding_tail(t, np.ones(n))                       # ranges b_i - a_i = 1
-assert emp <= bnd, (emp, bnd)                             # the bound dominates the empirical tail
-```

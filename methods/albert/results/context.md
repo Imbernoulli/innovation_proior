@@ -3,19 +3,15 @@
 Full-network pretraining of Transformer encoders has driven a rapid run of gains
 on language understanding — on the Chinese-English-exam reading task RACE, machine
 accuracy moved from 44.1% at the task's introduction to 83.2% in the best
-published system. A consistent lesson across these results is that *larger*
+published system. A consistent observation across these results is that *larger*
 networks help: more layers, wider hidden size, more heads tend to improve
-downstream accuracy. The natural next move is simply to keep scaling. But two
-things stand in the way. First, hardware memory is finite; state-of-the-art
-models already have hundreds of millions to billions of parameters, so naively
-widening a model hits memory limits, and distributed training slows down because
-communication cost is proportional to the parameter count. Second — and more
-troubling — scaling is not even reliably *helping*: when the optimization budget
-(steps, learning rate) is held fixed and the hidden size of a large BERT model is
-simply doubled, the bigger model performs *worse* on downstream tasks, with no
-sign of overfitting. So the precise question is: is better NLP as easy as bigger
-models, and if not, can the parameters be reorganized so that a model with *fewer*
-parameters than the current large one trains more stably and scales further?
+downstream accuracy. State-of-the-art models already have hundreds of millions to
+billions of parameters, and training them at scale is shaped by two practical
+constraints: hardware memory is finite, and in distributed training the
+communication cost grows with the parameter count. The setting is full-network
+pretrain-then-finetune at scale, and the question is how to organize a
+Transformer encoder's parameters so that it can be trained at large hidden sizes
+and depths within these constraints.
 
 ## Background
 
@@ -28,61 +24,51 @@ accuracy (Devlin et al. 2018 stop at hidden size 1024, presumably for cost).
 
 **Where the parameters live in a Transformer encoder.** Two pools dominate. The
 token embedding matrix has size V×E (vocabulary times embedding dimension), and
-when the embedding dimension is tied to the hidden size H (as is standard, E≡H),
-widening H widens this matrix proportionally to the vocabulary — tens of thousands
-of rows — even though most rows are updated only sparsely. The per-layer
-Transformer parameters (attention projections plus a feed-forward block whose
-inner dimension is conventionally 4H) are replicated independently across all L
-layers, so the depth multiplies this pool L-fold.
+the embedding dimension is conventionally tied to the hidden size H (E≡H), so this
+matrix scales with H across the tens of thousands of vocabulary rows. The
+per-layer Transformer parameters (attention projections plus a feed-forward block
+whose inner dimension is conventionally 4H) are replicated independently across
+all L layers, so the depth multiplies this pool L-fold.
 
-**Memory and communication.** Prior remedies attack memory but not communication:
-gradient checkpointing recomputes activations to make memory sublinear at the
-cost of an extra forward pass (Chen et al. 2016); reversible layers reconstruct a
-layer's activations from the next so intermediate activations needn't be stored
-(Gomez et al. 2017); model parallelism splits a giant model across devices
-(Raffel et al. 2019; Shoeybi et al. 2019). None of these *reduce* the parameter
-count, so distributed communication stays expensive.
+**Memory and communication.** Existing approaches to large-model training target
+memory: gradient checkpointing recomputes activations to make memory sublinear at
+the cost of an extra forward pass (Chen et al. 2016); reversible layers
+reconstruct a layer's activations from the next so intermediate activations
+needn't be stored (Gomez et al. 2017); model parallelism splits a giant model
+across devices (Raffel et al. 2019; Shoeybi et al. 2019).
 
 **Cross-layer parameter sharing, prior art.** Sharing weights across Transformer
 layers was explored for encoder-decoder tasks: the Universal Transformer
-(Dehghani et al. 2018) reports that a recurrent, weight-shared Transformer *beats*
-a vanilla one on language modeling and subject-verb agreement; the Deep
+(Dehghani et al. 2018) reports that a recurrent, weight-shared Transformer
+performs well on language modeling and subject-verb agreement; the Deep
 Equilibrium Model (Bai et al. 2019) shows a shared-layer Transformer can reach a
-fixed point where a layer's input and output embeddings coincide. These exist
-outside the pretrain/finetune setting.
+fixed point where a layer's input and output embeddings coincide. These were
+studied outside the pretrain/finetune setting.
 
-**Inter-sentence objectives and a known weakness.** BERT pairs masked language
-modeling with next-sentence prediction (NSP): a binary classifier on whether two
-segments are consecutive in the corpus, with positives drawn as adjacent segments
-and negatives as segments from two *different* documents, sampled 50/50. NSP was
-meant to help sentence-pair tasks like natural language inference. But subsequent
-work found its effect unreliable and removed it with no loss, even gains (Yang et
-al. 2019; Liu et al. 2019). Coherence and discourse-ordering objectives
-have a long line of study (Hobbs 1979; Grosz et al. 1995; skip-thought, Kiros et
-al. 2015; discourse-marker and sentence-ordering objectives, Jernite et al. 2017;
-Nie et al. 2019).
+**Inter-sentence objectives.** BERT pairs masked language modeling with
+next-sentence prediction (NSP): a binary classifier on whether two segments are
+consecutive in the corpus, with positives drawn as adjacent segments and
+negatives as segments from two *different* documents, sampled 50/50. NSP is
+intended to help sentence-pair tasks like natural language inference. Some
+subsequent models drop it (Yang et al. 2019; Liu et al. 2019). Coherence and
+discourse-ordering objectives have a long line of study (Hobbs 1979; Grosz et al.
+1995; skip-thought, Kiros et al. 2015; discourse-marker and sentence-ordering
+objectives, Jernite et al. 2017; Nie et al. 2019).
 
-**Regularization at scale.** Dropout is standard in these models; whether it
-helps when a very large model is *underfitting* its data (high train loss, no
-overfitting even after a million steps) is an open empirical question, with prior
-hints that combining certain normalizers and dropout can interact badly (Li et
-al. 2019).
+**Regularization at scale.** Dropout is standard in these models, and prior work
+reports that combining certain normalizers with dropout can interact (Li et al.
+2019).
 
 ## Baselines
 
 **BERT (Devlin et al. 2018).** Bidirectional Transformer encoder, GELU
 activations, masked language modeling + NSP, WordPiece vocabulary of 30K with the
 embedding dimension tied to hidden size. Base: L=12, H=768, A=12, 108M params;
-large: L=24, H=1024, A=16, 334M. The reference point. Gaps it leaves: the
-embedding matrix scales with H; the per-layer parameters scale with depth; NSP is
-a weak auxiliary task; and simply widening it (a 2048-hidden "xlarge") *degrades*
-accuracy under a fixed budget.
+large: L=24, H=1024, A=16, 334M. The reference point.
 
 **XLNet (Yang et al. 2019) and RoBERTa (Liu et al. 2019).** Both keep the
 embedding-tied-to-hidden convention, both drop NSP, and both report strong
-results partly by training on much more data. They establish that NSP can be
-removed and that more data helps, but they do not address the parameter-count and
-scaling-stability problem — they make the model *better*, not *lighter*.
+results partly by training on much more data.
 
 ## Evaluation settings
 

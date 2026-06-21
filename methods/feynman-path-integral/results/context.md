@@ -136,45 +136,4 @@ The natural yardsticks are analytical, not benchmark datasets:
   from the new formulation must match the standard `p = −iℏ∂_x`, `E = iℏ∂_t`, and the
   formalism's relation to matrix/operator algebra must be reproducible.
 
-## Code framework
 
-A minimal symbolic/numerical harness for the 1-D non-relativistic particle and its discretized
-propagator composition. The physics is the derivation.
-
-```python
-import numpy as np
-
-# A non-relativistic particle has mass m, coordinate x, potential V(x),
-# and Lagrangian L(x, xdot) = 0.5*m*xdot**2 - V(x), with action S = ∫ L dt.
-# Time evolution can be written with a kernel K that composes by integrating
-# over an intermediate coordinate:
-#     psi(x', t+eps) = ∫ K(x', x; eps) psi(x, t) dx
-#     K(t2, t0) = ∫ K(t2, t1) K(t1, t0) dx1.
-
-hbar = 1.0
-
-def L(x, xdot, m, V):
-    return 0.5 * m * xdot**2 - V(x)
-
-def slice_action(x_next, x, eps, m, V):
-    """Classical action ∫ L dt over one short slice of duration eps,
-    evaluated between the endpoints. For small eps the velocity can be read
-    as xdot ≈ (x_next - x)/eps."""
-    xdot = (x_next - x) / eps
-    return L(x_next, xdot, m, V) * eps
-
-def short_time_kernel(x_next, x, eps, m, V):
-    # TODO: the single-slice propagator over one slice of duration eps.
-    raise NotImplementedError
-
-def propagator(x_final, x_initial, t, N, m, V):
-    """Compose N short-time kernels by integrating over the N-1 intermediate
-    coordinates. As N->inf with eps=t/N->0, this approaches the finite-time
-    propagator."""
-    # TODO: compose N single-slice kernels over the intermediate coordinates.
-    raise NotImplementedError
-
-def evolve_one_slice(psi_grid, x_grid, eps, m, V):
-    """psi(x', t+eps) = ∫ short_time_kernel(x', x) psi(x, t) dx, on a grid."""
-    raise NotImplementedError
-```

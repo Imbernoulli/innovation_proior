@@ -8,17 +8,7 @@ named-entity recognition and extractive question answering — is starved for
 labeled data, while unlabeled text is essentially infinite. The field has
 established that pre-training a model on unlabeled text and then transferring it
 helps broadly. The open question is how to extract the *most* general, reusable
-representation from that unlabeled text.
-
-A representation is most useful for understanding tasks when each token's vector
-encodes the token's meaning **in its full context — both the words to its left
-and the words to its right**, at every layer of the network. For span-extraction
-question answering, the representation of a candidate answer word is only as good
-as the context it can see, and the words that disambiguate it lie on both sides.
-The pain point is concrete: the prevailing way to pre-train on unlabeled text is
-a language model — predict the next word — and a next-word predictor is
-intrinsically one-directional. The representations it produces only ever encode
-left context. Whatever pre-training recipe one adopts has to be learnable from
+representation from that unlabeled text — a pre-training recipe learnable from
 unlabeled text alone and transferable to both sentence-level and token-level
 tasks with essentially no task-specific architecture engineering.
 
@@ -29,17 +19,16 @@ representations. Non-neural class-based and distributional methods (Brown et al.
 1992) gave way to neural word embeddings: word2vec (Mikolov et al. 2013) trains
 vectors by discriminating a true center word from corrupted ones using
 surrounding context; GloVe (Pennington et al. 2014) factorizes co-occurrence
-statistics. These give one fixed vector per word type — they cannot represent
-that "bank" means different things in different sentences. Generalizations to
+statistics. These give one fixed vector per word type. Generalizations to
 sentence and paragraph embeddings followed (skip-thought, Kiros et al. 2015,
 which generates neighboring sentences; Logeswaran & Lee 2018, which *ranks* the
 true next sentence against distractors).
 
-**Contextual representations.** The decisive shift was making a word's vector a
-function of the whole sentence. A language model does this for free: its hidden
-state at position t is a contextual summary of the prefix. context2vec (Melamud
-et al. 2016) learns a representation of a word from both its left and right
-context with LSTMs, but the model is feature-based and not deeply bidirectional.
+**Contextual representations.** A further shift makes a word's vector a function
+of the whole sentence. A language model does this for free: its hidden state at
+position t is a contextual summary of the prefix. context2vec (Melamud et al.
+2016) learns a representation of a word from both its left and right context with
+LSTMs as a feature-based model.
 
 **The Transformer (Vaswani et al. 2017).** A sequence model built entirely from
 attention, no recurrence. Each layer: multi-head self-attention followed by a
@@ -57,21 +46,14 @@ original, but a learned position-embedding table is an equally valid option).
 
 **The two transfer recipes that exist.** Both pre-train on unlabeled text with a
 language-model objective, then apply the result to downstream tasks; they differ
-in *how* they apply it.
-
-**Empirical observations that motivate the problem.** Two diagnostic facts about
-the existing systems frame everything that follows. First, the systems that
-encode both directions do so only *shallowly*: they train a left-to-right model
-and a right-to-left model separately and concatenate them, so no single hidden
-unit at any internal layer is ever jointly conditioned on both sides — the
-joining happens only at the very top. Second, on token-level benchmarks the
-purely left-to-right fine-tuning systems visibly underperform, and the
-explanation is mechanical: a token's hidden state has seen nothing to its right,
-which is exactly the information a span predictor needs.
+in *how* they apply it. The systems that encode both directions train a
+left-to-right model and a right-to-left model separately and concatenate them,
+joining at the top; the purely left-to-right systems train a single
+language model under a causal mask.
 
 ## Baselines
 
-**ELMo (Peters et al. 2018) — feature-based, shallowly bidirectional.**
+**ELMo (Peters et al. 2018) — feature-based.**
 Train a forward LSTM language model that predicts xₜ from x_{<t} (maximizing
 Σₜ log p(xₜ | x₁,…,x_{t−1})) and, **independently**, a backward LSTM language
 model that predicts xₜ from x_{>t}. For a stack of L layers, each token then has
@@ -79,31 +61,21 @@ model that predicts xₜ from x_{>t}. For a stack of L layers, each token then h
 states at each layer). A downstream model collapses these into one vector via a
 learned, task-specific softmax-weighted sum, scaled by a learned coefficient, and
 feeds it as a *frozen additional feature* into a task-specific architecture. This
-substantially advanced QA, NLI, NER, and sentiment. Gap it leaves: the two
-directions are trained as separate language models and only **concatenated**;
-there is never a single representation jointly conditioned on both sides, and
-within any layer a forward unit still sees only the left and a backward unit only
-the right. And because the features are frozen, every task still needs its own
-architecture built on top.
+substantially advanced QA, NLI, NER, and sentiment.
 
-**OpenAI GPT (Radford et al. 2018) — fine-tuning, unidirectional.**
+**OpenAI GPT (Radford et al. 2018) — fine-tuning.**
 Pre-train a multi-layer Transformer **with a causal attention mask** as a
 left-to-right language model on a large text corpus, maximizing
 Σₜ log p(xₜ | x_{<t}). Then transfer by fine-tuning: initialize the whole network
 from the pre-trained weights, add a single linear output head, and train *all*
 parameters end-to-end on the downstream task. Because almost no parameters are
 task-specific, this is clean and strong — it set the prior state of the art on
-the GLUE sentence-level tasks. Gap it leaves: the causal mask makes every
-token's representation depend on left context only. This is forced by the
-language-model objective, not chosen — and it is exactly wrong for token-level
-tasks, where both-sided context is essential, and leaves performance on the table
-even for sentence-level tasks.
+the GLUE sentence-level tasks.
 
-**What both inherit.** Both recipes take the unidirectionality (or
-shallow-bidirectionality) of the language-model objective as given: GPT trains a
-single left-to-right model under a causal mask, ELMo trains separate left-to-right
-and right-to-left models. Neither departs from the next-word objective that the
-field has settled on for learning from unlabeled text.
+**What both share.** Both recipes use the next-word language-model objective the
+field has settled on for learning from unlabeled text: GPT trains a single
+left-to-right model under a causal mask, ELMo trains separate left-to-right and
+right-to-left models.
 
 ## Evaluation settings
 
@@ -121,8 +93,8 @@ plausible continuation of a sentence among four. **CoNLL-2003 NER** (Tjong Kim
 Sang & De Meulder 2003) is token-level entity tagging, scored by entity F1.
 Pre-training corpora are likewise standard: BooksCorpus (800M words) and English
 Wikipedia, both available as large unlabeled text; a document-level corpus
-(rather than a shuffled-sentence one like the Billion Word Benchmark) is needed
-to obtain long contiguous spans.
+(rather than a shuffled-sentence one like the Billion Word Benchmark) gives long
+contiguous spans.
 
 ## Code framework
 

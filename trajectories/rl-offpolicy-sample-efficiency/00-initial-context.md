@@ -1,77 +1,30 @@
 ## Research question
 
-Train a humanoid to stand, walk, and run — continuous actions clipped to `[-1, 1]`, tens of
-action dimensions — and get the **highest mean episode return within a fixed, small budget**:
-100,000 gradient steps with 128 parallel environments on a single GPU, deterministic actions at
-evaluation. The thing being designed is the **off-policy algorithm itself**: the actor
-architecture and exploration, the critic architecture and value estimation, and the update rules
-that tie them together. The training infrastructure — environment, replay buffer, observation
-normalization, evaluation — is fixed. The whole question is which fill of that algorithm surface,
-under exactly this budget, learns the most capable locomotion policy.
+Train a humanoid to stand, walk, and run — continuous actions clipped to `[-1, 1]`, tens of action dimensions — and get the **highest mean episode return within a fixed, small budget**: 100,000 gradient steps with 128 parallel environments on a single GPU, deterministic actions at evaluation. The object of design is the **off-policy algorithm itself**: the actor architecture and exploration, the critic architecture and value estimation, and the update rules that tie them together. The training infrastructure is fixed. The question is which fill of that algorithm surface learns the most capable locomotion policy under exactly this budget.
 
-## Prior art before the first rung (control-RL lineage)
+## Prior art / Background / Baselines
 
-The ladder climbs from on-policy to off-policy to a scaled off-policy backbone. These are the
-methods the first rung reacts to.
+The relevant baselines and the gap each leaves:
 
-- **REINFORCE / vanilla policy gradient (Williams 1992).** Ascend `Ê_t[∇log π(a_t|s_t) Â_t]`
-  directly. Simple and general for continuous control, but each sample feeds one gradient step
-  (data-inefficient) and a too-large step collapses the policy irrecoverably. Gap: cannot safely
-  reuse data.
-- **TRPO (Schulman et al. 2015).** A KL trust region around the policy update, solved with
-  natural-gradient / Fisher-vector products + line search. Reliable but heavy and second-order;
-  essentially one step per batch, no cheap data reuse. Gap: reliable but heavy.
-- **DDPG (Lillicrap et al. 2016).** The off-policy deterministic backbone: a deterministic actor
-  `μ(s)` pushed uphill on a critic `Q(s,a)` by the deterministic policy gradient, replay buffer
-  for reuse, slow target networks, additive action noise. Off-policy and sample-efficient, but
-  notoriously brittle — the critic overestimates and the deterministic actor chases the
-  overestimate. Gap: efficient but unstable.
-- **TD3 (Fujimoto et al. 2018).** Fixes DDPG's overestimation: twin critics with a clipped-min
-  bootstrap target, target-policy smoothing, delayed actor updates. Stable deterministic
-  off-policy learning — but vanilla it explores poorly (one deterministic actor + a little noise)
-  and is sample-hungry on a single environment with a scalar critic. Gap: stable but slow/narrow
-  exploration out of the box.
-- **SAC (Haarnoja et al. 2018).** The off-policy maximum-entropy actor-critic: a stochastic
-  tanh-Gaussian actor, a soft Bellman target with an entropy bonus inside the bootstrap, and an
-  automatically tuned temperature. Exploration falls out of the objective. Gap: maximizing
-  entropy over a high-dimensional humanoid action is itself hard, and the stochastic actor can
-  underperform a well-explored deterministic one at this scale.
-- **Distributional value estimation (C51, Bellemare et al. 2017).** Learn the full categorical
-  return distribution over fixed atoms instead of a scalar mean, with a projected cross-entropy
-  Bellman target. A richer, more stable critic target — the substrate's critic is distributional.
+- **REINFORCE / vanilla policy gradient (Williams 1992).** Estimates the policy gradient from Monte-Carlo returns and takes one gradient step per sample. Gap: high variance and no data reuse make it sample-inefficient.
+- **TRPO (Schulman et al. 2015).** Optimizes within a KL-divergence trust region using Fisher-vector products. Gap: each update is expensive and second-order, so data reuse is limited and wall-clock cost is high.
+- **DDPG (Lillicrap et al. 2016).** Uses a deterministic actor and a Q-critic with a replay buffer and target networks. Gap: brittle in practice due to critic overestimation and exploration collapse.
+- **TD3 (Fujimoto et al. 2018).** Extends DDPG with clipped twin critics, target-policy smoothing, and delayed actor updates. Gap: still relies on narrow additive action noise, so exploration can be slow on hard locomotion tasks.
+- **SAC (Haarnoja et al. 2018).** Trains a stochastic actor with a maximum-entropy objective and automatic temperature tuning. Gap: entropy maximization over a high-dimensional action space is difficult, and the stochastic policy can underperform a well-explored deterministic one at this scale.
+- **Distributional value estimation (C51, Bellemare et al. 2017).** Models the full return distribution rather than a scalar value. Gap: a richer critic target still leaves open how to pair it with exploration and actor-architecture choices. The substrate's critic is distributional.
 
-## The fixed substrate
+## Fixed substrate / Code framework
 
-A scaled off-policy training loop is frozen and must not be touched. It provides: 128 parallel
-HumanoidBench environments stepped on the GPU; a GPU-resident replay buffer (`SimpleReplayBuffer`)
-with per-env capacity and n-step returns; running-statistic observation normalization
-(`EmpiricalNormalization`, applied to actor obs, critic obs, and next obs before every update);
-bfloat16 autocast and `torch.compile` for speed; the experience-collection step (policy noise →
-env step → store `(obs, action, next_obs, reward, truncation, done)` with the correct
-time-limit-vs-termination bootstrap mask); the per-step update schedule (`num_updates=2` gradient
-steps per env step, `policy_frequency=2` for delayed actor updates, a `soft_update` Polyak step);
-cosine LR annealing; and the evaluation/`TEST_METRICS` printing (deterministic `actor(obs)`, mean
-of 3 rollouts). The fixed loop calls the editable `build_algorithm`, `update_critic`,
-`update_actor`, and `soft_update` once per update.
+A scaled off-policy training loop is frozen. It provides: 128 parallel HumanoidBench environments stepped on the GPU; a GPU-resident replay buffer (`SimpleReplayBuffer`) with per-env capacity and n-step returns; running-statistic observation normalization (`EmpiricalNormalization`) applied to actor, critic, and next observations; bfloat16 autocast and `torch.compile` for speed; the experience-collection step (policy noise → env step → store `(obs, action, next_obs, reward, truncation, done)` with the correct time-limit-vs-termination bootstrap mask); `num_updates=2` gradient steps per env step, `policy_frequency=2` delayed actor updates, and a Polyak `soft_update`; cosine LR annealing; and deterministic-evaluation logging over 3 rollouts. The fixed loop calls the editable `build_algorithm`, `update_critic`, `update_actor`, and `soft_update` once per update.
 
-## The editable interface
+## Editable interface
 
-Exactly one region of `custom_algorithm.py` (lines 50–331) is editable: the `Actor` and `Critic`
-network classes, `build_algorithm()` (component/optimizer/scheduler construction), `update_critic()`,
-`update_actor()`, and `soft_update()`. The fixed loop already normalizes observations, samples the
-batch, masks bootstraps, and steps the schedulers; the editable functions receive a normalized
-`data` TensorDict and the AMP context and must return the loss/diagnostic dicts.
+Exactly one region of `custom_algorithm.py` (lines 50–331) is editable: the `Actor` and `Critic` network classes, `build_algorithm()`, `update_critic()`, `update_actor()`, and `soft_update()`. The fixed loop already normalizes observations, samples the batch, masks bootstraps, and steps the schedulers; the editable functions receive a normalized `data` TensorDict and the AMP context and must return loss/diagnostic dicts.
 
-The starting point is the scaffold default — the FastTD3-shaped TD3 fill: a deterministic
-descending-MLP actor with per-env mixed Gaussian exploration noise, twin **categorical
-distributional** critics (101 atoms, support `[-250, 250]`) with the projected cross-entropy
-target and clipped double-Q (keep the distribution whose mean is smaller), target-policy
-smoothing in the critic target, and the deterministic-policy-gradient actor objective (ascend the
-min of the two distributional means). Each later method on the ladder is a different fill of this
-same contract.
+The starting point is the default scaffold — a TD3-style fill: a deterministic descending-MLP actor with per-env mixed Gaussian exploration noise, twin categorical distributional critics (101 atoms, support `[-250, 250]`) with the projected cross-entropy target and clipped double-Q, target-policy smoothing in the critic target, and the deterministic-policy-gradient actor objective (ascend the min of the two distributional means).
 
 ```python
-# EDITABLE region of custom_algorithm.py (lines 50-331) — default fill (FastTD3-shaped TD3)
+# EDITABLE region of custom_algorithm.py (lines 50-331) — default fill (TD3-style)
 class Actor(nn.Module):
     """Deterministic actor: descending MLP + tanh head, per-env Gaussian exploration noise."""
     def __init__(self, n_obs, n_act, num_envs, device, hidden_dim=512,
@@ -221,9 +174,4 @@ def soft_update(src, tgt, tau):
 
 ## Evaluation settings
 
-Three HumanoidBench locomotion tasks — **h1hand-stand-v0** (standing balance), **h1hand-walk-v0**
-(walking), **h1hand-run-v0** (running, hidden) — each at a fixed budget of 100,000 gradient steps
-with 128 parallel environments on a single GPU. The metric on every task is **mean episode return
-over 3 evaluation rollouts** at the end of training (`mean_reward_h1hand_{stand,walk,run}_v0`),
-higher is better; the task score is the geometric mean across the three settings. Actions are
-continuous in `[-1, 1]` and evaluation actions are deterministic via `actor(obs)`.
+Three HumanoidBench locomotion tasks — **h1hand-stand-v0** (standing balance), **h1hand-walk-v0** (walking), **h1hand-run-v0** (running, hidden) — each at a fixed budget of 100,000 gradient steps with 128 parallel environments on a single GPU. The metric on every task is **mean episode return over 3 evaluation rollouts** at the end of training (`mean_reward_h1hand_{stand,walk,run}_v0`), higher is better; the task score is the geometric mean across the three settings. Actions are continuous in `[-1, 1]` and evaluation actions are deterministic via `actor(obs)`.

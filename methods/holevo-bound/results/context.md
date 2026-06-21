@@ -125,39 +125,4 @@ The natural yardsticks are analytic, not benchmark datasets:
   examples. Comparisons are exact analytic inequalities checked by direct computation on the
   small ensembles — no learning, no statistical estimate.
 
-## Code framework
 
-The natural computational support is a compact matrix-entropy harness: compute entropic
-quantities, run a few representative measurements, and compare the extracted classical
-information with a placeholder intrinsic ensemble ceiling. The ingredients are dense-matrix
-linear algebra (eigendecomposition for `−Tr ρ log ρ`), Shannon-entropy and
-mutual-information routines from classical information theory, and a way to apply a POVM to a
-state and read off the induced classical joint distribution.
-
-```python
-import numpy as np
-
-def von_neumann_entropy(rho):
-    # S(rho) = -Tr rho log2 rho, via eigenvalues
-    pass  # TODO
-
-def shannon_entropy(p):
-    # H(p) = -sum p log2 p
-    pass  # TODO
-
-def mutual_information(joint):
-    # classical I(X;Y) from a joint distribution p(x,y)
-    pass  # TODO
-
-def apply_povm(states, priors, povm):
-    # given {rho_x}, {p_x}, POVM {E_y}: return joint p(x,y) = p_x Tr(E_y rho_x)
-    pass  # TODO
-
-def candidate_ceiling(states, priors):
-    # placeholder for the intrinsic ensemble quantity to compare against
-    pass  # TODO
-
-def sanity_check(states, priors, povms):
-    # for each measurement: I(X;Y) from apply_povm, assert <= candidate_ceiling
-    pass  # TODO
-```

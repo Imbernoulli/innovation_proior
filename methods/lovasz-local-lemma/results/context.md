@@ -1,153 +1,64 @@
-# Context
+## Problem
 
-## Research question
+The probabilistic method often proves existence by choosing a random object, defining bad events
+`A_1, ..., A_n`, and showing that there is positive probability that none of them occurs. In symbols,
+the target is `P(no A_i occurs) > 0`. A good outcome is then an object satisfying every desired local
+constraint.
 
-I want to prove that a combinatorial object with a desired global property *exists*, in a regime where
-the only general tool I have — the probabilistic method — runs out of steam. The probabilistic method
-proves existence non-constructively: I put a probability distribution on the candidate objects, define a
-family of "bad" events `A_1, …, A_n` (each one saying "the object fails in this particular spot"), and
-argue that
+The difficult regime is not when every bad event is rare in isolation. It is when there are so many
+bad events that their probabilities add up to much more than one, while the events are also not
+globally independent. This is the gap Lovasz Local Lemma fills: many individually unlikely failures,
+not mutually independent, but only locally entangled.
 
-    P(none of the A_i occurs) > 0,
+## Earlier Baselines
 
-because a random object avoiding every bad event is exactly a good object. Two clean situations make this
-trivial. If the bad events are *mutually independent* and each has probability `< 1`, then
-`P(Ā_1 … Ā_n) = ∏_i (1 − P(A_i)) > 0`, no matter how large the individual probabilities or their sum. If
-instead the *union bound* applies — `Σ_i P(A_i) < 1` — then `P(⋃ A_i) ≤ Σ_i P(A_i) < 1`, so again the good
-object exists.
+Full independence gives an easy product:
+`P(no A_i occurs) = prod_i (1 - P(A_i))`, which is positive when each `P(A_i) < 1`. But in most
+combinatorial constructions, two local failures can share random variables, so mutual independence of
+all bad events is too strong.
 
-The hard regime, and the one I care about, sits between these. I have *many* bad events; each is *individually
-unlikely*; but `Σ_i P(A_i)` is far larger than `1`, so the union bound is hopeless; and the events are *not*
-independent, so the product formula does not apply either. What rescues this situation is that the dependence
-is *local*: each bad event is statistically entangled with only a handful of the others and is independent of
-all the rest. The precise question is: **does a small amount of local dependence still leave positive
-probability that no bad event occurs — and exactly how local must it be?** A theorem that answered this would
-convert a hopeless *global* counting condition (a bound on the *total* number of bad events) into a mild
-*local* condition (a bound on how many other bad events each one can interact with), and existence proofs that
-were blocked would go through.
+The union bound gives the other easy tool:
+`P(some A_i occurs) <= sum_i P(A_i)`. It requires no independence, but it is globally conservative.
+Every bad event is charged at full price, including events that are disjoint from the one currently
+being considered and hence should not matter. Once `sum_i P(A_i) >= 1`, the union bound cannot prove
+that a good object exists, even if each bad event interacts with only a few others.
 
-## Background
+## Local Dependency Structure
 
-**The probabilistic method and where its two easy modes live.** The method, developed largely by Erdős
-through the 1940s–60s, proves existence by averaging. The two regimes above are its workhorses. The
-independence regime is the strongest possible — `∏(1 − p_i)` stays positive even when `Σ p_i` is enormous —
-but genuine independence among "the object fails here" events is rare, because two failures usually share some
-of the underlying random choices. The union-bound regime needs no independence at all, but it is wasteful: it
-charges the full `P(A_i)` for every bad event with no credit for the fact that most pairs of bad events barely
-interact, so it requires `Σ_i P(A_i) < 1`, a *global* budget that breaks the moment the number of bad events
-grows.
+The key structure is a dependency graph whose vertices are the bad events. An edge means two events
+may depend on each other. The required condition is not merely pairwise independence: each `A_i` must
+be independent of the whole set of its non-neighbours. This set-level independence is what lets the
+proof ignore all far-away bad events at once.
 
-**Limited dependence as a graph.** Between the two extremes is the realistic case: each `A_i` is determined by
-some subset of the underlying independent random choices, and two bad events are entangled only when their
-subsets overlap. This is captured by a *dependency graph*: vertices are the events `A_1, …, A_n`, and `A_i` is
-joined to the events it can depend on, so that `A_i` is independent of the *set* of all events it is **not**
-joined to. The load-bearing word is *set*: I need `A_i` to be independent of the entire collection of its
-non-neighbours taken together (independent of every Boolean combination of them), not merely independent of
-each one separately. Pairwise independence is genuinely weaker — three events can be pairwise independent yet
-not mutually independent (take `x_1, x_2, x_3` uniform and independent in `Z/2Z` and let `A_i` be the event
-`x_{i+1} + x_{i+2} = 0`; any two are independent, all three are not), so the empty graph is *not* a valid
-dependency graph for them. The dependency graph is therefore built from genuine mutual independence, not from
-pairwise correlation, and it need not be unique (the complete graph is always valid; the art is to make it
-sparse).
+In common applications this graph is sparse because each bad event depends on only a small set of
+underlying random choices. In hypergraph two-colouring, the bad event for an edge depends only on the
+coin flips at that edge's vertices, so it is independent of bad events for disjoint edges. In `k`-SAT,
+a clause-violation event depends only on clauses sharing variables with it.
 
-**Exact identities available when events are dependent.** When the bad events are not independent, the product
-formula `∏(1 − P(A_i))` is unavailable, but the chain rule still holds with no independence assumption at all:
-`P(Ā_1 … Ā_n) = P(Ā_1) · P(Ā_2 | Ā_1) · ⋯ · P(Ā_n | Ā_1 … Ā_{n−1})`. The whole product is positive iff every
-factor is, and each factor is `1 − P(A_k | the earlier events did not occur)`. The union bound, by contrast,
-works only with the unconditional `P(A_k)` and throws away which other events were avoided.
+## Core Reframing
 
-**The motivating concrete failure: hypergraph 2-colouring (property B).** A hypergraph is a family of sets
-("edges") on a vertex set; it is `2`-colourable (has *property B*) if the vertices can be coloured with two
-colours so that no edge is monochromatic. For a `k`-uniform hypergraph (every edge has `k` vertices), colour
-each vertex red/blue independently with probability `1/2`; the bad event `A_f` = "edge `f` is monochromatic"
-has probability `2 · 2^{-k} = 2^{-(k-1)}`. The union bound proves `2`-colourability whenever the *total* number
-of edges is `< 2^{k-1}` — a global count. It is a known, exasperating fact that this is essentially all the
-union bound gives, even though a hypergraph with millions of edges that pairwise barely intersect is "obviously"
-`2`-colourable: each edge only conflicts with the few edges it actually meets. The diagnostic is sharp — the
-union-bound threshold ignores the geometry entirely, charging for edges that are disjoint and therefore
-independent.
+Lovasz Local Lemma replaces the global question "is the sum of all bad-event probabilities less than
+one?" with the local question "is each bad event sufficiently unlikely compared with the number and
+weight of the bad events it can depend on?" The proof uses the chain rule:
+`P(no A_i occurs) = prod_i P(A_i does not occur | earlier bad events did not occur)`.
 
-**A neighbouring structural fact.** Lovász, and independently Woodall, had shown that every `3`-chromatic
-`r`-uniform hypergraph must contain a vertex of high degree (degree `> r`); more generally, a hypergraph in
-which every subfamily `H'` satisfies `|⋃_{E∈H'} E| > |H'|` is `2`-colourable. These are *structural* statements
-— they tie non-`2`-colourability to the existence of locally dense spots — and they suggest that the right
-condition for colourability is *local* (a degree / intersection bound) rather than *global* (a total count).
-That is exactly the shape of condition a probabilistic existence theorem in the middle regime would want to
-produce.
+Thus the right quantity is not the unconditional `P(A_i)` used by the union bound. It is the
+conditional probability that `A_i` happens after some other bad events have been avoided. Splitting
+the conditioning into neighbours and non-neighbours is the essential move: non-neighbours disappear
+by independence, while neighbours cost only a local product. In the asymmetric form, if there are
+numbers `x_i in [0,1)` such that
+`P(A_i) <= x_i prod_{j in N(i)} (1 - x_j)`, then
+`P(no A_i occurs) >= prod_i (1 - x_i) > 0`.
 
-## Baselines
+## Consequences
 
-- **Independence regime of the probabilistic method.** If `A_1, …, A_n` are mutually independent with
-  `P(A_i) < 1`, then `P(Ā_1 … Ā_n) = ∏(1 − P(A_i)) > 0`. *Core idea:* multiply complementary probabilities.
-  *Gap:* genuine mutual independence of "failure-here" events almost never holds, because distinct failures
-  share underlying random choices; the moment two bad events overlap, the product formula is unavailable.
+The symmetric corollary says that if every bad event has probability at most `p`, each event depends
+on at most `d` others, and `e p (d + 1) <= 1`, then all bad events can be avoided simultaneously with
+positive probability. This is the distinctive insight: bad events need not be globally independent;
+local dependence is acceptable when the dependency graph is sparse and each event is unlikely.
 
-- **Union-bound regime.** If `Σ_i P(A_i) < 1`, then `P(⋃ A_i) ≤ Σ_i P(A_i) < 1`, so `P(Ā_1 … Ā_n) > 0`.
-  *Core idea:* subadditivity of probability; requires no independence. *Gap:* it is a *global* budget. It gives
-  no credit for locality — a disjoint (hence independent) bad event still costs its full `P(A_i)` — so it fails
-  as soon as the number of bad events makes `Σ P(A_i) ≥ 1`, even when every event interacts with only a few
-  others. In the property-B application it caps the *total* edge count at `2^{k-1}`.
-
-- **Structural colourability conditions (Lovász; Woodall).** *Core idea:* non-`2`-colourability forces a local
-  density obstruction — a high-degree vertex, or a subfamily violating `|⋃ E| > |H'|`. *Gap:* these are exact
-  structural theorems for specific colourings, not a general-purpose existence tool; they hint that the right
-  hypothesis is local but do not provide a probabilistic engine that turns "each bad event touches few others"
-  into "a good object exists" for an arbitrary system of bad events.
-
-## Evaluation settings
-
-The natural yardsticks are existence statements where many local constraints must be simultaneously satisfied
-and the global count is too large for the union bound:
-
-- **Hypergraph `2`-colouring / property B.** `k`-uniform hypergraphs; the quantity of interest is how many
-  other edges a single edge may intersect (a *local* degree) while `2`-colourability is still forced — to be
-  contrasted with the union bound's *global* edge-count threshold `2^{k-1}`. Also `k`-uniform `k`-regular
-  hypergraphs as a clean special case.
-- **`k`-SAT (Boolean satisfiability).** A `k`-CNF formula: a conjunction of clauses, each a disjunction of `k`
-  literals on distinct variables. Under a uniform random assignment each clause is violated with probability
-  exactly `2^{-k}`. The yardstick is how many other clauses a clause may share a variable with (its local
-  dependency degree) while satisfiability is still guaranteed, independent of the total number of clauses.
-- **Lattice / colouring translates and Ramsey-type lower bounds**, where one must simultaneously avoid a
-  monochromatic or otherwise "bad" configuration at every location, with each location's bad event entangled
-  with only nearby ones.
-
-The metric throughout is qualitative existence (does a good object provably exist?) and the *form* of the
-sufficient condition (local degree vs. global count), not any numerical performance score.
-
-## Code framework
-
-A minimal probabilistic-existence harness has only to assemble the independent random choices, define the bad
-events, record which events may depend on which others, and certify that the probability of avoiding all bad
-events is positive. The existing tools fill the full-independence and union-bound cases, while the middle
-regime leaves one local certification slot open.
-
-```python
-def avoid_all_bad_events_exists(setup):
-    """Decide/certify that a random object avoids every bad event with positive probability.
-
-    `setup` provides:
-      - the independent random choices and their distribution,
-      - the bad events A_1, ..., A_n (each a predicate on an outcome),
-      - for each A_i, its probability p_i and the set of other events it can depend on
-        (its neighbours in a dependency graph; A_i is independent of all non-neighbours).
-    Returns True if a good object (one avoiding all A_i) is guaranteed to exist.
-    """
-    # Mode 1 — full independence: if all A_i are mutually independent and p_i < 1,
-    #          then prod(1 - p_i) > 0.  (Rarely applicable: failures share random choices.)
-    # Mode 2 — union bound: if sum_i p_i < 1, then P(union A_i) < 1, so a good object exists.
-    #          (Global budget; dies once there are many bad events.)
-    #
-    # Middle regime: many bad events, each unlikely, sum p_i >> 1, NOT independent but only
-    # locally dependent (each A_i entangled with few others).  Neither mode applies.
-    # TODO: fill the local condition that certifies P(avoid all) > 0.
-    raise NotImplementedError
-
-
-def k_uniform_hypergraph_2_colourable(H):
-    """Certify property B for a k-uniform hypergraph from a LOCAL intersection bound."""
-    # Random object: colour each vertex red/blue independently with prob 1/2.
-    # Bad event A_f = "edge f is monochromatic"; p = 2 ** (-(k - 1)).
-    # A_f independent of all A_g with f ∩ g = ∅; local dependency degree = #edges meeting f.
-    # TODO: invoke avoid_all_bad_events_exists with the dependency structure above.
-    raise NotImplementedError
-```
+For a `k`-uniform hypergraph, a random two-colouring makes a fixed edge monochromatic with probability
+`2^{-(k-1)}`. The union bound controls only the total number of edges. The local lemma instead controls
+how many other edges a given edge intersects. For `k`-SAT, a violated clause has probability `2^{-k}`;
+the relevant quantity is how many clauses share variables with it, not how many clauses exist in
+total.

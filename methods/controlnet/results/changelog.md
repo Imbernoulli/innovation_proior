@@ -1,0 +1,27 @@
+# File:Line Changelog
+
+- `results/context.md:5` Reframed the research question around spatial image conditions and small condition datasets without naming the target method or presupposing the answer.
+- `results/context.md:13` Rebuilt the background around latent diffusion, U-Net structure, adaptation families, and initialization risk.
+- `results/context.md:21` Rewrote baselines as pre-method alternatives rather than hindsight comparisons.
+- `results/context.md:38` Replaced the leaky scaffold that pre-froze the base model with an open scaffold where branch design, reuse, freezing, and connector initialization remain to be solved.
+- `results/reasoning.md:1` Rewrote the reasoning as a continuous first-person discovery trace with no markdown headers.
+- `results/reasoning.md:9` Restated the ControlNet block equation and the exact zero-initialization no-op case.
+- `results/reasoning.md:15` Verified the zero-convolution derivative signs and first-step cases: connector weights/bias can move first; input gradients are zero until connector weights become nonzero.
+- `results/reasoning.md:25` Grounded the U-Net attachment point as encoder-side skip controls plus middle control.
+- `results/reasoning.md:27` Removed the inaccurate four-stride `512 -> 64` implementation claim from the reasoning and kept the condition-encoder role code-neutral.
+- `results/reasoning.md:29` Kept the diffusion objective unchanged and grounded the 50% empty-prompt training move.
+- `results/reasoning.md:35` Added the classifier-free guidance case distinction without turning it into training-loss math.
+- `results/answer.md:3` Rebuilt the final artifact around the actual method rather than the previous pseudo-implementation.
+- `results/answer.md:21` Added the corrected zero-convolution gradient block with signs and first-step behavior.
+- `results/answer.md:36` Fixed Stable Diffusion wiring to 13 controls: 12 decoder skip controls plus 1 middle control.
+- `results/answer.md:40` Made the paper/code distinction explicit for the condition encoder: paper-level `E(c_i)=c_f` versus canonical `input_hint_block`.
+- `results/answer.md:53` Replaced invented APIs like `decode_with_control` with canonical `cldm.py` code shape for `zero_module` and `ControlNet.forward`.
+- `results/answer.md:91` Added the code-faithful `ControlledUnetModel.forward` reverse-`pop()` consumption of controls.
+- `results/answer.md:118` Added optimizer faithfulness: `sd_locked=True` trains only `control_model`; `sd_locked=False` also trains base output blocks/head.
+- `results/answer.md:120` Added inference math and implementation distinction for CFG-RW versus the released demo `guess_mode` scale schedule.
+- `notes/source_matrix.md:5` Added the strict evidence matrix covering primary, ancestors, explainer, self-account, and code artifact sources.
+- `notes/discovery_synthesis.md:30` Recorded the review findings, math checks, code-faithfulness checks, leak check, and in-frame voice check.
+- `refs/self_accounts/search_log.md:14` Documented the targeted author self-account search and the official project-maintained sources used.
+- `results/.codex_review.json:3` Marked the method as reviewed and completed for this run.
+- `notes/strict_check_output.txt:1` Recorded `STRICT CHECK PASSED`.
+- `notes/leakage_check_output.txt:1` Recorded zero regex leakage suspects.

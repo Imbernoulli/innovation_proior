@@ -8,27 +8,20 @@ contributions are summed, and Gaussian noise whose standard deviation is
 *proportional to* `C` is added before the optimizer step. That proportionality is
 forced: `C` is exactly the `L2` sensitivity of the sum to one contributor, and the
 Gaussian mechanism must add noise scaled to the sensitivity to hide that
-contributor. So `C` sits at the center of a bias-variance tradeoff. Set it too low
-and many contributions are scaled down — their directions are preserved, but their
-relative magnitudes are flattened — which biases the aggregate. Set it too high and the
-noise standard deviation `zC` grows with it, eventually swamping the signal. There
-is one right region for `C`, and it is narrow.
+contributor. So `C` sits at the center of a bias-variance tradeoff. Set it low and
+many contributions are scaled down — their directions are preserved, but their
+relative magnitudes are flattened. Set it high and the noise standard deviation `zC`
+grows with it.
 
-The trouble is that there is no good way to know that region in advance, and it does
-not even stay still. The distribution of contribution norms depends on the model
-architecture, the loss, how much data each contributor holds, the (client) learning
-rate, and other knobs — and it *drifts over the course of training*, often by orders
-of magnitude from the first round to convergence. A constant `C` that is right early
-is wrong late. The precise goal is to remove `C` as a hand-tuned hyperparameter:
-choose the clipping norm automatically and online so that it tracks the
-contribution-norm distribution as that distribution moves, while spending almost no extra privacy
-budget to do so, and without requiring contributors to reveal anything beyond the
-minimal, already-clipped contribution they were going to send. A solution would have
-to (1) be a quantity that is meaningful even as the absolute scale of the norms
-changes by orders of magnitude; (2) be estimable from information the server is
-allowed to see under DP; (3) cost a negligible fraction of the privacy budget; and
-(4) coexist with secure aggregation and update compression, which forbid sending raw
-per-contributor norms to the server.
+The distribution of contribution norms depends on the model architecture, the loss,
+how much data each contributor holds, the (client) learning rate, and other knobs,
+and it shifts over the course of training. The question is how to set the clipping
+norm `C` automatically and online — from a stream of contributions whose norm
+distribution moves over training — using only information the server is permitted to
+see under DP, while spending little extra privacy budget, and without requiring
+contributors to reveal anything beyond the minimal, already-clipped contribution
+they were going to send (so that the policy remains compatible with secure
+aggregation and update compression).
 
 ## Background
 
@@ -52,26 +45,22 @@ and the natural one when a single user contributes many correlated examples;
 example-level is recovered as the special case of one example per user.
 
 **The clipping bias-variance phenomenon.** The clipping norm trades bias against
-variance — too-aggressive clipping discards magnitude information, too-loose clipping
-pays in noise — and this is both empirically observed and theoretically analyzed as
-an inherent property of DP learning, not an artifact of a particular method (McMahan
-et al. 2018; Amin et al. 2019). It was also observed that the norms of the updates *change as
-rounds progress*, and that manually decreasing the clipping norm after some initial
-number of rounds can improve a language model's accuracy (McMahan et al. 2018) — a
-direct, sourced signal that a single fixed `C` leaves utility on the table and that
-the behavior of the norms is hard to predict without prior knowledge of the system.
-It was separately suggested, as a heuristic, that one might clip to the *median* of
-the update-norm distribution, but no way to do so under DP was given and the heuristic
-was never tested (Abadi et al. 2016).
+variance — aggressive clipping discards magnitude information, loose clipping pays in
+noise — and this is both empirically observed and theoretically analyzed as an
+inherent property of DP learning (McMahan et al. 2018; Amin et al. 2019). It was also
+observed that the norms of the updates *change as rounds progress*, and that manually
+decreasing the clipping norm after some initial number of rounds can improve a
+language model's accuracy (McMahan et al. 2018). It was separately suggested, as a
+heuristic, that one might clip to the *median* of the update-norm distribution (Abadi
+et al. 2016).
 
 **Online convex optimization.** A convex cost is revealed one round at a time; the
 learner commits to a point before seeing the cost and is measured by regret against
 the best fixed point. Online gradient descent on a sequence of convex, bounded-
 gradient losses attains sublinear regret, and for a convex-but-not-strongly-convex
 loss a step size proportional to `1/√t` yields an `O(√T)` regret bound (Zinkevich
-2003; Shalev-Shwartz 2012). The relevance is that *if* the quantity we want to track
-can be written as the minimizer of a convex online loss whose gradients we can
-observe, online gradient descent will track it.
+2003; Shalev-Shwartz 2012). If a quantity is the minimizer of a convex online loss
+whose gradients can be observed, online gradient descent tracks it.
 
 **Quantile regression.** For a scalar random variable `X` and a target level
 `γ∈[0,1]`, the asymmetric "pinball" loss of quantile regression — piecewise linear,
@@ -95,38 +84,28 @@ Iterative Training Procedures").
 **DP-SGD (Abadi et al. 2016).** Clip each per-example gradient to `L2` norm `C` via
 `g ← g·min(1, C/‖g‖₂)`, sum over a lot, add `N(0, σ²C²I)`, and take a descent step on
 the average; calibrate `σ` to the target `(ε,δ)` with the moments accountant, which
-tightly tracks composition of the subsampled Gaussian mechanism. This is the
-foundational mechanism. **Limitation:** `C` is a fixed hyperparameter set up front and
-held constant across all of training; the original DP-SGD work noted in passing that
-clipping to the median of the gradient-norm distribution might be
-better, but offered no private way to estimate that median and did not test it.
+tightly tracks composition of the subsampled Gaussian mechanism. `C` is a fixed
+hyperparameter set up front and held constant across all of training; the original
+DP-SGD work noted in passing that clipping to the median of the gradient-norm
+distribution might be better.
 
 **DP-FedAvg / DP-FedAvg-M (McMahan et al. 2018).** Federated Averaging with user-level
 DP. On each round a set of `m` users is sampled; each runs local SGD and returns its
 model delta `Δ_i`, which is FlatClipped, `π(Δ, C) = Δ·min(1, C/‖Δ‖)`; the server
 forms the noised average `(1/m)(Σ_i Δ_i + N(0, σ²I))` with `σ = zC`, optionally
-applies server momentum, and steps. The moments accountant bounds total privacy.
-**Limitation:** the clipping norm is again a constant `C` "treated as a hyper-parameter
-and tuned" — and the same work reports that the right `C` *drifts*, so that manually
-lowering it partway through training helps. A constant cannot follow the drift, and a
-hand-designed schedule for `C` is even harder to choose than a constant, because it
-requires knowing in advance how the norms will evolve for a system whose norm
-behavior is hard to predict.
+applies server momentum, and steps. The moments accountant bounds total privacy. The
+clipping norm is a constant `C` treated as a hyper-parameter and tuned; the same work
+reports that manually lowering it partway through training can help.
 
 **Per-round private-median via smooth sensitivity.** One could, each round, estimate
 the median *unclipped* update norm directly and clip to it, adding noise calibrated to
-the smooth sensitivity of the median (Nissim et al. 2007). **Limitation:** it requires
-each user to transmit its *unclipped* update (or to add an extra communication round
-in which the server first collects norms), which violates the federated principle of
-sending only a focused, minimal, already-clipped update and is incompatible with
-secure aggregation and with certain forms of update compression; it gives the server
-strictly more information than the clipped update alone; and estimating the median
-independently each round, from that round's sample only, jitters from round to round
-because it pools no information across rounds.
+the smooth sensitivity of the median (Nissim et al. 2007). This requires each user to
+transmit its *unclipped* update (or an extra communication round in which the server
+first collects norms), and estimates the median independently each round from that
+round's sample.
 
 **Coordinate-wise adaptive clipping (Pichapati et al. 2019).** Adapts a per-coordinate
-clip for DP-SGD. **Limitation:** it introduces its own hyperparameter that is itself
-difficult to tune, so it relocates rather than removes the tuning burden.
+clip for DP-SGD, introducing its own hyperparameter.
 
 ## Evaluation settings
 
@@ -152,10 +131,9 @@ model, the loss, the optimizer/training loop, and the per-contributor gradient (
 update) computation already exist and are fixed. What already exists on the privacy
 side is the Gaussian sum machinery: a routine that clips a contribution to a given
 `L2` norm and a routine that adds Gaussian noise scaled to that norm, plus the
-accountant that converts a noise multiplier into an `(ε,δ)` over the run. What is *not*
-settled is the policy that decides the clipping norm `C`: at present `C` is a constant
-passed in. The empty slot is that policy — what `C` should be at each step and how it
-is computed from whatever the server is permitted to observe.
+accountant that converts a noise multiplier into an `(ε,δ)` over the run. The policy
+that decides the clipping norm `C` is the open slot: at present `C` is a constant
+passed in.
 
 ```python
 import collections
@@ -186,7 +164,7 @@ class ClippedSumMechanism:
     """Existing query-shaped shell for private clipped summation. The Gaussian
     sum already exists; the clipping norm C is currently a constant passed in,
     and the noise stddev is held at noise_multiplier * C so the accountant can
-    certify the run. What is unresolved is how C should change over time."""
+    certify the run. How C should change over time is the open slot."""
 
     State = collections.namedtuple("State", ["noise_multiplier", "sum_state"])
 
@@ -209,4 +187,4 @@ class ClippedSumMechanism:
 ```
 
 The clipping-and-noising of the contributions is the Gaussian-sum part that already
-exists; the `TODO` is the one unresolved slot — the rule that sets the next `C`.
+exists; the `TODO` is the one open slot — the rule that sets the next `C`.

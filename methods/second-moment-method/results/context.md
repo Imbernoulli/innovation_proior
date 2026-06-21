@@ -107,36 +107,4 @@ The natural yardsticks are existence/threshold statements one can prove and chec
 Metrics throughout: whether Pr[X > 0] → 1 (existence almost surely), whether X ∼ E[X]
 (concentration), and the deviation probabilities Chebyshev/Paley–Zygmund deliver.
 
-## Code framework
 
-A pure existence/threshold result; the only natural code is a small numerical sanity check that a
-counting variable's mean and the existence/disappearance flip line up across a candidate threshold.
-The pre-existing primitives are an RNG and basic graph bookkeeping. The empty slots are the count and
-its mean; whatever the proof needs beyond that is supplied separately.
-
-```python
-import itertools, random
-
-def sample_gnp(n, p):
-    """Sample G(n,p): each pair an edge independently w.p. p."""
-    edges = set()
-    for u, v in itertools.combinations(range(n), 2):
-        if random.random() < p:
-            edges.add((u, v))
-    return edges
-
-def count_configurations(n, edges, k):
-    """Count target configurations (e.g. k-cliques) in a sampled graph."""
-    # TODO: the count X whose existence we want to certify
-    pass
-
-def expected_count(n, p, k):
-    """The first moment E[X] of the counting variable."""
-    # TODO: E[X] for the configuration (linearity of expectation)
-    pass
-
-def fraction_with_configuration(n, p, k, trials=300):
-    """Estimate the observed frequency of X>0 for a candidate threshold."""
-    hit = sum(count_configurations(n, sample_gnp(n, p), k) > 0 for _ in range(trials))
-    return hit / trials
-```

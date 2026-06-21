@@ -1,0 +1,34 @@
+# GPT-2 Deliverables Changelog
+
+- `results/context.md:3` rebuilt the context into exactly five `##` sections and removed target-method leakage from the setup.
+- `results/context.md:21` corrected the autoregressive factorization to `product_i p(s_i | s_1, ..., s_{i-1})`.
+- `results/context.md:36` reframed web data quality as an open pre-method problem rather than revealing the Reddit/WebText construction.
+- `results/context.md:65` kept BPE as a baseline tension while withholding the byte-level category-restricted solution.
+- `results/context.md:83` replaced the scaffold with TODO slots for corpus, tokenizer, residual-block ordering, and initialization.
+- `results/reasoning.md:3` rebuilt the derivation around the task-conditional-as-prefix-conditional insight.
+- `results/reasoning.md:7` added the data-quality wall and the Reddit `>=3` karma solution in first-person discovery voice.
+- `results/reasoning.md:11` rebuilt the any-string/tokenization derivation from bytes to byte-level BPE.
+- `results/reasoning.md:19` corrected the pre-layer-normalized residual block derivation and final-layer-normalization rationale.
+- `results/reasoning.md:23` kept the residual initialization constant as `1/sqrt(N)` and clarified that `N` counts residual branches.
+- `results/reasoning.md:27` added zero-shot evaluation and contamination reasoning without posterior framing.
+- `results/answer.md:7` corrected the math statement and task-conditional equation.
+- `results/answer.md:16` grounded the final corpus recipe in the primary report.
+- `results/answer.md:25` grounded the byte-level BPE recipe and 50,257-token vocabulary.
+- `results/answer.md:32` grounded the model recipe, including causal attention, pre-LN, final LN, 1024 context, batch 512, and `1/sqrt(N)` residual initialization.
+- `results/answer.md:51` replaced the previous unfaithful code sketch with OpenAI-source-faithful attention mask, masking sign, attention scale, block order, `past`/`present` handling, final `ln_f`, tied `wte`, and reshaped logits.
+- `results/answer.md:111` added the released 117M hparams JSON values.
+- `results/answer.md:123` added the tokenizer byte mapping and regex split from `encoder.py`.
+- `notes/source_matrix.md:5` added the primary report evidence entry and review notes.
+- `notes/source_matrix.md:6` added the GPT-1 ancestor and the supervised-finetuning gap.
+- `notes/source_matrix.md:7` added the Transformer ancestor and attention/normalization baseline.
+- `notes/source_matrix.md:8` added the BPE ancestor and open-vocabulary baseline.
+- `notes/source_matrix.md:9` added decaNLP/MQAN as the task-as-language ancestor.
+- `notes/source_matrix.md:10` added canonical OpenAI code evidence and documented the residual-initialization code mismatch.
+- `notes/source_matrix.md:11` added the OpenAI first-party blog as self-account evidence with curl-blocked local capture noted.
+- `notes/source_matrix.md:12` added Jay Alammar's GPT-2 explainer as third-party explanatory evidence.
+- `notes/discovery_synthesis.md:11` documented the corrected math spine and finite-capacity caveats.
+- `notes/discovery_synthesis.md:38` documented the code audit and the old draft's `past=None`/discarded-`present` error.
+- `notes/discovery_synthesis.md:68` documented posterior-leak and voice cleanup decisions.
+- `refs/self_accounts/search_log.md:5` documented the `SELF_ACCOUNT_SOURCES.md` check and self-account search result.
+- `results/.codex_review.json:1` replaced the prior errored review marker with a completed review record.
+- `notes/strict_check_output.txt:1` recorded the missing official checker and the substitute checks run.

@@ -95,53 +95,6 @@ Averaging learners reduces variance without changing bias (convexity:
 (z − [α+β]/2)² ≤ ½(z−α)² + ½(z−β)²) but does not beat a single fixed learner on the OTS zero-one problem —
 variance reduction is not a free lunch.
 
-## Verification
-
-```python
-import itertools
-from collections import Counter
-
-X = [0, 1, 2, 3]; Y = [0, 1]; m = 3
-
-def all_functions():
-    for vals in itertools.product(Y, repeat=len(X)):
-        yield dict(zip(X, vals))
-
-def run(algorithm, f, m):
-    sample = []
-    seen = set()
-    for _ in range(m):
-        x = algorithm(sample)          # next point, must be unvisited
-        assert x in X and x not in seen
-        seen.add(x)
-        sample.append((x, f[x]))
-    return tuple(y for _, y in sample)  # cost sequence d_m^y
-
-def fixed_order(sample):
-    return len(sample)
-def greedy_then_scan(sample):
-    if not sample:
-        return 0
-    seen = {x for x, _ in sample}
-    best_x = min(sample, key=lambda p: p[1])[0]
-    for cand in (best_x + 1, best_x - 1, *X):
-        if cand in X and cand not in seen:
-            return cand
-
-def histogram_over_all_f(algorithm):
-    h = Counter()
-    for f in all_functions():
-        h[run(algorithm, f, m)] += 1
-    return h
-
-hist_A = histogram_over_all_f(fixed_order)
-hist_B = histogram_over_all_f(greedy_then_scan)
-assert hist_A == hist_B
-assert set(hist_A.values()) == {len(Y) ** (len(X) - m)}
-# Summed over all cost functions, each observed cost-sequence is produced by the
-# same number of functions regardless of the algorithm — no free lunch.
-```
-
 ## The takeaway
 
 There is no universally best optimizer or learner. Performance is conserved across the space of all problems

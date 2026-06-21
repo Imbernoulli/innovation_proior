@@ -1,0 +1,25 @@
+# Changelog
+
+- `methods/junction-tree-algorithm/refs/primary/lauritzen_spiegelhalter_1988_eecis_udel.pdf`: saved a faithful 69-page scan of the primary Lauritzen-Spiegelhalter paper.
+- `methods/junction-tree-algorithm/refs/primary/lauritzen_spiegelhalter_1988_eecis_udel_ocr.txt:48`: added OCR text beginning with the JRSS B article body for local source checking.
+- `methods/junction-tree-algorithm/notes/source_matrix.md:3`: changed status from blocked to strict evidence bundle present.
+- `methods/junction-tree-algorithm/notes/source_matrix.md:8`: recorded the saved primary scan/OCR and the source-backed evidence used from it.
+- `methods/junction-tree-algorithm/notes/source_matrix.md:13`: retained Paskin as the explainer for elimination cliques, running intersection, and message correctness.
+- `methods/junction-tree-algorithm/notes/source_matrix.md:14`: retained Lepar-Shenoy as the explainer for the LS versus HUGIN separator-storage distinction.
+- `methods/junction-tree-algorithm/notes/source_matrix.md:16`: recorded the byte-for-byte comparison against current pgmpy `dev`.
+- `methods/junction-tree-algorithm/notes/discovery_synthesis.md:5`: replaced blocked-primary framing with source-backed primary evidence.
+- `methods/junction-tree-algorithm/notes/discovery_synthesis.md:7`: grounded moralization, triangulation, clique potentials, set-chain transfer, and clique marginals in the primary paper.
+- `methods/junction-tree-algorithm/notes/discovery_synthesis.md:13`: corrected the architecture distinction: LS divides the sender; HUGIN stores separator beliefs and sends a quotient.
+- `methods/junction-tree-algorithm/notes/discovery_synthesis.md:29`: added the HUGIN/pgmpy cached update and max-calibration case.
+- `methods/junction-tree-algorithm/results/context.md:28`: softened the final prompt section to avoid handing the construction to the model.
+- `methods/junction-tree-algorithm/results/reasoning.md:13`: replaced the blurred "pair of passes/HUGIN form" explanation with evidence absorption, LS transfer, and cached separator messaging.
+- `methods/junction-tree-algorithm/results/answer.md:14`: rewrote the separator update as the HUGIN/pgmpy cached ratio update with explicit first-message behavior.
+- `methods/junction-tree-algorithm/results/answer.md:23`: changed convergence from a fixed pass count to calibration after any valid collect/distribute schedule.
+- `methods/junction-tree-algorithm/results/answer.md:29`: separated the original Lauritzen-Spiegelhalter architecture from HUGIN and added max-calibration/MAP.
+- `methods/junction-tree-algorithm/results/answer.md:31`: restated exactness in terms of chordality plus running intersection.
+- `methods/junction-tree-algorithm/results/answer.md:33`: kept the complexity bound tied to largest clique size/treewidth plus one.
+- `methods/junction-tree-algorithm/refs/final_artifact/junction_tree_protocol.md:16`: aligned the protocol artifact with the HUGIN/pgmpy cached update.
+- `methods/junction-tree-algorithm/refs/final_artifact/junction_tree_protocol.md:21`: added the LS-versus-HUGIN distinction to the artifact.
+- `methods/junction-tree-algorithm/code/README.md:12`: documented the 2026-06-18 pgmpy raw-file comparison and no-diff result.
+- `methods/junction-tree-algorithm/results/.codex_review.json:2`: replaced stale blocked independent-review metadata with a truthful `not_run` record.
+- `methods/junction-tree-algorithm/results/BLOCKED.md:1`: removed the stale blocked marker after saving and OCR-reading the full primary scan.

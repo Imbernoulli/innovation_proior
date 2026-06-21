@@ -125,39 +125,4 @@ yardsticks that exist:
 - **Logical economy as the metric.** Beyond correctness, the proof is judged by how few
   regimes it needs and how cleanly the general case reduces to them.
 
-## Code framework
 
-This is a theorem, not an algorithm, so the "scaffold" is the logical skeleton the
-argument will fill, written with integer-density and measure-preserving-system
-primitives. The slots are the steps a proof would have to supply.
-
-```python
-# Available primitives.
-
-def upper_density(A):
-    """limsup_N |A ∩ [-N,N]| / (2N+1).  Shift-invariant, but not a measure."""
-    ...
-
-def shift(B):
-    """T: B ↦ B-1 on subsets of Z; equivalently (1_B ∘ T)(m)=1_B(m+1)."""
-    return {b - 1 for b in B}
-
-class MeasurePreservingSystem:
-    """(X, B, mu, T): probability space + invertible measure-preserving T.
-    Available tools: mean/pointwise ergodic theorem, spectral theorem,
-    conditional expectation E(.|.), ergodic decomposition."""
-    def mean_ergodic_limit(self, f): ...        # -> E(f | invariant sigma-algebra)
-    def spectral_measure(self, f): ...          # rho with ∫ f·T^n f̄ = ∫ e^{inθ} dρ
-
-def poincare_recurrence(system, B):
-    """k=2: mu(B ∩ T^{-n}B) > 0 for some n."""
-    ...
-
-# ---- Open proof slot. ----
-
-def szemeredi(A, k):
-    """Given A ⊆ Z with upper_density(A) > 0, exhibit some a and some n != 0 with
-    a, a+n, ..., a+(k-1)n all in A.
-    # TODO: supply the argument."""
-    raise NotImplementedError
-```

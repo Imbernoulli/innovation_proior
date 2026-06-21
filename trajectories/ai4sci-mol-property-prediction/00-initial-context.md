@@ -1,85 +1,38 @@
 ## Research question
 
-Predict chemical properties — blood-brain-barrier penetration, beta-secretase inhibition, toxicity
-across a panel of assays — from molecular structure alone, and predict them on molecules whose
-*scaffold* never appeared in training. The single thing being designed is the **molecular
-representation model**: the map from a molecule (a SMILES string turned into an atom/bond graph, with
-optional 3D coordinates) to a fixed vector that a small head turns into one logit per task. Everything
-else — SMILES preprocessing, conformer generation, the scaffold split, the optimizer schedule, target
-normalization, the masked loss for missing labels, and test-time augmentation over conformers — is
-frozen by the scaffold. The metric is ROC-AUC (higher is better), averaged over valid labels per task
-and across tasks, on a **scaffold** split: train and test share no Murcko scaffold, so any score above
-chance has to come from structure the model genuinely generalizes, not from a memorized series.
+Predict chemical properties — blood-brain-barrier penetration, beta-secretase inhibition, toxicity across assays — from molecular structure alone, and generalize to molecules whose *scaffold* never appeared in training. The only design object is the **molecular representation model**: the map from a molecule (an atom/bond graph, optionally with 3D coordinates) to a fixed vector that a small head turns into one logit per task. Everything else — SMILES preprocessing, conformer generation, the scaffold split, the optimizer schedule, target normalization, the masked loss for missing labels, and test-time augmentation over conformers — is frozen. The metric is ROC-AUC (higher is better), averaged over valid labels per task and across tasks, on a **scaffold** split that shares no Murcko scaffold between train and test.
 
-## Prior art before the first rung (molecular-representation lineage)
+## Prior art / Background / Baselines
 
-The encoder the first rung uses — a message-passing graph net — is itself the resolution of a line of
-molecular-representation methods. These precede the ladder; the substrate below is what they converged
-to (RDKit featurization of atoms and bonds, then a learned graph-to-vector encoder).
+The default encoder is a message-passing graph net built on a converged substrate (RDKit atom/bond featurization, learned graph-to-vector encoder). The relevant baselines are:
 
-- **Fixed-descriptor models (Morgan/ECFP fingerprints, RDKit 2D descriptors + RF/FFN).** Hash a
-  molecule into a fixed bit-vector or a pile of computed physicochemical descriptors and run a generic
-  classifier on it. They carry a strong, general chemical prior and need little data, but the
-  representation is *frozen* — it can never specialize to the property actually being predicted. Gap:
-  cannot adapt the encoding to the task.
-- **Neural molecular fingerprints (Duvenaud et al. 2015).** Replace the fixed hash with a learned,
-  differentiable one: aggregate neighbor atom features through degree-specific matrices and sum into a
-  fingerprint trained end-to-end. Learnable at last, but the message is a plain concatenation of atom
-  and bond features and the depth is shallow. Gap: weak message function, still atom-centered.
-- **Gated graph nets / Weave (Li et al. 2016; Kearnes et al. 2016).** Edge-typed linear messages with a
-  GRU update (GGNN), or keeping explicit edge representations around (Weave). More expressive updates,
-  but the hidden state still lives on the *atom*, so a message sent out one bond is summed straight back
-  along the same bond next step — the representation re-mixes its own echoes. Gap: atom-centered message
-  passing "totters".
-- **The MPNN framework (Gilmer et al. 2017).** The unifying view every model above is a special case of:
-  a message phase `m_v = Σ_{w∈N(v)} M(h_v,h_w,e_vw)`, an update `h_v ← U(h_v,m_v)`, then a permutation-
-  invariant readout. It names the design space — choose `M`, `U`, the readout — but leaves the choice
-  open, and the default atom-centered instantiation still tots and still only reaches `T` hops, smaller
-  than a drug-molecule's diameter. Gap: framework, not an answer; locality and tottering unresolved.
+- **Fixed-descriptor models (Morgan/ECFP fingerprints, RDKit 2D descriptors + RF/FFN).** Hash a molecule into a fixed bit-vector or computed physicochemical descriptors and run a generic classifier. Gap: the representation is frozen and cannot specialize to the target property.
+- **Neural molecular fingerprints (Duvenaud et al. 2015).** Learn a differentiable fingerprint by aggregating neighbor atom features through degree-specific matrices and training end-to-end. Gap: messages are shallow concatenations of atom and bond features and remain atom-centered.
+- **Gated graph nets / Weave (Li et al. 2016; Kearnes et al. 2016).** Apply edge-typed linear messages with GRU updates, or keep explicit edge representations. Gap: hidden states still live on atoms, so a message sent along one bond is summed back along the same bond at the next step.
+- **MPNN framework (Gilmer et al. 2017).** Cast the above as special cases of a message phase, update phase, and permutation-invariant readout. Gap: it is a framework, not an architecture; the default atom-centered instantiation still echoes messages and is bounded to T-hop neighborhoods.
+- **3D Transformer / Uni-Mol.** Treat atoms as a fully-connected set so distant-in-bonds-but-close-in-space contacts are visible. Gap: vanilla position encodings do not respect that molecular 3D coordinates are continuous and arbitrary up to rotation and translation.
 
-The 3D side has its own ancestor the strongest rung reacts to: a Transformer treats atoms as a
-fully-connected set so distant-in-bonds-but-close-in-space contacts are visible, but a vanilla
-Transformer is position-blind, and the position here is a *continuous, rotation/translation-arbitrary*
-3D coordinate that must enter as an SE(3)-invariant signal — the gap the strongest baseline closes.
+## Fixed substrate / Code framework
 
-## The fixed substrate
+A self-contained molecular-property pipeline is frozen and must not be touched. It loads pre-split LMDB data with pre-computed multi-conformer 3D coordinates, samples/enumerates a conformer per molecule, removes polar hydrogens, normalizes coordinates, tokenizes against the vocabulary, and builds distance matrices and atom-pair edge types. The training loop uses Adam with warmup-then-decay, normalizes regression targets, applies masked binary-cross-entropy that ignores missing labels, and averages predictions over 11 conformers at val/test time.
 
-A self-contained molecular-property pipeline is frozen and must not be touched. It mirrors the Uni-Mol
-data path: load pre-split LMDB data (official scaffold splits) with pre-computed multi-conformer 3D
-coordinates; for each molecule, sample/enumerate a conformer, remove polar hydrogens, normalize
-coordinates, tokenize against the Uni-Mol vocabulary, and build a distance matrix and atom-pair edge
-types. It then runs the training loop (Adam, warmup-then-decay schedule), normalizes regression targets,
-applies a masked binary-cross-entropy loss that ignores missing labels in multi-task datasets, and at
-val/test time averages predictions over 11 conformers (test-time augmentation).
-
-The featurization the GNN path consumes is fixed: `ATOM_DIM = 136` (one-hot atomic number 118, degree 6,
-formal charge 5, num-H 5, hybridization 5, aromatic 1, in-ring 1) and `EDGE_DIM = 9` (bond type 4,
-stereo 3, conjugated 1, in-ring 1). The loop also exposes a pretrained Uni-Mol checkpoint inside the
-container at the path the strongest baseline loads from.
+The GNN featurization is fixed: `ATOM_DIM = 136` (one-hot atomic number 118, degree 6, formal charge 5, num-H 5, hybridization 5, aromatic 1, in-ring 1) and `EDGE_DIM = 9` (bond type 4, stereo 3, conjugated 1, in-ring 1). A pretrained checkpoint is available inside the container at the path the strongest baseline loads from.
 
 Each batch is a `MolBatch` carrying both representations at once, so a model picks what it needs:
 
-- **Sparse graph (for GNNs):** `x [total_atoms, 136]`, `edge_index [2, total_edges]` (COO, bonds stored
-  as adjacent forward/reverse pairs), `edge_attr [total_edges, 9]`, `batch_idx [total_atoms]` (graph id).
-- **Dense (for Transformers):** `atom_features [B, N, 136]` zero-padded, `positions [B, N, 3]`,
-  `dist_matrix [B, N, N]`, `mask [B, N]` (1 = real atom).
-- **Uni-Mol-specific:** `atom_tokens`, `edge_types`, plus dynamically-set `_unimol_dist`,
-  `_unimol_token_mask`.
+- **Sparse graph (for GNNs):** `x [total_atoms, 136]`, `edge_index [2, total_edges]` (COO, bonds stored as adjacent forward/reverse pairs), `edge_attr [total_edges, 9]`, `batch_idx [total_atoms]` (graph id).
+- **Dense (for Transformers):** `atom_features [B, N, 136]` zero-padded, `positions [B, N, 3]`, `dist_matrix [B, N, N]`, `mask [B, N]` (1 = real atom).
+- **Uni-Mol-specific:** `atom_tokens`, `edge_types`, plus dynamically-set `_unimol_dist`, `_unimol_token_mask`.
 - **Targets:** `targets [B, num_tasks]`, `target_mask [B, num_tasks]` (1 = valid label).
 
-## The editable interface
+## Editable interface
 
-Exactly one region is editable — the `MoleculeModel` class (and any helper modules/functions placed
-beside it) in `custom_molprop.py`, between the `EDITABLE SECTION START`/`END` markers (the lines the
-config exposes for editing). Every method on the ladder is a fill of this same contract:
+Exactly one region is editable — the `MoleculeModel` class (and any helper modules/functions placed beside it) in `custom_molprop.py`, between the `EDITABLE SECTION START`/`END` markers. Every method fills this same contract:
 
 - `__init__(self, atom_dim, edge_dim, num_tasks, task_type)` — build the architecture.
 - `forward(self, batch) -> Tensor` — return predictions of shape `[B, num_tasks]` from a `MolBatch`.
 
-The model chooses which batch fields to read (sparse graph, dense tensors, or Uni-Mol tokens) and may
-read a per-dataset `pooler_dropout` set as a class attribute by the training driver. The starting point
-is the scaffold default: a small **GIN with mean pooling and edge features**. Each later method replaces
-exactly this class (plus its helpers) and nothing else.
+The model chooses which batch fields to read (sparse graph, dense tensors, or Uni-Mol tokens) and may read a per-dataset `pooler_dropout` set as a class attribute by the training driver. The starting point is the scaffold default: a small **GIN with mean pooling and edge features**. Each method replaces exactly this class (plus its helpers) and nothing else.
 
 ```python
 # EDITABLE region of custom_molprop.py — default fill (starter GIN, mean pooling)
@@ -152,12 +105,10 @@ class MoleculeModel(nn.Module):
 
 ## Evaluation settings
 
-Three MoleculeNet classification benchmarks, each with the official **scaffold** split, scored by
-ROC-AUC (higher is better, averaged over valid labels per task and across tasks):
+Three MoleculeNet classification benchmarks, each with the official **scaffold** split, scored by ROC-AUC (higher is better, averaged over valid labels per task and across tasks):
 
 - **BBBP** — blood-brain-barrier penetration (2,039 molecules, 1 task).
 - **BACE** — beta-secretase 1 inhibition (1,513 molecules, 1 task).
 - **Tox21** — toxicity across 12 assays (7,831 molecules, 12 tasks, multi-task with missing labels).
 
-One seed (42). Test-time augmentation averages each prediction over 11 conformers. The metric columns
-reported are `rocauc_BBBP`, `rocauc_BACE`, `rocauc_Tox21`.
+One seed (42). Test-time augmentation averages each prediction over 11 conformers. The metric columns reported are `rocauc_BBBP`, `rocauc_BACE`, `rocauc_Tox21`.

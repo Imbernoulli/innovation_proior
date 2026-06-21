@@ -7,13 +7,11 @@ input-output relationship, trained on a limited amount of labeled data, generali
 When the network has more than enough capacity, there are typically many different weight
 settings that fit the training set almost perfectly. Each of these settings makes different
 predictions on held-out data, and almost all of them do worse on test data than on training
-data: the feature detectors have been tuned to work well *together* on the training set, but
-that joint tuning does not transfer.
+data.
 
-The precise goal: reduce this overfitting in large nets without (a) acquiring more labeled
-data, (b) hand-wiring task-specific structure, or (c) paying the cost of training and
-evaluating a large ensemble of separate networks. A solution must improve generalization while
-keeping training and test cost close to that of a single network.
+The question is how to improve generalization of large nets in the small-label regime without
+acquiring more labeled data, without hand-wiring task-specific structure, and at a training and
+test cost close to that of a single network.
 
 ## Background
 
@@ -23,72 +21,59 @@ becomes a feature detector that helps predict the correct output. Capacity grows
 and depth, and with limited labels the optimizer has many equally-good-on-train solutions to
 choose from.
 
-The mechanism behind the poor generalization can be named more sharply. A hidden unit can become
-useful *only in the context of* several specific other hidden units — it learns to fix up the
-particular mistakes those collaborators make on the training cases. These complex co-adaptations
-fit the training data but are brittle: the specific context a detector depends on need not recur
-on test data. This is a more targeted description of overfitting than "weights too large."
+A hidden unit can become useful in the context of several specific other hidden units, learning
+to fix up the particular mistakes those collaborators make on the training cases. The specific
+context a detector depends on on the training set need not recur on test data.
 
 Several lines of prior work bear directly on this.
 
-*Reducing variance by averaging.* The standard, principled way to cut generalization error is to
-average the predictions of many models. Averaging reduces the variance contribution to error.
-The obstacle is purely computational: training many large nets, and running all of them at test
-time, is expensive.
+*Reducing variance by averaging.* A standard way to cut generalization error is to average the
+predictions of many models, which reduces the variance contribution to error. Training many
+large nets, and running all of them at test time, is expensive.
 
 *Ways of combining predictions.* When models output probability distributions, two natural
 combinations exist. The arithmetic mean (mixture) averages the probabilities. The normalized
-geometric mean multiplies the probabilities and renormalizes — a product of experts. A useful
-fact about products of experts and geometric-mean combinations (Hinton 2002): the combined
-distribution assigns the correct answer a log-probability at least as high as the average of the
-individual models' log-probabilities, with equality only when the models agree. For squared
-error with linear outputs, the error of the averaged prediction is no worse than the average of
-the individual errors (a Jensen / bias-variance fact).
+geometric mean multiplies the probabilities and renormalizes — a product of experts. For
+products of experts and geometric-mean combinations (Hinton 2002), the combined distribution
+assigns the correct answer a log-probability at least as high as the average of the individual
+models' log-probabilities, with equality only when the models agree. For squared error with
+linear outputs, the error of the averaged prediction is no worse than the average of the
+individual errors (a Jensen / bias-variance fact).
 
 *Generative pre-training.* Unsupervised, layer-wise pre-training initializes a deep net's
 weights from data without using labels — a Deep Belief Network of stacked RBMs trained by
 contrastive divergence (Hinton & Salakhutdinov 2006), or a Deep Boltzmann Machine
 (Salakhutdinov & Hinton 2009). This finds useful feature detectors that supervised fine-tuning
 can then sharpen, and it improves generalization in the small-label regime. It is a separate
-phase and does not, on its own, prevent the subsequent discriminative fine-tuning from
-co-adapting its units.
+phase from the subsequent discriminative fine-tuning.
 
 *Empirical observation about feature detectors.* When the first-layer features of a fully
 connected net trained by plain backprop are visualized, they are typically messy and hard to
-interpret — consistent with units that have specialized to correct each other rather than to
-detect individually meaningful structure. This is a diagnostic about what plain backprop
-produces, knowable by inspection of trained nets.
+interpret. This is knowable by inspection of trained nets.
 
 ## Baselines
 
 **Plain backpropagation with weight decay.** The default recipe: stochastic gradient descent on
 a cross-entropy (or squared-error) objective, with an L2 penalty (½λ‖w‖²) added to keep weights
-from growing. The penalty shrinks every weight toward zero uniformly. Two limitations: it is a
-blunt, untargeted capacity control that does nothing about the *specific* failure of detectors
-that are useful only together; and as a penalty it only weakly opposes an arbitrarily large
-proposed weight update, so one cannot safely run a very large learning rate to search weight
-space aggressively.
+from growing. The penalty shrinks every weight toward zero uniformly.
 
 **Bagging (Breiman 1996) and Random Forests (Breiman 2001).** Train each model on a bootstrap
 resample of the training cases; combine with equal weight. Variance reduction through diversity.
-It is used overwhelmingly with cheap base learners such as decision trees, because the method's
-cost scales with the number of separately-fit, separately-evaluated models. The component models
-share nothing. Applying it to many large neural nets is expensive at both train and test time.
+It is used overwhelmingly with cheap base learners such as decision trees. The component models
+share nothing, and cost scales with the number of separately-fit, separately-evaluated models.
 
 **Bayesian model averaging (Neal 1996).** Weight each model by its posterior probability given
 the data. For model classes as complex as neural nets this requires Markov-chain Monte-Carlo
-sampling of weight configurations. Principled and accurate, but computationally heavy and
-impractical at the scales of interest.
+sampling of weight configurations.
 
 **Mixture of experts (Jacobs, Jordan, Nowlan & Hinton 1991).** A gating network routes each
-input to a small number of specialized expert networks. Because each expert is trained on only
-the fraction of data routed to it, each parameter is adapted on a small slice of the training
-set — statistically inefficient with limited data.
+input to a small number of specialized expert networks. Each expert is trained on the fraction
+of data routed to it, so each parameter is adapted on a slice of the training set.
 
 **Naive Bayes (extreme reference point).** Each input feature is trained on its own to predict
 the label; at test time the per-feature predictive distributions are multiplied together. With
 very little data this often beats logistic regression, which trains each feature to work in the
-context of all the others — precisely because no feature in naive Bayes relies on any context.
+context of all the others.
 
 ## Evaluation settings
 
@@ -109,8 +94,8 @@ binding constraint, evaluated by held-out test error.
   net territory; report test classification error, no augmentation when isolating the
   regularizer.
 - **ImageNet (2010 ILSVRC subset)**: ~1000 classes, ~1.3M training images, full-resolution
-  (resized to 256×256); large-scale object recognition where even strong nets overfit. Report
-  test error, optionally averaging predictions over crops.
+  (resized to 256×256); large-scale object recognition. Report test error, optionally averaging
+  predictions over crops.
 - **Reuters / RCV1-v2**: newswire documents categorized into a class hierarchy; a subset of 50
   mutually exclusive second-level classes. Each document is a bag-of-counts over the 2000 most
   frequent non-stop words, count C mapped to log(1+C). Report test classification error.

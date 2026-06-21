@@ -1,0 +1,40 @@
+# frozen-bias repair changelog
+
+- `results/context.md:1` retitled the setup so it stays pre-method and does not reveal the frozen-bias mechanism.
+- `results/context.md:169` removed the optimizer-scope leak that previewed freezing as the intended design move.
+- `results/context.md:224` kept the scaffold slots open-ended instead of hinting at the final method.
+- `results/answer.md:13` separated the theorem-level tied-direction model from the benchmark scaffold.
+- `results/answer.md:24` rebuilt the population-loss algebra with the correct Hermite variables, `Q_lambda`, and normalization.
+- `results/answer.md:40` recorded the harmless factor-of-2 discrepancy in the raw `theta` derivative without letting it change the stationary equation.
+- `results/answer.md:47` corrected the finite-feature critical equation and the definition of `gbar_m`.
+- `results/answer.md:55` restored the finite random-feature/RKHS approximation route and the `N >= C/lambda log(1/(lambda delta))` condition.
+- `results/answer.md:80` restored the exact finite-sample theorem requirement.
+- `results/answer.md:93` corrected the ReLU case split: `Otilde(d^s)` only for `s>2`, with `d^2` for `s=1` and `d^2.5` for `s=2`.
+- `results/answer.md:95` restored the fresh-sample ridge-refit risk split and its dimension-free nonparametric term.
+- `results/answer.md:105` documented that the MLS-Bench code is a scaffold adaptation, not the exact tied-direction theorem model.
+- `results/answer.md:109` replaced the implementation block with the exact `code/frozen_bias.edit.py::_CONTENT` reference.
+- `results/reasoning.md:45` fixed the sign/constant derivation around the population gradient and stationary equation.
+- `results/reasoning.md:65` restored the random-feature equivalence condition used to control finite-width artifacts.
+- `results/reasoning.md:101` restored the two-phase schedule and precise sample requirement.
+- `results/reasoning.md:114` corrected the low-information-exponent ReLU cases and assigned the `d^s` improvement for `s<=2` to the smooth-activation appendix.
+- `results/reasoning.md:116` restored the fresh-sample ridge-refit step and risk split.
+- `results/reasoning.md:133` made the theorem-vs-scaffold distinction explicit in the in-frame derivation.
+- `results/reasoning.md:135` replaced the implementation block with the exact `code/frozen_bias.edit.py::_CONTENT` reference.
+- `notes/source_matrix.md:7` added the primary-source evidence entry covering model definition, loss algebra, critical-point theorem, empirical theorem, fine-tuning, and appendices.
+- `notes/source_matrix.md:17` recorded the MLS-Bench reference implementation as the authoritative scaffold code target.
+- `notes/source_matrix.md:20` captured the theorem/scaffold mismatch: tied Gaussian-bias model versus independent-row uniform-bias benchmark code.
+- `notes/source_matrix.md:21` captured the source gradient factor-of-2 issue and the corrected stationary-equation treatment.
+- `notes/discovery_synthesis.md:12` recorded the exact theorem model: shared `theta`, Gaussian `b_i`, Rademacher `epsilon_i`, both fixed.
+- `notes/discovery_synthesis.md:14` recorded the exact scaffold behavior: row-normalized first layer, uniform frozen bias, SGD/MSE, no-op finalize.
+- `notes/discovery_synthesis.md:24` documented the math audit for the population loss, gradients, and divided stationary equation.
+- `notes/discovery_synthesis.md:35` documented the corrected finite-sample and low-exponent ReLU rate cases.
+- `notes/discovery_synthesis.md:53` documented the code-faithfulness audit against `code/frozen_bias.edit.py`.
+- `notes/discovery_synthesis.md:65` documented the scaffold-purity and leakage audit.
+- `notes/strict_check_output.txt:1` recorded the strict checker command.
+- `notes/strict_check_output.txt:5` recorded `STRICT CHECK PASSED`.
+- `notes/strict_check_output.txt:8` recorded exact equality between the embedded `answer.md` code block and `code/frozen_bias.edit.py::_CONTENT`.
+- `notes/strict_check_output.txt:9` recorded exact equality between the embedded `reasoning.md` code block and `code/frozen_bias.edit.py::_CONTENT`.
+- `notes/strict_check_output.txt:13` recorded the clean hindsight and after-the-fact leak scan.
+- `results/.codex_review.json:2` refreshed the review metadata for `frozen-bias`.
+- `results/.codex_review.json:9` marked the pass as manually reviewed.
+- `results/.codex_review.json:10` replaced the stale usage-limit note with the exact review scope and the no-independent-review caveat.

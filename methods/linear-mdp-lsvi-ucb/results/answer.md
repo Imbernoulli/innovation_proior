@@ -1,73 +1,93 @@
-# LSVI-UCB (Least-Squares Value Iteration with UCB)
+# LSVI-UCB
 
-## Problem
+## Method
 
-Reinforcement learning in an episodic MDP(S, A, H, P, r) where the state space S is huge or infinite, so function approximation is mandatory. No simulator (cannot query arbitrary (x,a)), no resets, adversarial initial states, rewards in [0,1]. Goal: a provably efficient algorithm whose regret is **independent of S and A**, and whose implementation avoids any enumeration over S while using finite-action maximization over A. The tabular minimax lower bound Ω(√(H²SAT)) makes the √S unavoidable without structure, so structure must be assumed.
+Assume a finite-horizon MDP with known features `phi(x,a) in R^d` and a linear MDP structure:
 
-## Key idea
+`P_h(.|x,a)=<phi(x,a),mu_h(.)>`, `r_h(x,a)=<phi(x,a),theta_h>`,
 
-Assume a **linear MDP**: the transition kernel and reward are linear in a known feature map φ(x,a) ∈ ℝ^d,
+with `||phi(x,a)||<=1` and `max{||theta_h||, ||mu_h(S)||}<=sqrt(d)`. This is a structural assumption on the reward and transition kernel, not a linear-policy assumption.
 
-  P_h(·|x,a) = ⟨φ(x,a), μ_h(·)⟩,  r_h(x,a) = ⟨φ(x,a), θ_h⟩,
+The Bellman factorization gives, for every policy `pi`,
 
-with μ_h an *unknown signed measure* over S (so the model has infinite degrees of freedom despite being "linear") and θ_h ∈ ℝ^d unknown; normalization ‖φ‖≤1, ‖θ_h‖,‖μ_h(S)‖ ≤ √d. (Tabular MDPs are the special case φ = e_{(x,a)}, d = SA.)
+`Q_h^pi(x,a)=<phi(x,a), theta_h + int V_{h+1}^pi dmu_h>`.
 
-Two consequences make RL tractable:
-1. **Value-linearity (all policies).** By Bellman, Q^π_h = ⟨φ, w^π_h⟩ with w^π_h = θ_h + ∫V^π_{h+1}(x')dμ_h(x'), and ‖w^π_h‖ ≤ 2H√d. So it suffices to maintain linear action-value functions.
-2. **Bellman backup = ridge regression.** The target r_h + P_h V_{h+1} is linear in φ, so one step of value iteration is one least-squares fit (LSVI).
-
-Then **lift optimism from linear bandits (OFUL) into RL**: add the self-normalized/elliptical confidence width β·√(φ⊤Λ⁻¹φ) as a UCB bonus to the ridge estimate. This is the first provably efficient RL with function approximation, with regret Õ(√(d³H³T)) and **no dependence on the size of the state space**.
+So the action-value functions are linear in `phi`, and a Bellman backup can be estimated by ridge regression from sampled transitions.
 
 ## Algorithm
 
+For episode `k`, run a backward least-squares value-iteration sweep, then act greedily:
+
+```text
+Input: feature map phi, lambda=1, beta=c d H sqrt(log(2dT/p))
+
+for episode k = 1,...,K:
+    receive x_1^k
+
+    for h = H,...,1:
+        Lambda_h = sum_{tau<k} phi_h^tau (phi_h^tau)^T + lambda I
+        w_h = Lambda_h^{-1} sum_{tau<k} phi_h^tau
+              [ r_h^tau + max_a Q_{h+1}(x_{h+1}^tau,a) ]
+
+        Q_h(x,a) = min{
+            <w_h, phi(x,a)>
+            + beta sqrt(phi(x,a)^T Lambda_h^{-1} phi(x,a)),
+            H
+        }
+
+    for h = 1,...,H:
+        a_h^k = argmax_a Q_h(x_h^k,a)
+        receive r_h^k and observe x_{h+1}^k
 ```
-LSVI-UCB.  Input: feature map φ, λ = 1, β = c·dH√(log(2dT/p)).
-for episode k = 1, …, K:
-    observe x_1^k
-    for h = H, …, 1:                                  # backward sweep: build Q_h
-        Λ_h ← Σ_{τ<k} φ(x_h^τ,a_h^τ) φ(x_h^τ,a_h^τ)⊤ + λI
-        w_h ← Λ_h^{-1} Σ_{τ<k} φ(x_h^τ,a_h^τ) [ r_h(x_h^τ,a_h^τ) + max_a Q_{h+1}(x_{h+1}^τ, a) ]
-        Q_h(·,·) ← min{ w_h⊤φ(·,·) + β·(φ(·,·)⊤Λ_h^{-1}φ(·,·))^{1/2},  H }
-    for h = 1, …, H:                                  # forward sweep: act greedily
-        a_h^k ← argmax_a Q_h(x_h^k, a);  observe x_{h+1}^k
-```
-w_h is the closed form of the ridge problem argmin_w Σ_τ [r_h^τ + max_a Q_{h+1}(x_{h+1}^τ,a) − w⊤φ_h^τ]² + λ‖w‖². With Q_{H+1} ≡ 0. Using Sherman-Morrison for Λ_h^{-1}: runtime O(d²AKT), space O(d²H + dAT) — both independent of S.
 
-## Main theorem
+The ridge term makes `Lambda_h` invertible and bounds the capacity of the value class. The bonus is the self-normalized elliptical uncertainty width: it is large along feature directions with few effective samples and small along well-observed directions. The canonical implementation artifact is the algorithm pseudocode itself; no official code release was found.
 
-**Theorem (regret).** Under the linear-MDP assumption, with λ = 1 and β = c·dH√ι (ι = log(2dT/p)), with probability 1−p,
+## Theorem
 
-  Regret(K) = O(√(d³ H³ T · ι²)) = Õ(√(d³ H³ T)),  T = KH,
+With `lambda=1`, `beta=c d H sqrt(iota)`, and `iota=log(2dT/p)`, the algorithm satisfies, with probability at least `1-p`,
 
-independent of S and A. With a fixed initial state, this converts to Õ(d³H⁴/ε²) samples for an ε-optimal policy with constant success probability.
+`Regret(K) = O(sqrt(d^3 H^3 T iota^2)) = tilde O(sqrt(d^3 H^3 T))`,
 
-**Theorem (misspecification).** If the MDP is only ζ-approximately linear (‖P_h − ⟨φ,μ_h⟩‖_TV ≤ ζ, |r_h − ⟨φ,θ_h⟩| ≤ ζ, ζ ≤ 1), then with β_k = c·(d√ι + ζ√(kd))H, with probability 1−p,
+where `T=KH`. The bound is independent of the cardinality of the state space. With finite-action maximization, the direct implementation has runtime `O(d^2 A K T)` and space `O(d^2 H + d A T)`.
 
-  Regret(K) = Õ(√(d³ H³ T) + ζ·dHT).
+For an approximately linear MDP with total-variation transition error and reward error at most `zeta`, using
 
-The extra ζdHT is linear in T — the unavoidable bias of a wrong linear model (O(ζ) per step).
+`beta_k=c(d sqrt(iota)+zeta sqrt(kd))H`
 
-## Proof sketch
+gives, with the same `iota`,
 
-1. **Ridge-weight decomposition.** For any fixed π, w_h^k − w^π_h splits into q₁ (regularization bias, −λΛ⁻¹w^π_h), q₂ (stochastic noise, Λ⁻¹Σφ[V−P_hV]), q₃ (recursion, Λ⁻¹Σφ·P_h(V^k−V^π)). After ⟨φ,·⟩: q₁ and q₃ are each ≤ O(H√d)·‖φ‖_{Λ⁻¹} (Cauchy-Schwarz in the Λ⁻¹ norm; q₃ reduces to P_h(V^k−V^π) plus bias via P_h = ⟨φ,μ_h⟩).
+`Regret(K)=O(sqrt(d^3 H^3 T iota^2) + zeta d H T sqrt(iota))`.
 
-2. **Self-normalized concentration with covering (the bonus).** q₂'s numerator Σ_τ φ_h^τ[V_{h+1}(x_{h+1}^τ) − P_hV_{h+1}] would be a martingale-difference sum *if* V_{h+1} were fixed — but it is computed by LSVI from the same data, hence data-dependent. Resolve by uniform concentration over the value class 𝒱 = {min(max_a φ⊤w + β√(φ⊤Λ⁻¹φ), H)} (bounded by ridge). Its covering number: reparametrize A = β²Λ⁻¹; since min/max are contractions, dist(V₁,V₂) ≤ ‖w₁−w₂‖ + √‖A₁−A₂‖_F, giving log N_ε ≤ d log(1+4L/ε) + d²log(1+8√d B²/(λε²)) — dominated by **d²** (the bonus matrix A ∈ ℝ^{d×d}). Plugging into the self-normalized tail bound (Abbasi-Yadkori et al. 2011): ‖q₂-numerator‖_{Λ⁻¹} ≤ Õ(dH). Hence ⟨φ,q₂⟩ ≤ O(dH√ι)·‖φ‖_{Λ⁻¹}.
+The approximate case is not exact optimism: the guarantee is `Q_h^k >= Q_h^* - 4H(H+1-h)zeta`, so at `h=1` the regret proof pays a deterministic `4H^2 zeta` per episode in addition to the variable-bonus term.
 
-3. **Key relation.** Combining, |⟨φ,w_h^k⟩ − Q^π_h − P_h(V^k_{h+1}−V^π_{h+1})| ≤ c'·dH√ι·‖φ‖_{Λ⁻¹}. Set β = c·dH√ι ≥ this (a constant fixed-point c'√(ι+log(c+1)) ≤ c√ι).
+## Why The Proof Works
 
-4. **Optimism (UCB lemma).** By backward induction Q_h^k ≥ Q*_h for all (x,a,h,k): base h=H from the key relation; step uses P_h(V^k_{h+1}−V*_{h+1}) ≥ 0 (inductive hypothesis) so the recursion term only helps. Capping at H is harmless since Q*_h ≤ H.
+The key deviation relation is
 
-5. **Regret decomposition + elliptical potential.** With δ_h^k = V_h^k(x_h^k) − V^{π_k}_h(x_h^k) and ζ_{h+1}^k the martingale difference E[δ_{h+1}^k|x,a] − δ_{h+1}^k:
-   δ_h^k ≤ δ_{h+1}^k + ζ_{h+1}^k + 2β‖φ_h^k‖_{Λ⁻¹}.
-   By optimism, Regret(K) ≤ Σ_k δ₁^k ≤ Σ_{k,h} ζ_h^k + 2β Σ_{k,h} ‖φ_h^k‖_{Λ⁻¹}. First term ≤ 2H√(Tι) by Azuma-Hoeffding. Second: the **elliptical potential lemma** gives Σ_k (φ_h^k)⊤(Λ_h^k)⁻¹φ_h^k ≤ 2 log[det(Λ_h^{K+1})/det(Λ_h^1)] ≤ 2d log((λ+K)/λ) ≤ 2dι; Cauchy-Schwarz over k then h gives Σ_{k,h} ‖φ‖_{Λ⁻¹} ≤ H√(2dKι).
+`|<phi,w_h^k> - Q_h^pi - P_h(V_{h+1}^k - V_{h+1}^pi)| <= beta ||phi||_{(Lambda_h^k)^{-1}}`.
 
-6. **Powers.** Regret ≤ 2H√(Tι) + 2β·H√(2dKι); with β = c·dH√ι, the bonus term = O(dH·H√(dK)·ι) = O(d^{3/2}H²√K·ι) = O(√(d³H⁴K·ι²)) = O(√(d³H³T·ι²)). The d^{3/2} comes from d in β (the d² covering) times √d from the potential lemma; the H²√K becomes √(H³T) because T = KH. ∎
+Its proof has three load-bearing parts.
 
-## Why each piece
+First, the linear transition model turns the Bellman recursion term into a linear object. This is why the regression coefficient can represent a backed-up value function even when the state space is infinite.
 
-- **Linear kernel (not linear policy):** makes Q linear for *all* π and the backup a regression; a linear-policy assumption gives neither.
-- **μ_h an unknown measure (infinite DOF):** keeps the model genuinely large; the win is that one never needs to learn it in TV — only P̂_h V ≈ P_h V on the small class 𝒱 — so LSVI-UCB is effectively model-free.
-- **Ridge (λI), not OLS:** invertibility when k<d, ‖w_h^k‖ ≤ 2H√(dk/λ), and bounded covering capacity.
-- **Elliptical bonus β√(φ⊤Λ⁻¹φ):** the exact uncertainty notion OFUL's confidence ellipsoid induces; (φ⊤Λ⁻¹φ)⁻¹ ≈ effective samples along φ.
-- **Clip at H, uniform concentration over 𝒱:** rewards in [0,1] ⇒ V≤H bounds the class; the clip + bonus push V outside the linear class, and V's data-dependence forces concentration over a class, not a fixed function.
-- **Recursion-aware optimism:** P_h(V^k−V*) ≥ 0 in the induction propagates optimism *down the horizon*, avoiding the exponential-in-H blowup of a naive per-step bandit reduction; H-dependence stays polynomial (H^{3/2}).
+Second, the stochastic term is not a fixed-function regression noise term. The target contains `V_{h+1}^k`, which is learned from the same data. This is handled by uniform self-normalized concentration over the algorithm's value class
+
+`V(.)=min{max_a [phi(.,a)^T w + beta sqrt(phi(.,a)^T Lambda^{-1} phi(.,a))],H}`.
+
+The bonus can be written as `sqrt(phi^T A phi)` with `A=beta^2 Lambda^{-1}`. Covering this matrix parameter costs `d^2`, which is why the confidence radius has scale `dH`, not just `sqrt(d)H`.
+
+Third, optimism propagates backward through Bellman induction. If `V_{h+1}^k >= V_{h+1}^*`, then `P_h(V_{h+1}^k - V_{h+1}^*) >= 0`, so the recursive term helps the upper-confidence bound. This keeps the horizon dependence polynomial rather than exponential.
+
+## Why It Is More Than Regression Plus UCB
+
+The method combines two ideas only because the linear MDP factorization makes them compatible:
+
+- Least-squares value iteration supplies Bellman regression targets.
+- Linear-bandit confidence geometry supplies the bonus `sqrt(phi^T Lambda^{-1} phi)`.
+- Uniform concentration over a data-dependent value class justifies applying that bonus to learned future values.
+- Bellman induction turns local confidence intervals into global optimism.
+- The elliptical-potential lemma bounds the total exploration cost across episodes.
+
+Without the transition factorization, the Bellman backup would not remain linear. Without the uniform concentration step, the learned future value in the regression target would invalidate the fixed-function self-normalized argument. Without recursive optimism, a stagewise bandit view would compound uncertainty through the horizon.
+
+The regret proof finally telescopes the optimistic value gap into a martingale term plus cumulative bonuses. Azuma controls the martingale term, and the elliptical-potential lemma gives `sum_k phi_h^k^T (Lambda_h^k)^{-1} phi_h^k = O(d log T)` for each step `h`. Multiplying the width sum `H sqrt(dK)` by `beta=dH sqrt(iota)` yields `tilde O(sqrt(d^3 H^3 T))` after using `T=KH`.

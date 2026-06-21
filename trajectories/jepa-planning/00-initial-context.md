@@ -1,6 +1,6 @@
 ## Research question
 
-A JEPA world model has already been trained: given an encoded observation and an action sequence, it
+A JEPA world model is already trained: given an encoded observation and an action sequence, it
 forward-simulates the *latent* encodings the agent would see, and a fixed objective scores how close
 the predicted final latent is to a goal latent. The checkpoint is frozen — I am not allowed to retrain
 it. The single thing being designed is the **planner**: the rule that, from the current observation,
@@ -11,38 +11,29 @@ straight at the goal. Everything else (the world model, the cost, the receding-h
 is fixed. Can a planner beat the standard derivative-free optimizers — CEM, MPPI — by exploiting the
 structure of the learned model more carefully?
 
-## Prior art before the first rung (derivative-free planning lineage)
+## Prior art / Background / Baselines
 
-The planners on the ladder are all *zeroth-order* trajectory optimizers run inside a model-predictive
+The planners used in this setting are zeroth-order trajectory optimizers inside a model-predictive
 loop: sample candidate action sequences, roll each through the model, score it, keep the best, act,
-re-plan. The lineage the first rung reacts to:
+and re-plan.
 
-- **Shooting / random shooting (Rao 2009; Richards 2005).** Sample action sequences from a fixed
-  distribution, roll them all out, return the lowest-cost one. Gradient-free, trivially parallel, and
-  it cannot get stuck in a single basin the way a hill-climber would. Gap: it *never learns* — the
-  hundredth batch is drawn from the same distribution as the first, so the whole budget is spent
-  re-sampling regions already shown to be bad; nothing concentrates effort where the good sequences were.
-- **Cross-Entropy Method (Rubinstein 1997; de Boer et al. 2005).** Refit a Gaussian over action
-  sequences to the top-`k` lowest-cost "elites" each iteration, so the search distribution marches
-  toward the good region and auto-sizes its own spread. Gap: it pays for that refinement with rollouts
-  — the elite quantile needs many samples to estimate, and the hard top-`k` cut throws away *how much*
-  better the best elite was than the worst.
-- **Model Predictive Path Integral (Williams et al. 2015, arXiv:1509.01149).** From path-integral
-  optimal control: instead of a hard elite cut, refit the Gaussian to an *exponentially cost-weighted*
+- **Random shooting.** Sample action sequences from a fixed distribution, evaluate them all, and
+  return the lowest-cost one. Gap: the sampling distribution never changes, so the same bad regions
+  are re-sampled every iteration and the budget never concentrates on the promising ones.
+- **Cross-Entropy Method (CEM).** Refit a Gaussian over action sequences to the top-`k` lowest-cost
+  "elites" each iteration, so the search distribution shifts toward better regions and auto-sizes
+  its spread. Gap: the elite quantile needs many samples to estimate accurately, and the hard top-`k`
+  cut discards information about *how much* better one elite is than another.
+- **Model Predictive Path Integral (MPPI).** Refit the Gaussian to an exponentially cost-weighted
   average of the samples, so a markedly better rollout pulls the mean and tightens the variance more
-  than a marginal one. Gap: still a high-variance soft-weighted estimator unless the sample count is
-  large, and like every method above it discards every rollout it evaluates at the end of the step.
-- **iCEM (Pinneri et al. 2020).** CEM with the wasted rollouts reclaimed: temporally-correlated
-  *colored* action noise so sampled trajectories range farther per unit of energy, elite reuse across
-  iterations and across env steps, and population decay to buy more refinement from a fixed budget.
-  Gap: still purely zeroth-order — it never reads the gradient of the cost the differentiable model
-  could hand it.
+  than a marginal one. Gap: the weighted average remains high-variance unless the sample count is
+  large, and every evaluated rollout is discarded at the end of the planning step.
+- **iCEM.** CEM augmented with temporally-correlated colored action noise, elite reuse across
+  iterations and across env steps, and population decay to squeeze more refinement from a fixed
+  budget. Gap: it is still a purely sample-and-rank method; colored noise and reuse reduce overhead
+  but do not remove the need for many samples around sharp cost features.
 
-Common thread: all four optimize the action sequence using *only function values* of the cost, even
-though the JEPA model and the objective are differentiable end-to-end. The gradient of the cost with
-respect to the actions is sitting unused.
-
-## The fixed substrate
+## Fixed substrate / Code framework
 
 A pre-trained JEPA world model and a receding-horizon control loop are frozen and must not be touched.
 The loop, at each control step, calls the planner for an action sequence, executes its first action,
@@ -62,7 +53,7 @@ inherits:
 The action space is 2-D (x/y movement) with a per-step norm limit of `max_norm = 2.45`. The plan
 horizon is capped at `plan_length` (and at `steps_left` when fewer steps remain).
 
-## The editable interface
+## Editable interface
 
 Exactly one region is editable — the `CustomPlanner` class in `eb_jepa/custom_planner.py` (the
 `plan()` method and the constructor). `CustomPlanner` extends `Planner` and must implement:
@@ -74,9 +65,8 @@ def plan(self, obs_init, steps_left=None, eval_mode=True,
 
 `t0=True` marks the first call of an episode (the place to reset any state carried across env steps).
 The method returns a `PlanningResult(actions=Tensor[T, A], ...)`; the loop executes the first action.
-Every method on the ladder is a fill of this one slot. The starting point is the scaffold default: a
-single-pass **random search** — sample action sequences once, clip them to the feasible ball, return
-the lowest-cost one. Each later method replaces exactly this class.
+Every method fills this one slot. The starting point is the scaffold default: a single-pass **random
+search** — sample action sequences once, clip them to the feasible ball, return the lowest-cost one.
 
 ```python
 # EDITABLE region of eb_jepa/custom_planner.py — default fill (single-pass random search)

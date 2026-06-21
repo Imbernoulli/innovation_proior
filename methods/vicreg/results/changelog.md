@@ -1,0 +1,25 @@
+# VICReg File:Line Changelog
+
+- `results/context.md:3` Rebuilt context as exactly five level-2 sections.
+- `results/context.md:16` Reframed the research question as a pre-method anti-collapse design pressure without naming the target method or leaking the final loss.
+- `results/context.md:46` Separated trivial collapse from informational collapse in pre-method terms.
+- `results/context.md:63` Replaced target-specific outcome language with evaluation protocols and stress-test criteria.
+- `results/reasoning.md:26` Re-derived the standard-deviation hinge gradient with the correct sign and denominator.
+- `results/reasoning.md:35` Added the epsilon/exact-constant edge case: exact equality has zero embedding-gradient, while near-collapse deviations are amplified.
+- `results/reasoning.md:54` Rechecked the covariance-only collapse case and variance/covariance complementarity.
+- `results/reasoning.md:73` Distinguished published algebraic constants from official PyTorch implementation scaling.
+- `results/answer.md:5` Rewrote the final equations with explicit invariance, variance, covariance, and total objective.
+- `results/answer.md:24` Corrected constants and the standard-deviation hinge claim, including the exact-collapse caveat.
+- `results/answer.md:37` Added the official-code scaling distinction: elementwise `F.mse_loss` and `/2` averaging of branch variance losses.
+- `results/answer.md:48` Replaced the code artifact with the canonical `facebookresearch/vicreg` forward/projector/off-diagonal core.
+- `results/answer.md:106` Added implementation-faithfulness notes for distributed gather, centering, unbiased variance, covariance denominator, coefficients, projector layers, LARS exclusions, and augmentations.
+- `notes/source_matrix.md:7` Added primary arXiv source/PDF provenance.
+- `notes/source_matrix.md:13` Added load-bearing ancestor sources: SimCLR, BYOL, SimSiam, Barlow Twins, W-MSE, and SwAV.
+- `notes/source_matrix.md:24` Added third-party explainers.
+- `notes/source_matrix.md:31` Added self-account sources and documented the search log.
+- `notes/source_matrix.md:41` Added official code provenance with cloned commit hash.
+- `notes/discovery_synthesis.md:27` Recorded the corrected derivative and constant-scaling audit.
+- `notes/discovery_synthesis.md:48` Recorded the math, code-faithfulness, hindsight, scaffold, and voice fixes.
+- `notes/synthesis.md:8` Replaced the older synthesis with a compatibility summary pointing to strict notes.
+- `results/.codex_review.json:3` Replaced the prior limited review marker with an explicit independent-review-not-run record.
+- `notes/strict_check_output.txt:6` Recorded that `scripts/check_strict_method.py` is absent and the fallback lint checks passed.

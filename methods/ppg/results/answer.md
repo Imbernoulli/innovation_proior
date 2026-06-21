@@ -17,7 +17,7 @@ Separate policy and value training **in time** into two alternating phases.
 - **Policy phase** (`N_π` PPO iterations, on *disjoint* policy and value networks): optimize the PPO
   clipped surrogate (plus entropy bonus) on the policy net for `E_π` epochs and the value MSE on the
   true value net for `E_V` epochs, with GAE advantages/targets; because the nets are disjoint, no value
-  gradient touches the policy and `E_π`, `E_V` are independent (`E_π = 1` is near-optimal). Stash all
+  gradient touches the policy and `E_π`, `E_V` are independent (default `E_π = 1`). Stash all
   `(s_t, V̂^targ_t)` into a buffer `B`.
 - **Auxiliary phase** (every `N_π` updates, `E_aux` epochs over `B`): the policy network carries an
   **auxiliary value head** sharing its trunk. Optimize
@@ -29,9 +29,9 @@ Separate policy and value training **in time** into two alternating phases.
 
 The auxiliary phase runs infrequently (`N_π = 32`) because each one mildly perturbs the policy. The
 policy objective is swappable (PPO clip or a fixed-weight KL penalty `L^KL = Ê[−Â_t r_t + β_π KL]`), and
-a single-network variant ("detach") recovers most of the benefit at half the parameters by detaching
-the value gradient at the last shared layer during the policy phase and using the full gradient during
-the auxiliary phase.
+a single-network variant ("detach") reduces the parameter cost by detaching the true-value path from
+the shared policy features; in the archived implementation, shared features in this variant are still
+trained during the auxiliary phase through the auxiliary value head.
 
 ## Algorithm
 
@@ -42,7 +42,8 @@ Policy phase losses (GAE: `Â_t = Σ_l (γλ)^l δ_{t+l}`, `δ_t = r_t + γV(s_{
   `L^value = Ê_t[½(V(s_t) − V̂^targ_t)²]` (true value net).
 
 Auxiliary phase: `L^joint = ½Ê[(V_θπ(s) − V̂^targ)²] + β_clone·Ê[KL(π_old, π_θ)]` (policy net) and
-`L^value` (true value net), separately.
+`L^value` (true value net). With the default dual architecture these losses have disjoint parameter
+paths; the implementation can sum compatible losses in one optimizer step when the epoch counts match.
 
 Hyperparameters: `N_π = 32`, `E_π = 1`, `E_V = 1`, `E_aux = 6`, `β_clone = 1`; `γ = .999`, `λ = .95`,
 `ε = .2`, `β_S = .01`, vfcoef `.5`; rollout 256 steps, 8 minibatches/epoch (policy phase), 16
@@ -102,13 +103,20 @@ def compute_gae(reward, vpred, first, gamma, lam):
     return adv, vtarg
 
 
-def ppo_losses(model, mb, clip_param, ent_coef):
+def normalize_adv(adv, eps=1e-8):
+    return (adv - adv.mean()) / (adv.var(unbiased=False).sqrt() + eps)
+
+
+def ppo_losses(model, mb, clip_param, ent_coef, vf_coef=0.5, kl_penalty=0.0):
     pd, vpred_true, _aux = model(mb["ob"])
-    ratio = th.exp(pd.log_prob(mb["ac"]) - mb["logp"])
+    newlogp = pd.log_prob(mb["ac"])
+    logratio = newlogp - mb["logp"]
+    ratio = th.exp(logratio)
     pg = th.max(-mb["adv"] * ratio,
                 -mb["adv"] * th.clamp(ratio, 1 - clip_param, 1 + clip_param)).mean()
-    pi_loss = pg - ent_coef * pd.entropy().mean()
-    vf_loss = ((vpred_true - mb["vtarg"]) ** 2).mean()
+    approx_kl_penalty = kl_penalty * 0.5 * (logratio ** 2).mean()
+    pi_loss = pg - ent_coef * pd.entropy().mean() + approx_kl_penalty
+    vf_loss = vf_coef * ((vpred_true - mb["vtarg"]) ** 2).mean()
     return pi_loss, vf_loss
 
 
@@ -122,7 +130,8 @@ def aux_train(model, buffer, opt, beta_clone, vf_true_weight):
 
 
 def learn(venv, model, hp):
-    pi_opt  = th.optim.Adam(model.parameters(), lr=hp["lr"])
+    ppo_opt = th.optim.Adam(model.parameters(), lr=hp["lr"])
+    vf_opt = ppo_opt if hp["E_pi"] == hp["E_v"] else th.optim.Adam(model.parameters(), lr=hp["lr"])
     aux_opt = th.optim.Adam(model.parameters(), lr=hp["aux_lr"])
     while True:
         buffer = []
@@ -130,15 +139,24 @@ def learn(venv, model, hp):
             rollouts = collect_rollouts(venv, model, hp["nstep"])
             adv, vtarg = compute_gae(rollouts["reward"], rollouts["vpred"],
                                      rollouts["first"], hp["gamma"], hp["lam"])
-            rollouts["adv"], rollouts["vtarg"] = adv, vtarg
-            for _ in range(hp["E_pi"]):
-                for mb in minibatches(rollouts, hp["nminibatch"]):
-                    pi_loss, _ = ppo_losses(model, mb, hp["clip_param"], hp["ent_coef"])
-                    pi_opt.zero_grad(); pi_loss.backward(); pi_opt.step()
-            for _ in range(hp["E_v"]):
-                for mb in minibatches(rollouts, hp["nminibatch"]):
-                    _, vf_loss = ppo_losses(model, mb, hp["clip_param"], hp["ent_coef"])
-                    pi_opt.zero_grad(); vf_loss.backward(); pi_opt.step()
+            rollouts["adv"], rollouts["vtarg"] = normalize_adv(adv), vtarg
+            if hp["E_pi"] == hp["E_v"]:
+                for _ in range(hp["E_pi"]):
+                    for mb in minibatches(rollouts, hp["nminibatch"]):
+                        pi_loss, vf_loss = ppo_losses(model, mb, hp["clip_param"], hp["ent_coef"],
+                                                      hp["vf_coef"], hp.get("kl_penalty", 0.0))
+                        ppo_opt.zero_grad(); (pi_loss + vf_loss).backward(); ppo_opt.step()
+            else:
+                for _ in range(hp["E_v"]):
+                    for mb in minibatches(rollouts, hp["nminibatch"]):
+                        _, vf_loss = ppo_losses(model, mb, hp["clip_param"], hp["ent_coef"],
+                                                hp["vf_coef"], hp.get("kl_penalty", 0.0))
+                        vf_opt.zero_grad(); vf_loss.backward(); vf_opt.step()
+                for _ in range(hp["E_pi"]):
+                    for mb in minibatches(rollouts, hp["nminibatch"]):
+                        pi_loss, _ = ppo_losses(model, mb, hp["clip_param"], hp["ent_coef"],
+                                                hp["vf_coef"], hp.get("kl_penalty", 0.0))
+                        ppo_opt.zero_grad(); pi_loss.backward(); ppo_opt.step()
             buffer.append({k: rollouts[k] for k in ("ob", "vtarg")})
 
         for seg in buffer:                                             # snapshot π_old
@@ -150,5 +168,5 @@ def learn(venv, model, hp):
 
 # hp = dict(n_pi=32, E_pi=1, E_v=1, n_aux_epochs=6, beta_clone=1, vf_true_weight=1,
 #           gamma=.999, lam=.95, nstep=256, nminibatch=8, ent_coef=.01,
-#           clip_param=.2, lr=5e-4, aux_lr=5e-4)
+#           clip_param=.2, vf_coef=.5, kl_penalty=0.0, lr=5e-4, aux_lr=5e-4)
 ```

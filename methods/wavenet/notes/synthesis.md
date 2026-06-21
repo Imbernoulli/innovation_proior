@@ -34,7 +34,8 @@ So the model needs a *very large receptive field* but must stay trainable.
 4. **Dilated causal**: dilation d skips d−1 inputs. RF of a stack = (k−1)·Σ_layers d_ℓ + 1.
    Doubling d = 1,2,4,…,512 per block: Σ = 1+2+…+512 = 1023, so one block (10 layers, k=2) gives
    RF = 1·1023+1 = 1024 — **exponential RF in depth at linear cost**. Stack M such blocks:
-   RF = (k−1)·M·Σ_block + 1 (e.g. 3 blocks → ~3070, minus block overlaps). Each 1,2,…,512 block
+   RF = (k−1)·M·Σ_block + 1 (e.g. 3 blocks → 3070 for the dilated stack; a width-2 initial
+   causal input convolution makes the one-hot implementation 3071). Each 1,2,…,512 block
    ≈ a nonlinear 1×1024 conv but vastly cheaper.
 5. **Gated activation**: z = tanh(W_f * x) ⊙ σ(W_g * x). The σ gate is a learned per-unit,
    data-dependent multiplicative mask on the tanh "content"; lets the net decide which features
@@ -57,7 +58,7 @@ So the model needs a *very large receptive field* but must stay trainable.
    main stack on a short span; can pool/run slower — cheaper long-range context.
 
 ## Canonical impl (ibab/tensorflow-wavenet)
-- calculate_receptive_field: `(filter_width - 1) * sum(dilations) + 1` (+initial layer term).
+- calculate_receptive_field: `(filter_width - 1) * sum(dilations) + 1`, then add the initial layer term (`filter_width - 1` for one-hot input, `initial_filter_width - 1` for scalar input).
 - dilation layer: causal_conv filter & gate → tanh*σ → 1×1 dense (residual add) + 1×1 skip.
 - postprocess: sum skips → relu → 1×1 → relu → 1×1.
 - mu_law_encode: sign(x)*log1p(mu*|x|)/log1p(mu), quantize to int in [0,mu]; one-hot input.

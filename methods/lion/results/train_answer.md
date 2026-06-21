@@ -1,0 +1,62 @@
+Essentially every state-of-the-art deep model I see being trained — large language models, vision transformers, contrastive vision-language models, diffusion models — runs on one of a tiny handful of hand-designed first-order optimizers, overwhelmingly AdamW or its memory-cheaper cousin Adafactor. These rules were written down years ago by human intuition and have barely changed since. Two things bother me about that. First, nobody ever actually *searched* for the update rule: AdamW is one point in an enormous space of possible rules, chosen by hand, and there is no reason to believe it is the best point. Second, every attempt to improve training — better architectures, augmentation, regularization — sits *on top of* Adam, which makes it nearly impossible to credit any gain to the optimizer itself. So I want to attack the optimizer question head-on: can a better update rule be *discovered* rather than hand-designed?
+
+The obvious automation is to parameterize the update rule as a small neural network and train it to emit updates — the "learning to optimize" line of Andrychowicz et al. and Metz et al. I distrust it for a concrete reason. Those learned optimizers are meta-trained on a handful of small tasks for a few thousand steps, and the network overfits that regime; ask it to train a billion-parameter model for hundreds of thousands of steps and it is far outside its training distribution and falls apart. A black-box network also gives me no handle on *why* it does what it does, and nothing whose complexity I can measure — and I suspect simpler rules transfer better across scales. The symbolic-search line (Bello et al.'s Neural Optimizer Search) is more analyzable but fixes its operands and bounds its expression trees, so it cannot even change how momentum is tracked or how it feeds the update, and the rules it found (PowerSign, AddSign) never reached state of the art. AutoML-Zero searches whole ML programs but targets toy tasks, not optimizers that transfer to real training. The brutal obstacle underneath all of this is the generalization gap: a candidate rule can be evaluated in minutes on a small proxy model, but rules that look best on the proxy routinely collapse at the real, $10^4\times$-more-compute scale — a *meta-overfitting* where search fitness keeps climbing while held-out larger-task performance drops.
+
+I propose **Lion** — EvoLved Sign Momentum — together with the discovery procedure that produced it. The object I search over is the optimizer represented as a *program*: a short sequence of assignment statements over arrays using primitive math operations, exactly the way one would write pseudocode for AdamW. A program is executable, analyzable, and its length is a built-in complexity estimate I can use to prefer the simpler of two similarly-performing candidates. The program is a `train(w, g, ...)` function returning an update and new state, plugged into the trivial outer loop $\theta \leftarrow \theta - \text{update}$. I impose one hard constraint from the start: an optimizer needing more per-parameter memory than Adam will never be adopted, however good it is. Adam carries two buffers, $m$ and $v$, so I fix the signature to AdamW's — two extra state variables, both initialized to zero — and any program I discover then automatically has a footprint no larger than Adam's. I seed the population with AdamW itself, written as a program, so the search explores *outward* from a known-good rule rather than from noise. The reason a search is needed at all rather than hand-tweaking is that the space is infinite and almost entirely garbage: sampling even two million random programs and evaluating them on a cheap proxy yields a best candidate that is *still worse than AdamW*. Good rules are needle-in-haystack sparse, so I use regularized evolution — keep a population, repeatedly pick a few at random, take the best as parent, mutate it by inserting, deleting, or modifying one statement (new constants drawn from $\mathcal{N}(0,1)$), add the child, drop the oldest. Because a useful new structure may need several individually-useless statements, I must tolerate redundant statements as stepping stones, which bloats programs; an abstract-execution pass counters this by inferring shapes to reject malformed programs, hashing what each program *computes* so semantically identical candidates hit a cache, and flagging statements that do not affect the output. In practice programs end up ~70% redundant and the cache catches ~90% of evaluations. The deeper problem — the one that decides whether any of this is real — is the proxy-to-target gap, so I add a funnel: candidates are re-evaluated on larger meta-validation tasks (more model, more steps), and I select the ones that still hold up there, favoring search runs that meta-overfit only late, since those tend to surface rules that generalize.
+
+The raw winner is a mess — a `clip`, an `arcsin` on the gradient, two interpolations with odd constants ($\approx 0.899$ and $\approx 1.109$), a chain computing `m*m` then `sqrt` then `m / sqrt(m*m)`, a weight-decay term, an lr scale, and a stray `cosh` — and I will not trust at scale a rule I cannot read, so I simplify statement by statement. The trailing `m = cosh(update)` is dead, because $m$ is overwritten at the top of the next iteration before it is ever used; drop it. Ablating the `clip` and `arcsin` on the incoming gradient causes no quality drop; gone. The suspicious chain reads `m2 = m*m; abs_m = sqrt(m2); update = m / abs_m`: since $m^2 \ge 0$, $\sqrt{m^2} = |m|$, so $\text{update} = m/|m| = \operatorname{sign}(m)$ element-wise — three statements collapse to one `sign`, and the search has rediscovered the sign update, a real structural finding rather than noise. The two interpolations are the subtle part. The raw program updates *two* buffers, `m = interp(g, v, 0.899)` and `v = interp(g, m, 1.109)`, but there is no $g^2$ anywhere — the variable I would have called the second moment is not a second moment at all, merely a slower running average that feeds into how the stepping momentum is formed. Two chained interpolations with constants $\approx 0.9$ and $\approx 1.1$ over $(g, m, v)$ compose, and the composition is equivalent to a *single* exponential moving average of $g$ with constant $\approx 0.99$. So the second buffer is redundant; I collapse to one momentum EMA plus one interpolation for the step, leaving a single tracked buffer — *below* Adam's two.
+
+What remains is the rule. I keep one momentum buffer $m$, and with $\beta_1 \approx 0.9$ and $\beta_2 \approx 0.99$ falling out of the search, each step forms an interpolated momentum, signs it, takes a decoupled-weight-decay step, and then updates the buffer on its own slower constant:
+
+$$c_t = \beta_1 m_{t-1} + (1-\beta_1) g_t,$$
+$$\theta_t = \theta_{t-1} - \eta_t\big(\operatorname{sign}(c_t) + \lambda\,\theta_{t-1}\big),$$
+$$m_t = \beta_2 m_{t-1} + (1-\beta_2) g_t.$$
+
+There is no $\varepsilon$, no $\sqrt{v}$, no factorization knob, and one buffer instead of two. What makes it work is worth being precise about. The sign gives every coordinate the *same* update magnitude — element-wise $\pm 1$ before weight decay — which is the opposite of an adaptive optimizer that scales each coordinate by $\sqrt{v}$. Discarding the gradient's magnitude injects noise into each update, and injected update noise is a known regularizer that biases training toward flatter, more robust minima, the same family of effect as deliberate gradient noise or sharpness-aware methods; so the sign is not merely a memory trick but an implicit regularizer. The cost I must respect is that signing a poorly-estimated gradient gives a bad direction, so the rule should prefer large batches where the averaged gradient's sign is reliable, and its gain should grow with batch size. The part the search found that I would never have hand-written is the use of *two different* interpolation constants for *two different* jobs. The step uses $c_t = \operatorname{interp}(g, m, \beta_1)$ with $\beta_1 \approx 0.9$, putting weight $1-\beta_1 = 0.1$ on the *current* gradient before signing, so the move reacts to fresh information; the buffer itself updates with $\beta_2 \approx 0.99$, a roughly $10\times$ longer effective horizon than the usual $0.9$. The design therefore decouples *what the optimizer remembers* — a long, stable history in $m$ via $\beta_2$ — from *how it steps right now* — a recency-weighted blend of that history with the current gradient via $\beta_1$. signSGD-with-momentum cannot do this, because it signs a single EMA and ties "remember" and "step" to one constant; NAdam mixes the moment with the gradient for the step but never separates the tracking rate from the application. Here both knobs are free, and that decoupling is the substance of the rule. I check whether both are needed by the clean degenerate test — track one buffer, `m = interp(g, m, β); update = sign(m)`, with $\beta = 0.9$ and $\beta = 0.99$ — and both underperform the two-constant version, which settles that the decoupling is load-bearing, not cosmetic.
+
+One consequence has to be handled to use Lion at all. The update is element-wise $\pm 1$, so its norm is far larger than an SGD step or an adaptive step that is scaled down by gradient magnitude or by $\sqrt{v}$. Dropped into AdamW's learning rate it would take wildly oversized steps, so the learning rate should be roughly $3$–$10\times$ smaller than AdamW's, with the initial, peak, and final values of the schedule all scaled down by the same ratio while the schedule shape, gradient clipping, and update clipping stay untouched. Because the weight decay is *decoupled*, the effective per-step shrinkage is $\eta\lambda$ — the rule does `update += w·λ` then `update *= lr`, pulling weights toward zero by $\eta\lambda$ each step — so cutting $\eta$ by $10\times$ while leaving $\lambda$ alone would also cut the effective decay by $10\times$. To hold $\eta\lambda$ constant, $\lambda$ must go *up* by the same $3$–$10\times$ factor: where AdamW might use $\eta = 10^{-3}, \lambda = 1.0$, Lion uses $\eta = 10^{-4}, \lambda = 10.0$. The defaults are $\beta_1 = 0.9$ for the step interpolation and $\beta_2 = 0.99$ for the buffer, with $\beta_1 = 0.95, \beta_2 = 0.98$ trading a shorter memory for stability where needed.
+
+I write it the way it will actually run, as a PyTorch optimizer with a single per-parameter buffer `exp_avg` for the momentum. I never allocate a separate $c$: I clone the buffer, scale it by $\beta_1$, add $(1-\beta_1)g$, and sign in place — that is $\operatorname{sign}(c_t)$ — step the weights by $-\eta\cdot\text{update}$, then update the buffer itself with $\beta_2$. Decoupled weight decay is the in-place shrink $p \mathrel{*}= (1 - \eta\lambda)$, the in-place form of $\theta \leftarrow \theta - \eta\lambda\theta$.
+
+```python
+from __future__ import annotations
+from typing import Tuple, Callable
+import torch
+from torch.optim.optimizer import Optimizer
+
+
+def update_fn(p, grad, exp_avg, lr, wd, beta1, beta2):
+    # decoupled weight decay
+    p.data.mul_(1. - lr * wd)
+    # signed step on the interpolated momentum
+    update = exp_avg.clone().mul_(beta1).add(grad, alpha=1. - beta1).sign_()
+    p.add_(update, alpha=-lr)
+    # momentum EMA on its own (slower) constant
+    exp_avg.mul_(beta2).add_(grad, alpha=1. - beta2)
+
+
+class Lion(Optimizer):
+    def __init__(self, params, lr: float = 1e-4, betas: Tuple[float, float] = (0.9, 0.99),
+                 weight_decay: float = 0.0):
+        assert lr > 0.
+        assert all([0. <= beta <= 1. for beta in betas])
+        defaults = dict(lr=lr, betas=betas, weight_decay=weight_decay)
+        super().__init__(params, defaults)
+        self.update_fn = update_fn
+
+    @torch.no_grad()
+    def step(self, closure: Callable | None = None):
+        loss = None
+        if closure is not None:
+            with torch.enable_grad():
+                loss = closure()
+        for group in self.param_groups:
+            for p in filter(lambda p: p.grad is not None, group['params']):
+                grad, lr, wd, beta1, beta2, state = (
+                    p.grad, group['lr'], group['weight_decay'], *group['betas'], self.state[p]
+                )
+                if len(state) == 0:
+                    state['exp_avg'] = torch.zeros_like(p)
+                self.update_fn(p, grad, state['exp_avg'], lr, wd, beta1, beta2)
+        return loss
+```

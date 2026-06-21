@@ -110,28 +110,4 @@ angular momentum J^{ρσ} = ∫ (x^ρ T^{0σ} − x^σ T^{0ρ}) d³x.
 So: time-translation ↔ energy, space-translation ↔ momentum, rotation ↔ angular momentum — all instances
 of the one theorem, and conversely each conservation law reflects a symmetry of the action.
 
-## Optional symbolic check (1-D, free particle)
 
-A minimal sanity check that the constructed current is conserved exactly on solutions; the field-theory
-result above needs no code.
-
-```python
-import sympy as sp
-
-x = sp.symbols('x')
-u = sp.Function('u')(x)
-up = u.diff(x)
-
-f = up**2 / 2                                   # f = ½ u'^2  (free particle in x)
-psi = sp.diff(f, u) - sp.diff(sp.diff(f, up), x)  # ψ = -u''  (Euler–Lagrange expression)
-
-# Time/x-translation: Δx = 1, Δu = 0  ⇒  δ̄u = -u'.
-dbar_u = -up
-# Boundary term A = -(∂f/∂u') δ̄u ; current B = A - f·Δx (the energy/Hamiltonian).
-A = -sp.diff(f, up) * dbar_u
-B = A - f * 1
-# Master identity: ψ·δ̄u should equal d/dx of B  (off-shell).
-print(sp.simplify(psi))                            # -> -u''
-print(sp.simplify(psi * dbar_u - sp.diff(B, x)))   # -> 0  : Div B = ψ·δ̄u, so B'=0 when ψ=0.
-print(sp.simplify(B))                              # -> u'^2/2  : the conserved energy.
-```

@@ -120,10 +120,10 @@ setting is MNIST recast as 2D point sets (thresholded pixels as $(x,y)$ points).
 The pieces below already exist as standard primitives: a per-point shared multilayer
 perceptron (the same small MLP applied independently to every point, implemented as
 $1\times1$ convolutions over the point axis), batch normalization and ReLU, fully
-connected layers with dropout, an element-wise max-pooling reduction over a chosen
-axis, an affine transform of point coordinates by matrix multiplication, the Adam
-optimizer, and a softmax cross-entropy loss. What does *not* yet exist is the overall
-shape of the network: how to collapse the unordered per-point features into a single
+connected layers with dropout, generic reductions over a chosen axis, an affine
+transform of point coordinates by matrix multiplication, the Adam optimizer, and a
+softmax cross-entropy loss. What does *not* yet exist is the overall shape of the
+network: how to collapse the unordered per-point features into a single
 order-invariant descriptor, how to make the result invariant to rigid/affine motion,
 and how to produce per-point predictions.
 

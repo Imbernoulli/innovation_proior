@@ -102,3 +102,28 @@ limit. The discrete instantiation uses the same BDeu (uniform-Dirichlet multinom
 Primary references: Ejaz & Bareinboim, "Less Greedy Equivalence Search," NeurIPS 2025
 (arXiv:2506.22331); reference implementation at https://github.com/CausalAILab/lges. Building on
 Chickering (2002), Meek (1997), Nazaret & Blei (2024), Heckerman, Geiger & Chickering (1995).
+
+## Code framework
+
+```python
+import numpy as np
+from causallearn.graph.GeneralGraph import GeneralGraph
+from causallearn.graph.GraphNode import GraphNode
+from causallearn.score.LocalScoreFunctionClass import LocalScoreClass
+from causallearn.score.LocalScoreFunction import local_score_BDeu
+
+
+def lges_skeleton(X: np.ndarray) -> GeneralGraph:
+    """Minimal LGES scaffold: conservative forward insert + GES backward delete."""
+    N = X.shape[1]
+    score_func = LocalScoreClass(data=X, local_score_fun=local_score_BDeu, parameters=None)
+    nodes = [GraphNode("X%d" % (i + 1)) for i in range(N)]
+    G = GeneralGraph(nodes)  # start from the empty-graph class
+    cache = {}
+
+    # Forward: for each non-adjacent pair, discard all Inserts once any is score-decreasing
+    # Backward: greedily apply the highest-scoring Delete until none improves
+    # (populate the loops with causal-learn GES operator primitives)
+
+    return G
+```

@@ -33,7 +33,10 @@ kernel is a set function.
 - **Multi-scale grouping (MSG).** Group at several radii, encode each with its own
   mini-PointNet, concatenate. The network learns to weight scales by density via
   **random input dropout**: per training cloud draw $\theta\sim\mathrm{Uniform}[0,p]$
-  ($p=0.95$), drop each point with probability $\theta$; keep all points at test time.
+  ($p=0.95$ in the training rule), drop each point with probability $\theta$; keep all points
+  at test time. In fixed-size tensor code, the same augmentation can be represented by
+  replacing dropped entries with a duplicate point and, for labeled scene points, zeroing
+  their sample weight.
 - **Multi-resolution grouping (MRG).** Concatenate two vectors per region: one
   summarizing features of the lower-level sub-regions through the SA level, one from a
   single PointNet on the region's *raw* points. In sparse regions the first is
@@ -64,9 +67,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 def farthest_point_sample(xyz, npoint): ...        # (B,N,3) -> (B,npoint) indices
-def ball_query(radius, nsample, xyz, new_xyz): ... # -> (B,npoint,nsample) indices
+def ball_query(radius, nsample, xyz, new_xyz): ... # fixed radius, cap nsample, repeat if underfull
 def index_points(points, idx): ...
-def knn(query, ref, k): ...                        # -> indices, dists
+def three_nn_sqdist(query, ref, k=3): ...           # -> squared distances, indices
 
 def sample_and_group(npoint, radius, nsample, xyz, feats):
     new_xyz = index_points(xyz, farthest_point_sample(xyz, npoint))
@@ -122,10 +125,13 @@ class FeaturePropagation(nn.Module):
             layers += [nn.Conv1d(c, out, 1), nn.BatchNorm1d(out), nn.ReLU()]; c = out
         self.mlp = nn.Sequential(*layers)
     def forward(self, xyz_fine, xyz_coarse, feats_fine, feats_coarse):
-        idx, dist = knn(xyz_fine, xyz_coarse, k=3)
-        w = 1.0 / (dist + 1e-8) ** 2
-        w = w / w.sum(-1, keepdim=True)
-        interp = (index_points(feats_coarse, idx) * w.unsqueeze(-1)).sum(2)
+        if xyz_coarse.size(1) == 1:
+            interp = feats_coarse.expand(-1, xyz_fine.size(1), -1)
+        else:
+            sqdist, idx = three_nn_sqdist(xyz_fine, xyz_coarse, k=min(3, xyz_coarse.size(1)))
+            inv = 1.0 / sqdist.clamp_min(1e-10)                 # p=2 because sqdist=d^2
+            w = inv / inv.sum(-1, keepdim=True)
+            interp = (index_points(feats_coarse, idx) * w.unsqueeze(-1)).sum(2)
         if feats_fine is not None:
             interp = torch.cat([interp, feats_fine], dim=-1)         # skip link
         return self.mlp(interp.transpose(1, 2)).transpose(1, 2)      # unit PointNet

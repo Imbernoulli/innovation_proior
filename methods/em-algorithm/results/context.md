@@ -1,84 +1,31 @@
-# Context: maximum likelihood when part of the data is hidden
+## Research Question
 
-## Research question
+How can maximum likelihood estimation be made practical when the data actually recorded are an incomplete, coarsened, grouped, censored, or latent-variable view of a fuller data structure whose likelihood would be easy to optimize if it had been observed?
 
-I have a parametric model with density $f(x \mid \phi)$, but I never get to see $x$ in full. What I observe is $y$, a many-to-one image of $x$ through a known map $x \mapsto y(x)$: counts that have been collapsed across categories, measurements that were censored or truncated, survey responses with cells left blank, samples whose group-of-origin label was never recorded. The complete data $x$ would have made estimation easy; the *incomplete* data $y$ is what I actually hold.
-
-The likelihood I am allowed to maximize is therefore the marginal
-
-$$g(y \mid \phi) = \int_{\mathcal{X}(y)} f(x \mid \phi)\, dx,$$
-
-where $\mathcal{X}(y)$ is the set of complete data consistent with the observed $y$. I want $\hat\phi = \arg\max_\phi \log g(y\mid \phi)$.
-
-The pain is concrete. Setting $\partial_\phi \log g(y\mid\phi)=0$ produces equations in which the integral (or sum) over the hidden coordinates sits *inside* a logarithm. For a mixture, $\log g = \sum_i \log\sum_k \pi_k\, p_k(y_i)$ — a sum of logs of sums — and the score equations couple every component's parameters to every data point through denominators that themselves depend on the unknowns. There is no closed form. Each specialty had built its own iterative patch for its own version of this, derived independently and stated in its own notation, and in most cases without any proof that the patch actually climbs the likelihood it claims to.
+The target setting has an observed value `y`, a hypothetical complete value `x`, and a many-to-one observation rule that maps possible complete values into `y`. The observed likelihood is a marginal or summed likelihood over all complete values compatible with `y`. The central obstacle is that the log likelihood of `y` usually places a logarithm outside an integral or sum over the missing part, destroying the simple sufficient-statistic equations available for the complete data.
 
 ## Background
 
-**Maximum likelihood and the score equations.** Fisher's program: choose $\phi$ to maximize $\log g(y\mid\phi)$; for regular models the estimator solves the score equation $\partial_\phi \log g = 0$, and for a *regular exponential family* $f(x\mid\phi)=b(x)\exp(\phi\, t(x)^{\mathsf T})/a(\phi)$ the complete-data likelihood equation has the especially clean form $E(t\mid\phi)=t(x)$: set the model's expected sufficient statistic equal to its observed value. When $x$ is fully observed this is routine. The whole difficulty is that with only $y$ in hand, $t(x)$ is not observed.
+Classical likelihood theory already gives the language: likelihood, score, information, and sufficient statistics. Fisher's statistical-estimation program shows why coarsening a full sample can lose information and why likelihood equations are naturally expressed through scores.
 
-**A relation between full and marginal scores (Fisher; Sundberg).** Writing the conditional density of the complete data given the observed data as $k(x\mid y,\phi)=f(x\mid\phi)/g(y\mid\phi)$, differentiation of $\log g = \log f - \log k$ and taking conditional expectations yields, for exponential families,
-
-$$\partial_\phi \log g(y\mid\phi) = -E(t\mid\phi) + E(t\mid y,\phi):$$
-
-the marginal score is the difference between the *unconditional* and the *conditional-on-$y$* expectation of the sufficient statistic. R. A. Fisher used the first-derivative form long ago in the context of inefficient statistics; the general identity was written down by Sundberg (1974), who ascribed it to unpublished 1966 lecture notes of Martin-Löf. At a stationary point the two expectations coincide.
-
-**The "missing information principle" (Orchard & Woodbury 1972).** The intuition, stated qualitatively before it was a theorem: estimate the missing parts of the data by their conditional expectation given what you observed and the current parameters, treat the filled-in data as if real, re-estimate, repeat. Orchard and Woodbury named this the missing information principle and discussed it in a non-exponential-family framework. It was a heuristic recipe without a general proof that the observed-data likelihood improves.
-
-**Mixture estimation — the running sore.** Estimating a finite mixture $\sum_k \pi_k\, p_k(y\mid\theta_k)$ by maximum likelihood had been attacked repeatedly. Pearson (1894) resorted to the method of moments precisely because the likelihood was intractable. Hasselblad (1966, 1969) treated mixtures of normals, Poissons, binomials and exponentials; Day (1969) did two multivariate normals with common covariance; Wolfe (1970) did latent-structure / clustering mixtures. Strikingly, these authors worked largely independently, each manipulating the likelihood equations into the same "estimate membership, then re-weight" iteration and each *reporting* that in practice the likelihood went up at every step — but, as was noted at the time, none of them proved it.
-
-**Censored and truncated data; grouping.** Parallel iterative schemes existed for arbitrarily censored data (Efron 1967), grouped/censored/truncated survival data (Turnbull 1974, 1976), and grouping into narrow class intervals (Grundy 1952; Blight 1970, who treated exponential families generally and explicitly recognised the two-step interpretation). Again, one ad-hoc iteration per problem.
+Incomplete-data work before the target method also supplies important pieces. Missing-information arguments factor complete-data likelihoods into observed and conditional pieces, then relate the observed score to the conditional expectation of the complete-data score. In mixture models, unobserved component labels lead to posterior class probabilities and weighted estimating equations. In genetics, variance components, missing normal observations, grouped observations, and mixture distributions, specialized substitution or iterative likelihood procedures had already appeared.
 
 ## Baselines
 
-- **Hartley (1958), "Maximum likelihood estimation from incomplete data" (Biometrics 14:174–194).** The closest direct ancestor. Hartley gave three multinomial examples in which observed counts are collapses of a finer multinomial; he split the observed categories back into latent sub-categories, used the current parameter to apportion each observed count into expected sub-counts (the fill-in), then re-estimated the parameter by ordinary multinomial maximum likelihood from those filled-in counts, and iterated. It is exactly the two-step loop — for multinomial counts. *Gap:* tied to the multinomial / discrete-count setting; no general formulation across model families, and no general monotonicity theorem.
+The direct baseline is to maximize the observed likelihood numerically. That can require repeated integration, differentiation through marginal likelihoods, or solving nonlinear likelihood equations with awkward missing-data terms.
 
-- **Baum, Petrie, Soules & Weiss (1970), probabilistic functions of finite Markov chains (the Baum–Welch / forward–backward procedure).** For a hidden Markov chain they derived an iteration that, given current transition/emission parameters, computes posterior occupation and transition probabilities of the hidden states via forward–backward recursions, then re-estimates the parameters as posterior-weighted counts — and they *proved* the likelihood increases each iteration for their model, using an auxiliary function. *Gap:* the proof and construction were presented as specific to probabilistic functions of Markov chains; the wide applicability of the underlying argument to incomplete-data maximum likelihood in general was not recognised.
+Another baseline is hard substitution: fill in missing values or latent labels with a current best guess, then solve the complete-data problem. This can be computationally attractive, but it changes the likelihood target and does not by itself explain why the observed likelihood should rise.
 
-- **The independent mixture iterations (Hasselblad 1966/1969; Day 1969; Wolfe 1970).** Each computes, for every data point, its current posterior probability of belonging to each component (responsibilities), then re-estimates each component's parameters as a responsibility-weighted fit and the mixing weights as average responsibilities. *Gap:* derived case by case, not unified, not differentiated with respect to the natural exponential-family parameters that would have exposed the common structure, and unproven (improvement observed, not established).
+A third baseline is a special-case estimating-equation iteration. Mixture and missing-information procedures can use posterior weights for hidden categories or missing measurements, but without a general argument they remain tied to their original examples.
 
-- **Orchard & Woodbury (1972), missing information principle.** The qualitative statement of "replace the missing data by its conditional expectation and iterate." *Gap:* a principle, not an algorithm with a convergence theorem; non-exponential-family and informal.
+## Evaluation Settings
 
-- **Direct numerical maximization (Newton–Raphson / Fisher scoring on $\log g$).** Always available in principle: form the marginal score and information and step. *Gap:* requires the marginal likelihood's gradient and Hessian, which are exactly the awkward log-of-integral quantities; needs second derivatives or their approximations, step-size control, and gives no built-in guarantee of staying in the parameter space or of monotone improvement.
+The method should be judged in settings where the complete-data model has simple maximum-likelihood updates but the observed-data likelihood is difficult. Examples include grouped multinomial counts, missing entries in normal models, finite mixtures, variance components, factor analysis, hidden Markov models, and empirical Bayes or random-effects likelihoods.
 
-## Evaluation settings
+A successful solution must preserve the observed-data likelihood as the real objective. It should provide monotone ascent or at least a generalized ascent condition, identify fixed points with likelihood stationary points under regularity conditions, and make clear that monotonicity is local rather than a guarantee of finding the global maximum.
 
-The natural proving grounds are the standard incomplete-data problems of statistics, treated as worked derivations rather than benchmark contests: a multinomial whose observed categories collapse a finer five-category model (the genetic linkage example of Rao 1965, $197$ animals in four observed cells); finite mixtures of normal / Poisson / binomial / exponential families; multivariate normal data with values missing at random; arbitrarily censored, truncated, and grouped data; variance-component estimation in mixed-model ANOVA; factor analysis; iteratively reweighted least squares for robust estimation; and hidden-Markov-chain models. The yardsticks are the ones maximum likelihood already supplies — whether each iteration increases $\log g(y\mid\phi)$, whether the sequence converges, and to what kind of point of the likelihood surface — together with the rate of convergence near a fixed point. The map of the territory matters: mixtures are known to have multiple likelihood maxima, so "converges to a stationary point" is the honest target, not "finds the global optimum."
+## Code Framework
 
-## Code framework
+A concrete implementation setting is Gaussian mixture estimation. The observed data are feature vectors. The complete data would also include a component indicator for each vector. If those indicators were known, the maximum-likelihood estimates would be component counts, means, and covariances computed from assigned observations.
 
-The scaffold is the apparatus that already exists for complete-data maximum likelihood in a finite mixture: evaluate component log densities, combine them with mixing weights in log space, fit ordinary weighted Gaussian parameters, and leave an empty iterative slot for the hidden labels.
-
-```python
-import numpy as np
-
-def log_gaussian_prob(y, means, covariances):
-    """Component log densities log p_k(y_i | theta_k)."""
-    ...
-
-def weighted_log_prob(y, weights, means, covariances):
-    """log pi_k + log p_k(y_i | theta_k), before marginalizing labels."""
-    return log_gaussian_prob(y, means, covariances) + np.log(weights)
-
-def observed_data_loglik(y, weights, means, covariances):
-    """sum_i log sum_k pi_k p_k(y_i | theta_k): the hard objective."""
-    ...
-
-def weighted_gaussian_fit(y, soft_membership, reg_covar=0.0):
-    """Ordinary weighted Gaussian MLE from component-membership weights."""
-    ...
-
-def fit_mixture(y, initial_parameters, n_iter):
-    weights, means, covariances = initial_parameters
-    for _ in range(n_iter):
-        # TODO: choose how to infer the unobserved labels from current parameters.
-        soft_membership = infer_membership(y, weights, means, covariances)
-        # TODO: choose how those inferred memberships should drive the next fit.
-        weights, means, covariances = update_parameters(y, soft_membership)
-    return weights, means, covariances
-
-def infer_membership(y, weights, means, covariances):
-    pass
-
-def update_parameters(y, soft_membership):
-    pass
-```
+The modern software testbed is scikit-learn's mixture code: compute log component probabilities, normalize them into posterior label probabilities, update Gaussian weights and parameters by weighted sufficient statistics, track a lower-bound or observed-log-likelihood quantity, and stop when its change is small.

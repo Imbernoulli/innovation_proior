@@ -1,0 +1,29 @@
+# FNet File:Line Changelog
+
+- `methods/fnet/results/context.md:5` reframed the prompt around the self-attention cost and token-mixing slot without naming the final Fourier/DFT move.
+- `methods/fnet/results/context.md:17` kept only pre-method predecessor evidence: Synthesizer, fixed/fixed-pattern attention, Gaussian attention, and MLP-Mixer.
+- `methods/fnet/results/context.md:21` clarified the BERT/self-attention baseline and its `N x N` score-matrix gap.
+- `methods/fnet/results/context.md:23` described dense learned token mixing as a baseline without leaking post-hoc performance results.
+- `methods/fnet/results/context.md:35` rebuilt the neutral code scaffold; `methods/fnet/results/context.md:59` and `methods/fnet/results/context.md:62` fix the feed-forward projection by storing `d_model` before expansion.
+- `methods/fnet/results/reasoning.md:7` derives the negative-exponent forward DFT as the fixed global mixer.
+- `methods/fnet/results/reasoning.md:13` derives the two-axis separable transform and its commutation.
+- `methods/fnet/results/reasoning.md:17` explains why the real part is taken once at the end.
+- `methods/fnet/results/reasoning.md:19` fixes the key normalization issue: the canonical matrix path uses unnormalized `scipy.linalg.dft` to match `np.fft.fftn`, not a unitary `1/sqrt(N)` path.
+- `methods/fnet/results/reasoning.md:21` records mask behavior and the post-LayerNorm BERT block structure.
+- `methods/fnet/results/reasoning.md:23` covers DCT, Hadamard, and Hartley cases without overstating Fourier uniqueness.
+- `methods/fnet/results/answer.md:9` states the final two-dimensional Fourier mixer.
+- `methods/fnet/results/answer.md:15` states the forward DFT with the correct negative sign.
+- `methods/fnet/results/answer.md:19` documents the FFT/matrix normalization convention required for code faithfulness.
+- `methods/fnet/results/answer.md:42` adds canonical-style `two_dim_matmul`; `methods/fnet/results/answer.md:50` uses the official `einsum("ij,jk,ni->nk", ...)` structure.
+- `methods/fnet/results/answer.md:60` adds the FFT-vs-cached-DFT initialization path and the long-sequence power-of-two guard.
+- `methods/fnet/results/answer.md:76` mirrors the official `FourierTransform` layer: ignore mask/deterministic and return `jax.vmap(...)(inputs).real`.
+- `methods/fnet/results/answer.md:92` and `methods/fnet/results/answer.md:101` fix the feed-forward output dimension to `d_model`.
+- `methods/fnet/results/answer.md:105` preserves the canonical post-LayerNorm encoder block.
+- `methods/fnet/results/answer.md:165` records the ablation cases: sequence-only, real-midway/absolute value, DCT, Hadamard, Hartley, and learned-parameter attempts.
+- `methods/fnet/notes/source_matrix.md:5` adds the strict evidence status and self-account search result.
+- `methods/fnet/notes/source_matrix.md:11` through `methods/fnet/notes/source_matrix.md:21` list the primary source, canonical code, ancestors, explainers, and self-account artifacts.
+- `methods/fnet/notes/source_matrix.md:25` through `methods/fnet/notes/source_matrix.md:28` summarize the sign, normalization, code-faithfulness, and leakage audit results.
+- `methods/fnet/notes/discovery_synthesis.md:23` through `methods/fnet/notes/discovery_synthesis.md:27` record the math/constant audit.
+- `methods/fnet/notes/discovery_synthesis.md:31` through `methods/fnet/notes/discovery_synthesis.md:38` record code-faithfulness findings from the canonical implementation.
+- `methods/fnet/results/.codex_review.json:3` marks the independent review gate as not run with the reason at `methods/fnet/results/.codex_review.json:8`.
+- `methods/fnet/notes/strict_check_output.txt:1` records the missing root strict-check script and fallback checks.

@@ -2,7 +2,7 @@
 
 Many combinatorial objects are specified negatively: an object is good exactly when it avoids a long list of "bad" patterns. A satisfying truth assignment to a CNF formula avoids every "this clause is false" event; a proper 2-coloring of a hypergraph avoids every "this edge is monochromatic" event; a Latin transversal avoids every "these two cells collide" event. In each case there is a probability space (flip every variable, color every vertex at random) in which each bad event has small probability and each bad event depends only on a few of the underlying random choices.
 
-The probabilistic existence question — *does a good object exist?* — has a clean sufficient condition (below). But existence is not what we ultimately want. We want to **construct** the good object, efficiently. The pain is sharp: the existence proof can guarantee that the probability of a good random point is positive yet exponentially small, so drawing random points and checking them is hopeless. The goal is an algorithm that, whenever the existence condition holds, **finds** a point avoiding all bad events in time polynomial in the number of events and variables — and ideally under the *same* condition that guarantees existence, with no loss in the allowed amount of dependence.
+The probabilistic existence question — *does a good object exist?* — has a clean sufficient condition (below). Beyond existence, the task is to **construct** the good object efficiently: an algorithm that, whenever the existence condition holds, **finds** a point avoiding all bad events in time polynomial in the number of events and variables.
 
 ## Background
 
@@ -18,21 +18,17 @@ then Pr[no event in A occurs] ≥ ∏_A (1 − x(A)) > 0, so a good point exists
 
 then a good point exists. In the SAT incarnation, a k-CNF formula in which every clause shares variables with at most 2^{k−2} other clauses is satisfiable: each clause is violated with probability 2^{−k} under a uniform random assignment, so p = 2^{−k}, d ≈ 2^{k−2}, and e·p·(d+1) ≤ 1.
 
-The proof is non-constructive in a strong way. It shows, by induction on subsets S of the events, that the conditional probability Pr[A_i | ⋀_{j∈S} Ā_j] stays bounded by x_i; splitting S into the neighbors S₁ and non-neighbors S₂ of A_i, the numerator uses independence of A_i from S₂ to give Pr[A_i | ⋀ S₂] = Pr[A_i] ≤ x_i ∏(1−x_j), and the denominator is bounded below by ∏(1−x_j) via the induction hypothesis. Telescoping over all events gives Pr[⋀ Ā_i] ≥ ∏(1−x_i). The argument certifies that the good set is nonempty, but it conditions on events of tiny probability and produces no procedure for locating a point in the good set; and the good set itself can have measure ∏(1−x_i), which is exponentially small.
-
-The diagnostic fact that frames the whole problem: under the LLL condition a good point provably exists, yet the obvious way to produce one — sample and check, repeating until success — takes an expected ∏(1−x_i)^{−1} draws, which is exponential. The conditional-probability slack the existence proof exploits is precisely what makes naive search useless.
+The proof goes by induction on subsets S of the events, showing the conditional probability Pr[A_i | ⋀_{j∈S} Ā_j] stays bounded by x_i; splitting S into the neighbors S₁ and non-neighbors S₂ of A_i, the numerator uses independence of A_i from S₂ to give Pr[A_i | ⋀ S₂] = Pr[A_i] ≤ x_i ∏(1−x_j), and the denominator is bounded below by ∏(1−x_j) via the induction hypothesis. Telescoping over all events gives Pr[⋀ Ā_i] ≥ ∏(1−x_i). The argument certifies that the good set is nonempty; its measure can be as small as ∏(1−x_i).
 
 ## Baselines
 
-**Sample-and-reject.** Draw a uniform random point; if some event is violated, throw it all away and draw again. Correct, trivially, but the expected number of draws is the reciprocal of the (exponentially small) success probability. This is the baseline any real algorithm must beat by an exponential factor.
+**Sample-and-reject.** Draw a uniform random point; if some event is violated, throw it all away and draw again. The expected number of draws is the reciprocal of the success probability ∏(1−x_i).
 
-**Beck (1991), the first constructive version.** Beck broke the long-standing barrier by giving the first polynomial-time algorithm, formulated for hypergraph 2-coloring: if every edge of a k-uniform hypergraph shares vertices with at most roughly 2^{k/48} other edges, his algorithm 2-colors the vertices with no monochromatic edge in polynomial time. The strategy is two-phase: color/assign most of the structure randomly, identify the "dangerous" part where bad events cluster, freeze it, and brute-force the small frozen components (whose total size is kept logarithmic). The gap to existence is enormous — the existential lemma allows roughly 2^{k}/e neighbors, Beck's algorithm only 2^{k/48}.
+**Beck (1991), the first constructive version.** Beck gave a polynomial-time algorithm, formulated for hypergraph 2-coloring: if every edge of a k-uniform hypergraph shares vertices with at most roughly 2^{k/48} other edges, his algorithm 2-colors the vertices with no monochromatic edge in polynomial time. The strategy is two-phase: color/assign most of the structure randomly, identify the "dangerous" part where bad events cluster, freeze it, and brute-force the small frozen components (whose total size is kept logarithmic).
 
-**Alon (1991).** A simpler, randomized variant of Beck's two-phase strategy, improving the threshold to essentially 2^{k/8}. Same shape (freeze a dangerous core, brute-force it); same kind of exponential gap, smaller constant in the exponent.
+**Alon (1991).** A simpler, randomized variant of Beck's two-phase strategy, reaching threshold essentially 2^{k/8}; same shape — freeze a dangerous core, brute-force it.
 
-**Srinivasan (2008); earlier Moser (2008).** Further refinements of the freeze-and-brute-force template push the threshold to essentially 2^{k/4} and then 2^{k/2}. Each narrows the gap but none reaches the existential threshold; the constant in the exponent is an artifact of throwing away most of the available slack when freezing.
-
-The common limitation across Beck, Alon, Srinivasan, and the 2008 line: they are genuinely constructive but lose an exponential factor in the allowed dependence, because the two-phase "freeze the hard core, brute-force it" design only works when the hard core stays tiny, which forces the neighborhood bound far below 2^{k}.
+**Srinivasan (2008); earlier Moser (2008).** Refinements of the freeze-and-brute-force template reach threshold essentially 2^{k/4} and then 2^{k/2}.
 
 ## Evaluation settings
 

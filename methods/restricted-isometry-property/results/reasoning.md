@@ -94,48 +94,4 @@ with $C_0, C_1$ explicit and small under the same $\delta_{2s}<\sqrt2-1$. Two cl
 
 Pulling the whole causal chain together. Sparsity makes $\ell_0$ the right objective but it's NP-hard; $\ell_1$ is the convex shape whose cross-polytope geometry rewards sparse solutions, and the exact condition for it to recover $x$ is that the null space of $\Phi$ avoid the $\ell_1$ cone concentrated on $s$ coordinates. To certify that from a *property of $\Phi$ alone*, I demand that $\Phi$ act as a near-isometry on sparse vectors — the restricted isometry constant $\delta_s$ — which is the quantitative, uniform strengthening of "every $2s$-column block is well-conditioned" that identifiability already pointed at. Small $\delta$ makes disjointly-supported sparse vectors near-orthogonal in the image (parallelogram identity), which makes any null vector's $2s$-sparse head dominated by its sorted tail, which is the null-space property, which closes exactly when $\delta_{2s}<\sqrt2-1$, giving exact recovery uniformly over all $s$-sparse signals. Such matrices exist not by construction but by sampling: a random Gaussian (or subgaussian) $\Phi$ satisfies RIP once $m=O(s\log\frac n s)$, by per-support singular-value concentration union-bounded over $\binom{n}{2s}$ supports — a Johnson–Lindenstrauss bound made uniform over sparse supports — and that count is optimal up to the logarithm. Far fewer measurements than the dimension, a linear program to decode, exact recovery, provably.
 
-Now the concrete artifact. The recovery program, as a linear program, and the random-matrix construction, with the exact-recovery check the theorem promises:
 
-```python
-import numpy as np
-from scipy.optimize import linprog
-
-def sample_gaussian(m, n, rng):
-    # i.i.d. Gaussian, variance 1/m so columns are ~unit-norm;
-    # RIP holds at level ~2s once m = O(s log(n/s)).
-    return rng.standard_normal((m, n)) / np.sqrt(m)
-
-def make_sparse(n, s, rng):
-    x = np.zeros(n)
-    T = rng.choice(n, size=s, replace=False)
-    x[T] = rng.standard_normal(s)
-    return x
-
-def recover_l1(Phi, y):
-    # min ||x||_1 s.t. Phi x = y, as an LP via the split x = u - v, u,v >= 0:
-    #   min 1^T(u+v)   s.t.  Phi(u - v) = y,  u,v >= 0.
-    # This is the basis-pursuit decoder; under delta_{2s} < sqrt(2)-1 its
-    # solution is the unique s-sparse x.
-    m, n = Phi.shape
-    c   = np.ones(2 * n)
-    Aeq = np.hstack([Phi, -Phi])
-    res = linprog(c, A_eq=Aeq, b_eq=y, bounds=[(0, None)] * (2 * n), method="highs")
-    if not res.success:
-        raise RuntimeError(f"basis pursuit LP failed: {res.message}")
-    u, v = res.x[:n], res.x[n:]
-    return u - v
-
-def measurements_needed(n, s, C=4.0):
-    # sample complexity: m = O(s log(n/s)) suffices for RIP w.h.p.
-    return int(np.ceil(C * s * np.log(max(n / max(s, 1), np.e))))
-
-if __name__ == "__main__":
-    rng = np.random.default_rng(0)
-    n, s = 256, 5
-    m    = measurements_needed(n, s)          # ~ s log(n/s)
-    Phi  = sample_gaussian(m, n, rng)
-    x    = make_sparse(n, s, rng)
-    y    = Phi @ x                            # noiseless measurements
-    xhat = recover_l1(Phi, y)
-    print("m =", m, " exact recovery error =", np.linalg.norm(xhat - x))
-```

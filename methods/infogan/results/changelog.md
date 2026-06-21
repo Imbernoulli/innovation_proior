@@ -1,0 +1,21 @@
+# InfoGAN Review Changelog
+
+- `methods/infogan/results/answer.md:5` softened the headline claim from guaranteed one-coordinate-per-factor disentanglement to a training pressure toward separate semantic controls.
+- `methods/infogan/results/answer.md:25` fixed the GAN value function expectation to include both `z ~ p(z)` and `c ~ P(c)`.
+- `methods/infogan/results/answer.md:35` renamed the posterior-sampling step to an expectation identity and kept the lower-bound direction explicit.
+- `methods/infogan/results/answer.md:41` restricted the `L_I = H(c)` maximum claim to finite discrete codes where the generated image determines `c`.
+- `methods/infogan/results/answer.md:49` clarified that `Q` shares the discriminator feature extractor and adds a small recognition head, rather than requiring a fully separate network.
+- `methods/infogan/results/answer.md:59` corrected setup constants: `D` learning rate `2e-4`, `G` learning rate `1e-3`, `lambda = 1`, leaky-ReLU slope `0.1`, and fixed-variance continuous MNIST codes.
+- `methods/infogan/results/answer.md:69` replaced the inaccurate PyTorch sketch with a canonical-code-faithful training core: no softmax probabilities passed to `CrossEntropyLoss`, no separate `opt_info`, correct log losses, and Gaussian log-likelihood constants.
+- `methods/infogan/results/answer.md:106` changed the continuous-code MI estimate to mirror the original code path: uniform samples but Gaussian `logli_prior` for the logged continuous MI estimate.
+- `methods/infogan/results/answer.md:151` removed the guarantee that every coordinate becomes a human-interpretable factor and described the result as an empirically validated pressure.
+- `methods/infogan/results/reasoning.md:51` fixed the proof of Lemma 5.1 by integrating out the original `x` to recover `P(y)P(x'|y)` rather than relying on an invalid relabeling explanation.
+- `methods/infogan/results/reasoning.md:63` removed the overbroad reparameterization phrasing and stated that gradients to `G` flow through the generated image.
+- `methods/infogan/results/reasoning.md:77` corrected the continuous-code `lambda` discussion so smaller weights are optional scale matching, not a universal fixed rule.
+- `methods/infogan/results/reasoning.md:81` replaced the old code sketch with the two-loss trainer structure matching the original code: discriminator/Q update over `D_Q`, generator update over `G`, and MI subtracted from both losses.
+- `methods/infogan/results/reasoning.md:112` changed the code-level continuous MI estimate to the Gaussian-prior log-likelihood convention used by the original `Uniform` distribution class.
+- `methods/infogan/results/reasoning.md:147` changed the closing validation sentence from a guaranteed outcome to a sweep test for whether one coordinate controls one interpretable factor.
+- `methods/infogan/notes/source_matrix.md:1` added the strict evidence matrix: primary source, ancestors, explainer, self-account search result, and canonical code locations.
+- `methods/infogan/notes/discovery_synthesis.md:32` recorded the implementation-faithfulness audit, including loss signs, optimizer ownership, categorical likelihood handling, Gaussian constants, and the Uniform/Gaussian-prior distinction.
+- `methods/infogan/refs/self_accounts/search_log.md:1` documented that no usable author self-account was found beyond the primary source and original code.
+- `methods/infogan/results/.codex_review.json:1` updated the review marker to `outcome: "not_run"` because no independent review gate or strict-method checker exists in this checkout.

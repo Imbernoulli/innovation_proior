@@ -51,3 +51,29 @@ The threshold has to rise because `||hat_g||_2` is at least as large as the old 
 Finally, the size threshold still matters. The statistic can correctly flag a badly represented primitive, but if the scale threshold classifies it as small, the controller will duplicate instead of split, and duplication does not shrink an over-large primitive. Lowering the split/clone scale boundary can help route fine-detail primitives to split. That is secondary to the gradient fix: it routes selected primitives correctly, but it does not by itself solve cancellation in the selection statistic.
 
 The resulting method is simple. Keep the true signed gradient for optimization. During rasterizer backward, additionally accumulate per-pixel absolute projected-mean sub-gradients per axis. Average both signed and absolute statistics over visibility. Use the signed statistic to clone small high-gradient primitives, use the absolute statistic to split large high-gradient primitives, prune and reset opacity exactly as before, and raise the split threshold because the absolute statistic dominates the signed one.
+
+## Code sketch
+
+```python
+@torch.no_grad()
+def absgrad_density_step(params, state, info, tau_clone=2e-4, tau_split=4e-4):
+    # Accumulate signed and homodirectional projected-center gradients.
+    signed = info["means2d"].grad.clone()
+    absgrad = info["means2d"].absgrad.clone()
+
+    visible = (info["radii"] > 0).all(dim=-1)
+    ids = torch.where(visible)[1]
+
+    state["signed_grad2d"].index_add_(0, ids, signed[visible].norm(dim=-1))
+    state["abs_grad2d"].index_add_(0, ids, absgrad[visible].norm(dim=-1))
+    state["count"].index_add_(0, ids, torch.ones_like(ids, dtype=torch.float32))
+
+    # At refinement steps, route by scale and by the two statistics.
+    count = state["count"].clamp_min(1)
+    scale_max = torch.exp(params["scales"]).max(dim=-1).values
+    is_small = scale_max <= state["scene_scale"] * 0.01
+
+    clone_mask = (state["signed_grad2d"] / count >= tau_clone) & is_small
+    split_mask = (state["abs_grad2d"] / count >= tau_split) & ~is_small
+    return clone_mask, split_mask
+```

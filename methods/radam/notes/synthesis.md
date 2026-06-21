@@ -34,11 +34,11 @@ Model g_i ~ iid N(0,σ²) (valid early: weights init mean-0).
 ### Theorem (Var monotone decreasing in ρ). Let x=ψ²~SInvχ²(ρ,τ²), τ²=1/σ².
 PDF p(x) = (τ²ρ/2)^{ρ/2}/Γ(ρ/2) · exp(−ρτ²/2x) / x^{1+ρ/2}.
 E[x] = ρ/((ρ−2)σ²)  (ρ>2).
-E[√x] = τ√ρ Γ((ρ−1)/2) / (√2 Γ(ρ/2))  (ρ>4).
-Var[ψ]=Var[√x]=E[x]−E[√x]² = τ²( ρ/(ρ−2) − ρ·2^{2ρ−5}/π · B((ρ−1)/2,(ρ−1)/2)² )  (ρ>4).
+E[√x] = τ√ρ Γ((ρ−1)/2) / (√2 Γ(ρ/2))  (ρ>1).
+Var[ψ]=Var[√x]=E[x]−E[√x]² = τ²( ρ/(ρ−2) − ρ·2^{2ρ−5}/π · B((ρ−1)/2,(ρ−1)/2)² )  (finite for ρ>2; paper analyzes/plots it for ρ>4).
 Appendix proof: d/dt of the bracket <0 for t≥4, via Legendre duplication + digamma bounds
 (ln x − 1/(2x) > Ψ(x) > ln(x+0.5) − 1/x) + Gautschi's inequality. Net: Var decreases in ρ.
-Requires ρ>4 for the variance to even be defined/finite (E[√x] needs ρ>4).
+The exact variance is finite for ρ>2. The practical ρ>4 threshold comes from the first-order approximation below, because it uses Var[x], which is finite only for ρ>4.
 
 ## Estimating ρ via SMA length (ρ_t)
 EMA≈SMA with length f(t,β₂) matched by **center of mass**:
@@ -70,15 +70,15 @@ If ρ_t > 4 (variance tractable):
   l_t = sqrt((1−β₂^t)/v_t)  [bias-corrected inverse sqrt second moment]
   r_t = sqrt((ρ_t−4)(ρ_t−2)ρ_∞ / ((ρ_∞−4)(ρ_∞−2)ρ_t))
   θ_t = θ_{t−1} − α_t r_t m̂_t l_t   (rectified adaptive step)
-Else (ρ_t ≤ 4, variance not well-defined / huge):
+Else (ρ_t ≤ 4, delta-method rectifier outside its valid region):
   θ_t = θ_{t−1} − α_t m̂_t   (un-adapted momentum SGD step)
-If β₂ ≤ 0.6 then ρ_∞ ≤ 4 → RAdam ≡ SGD with momentum always.
-Code note: canonical impl uses ρ_t ≥ 5 ("more conservative since approximated") rather than >4.
+If β₂ ≤ 0.6 then ρ_∞ ≤ 4, so the adaptive branch never activates. With `degenerated_to_sgd=True`, this is SGD with momentum; with the canonical default `False`, the reference implementation skips these inactive updates.
+Code note: canonical impl uses ρ_t ≥ 5 ("more conservative since approximated") rather than >4, and defaults `degenerated_to_sgd=False`.
 
 ## Comparison to warmup
 r_t increases from small toward 1 with t — same shape as linear warmup min(t,T_w)/T_w. So warmup ≈
 heuristic variance reduction; r_t is the principled version. No T_w hyperparameter; auto-adapts to β₂.
-RAdam additionally *deactivates* the adaptive rate while its variance is divergent (ρ_t≤4).
+RAdam additionally deactivates the adaptive rate while the stable rectifier is outside its valid region (ρ_t≤4).
 Appendix "Downgrading to SGDM": replacing the first 1–4 RADAM steps with (divergent-variance) Adam
 hurts more than replacing steps 5–8 → first updates most damaging, consistent with theory.
 
@@ -97,4 +97,4 @@ hurts more than replacing steps 5–8 → first updates most damaging, consisten
 
 ## Code framework / canonical impl
 LiyuanLucasLiu/RAdam radam.py — torch Optimizer subclass, step() loop. Uses N_sma (=ρ_t), N_sma_max
-(=ρ_∞), buffered per (step%10). degenerated_to_sgd flag controls the ρ_t≤4 fallback.
+(=ρ_∞), buffered per (step%10). `degenerated_to_sgd` defaults to `False`; if it is `True`, it controls the ρ_t≤4 momentum fallback.

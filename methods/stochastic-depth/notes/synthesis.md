@@ -12,14 +12,14 @@ Depth drives expressiveness, but very deep nets bring three problems:
 The dilemma: short nets train fast and flow info well but aren't expressive; deep nets are expressive but hard/slow to train. Seemingly contradictory wish: a DEEP net at test time but a SHORT net during training.
 
 ## ResNet baseline (the thing modified)
-ResBlock update: H_ℓ = ReLU(f_ℓ(H_{ℓ-1}) + id(H_{ℓ-1})), f_ℓ = Conv-BN-ReLU-Conv-BN (bottleneck on ImageNet). id = identity, or linear projection when dims change. Network = composition of L ResBlocks. ResNet motivated by: deeper plain nets get HIGHER TRAINING error (degradation) → skip connections fix it.
+ResBlock update: H_ℓ = ReLU(f_ℓ(H_{ℓ-1}) + s_ℓ(H_{ℓ-1})), f_ℓ = Conv-BN-ReLU-Conv-BN (bottleneck on ImageNet). s_ℓ is identity for same-shape blocks, average-pool + zero-pad for CIFAR/SVHN transitions, or projection for ImageNet-style transitions. Network = composition of L ResBlocks. ResNet motivated by: deeper plain nets get HIGHER TRAINING error (degradation) → skip connections fix it.
 
 ## The method
-Randomly drop entire ResBlocks during training, bypassing via the identity skip; keep connection identity. b_ℓ ∈ {0,1} Bernoulli, p_ℓ = Pr(b_ℓ=1) = survival probability.
+Randomly drop entire ResBlocks during training, bypassing via the shortcut branch. b_ℓ ∈ {0,1} Bernoulli, p_ℓ = Pr(b_ℓ=1) = survival probability.
 Training update (eq res_block_drop):
-  H_ℓ = ReLU( b_ℓ · f_ℓ(H_{ℓ-1}) + id(H_{ℓ-1}) ).
-If b_ℓ=1 → original ResNet block. If b_ℓ=0 → H_ℓ = id(H_{ℓ-1}) = H_{ℓ-1}.
-Why does b_ℓ=0 give pure identity (not ReLU(id(H)))? Because the input H_{ℓ-1} is always non-negative (it's the output of a previous ReLU, or the initial Conv-BN-ReLU stem), so ReLU acts as identity on it. Key: skipped block = exact identity, so the network is genuinely shorter that step.
+  H_ℓ = ReLU( b_ℓ · f_ℓ(H_{ℓ-1}) + s_ℓ(H_{ℓ-1}) ).
+If b_ℓ=1 → original ResNet block. If b_ℓ=0 → residual branch removed; output is the shortcut branch alone.
+Same-shape CIFAR/SVHN blocks have s_ℓ(H)=H, and H is non-negative (previous ReLU or initial Conv-BN-ReLU stem), so the dropped block is an exact identity. Transition blocks are a separate case: CIFAR/SVHN use average-pool + zero-pad, and ImageNet-style bottlenecks may use projection shortcuts, so those dropped blocks are shortcut-only shape changes rather than literal H_ℓ=H_{ℓ-1}. Key: skipped block is genuinely shorter because f_ℓ has no forward/backward compute or parameter update.
 
 ## Survival probability schedule
 p_ℓ new hyperparams; neighbors should be similar. Two options:
@@ -36,7 +36,7 @@ Training-time savings ≈ 25% under p_L=0.5 (skipped blocks need no forward/back
 
 ## Test time (eq res_block_drop_test)
 All f_ℓ active (full network). Recalibrate each f_ℓ by its survival prob (it was only present a fraction p_ℓ of updates, downstream weights tuned to that):
-  H_ℓ^Test = ReLU( p_ℓ · f_ℓ(H_{ℓ-1}^Test; W_ℓ) + H_{ℓ-1}^Test ).
+  H_ℓ^Test = ReLU( p_ℓ · f_ℓ(H_{ℓ-1}^Test; W_ℓ) + s_ℓ(H_{ℓ-1}^Test) ).
 (Like Dropout weight scaling.) Code: at test, output = skip + net(input)·(1−deathRate) where 1−deathRate = p_ℓ.
 
 ## Why it improves test error (two reasons + reg)
@@ -60,4 +60,4 @@ Also a regularizer (like Dropout) even WITH BatchNorm — and unlike Dropout, wh
 - ImageNet uses bottleneck block; CIFAR uses the 2-conv basic block; 110-layer = 54 blocks.
 
 ## Scaffold ↔ final code correspondence
-Pre-method scaffold: a ResNet of residual blocks, each block = (residual branch f, identity/projection skip), update H = ReLU(f(H)+id(H)); a per-block scalar hyperparam slot and a train/test forward stub. Final code fills: per-minibatch Bernoulli gate that zeroes the residual branch (training), the linear-decay survival schedule p_ℓ across blocks, and the test-time scaling of f by p_ℓ.
+Pre-method scaffold: a ResNet of residual blocks, each block = (residual branch f, shortcut s), update H = ReLU(f(H)+s(H)); a per-block scalar hyperparam slot and a train/test forward stub. Final code fills: per-minibatch Bernoulli gate that zeroes the residual branch (training), the linear-decay survival schedule p_ℓ across blocks, and the test-time scaling of f by p_ℓ.

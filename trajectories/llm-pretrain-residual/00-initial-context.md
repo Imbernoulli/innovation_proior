@@ -1,68 +1,26 @@
 ## Research question
 
-A GPT-style language model is a stack of identical transformer blocks, each one reading a normalized
-copy of a shared residual stream and writing its attention or MLP output back onto it. The single
-thing being designed here is **how information flows through that residual stream across layers** — the
-rule that turns one block's output into the next block's input. Everything else (the attention, the
-MLP, the normalization, the data, the optimizer schedule) is fixed. The default rule is the plain
-Pre-LN additive residual, `x = x + sublayer(LN(x))`, repeated twice per block. The goal is to redesign
-that depth-flow rule to lower validation loss on FineWeb — to improve gradient flow, feature reuse, and
-training stability across the 24-layer stack without touching anything but the residual logic.
+A GPT-style language model is a stack of identical transformer blocks, each reading a normalized copy of a shared residual stream and writing its attention or MLP output back onto it. The only design object here is **how information flows through that residual stream across layers**. Everything else — attention, MLP, normalization, data, optimizer schedule — is fixed. The default rule is the plain Pre-LN additive residual, `x = x + sublayer(LN(x))`, repeated twice per block. The goal is to redesign that depth-flow rule to lower validation loss on FineWeb: improve gradient flow, feature reuse, and training stability across a 24-layer stack without changing anything except the residual logic.
 
-## Prior art before the first rung (the residual lineage the first baseline reacts to)
+## Prior art / Background / Baselines
 
-The first rung is the standard Pre-LN residual itself. It is the resolution of a line of
-residual-connection designs; these are the ancestors the ladder reacts to, each with the gap it left.
+- **Plain stacked layers.** A depth-`L` network composes `L` width-preserving maps directly. Gap: per-layer signal/gradient gains compound as `r^L`, so unless every gain is essentially 1.0 the forward signal and backward gradient vanish or explode; deep plain nets train worse than shallow ones.
 
-- **Plain stacked layers (no skip).** Compose `L` width-preserving maps directly. Expressive in
-  principle — a deep stack can represent anything a shallow one can by idling the extra layers — but a
-  per-layer signal/gradient gain `r` compounds to `r^L`, so unless `r ≈ 1` at every layer the forward
-  signal and backward gradient vanish or explode exponentially, and a deeper plain net reaches *higher*
-  training error than a shallow one. Gap: depth is not trainable.
-- **Residual connection (He et al. 2015), `x_{l+1} = σ(x_l + F(x_l))`.** Add an identity skip so the
-  block only has to learn a nudge to identity; the additive `1` in the backward product gives gradients
-  a clean route through depth. Made hundreds of layers trainable. But the branch fires at full strength
-  at init (the block is *not* the identity at step zero), so the stream variance still compounds with
-  depth. Gap: tames the worst of `r^L` but does not pin `r = 1`.
-- **Post-LN Transformer, `x ← LN(x + sublayer(x))`.** Normalize *after* the addition. This puts a
-  LayerNorm Jacobian on the residual highway, so the backward path is a product of normalization
-  Jacobians — the multiplicative structure the skip was meant to avoid — giving large, depth-imbalanced
-  gradients near the output at init. Gap: needs learning-rate warm-up to survive the first steps.
-- **Pre-LN Transformer, `x ← x + sublayer(LN(x))`.** Move the norm *inside* the branch so the highway
-  is a clean identity-plus-addition again; the leading `1` is restored, the last-layer gradient shrinks
-  like `1/√L`, and one final LayerNorm before the head handles the linearly-growing stream scale. This
-  is the modern default and the first rung. Its residual stream is still a *fixed unit-weight
-  accumulator*: every layer adds its branch with coefficient exactly one, the same for every token, and
-  in deep Pre-LN stacks the stream variance climbs with depth, shrinking the deep blocks' Jacobians
-  toward identity so the deepest layers go half-dead. That last gap — a rigid, unweighted depth-flow
-  rule — is the seam every later rung pulls on.
+- **Residual connection (He et al. 2015), `x_{l+1} = σ(x_l + F(x_l))`.** Each layer adds a learned nudge to an identity skip, so gradients have a clean additive route through depth. Gap: the branch fires at full strength at initialization, so the residual-stream variance still grows with depth and training remains unstable at large `L`.
 
-## The fixed substrate
+- **Post-LN Transformer, `x ← LN(x + sublayer(x))`.** Normalization is placed after the residual addition. Gap: the LayerNorm Jacobian sits on the residual highway, so the backward path is a product of normalization Jacobians and produces large, depth-imbalanced gradients near the output at init; the optimizer needs careful warm-up to survive early steps.
 
-A nanoGPT-style GPT-2 Medium training loop is frozen and must not be touched: 24 layers, 16 heads,
-`d = 1024` (~355M params), GPT-2 tokenizer, weight tying between `wte` and `lm_head`, learned absolute
-position embeddings added once at the bottom, and a single final LayerNorm before the output head. The
-loop runs 13,535 iterations on FineWeb (sample-10BT, ~7.1B training tokens) with micro-batch 32,
-gradient accumulation 16, 2-GPU DDP, AdamW (`β = (0.9, 0.95)`, weight decay 0.1, grad-clip 1.0), a
-cosine LR schedule with linear warm-up over 4% of steps, and bf16 autocast + `torch.compile`. The
-fixed components are `CausalSelfAttention`, `MLP`, `LayerNorm`, and `GPTConfig`; the `_init_weights`
-scheme (Linear `std = 0.02`, embeddings `std = 0.02`) and the residual-projection rescaling
-(`c_proj.weight` init `std = 0.02 / √(2·n_layer)`, one factor per branch write) are also fixed.
+- **Pre-LN Transformer, `x ← x + sublayer(LN(x))`.** Normalization is moved inside the branch, restoring a clean identity-plus-addition highway and making gradients scale like `1/√L`; a final LayerNorm before the head handles the growing stream scale. Gap: the residual stream is still a fixed unit-weight accumulator, so in deep stacks the stream variance climbs with depth, the deepest blocks' Jacobians shrink toward identity, and the bottom layers stay under-trained.
 
-## The editable interface
+## Fixed substrate / Code framework
 
-Exactly one module is editable — `nanoGPT/custom_pretrain.py`, and within it only the residual logic:
-the `Block` class (per-block residual behavior), `GPT.__init__` (extra residual parameters), the
-**block loop in `GPT.forward`** (how blocks are called and how their outputs are accumulated),
-`configure_optimizers` (param groups / LR / weight decay for any new parameters), and the
-`CONFIG_OVERRIDES` dict (LR / weight-decay overrides). The contract: `Block.forward` must accept `x`
-and return a tensor of the same shape; `GPT.forward` must accept `(idx, targets=None)` and return
-`(logits, loss)`. Every rung on the ladder is a fill of this same surface; the methods differ only in
-what they put in `GPT.__init__`, the forward block loop, and (when they add parameters) the optimizer
-groups.
+A nanoGPT-style GPT-2 Medium training loop is frozen: 24 layers, 16 heads, `d = 1024` (~355M params), GPT-2 tokenizer, weight tying between `wte` and `lm_head`, learned absolute position embeddings added once at the bottom, and a single final LayerNorm before the output head. The loop runs 13,535 iterations on FineWeb (sample-10BT, ~7.1B training tokens) with micro-batch 32, gradient accumulation 16, 2-GPU DDP, AdamW (`β = (0.9, 0.95)`, weight decay 0.1, grad-clip 1.0), a cosine LR schedule with linear warm-up over 4% of steps, and bf16 autocast + `torch.compile`. The fixed components are `CausalSelfAttention`, `MLP`, `LayerNorm`, and `GPTConfig`; the `_init_weights` scheme (Linear `std = 0.02`, embeddings `std = 0.02`) and the residual-projection rescaling (`c_proj.weight` init `std = 0.02 / √(2·n_layer)`, one factor per branch write) are also fixed.
 
-The starting point is the scaffold default: the **vanilla additive Pre-LN residual**, expressed as a
-plain loop over the blocks. Each later method replaces the marked regions and nothing else.
+## Editable interface
+
+Exactly one module is editable — `nanoGPT/custom_pretrain.py`, and within it only the residual logic: the `Block` class (per-block residual behavior), `GPT.__init__` (extra residual parameters), the **block loop in `GPT.forward`** (how blocks are called and how their outputs are accumulated), `configure_optimizers` (param groups / LR / weight decay for any new parameters), and the `CONFIG_OVERRIDES` dict (LR / weight-decay overrides). The contract: `Block.forward` must accept `x` and return a tensor of the same shape; `GPT.forward` must accept `(idx, targets=None)` and return `(logits, loss)`.
+
+The starting point is the scaffold default: the **vanilla additive Pre-LN residual**, expressed as a plain loop over the blocks. A method replaces the marked regions and nothing else.
 
 ```python
 # EDITABLE regions of custom_pretrain.py — default fill (vanilla Pre-LN residual)
@@ -137,9 +95,4 @@ class GPT(nn.Module):
 
 ## Evaluation settings
 
-A single seed, 42. The primary metric is **validation loss** — cross-entropy on held-out FineWeb,
-lower is better. Secondary metrics, all measured on the final checkpoint: **WikiText-2** and
-**LAMBADA** perplexity (lower is better) for language-modeling quality, and zero-shot downstream
-accuracy on **ARC-Easy** and **HellaSwag** (higher is better) via the lm-evaluation-harness. PIQA and
-WinoGrande are also run but held out. Every rung trains under the identical fixed loop above and is
-judged first on validation loss, then on whether the perplexity and downstream numbers move with it.
+A single seed, 42. The primary metric is **validation loss** — cross-entropy on held-out FineWeb, lower is better. Secondary metrics, all measured on the final checkpoint: **WikiText-2** and **LAMBADA** perplexity (lower is better) for language-modeling quality, and zero-shot downstream accuracy on **ARC-Easy** and **HellaSwag** (higher is better) via the lm-evaluation-harness. PIQA and WinoGrande are also run but held out. Every method trains under the identical fixed loop above and is judged first on validation loss, then on whether the perplexity and downstream numbers move with it.

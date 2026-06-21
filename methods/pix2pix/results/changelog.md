@@ -1,0 +1,28 @@
+# pix2pix Review Changelog
+
+- `results/context.md:11` clarified the L1 conditional-median statement so it no longer claims L1 selects a true plausible mode.
+- `results/context.md:99` renamed the scaffold GAN-loss inputs from hard-coded pairs to generic payloads.
+- `results/context.md:110` added `critic_payload(...)` TODOs so the scaffold does not pre-answer output-alone vs input-output conditioning or global vs local scoring.
+- `results/context.md:120` updated the scaffold training step to call `critic_payload(...)` instead of embedding `(x, y)` / `(x, fake)` directly.
+- `results/reasoning.md:5` corrected the first L1 derivation to cover central-value edge cases.
+- `results/reasoning.md:28` corrected the later L1-vs-L2 explanation to say L1 tends to blur less, not that it guarantees a representative mode.
+- `results/reasoning.md:82` tightened the low/high-frequency split derivation around L1 as a coarse anchor rather than a perfect low-frequency solver.
+- `results/reasoning.md:98` made the U-Net snippet default to `use_dropout=True`, matching the method setup.
+- `results/reasoning.md:152` reconciled original Torch sigmoid+BCE with the PyTorch logits+BCEWithLogits implementation.
+- `results/reasoning.md:155` changed the PatchGAN snippet docstring to describe logits.
+- `results/reasoning.md:170` marked the discriminator output conv as logits with no sigmoid before `BCEWithLogitsLoss`.
+- `results/reasoning.md:177` clarified that per-patch PatchGAN averaging occurs through the scalar BCEWithLogits loss.
+- `results/reasoning.md:199` fixed the discriminator fake update: detach `fake_B`, not `D(fake_AB)`.
+- `results/answer.md:9` corrected the key-idea L1 explanation to separable conditional median / less blur in practice.
+- `results/answer.md:38` reconciled paper/Torch sigmoid+BCE with the logits+BCEWithLogits answer code.
+- `results/answer.md:101` changed the PatchGAN code docstring to logits.
+- `results/answer.md:115` marked the discriminator output conv as logits with no final sigmoid.
+- `results/answer.md:139` fixed the discriminator fake update to detach `fake_B` only.
+- `results/answer.md:163` corrected the L1-over-L2 design rationale and removed the overstrong median claim.
+- `notes/synthesis.md:60` corrected the L1 median reconstruction note and removed the mode-selection overclaim.
+- `notes/synthesis.md:101` regrounded implementation notes in the canonical `phillipi/pix2pix` Torch repo.
+- `notes/synthesis.md:110` added the maintained PyTorch port equivalence: `fake_AB.detach()`, no final sigmoid, `BCEWithLogitsLoss`, `lambda_L1=100`.
+- `notes/source_matrix.md:1` added the strict evidence matrix covering primary, ancestors, explainers, self-account/search, and code.
+- `notes/discovery_synthesis.md:1` added the reconstruction/audit note covering derivation signs, constants, code faithfulness, leak review, and voice review.
+- `refs/self_accounts/search_log.md:1` documented self-account search queries and saved author-maintained sources.
+- `results/.codex_review.json:1` replaced the stale limited-review record with an explicit independent-review-not-run record because no independent gate/checker exists in this repo.

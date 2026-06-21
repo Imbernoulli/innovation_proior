@@ -51,3 +51,32 @@ target network is not load-bearing once the critic is normalized correctly, and 
 to normalize is to pass the current and next state-action batches *jointly* through a
 BatchRenorm critic so both are normalized under one shared distribution. The result removes target
 networks entirely, keeps UTD = 1, and matches high-UTD accuracy with a few lines on top of SAC.
+
+## Code framework
+
+```python
+import torch
+import torch.nn as nn
+
+
+class CrossQCritic(nn.Module):
+    def __init__(self, obs_dim, act_dim, hidden=2048):
+        super().__init__()
+        self.encoder = nn.Sequential(
+            nn.Linear(obs_dim + act_dim, hidden),
+            nn.ReLU(),
+        )
+        self.q1 = nn.Linear(hidden, 1)
+        self.q2 = nn.Linear(hidden, 1)
+
+    def cross_norm(self, x):
+        # Shared normalization for current and next state-action pairs.
+        mean = x.mean(0, keepdim=True).detach()
+        std = (x.std(0, keepdim=True) + 1e-3).detach()
+        return (x - mean) / std
+
+    def forward(self, s, a):
+        x = self.cross_norm(torch.cat([s, a], -1))
+        h = self.encoder(x)
+        return self.q1(h).squeeze(-1), self.q2(h).squeeze(-1)
+```

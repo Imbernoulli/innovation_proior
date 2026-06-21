@@ -66,7 +66,7 @@ There it is:
 
   da(t)/dt = − a(t) ∂f(z(t),t,θ)/∂z,
 
-or in column-vector form, da/dt = −(∂f/∂z)ᵀ a(t), which I'll write as −a(t)ᵀ ∂f/∂z. This is the instantaneous chain rule. And notice it runs *backwards*: I know a at the end, a(t₁) = ∂L/∂z(t₁), because that's the one gradient the loss hands me directly, and I integrate this ODE from t₁ down to t₀ to get a(t₀) = ∂L/∂z(t₀). Just like backprop flows gradients from the output back to the input — same direction, now continuous.
+or, if I store gradients as columns, da/dt = −(∂f/∂z)ᵀ a(t). I will keep the row-vector notation for the derivation, because it lines up with a vector-Jacobian product. This is the instantaneous chain rule. And notice it runs *backwards*: I know a at the end, a(t₁) = ∂L/∂z(t₁), because that's the one gradient the loss hands me directly, and I integrate this ODE from t₁ down to t₀ to get a(t₀) = ∂L/∂z(t₀). Just like backprop flows gradients from the output back to the input — same direction, now continuous.
 
 There's an immediate snag and I almost miss it. The adjoint ODE has ∂f/∂z(z(t)) in it, so to integrate it backward I need z(t) along the whole trajectory. But I deliberately threw z(t) away — not storing it was the whole point! For a second this feels like it defeats the idea. Then: the dynamics are reversible by construction. I know z(t₁) (it's the output I already have), and I can just append dz/dt = f to the backward solve and recompute z(t) as I go, integrating it backward right alongside a(t). So the augmented backward state carries (z, a), starts at (z(t₁), ∂L/∂z(t₁)), and runs to t₀. Nothing from the forward pass needs to be stored. Memory O(1) in depth. The wall is gone.
 
@@ -88,17 +88,17 @@ because θ and t have constant dynamics (their rows are zero). The augmented adj
 
 The middle equation is what I wanted. θ is constant in t, so its *total* gradient is the integral of da_θ/dt, with the terminal condition a_θ(t₁) = 0 (the loss doesn't depend on θ "through the end-time state directly" — θ's contribution is entirely accumulated along the trajectory, so it starts at zero at t₁ and builds up as I integrate backward):
 
-  dL/dθ = a_θ(t₀) = − ∫_{t₁}^{t₀} a(t)ᵀ ∂f/∂θ dt.
+  dL/dθ = a_θ(t₀) = − ∫_{t₁}^{t₀} a(t) ∂f/∂θ dt.
 
-Let me sanity-check the sign and the direction, because this is exactly where it's easy to slip. The integral runs from t₁ down to t₀ (backward), and there's an explicit minus sign from da_θ/dt = −a ∂f/∂θ. If I prefer to write it as a forward integral I flip the limits and the sign cancels: dL/dθ = +∫_{t₀}^{t₁} a(t)ᵀ ∂f/∂θ dt. Both say the same thing. And the endpoint gradients fall out for free from the third equation and the definition: dL/dt₁ = a(t₁)ᵀ f(z(t₁),t₁,θ) (rate of loss change as I move the final time), and dL/dt₀ = a_t(t₀) = −∫_{t₁}^{t₀} a(t)ᵀ ∂f/∂t dt.
+Let me sanity-check the sign and the direction, because this is exactly where it's easy to slip. The integral runs from t₁ down to t₀ (backward), and there's an explicit minus sign from da_θ/dt = −a ∂f/∂θ. If I prefer to write it as a forward integral I flip the limits and the sign cancels: dL/dθ = +∫_{t₀}^{t₁} a(t) ∂f/∂θ dt. Both say the same thing. The endpoint gradients need one more boundary check. Moving the final time changes the loss at rate dL/dt₁ = a(t₁) f(z(t₁),t₁,θ). For the start time I initialize the backward time-adjoint with −dL/dt₁, integrate da_t/dt = −a ∂f/∂t from t₁ to t₀, and read out a_t(t₀). In the simple two-endpoint case with no direct loss on z(t₀), this collapses to dL/dt₀ = −a(t₀) f(z(t₀),t₀,θ), which is the boundary-term sanity check I want.
 
 So I can get *every* gradient — w.r.t. the input z(t₀), the parameters θ, and both time endpoints — by concatenating [z, a, the running ∂L/∂θ integral (and a_t)] into one big augmented vector and making a single backward call to the same black-box ODE solver, from t₁ to t₀. The augmented dynamics function returns
 
-  [ f(z,t,θ), − a(t)ᵀ∂f/∂z, − a(t)ᵀ∂f/∂θ, − a(t)ᵀ∂f/∂t ],
+  [ f(z,t,θ), − a(t)∂f/∂z, − a(t)∂f/∂θ, − a(t)∂f/∂t ],
 
 initialized at t₁ with [z(t₁), ∂L/∂z(t₁), 0, −dL/dt₁]. Out the other end at t₀ comes [z(t₀), ∂L/∂z(t₀), ∂L/∂θ, ∂L/∂t₀]. Beautiful — gradients of an ODE solve computed by another ODE solve.
 
-Now the cost. Each of those terms is a(t)ᵀ times a Jacobian of f — a(t)ᵀ∂f/∂z, a(t)ᵀ∂f/∂θ, a(t)ᵀ∂f/∂t. The crucial thing is I never have to *form* those Jacobians. ∂f/∂z is D×D; materializing it would be O(D²) memory and forward-mode would make the whole thing quadratic — exactly the forward-sensitivity cost I was trying to escape. But a row-vector-times-Jacobian is precisely a **vector-Jacobian product**, and that is what reverse-mode autodiff computes natively in a single backward pass through f, at a cost comparable to one evaluation of f. Even better: one VJP through f, seeded with the vector −a, simultaneously produces the products against *all* of f's inputs — z, θ, and t — because they're just different input slots of the same computation graph. So one backward pass through f per solver step gives me all three integrand terms at once. That's why the whole method is linear in the state size, not quadratic. The solver calls f and its VJP a handful of times per step; nothing scales with D².
+Now the cost. Each of those terms is a(t) times a Jacobian of f — a(t)∂f/∂z, a(t)∂f/∂θ, a(t)∂f/∂t. The crucial thing is I never have to *form* those Jacobians. ∂f/∂z is D×D; materializing it would be O(D²) memory and forward-mode would make the whole thing quadratic — exactly the forward-sensitivity cost I was trying to escape. But a row-vector-times-Jacobian is precisely a **vector-Jacobian product**, and that is what reverse-mode autodiff computes natively in a single backward pass through f, at a cost comparable to one evaluation of f. Even better: one VJP through f, seeded with the vector −a, simultaneously produces the products against *all* of f's inputs — z, θ, and t — because they're just different input slots of the same computation graph. So one backward pass through f per solver step gives me all three integrand terms at once. That's why the whole method is linear in the state size, not quadratic. The solver calls f and its VJP a handful of times per step; nothing scales with D².
 
 And there's a small empirical surprise lurking here that I'd want to confirm: because the backward pass is itself an adaptive solve of a (possibly smoother) augmented system, it can need *fewer* function evaluations than the forward pass — whereas backprop-through-the-solver would, by construction, have to differentiate *every single* forward evaluation. So the adjoint isn't just more memory-efficient, it can be more compute-efficient too.
 
@@ -109,14 +109,22 @@ Let me write the supervised piece down to make sure it's real code and not just 
 ```python
 import torch, torch.nn as nn
 
+def _axpy(a, xs, ys):                           # a*xs + ys, over a tensor or a tuple
+    if isinstance(ys, tuple):
+        return tuple(a*x + yy for x, yy in zip(xs, ys))
+    return a*xs + ys
+
 def rk4_step(func, t, dt, y):                  # one 4th-order Runge-Kutta step
     k1 = func(t, y)
-    k2 = func(t + dt/2, y + dt/2 * k1)
-    k3 = func(t + dt/2, y + dt/2 * k2)
-    k4 = func(t + dt,   y + dt   * k3)
-    return y + dt/6 * (k1 + 2*k2 + 2*k3 + k4)  # not Euler — this is the point
+    k2 = func(t + dt/2, _axpy(dt/2, k1, y))
+    k3 = func(t + dt/2, _axpy(dt/2, k2, y))
+    k4 = func(t + dt,   _axpy(dt,   k3, y))
+    comb = lambda yy,a,b,c,d: yy + dt/6 * (a + 2*b + 2*c + d)
+    if isinstance(y, tuple):
+        return tuple(comb(*p) for p in zip(y, k1, k2, k3, k4))
+    return comb(y, k1, k2, k3, k4)             # not Euler — this is the point
 
-def odeint(func, y0, t, step=None):            # black-box solver; func(t,y)->dy/dt
+def odeint(func, y0, t, step=None):            # black-box solver; y a tensor OR a tuple
     sol, y = [y0], y0
     for i in range(len(t)-1):
         t0, t1 = t[i], t[i+1]
@@ -125,6 +133,8 @@ def odeint(func, y0, t, step=None):            # black-box solver; func(t,y)->dy
         for _ in range(n):
             y = rk4_step(func, t0, dt, y); t0 = t0 + dt
         sol.append(y)
+    if isinstance(y0, tuple):
+        return tuple(torch.stack([s[j] for s in sol]) for j in range(len(y0)))
     return torch.stack(sol)
 ```
 
@@ -147,26 +157,33 @@ class OdeintAdjoint(torch.autograd.Function):
         params = tuple(params)
 
         def aug_dynamics(t, aug):
-            z, a = aug[0], aug[1]              # augmented state carries (z, a, dL/dθ)
+            vjp_t, z, a = aug[0], aug[1], aug[2]  # canonical state: (vjp_t, z, a, dL/dθ)
             with torch.enable_grad():
                 z  = z.detach().requires_grad_(True)
                 t_ = t.detach().requires_grad_(True)
                 f_eval = func(t_, z)
-                # one VJP gives -aᵀ∂f/∂z and -aᵀ∂f/∂θ at once; the minus is the −a in da/dt
-                vjp_z, *vjp_p = torch.autograd.grad(
-                    f_eval, (z,)+params, -a, allow_unused=True, retain_graph=True)
+                # one VJP gives the -a products for time, state, and parameters
+                vjp_t_step, vjp_z, *vjp_p = torch.autograd.grad(
+                    f_eval, (t_, z)+params, -a, allow_unused=True, retain_graph=True)
+            vjp_t_step = torch.zeros_like(t_) if vjp_t_step is None else vjp_t_step
             vjp_z = torch.zeros_like(z) if vjp_z is None else vjp_z
             vjp_p = [torch.zeros_like(p) if g is None else g for p,g in zip(params, vjp_p)]
-            return (f_eval, vjp_z, *vjp_p)     # dz/dt, da/dt, d(dL/dθ)/dt
+            return (vjp_t_step, f_eval, vjp_z, *vjp_p)
 
+        vjp_t = torch.zeros((), dtype=t.dtype, device=t.device)
+        time_vjps = torch.empty(len(t), dtype=t.dtype, device=t.device)
         adj_z = grad_out[-1]                    # terminal condition a(t₁)=∂L/∂z(t₁)
         adj_p = [torch.zeros_like(p) for p in params]   # a_θ(t₁)=0
         for i in range(len(t)-1, 0, -1):       # integrate backward, interval by interval
-            aug0 = (ans[i], adj_z, *adj_p)
+            dLd_cur_t = func(t[i], ans[i]).reshape(-1).dot(grad_out[i].reshape(-1))
+            vjp_t = vjp_t - dLd_cur_t
+            time_vjps[i] = dLd_cur_t
+            aug0 = (vjp_t, ans[i], adj_z, *adj_p)
             aug  = odeint(aug_dynamics, aug0, torch.stack([t[i], t[i-1]]))
-            _, adj_z, *adj_p = [a[-1] for a in aug]
+            vjp_t, _, adj_z, *adj_p = [a[-1] for a in aug]
             adj_z = adj_z + grad_out[i-1]      # inject ∂L/∂z(t_i) at each observation
-        return (None, adj_z, None, *adj_p)
+        time_vjps[0] = vjp_t
+        return (None, adj_z, time_vjps, *adj_p)
 ```
 
 That's the engine. Switch hats to density modeling. The change-of-variables formula for an invertible map z₁ = f(z₀) is
@@ -211,11 +228,11 @@ Let me write the simplest concrete instance, the continuous analog of the planar
 
   ∂ log p/∂t = − tr( u (∂h/∂z)ᵀ ) = − uᵀ ∂h/∂z,
 
-which is trivial to compute, no determinant lemma needed. I solve the (D+1)-dimensional ODE for [z, log p] jointly, with that trace as the extra coordinate's velocity. Because the flow is reversible at essentially the same cost forward and backward, I can train it by maximum likelihood — integrate data back to the base distribution accumulating Δlog p, evaluate the base density — and then run the flow forward to sample. (And if I want the dynamics to turn on and off over the flow, I can make the parameters depend on t via a small hypernetwork and gate each unit with a σ_n(t) ∈ (0,1); that's free, it doesn't touch the trace cost.)
+which is trivial to compute, no determinant lemma needed. I solve the (D+1)-dimensional ODE for [z, log p] jointly, with that trace as the extra coordinate's velocity. Because the flow is reversible at essentially the same cost forward and backward, I can train it by maximum likelihood. The sign is worth checking carefully. If I run data backward from the data time to the base time with d log p/dt = −tr(∂f/∂z) and initialize the accumulated log-density difference at zero, the backward solve returns log p_base(z_base) − log p_data(x). So the data log-likelihood is log p_base(z_base) − logp_diff, not plus. Then I can run the flow forward to sample. (And if I want the dynamics to turn on and off over the flow, I can make the parameters depend on t via a small hypernetwork and gate each unit with a σ_n(t) ∈ (0,1); that's free, it doesn't touch the trace cost.)
 
 ```python
 class PlanarCNF(nn.Module):
-    # dz/dt = u h(wᵀz+b);  d log p/dt = -tr(∂f/∂z) = -uᵀ ∂h/∂z   (rank-1 ⇒ inner product)
+    # dz/dt = u h(wᵀz+b);  d log p/dt = -tr(∂f/∂z) = -uᵀ ∂h/∂z
     def __init__(self, dim):
         super().__init__()
         self.u = nn.Parameter(torch.randn(dim)*0.1)
@@ -230,9 +247,16 @@ class PlanarCNF(nn.Module):
             f = h[..., None] * self.u
             dhdz = (1 - h**2)[..., None] * self.w     # ∂h/∂z
             trace = (self.u * dhdz).sum(-1)           # uᵀ ∂h/∂z
-        return (f, -trace)                            # (dz/dt, d log p/dt)
+        return (f, -trace[..., None])                 # tuple state: (dz/dt, d log p/dt)
+
+def cnf_logprob(cnf, x, base_logprob, t0=0.0, t1=1.0):
+    logp_diff_t1 = torch.zeros(x.shape[0], 1, device=x.device, dtype=x.dtype)
+    t = torch.tensor([t1, t0], device=x.device, dtype=x.dtype)   # data → base
+    z_t, logp_diff_t = odeint(cnf, (x, logp_diff_t1), t)         # tuple-state solve
+    z_base, logp_diff = z_t[-1], logp_diff_t[-1].view(-1)
+    return base_logprob(z_base) - logp_diff   # log p_base − ∫ tr(∂f/∂z) dt
 ```
 
 And the same ODE machinery serves a third model with almost no extra work: a generative time-series model. Put an ODE-defined latent trajectory inside a VAE. An RNN reads the (possibly irregularly sampled) observations and outputs a posterior q(z(t₀)); sample z(t₀); a single ODESolve produces z at every observation time t₁…t_N on a *continuous* timeline — no binning, so irregular sampling is native and I can extrapolate forward or backward past the data; a decoder emits each x_{t_i} from z_{t_i}; train by the ELBO. Because f is time-invariant, the whole latent trajectory is fixed by z(t₀). Binned RNNs had to discretize time and choke on missing data; here time is just the integration variable.
 
-So the causal chain, end to end: a residual block is one Euler step of an ODE; take the continuous limit and let an adaptive black-box solver integrate dz/dt = f(z,t,θ), buying error control and per-input adaptive depth; to train without storing the trajectory or differentiating the solver's internals, define the adjoint a(t)=∂L/∂z(t), derive its backward ODE da/dt = −aᵀ∂f/∂z from the instantaneous chain rule, augment with θ and t to get dL/dθ = −∫_{t₁}^{t₀} aᵀ∂f/∂θ dt and the endpoint gradients, compute every integrand as a single vector-Jacobian product through f, and recompute z backward alongside a so the whole thing is O(1) memory and linear time, black-box in the solver; then notice that the same continuous limit turns the change-of-variables log-determinant into a trace, ∂ log p/∂t = −tr(∂f/∂z), which is linear and lets flows be wide instead of deep and drops the bijectivity/partition constraints — and the one ODE engine powers continuous-depth supervised models, continuous normalizing flows, and continuous-time latent series alike.
+So the causal chain, end to end: a residual block is one Euler step of an ODE; take the continuous limit and let an adaptive black-box solver integrate dz/dt = f(z,t,θ), buying error control and per-input adaptive depth; to train without storing the trajectory or differentiating the solver's internals, define the row adjoint a(t)=∂L/∂z(t), derive its backward ODE da/dt = −a∂f/∂z from the instantaneous chain rule, augment with θ and t to get dL/dθ = −∫_{t₁}^{t₀} a∂f/∂θ dt and the endpoint gradients, compute every integrand as a single vector-Jacobian product through f, and recompute z backward alongside a so the whole thing is O(1) memory and linear time, black-box in the solver; then notice that the same continuous limit turns the change-of-variables log-determinant into a trace, ∂ log p/∂t = −tr(∂f/∂z), which is linear and lets flows be wide instead of deep and drops the bijectivity/partition constraints — and the one ODE engine powers continuous-depth supervised models, continuous normalizing flows, and continuous-time latent series alike.

@@ -24,9 +24,13 @@ Mean regression gives the mean. What gives the upper tail? Expectile regression.
 
   m_τ = argmin_m E[ L_2^τ(x − m) ],   L_2^τ(u) = |τ − 1(u<0)|·u².
 
-Let me make sure this does what I think. For a residual u = x − m: if u > 0 (a sample above my estimate) the weight is |τ − 0| = τ; if u < 0 (below) the weight is |τ − 1| = 1 − τ. At τ = 0.5 both weights are ½ and this is just MSE, so m_{0.5} is the mean. For τ > 0.5 the positive residuals — the samples *above* the estimate — are weighted more heavily, so to balance the gradient the estimate has to move *up*. The bigger the τ, the more the upper samples dominate, and m_τ climbs toward the top of the distribution. And as τ → 1 it should approach the supremum of the support. Let me actually prove that, because it's the load-bearing claim.
+Let me make sure this does what I think. For a residual u = x − m: if u > 0 (a sample above my estimate) the weight is |τ − 0| = τ; if u < 0 (below) the weight is |τ − 1| = 1 − τ. At τ = 0.5 both weights are ½ and this is just MSE, so m_{0.5} is the mean. For τ > 0.5 the positive residuals — the samples *above* the estimate — are weighted more heavily, so to balance the gradient the estimate has to move *up*. The bigger the τ, the more the upper samples dominate, and m_τ climbs toward the top of the distribution. And as τ → 1 it should approach the supremum of the support. Let me actually check the signs through the first-order condition, because that is the load-bearing claim.
 
-Lemma: for a random variable X with bounded support and supremum x*, lim_{τ→1} m_τ = x*. First, every expectile lies within the support, and the expectiles share the same supremum x* (no expectile exceeds the largest attainable value). Second, m_τ is monotonically non-decreasing in τ: heavier weight on the upper residuals can only push the estimate up, so τ₁ < τ₂ ⟹ m_{τ₁} ≤ m_{τ₂}. A bounded, monotonically non-decreasing function of τ has a limit as τ → 1, and since the expectiles approach but cannot exceed x* and are pushed arbitrarily high by the asymmetry, that limit is x*. So the upper expectile, in the limit, *is* the in-support maximum. That's the operator I wanted, expressed as a regression I can do with SGD on in-sample data.
+Lemma: for a random variable X with bounded support and supremum x*, lim_{τ→1} m_τ = x*. The minimizer satisfies the expectile balance equation
+
+  τ E[(X − m_τ)_+] = (1 − τ) E[(m_τ − X)_+].
+
+The minimizer lies in the closed convex hull of the support, so it never exceeds x*. It is also monotone in τ: increasing τ raises the penalty on underestimates and lowers the penalty on overestimates, so τ₁ < τ₂ gives m_{τ₁} ≤ m_{τ₂}. Now suppose the limit stayed below x* by some ε. Then there is positive probability mass above the limit plus ε/2, so E[(X − m_τ)_+] stays bounded away from zero along large τ, while (1 − τ)E[(m_τ − X)_+] goes to zero because the support is bounded. That contradicts the balance equation. So the monotone limit must be x*. The upper expectile, in the limit, is the in-support maximum. That's the operator I wanted, expressed as a regression I can do with SGD on in-sample data.
 
 The conditional version is what I need — I want a *state-conditional* expectile, a network m_τ(s):
 
@@ -68,7 +72,7 @@ Next, an upper bound. For any τ, V_τ(s) ≤ max_{a : π_β(a|s)>0} Q*(s,a), wh
 
   Q*(s,a) = r(s,a) + γ E_{s'}[ max_{a' : π_β(a'|s')>0} Q*(s',a') ].
 
-This holds because an expectile is a convex-combination-like statistic of the values it averages, and any such average is ≤ the maximum: E^τ over actions can never exceed the best in-support action's value. Finally combine the two: the recursion's expectile, by the limit lemma, climbs to the in-support max of Q_τ as τ → 1, and the monotone-bounded sequence is squeezed against the constrained optimum, giving
+This holds by comparing Bellman operators. For any fixed bounded Q, the action expectile is no larger than the maximum over in-support actions, so the expectile backup is pointwise no larger than the in-support optimality backup; both backups are monotone γ-contractions under the idealized exact-fit assumptions. Iterating the smaller operator from the same bounded initialization therefore stays below the fixed point Q*. Finally combine the two directions: the operators T_τ increase with τ and, by the expectile-limit lemma, converge pointwise to the in-support max operator T*. A monotone bounded sequence of γ-contraction fixed points converges to the fixed point of the limiting operator, giving
 
   lim_{τ→1} V_τ(s) = max_{a : π_β(a|s)>0} Q*(s,a).
 
@@ -132,7 +136,8 @@ class GaussianPolicy(nn.Module):
         self.mean = mlp([obs_dim, *hidden, act_dim])
         self.log_std = nn.Parameter(torch.zeros(act_dim))   # state-independent std
     def dist(self, s):
-        return Normal(self.mean(s), self.log_std.clamp(-5.0, 2.0).exp())
+        mean = torch.tanh(self.mean(s))                # official JAX code bounds the Gaussian mean
+        return Normal(mean, self.log_std.clamp(-5.0, 2.0).exp())
     def log_prob(self, s, a):
         return self.dist(s).log_prob(a).sum(-1)
 ```
@@ -213,8 +218,9 @@ def train_offline(dataset, critic, value, policy, hp, steps=int(1e6), batch_size
         batch = dataset.sample(batch_size)          # static dataset, no env interaction
         update(batch, critic, target_critic, value, policy, opts, hp)
         sched.step()
-# hp: tau=0.7, beta=3.0 (locomotion) ; tau=0.9, beta=10.0 (antmaze) ;
-#     discount=0.99, alpha=0.005. Rewards preprocessed per D4RL convention.
+hp_locomotion = dict(tau=0.7, beta=3.0, discount=0.99, alpha=0.005)
+hp_antmaze = dict(tau=0.9, beta=10.0, discount=0.99, alpha=0.005)
+hp_kitchen_adroit = dict(tau=0.7, beta=0.5, discount=0.99, alpha=0.005)
 ```
 
 The chain, end to end: offline, the Q-learning max over a' queries out-of-distribution actions and overestimates, so the policy chases the error; SARSA's in-sample MSE is safe but only learns Q^{π_β} and does no improvement; one-step methods inherit that safety but can't iterate dynamic programming and so can't stitch. What I actually want is a max over *in-support* actions — improvement without OOD queries — but I can't compute it by sampling actions and querying Q. Read Q over the behavior actions as a per-state random variable: its mean is what SARSA gives, its in-support max is what I want, and the τ-expectile (asymmetric-L2 regression) estimates the upper tail of that random variable from in-sample actions alone, reaching the support's sup as τ → 1. Applying the expectile to the raw TD residual would wrongly be optimistic about lucky stochastic transitions, so split it: a value net V takes the upper expectile over actions (Q_θ̂(s,a) − V regressed asymmetrically), and Q is backed up onto r + γ V(s') by honest MSE that averages the dynamics. This is provably multi-step dynamic programming — V_τ is monotone in τ, bounded by the in-support optimum, and converges to it as τ → 1, spanning SARSA (τ=0.5) to constrained Q-learning (τ→1). With clipped double-Q and a Polyak target for stability, the value training is entirely policy-free and never touches an unseen action; the policy is then extracted by advantage-weighted regression exp(β(Q−V))·log π_φ over dataset actions only — improvement-with-an-implicit-constraint, still no OOD query — which decouples cleanly from value learning and is exactly what makes the result a good initialization for online finetuning.

@@ -14,7 +14,7 @@ V4 deltas vs V3 (per the re-read skill, which changed materially):
    standard augmentation, cross-entropy, train/eval loop. NO "reference implementation"/"official
    repo" wording. NO method names (residual/shortcut/skip/bottleneck/F(x)+x/Eltwise). Final code
    in reasoning.md/answer.md FILLS IN and corresponds piece-for-piece to this scaffold.
-   Derivation method: write final torchvision-grounded code first, then hollow it out.
+   Derivation method: write final paper/author-code-grounded code first, then hollow it out.
 3. INSIGHT-BEFORE-METHOD enforced locally at every step; keep V3 fixes (no "provably absurd";
    no "here's the argument that turns X into Y"; surprise not paradox).
 4. Standing rules: in-frame; context five sections; reasoning continuous first-person, ZERO real
@@ -78,11 +78,12 @@ D7. Keep the bottleneck skip an IDENTITY (do NOT project it).
   the strongest reason for B over C: C would double the cost of exactly the blocks we most stack.
   PAYOFF: 152-layer net ~11.3 GFLOPs < VGG-19 19.6 GFLOPs despite 8x depth.
 
-D8. Stride-2 downsampling lives on the MIDDLE 3x3 of the bottleneck (the "v1.5" detail), not on the
-  entry 1x1.
-  WHY: a stride-2 1x1 point-samples and discards 3/4 of spatial input before any spatial mixing;
-  the 3x3 has a receptive field, so striding it pools a neighborhood. ~equal cost, more info kept.
-  (Doesn't touch the residual argument; the variant common implementations settled on.)
+D8. Stride-2 downsampling for the original bottleneck lives on the entry 1x1 reduce and the matching
+  projection shortcut.
+  WHY: this is the paper/authors' Caffe convention: the stage-transition branch2a 1x1 has stride 2,
+  branch2b 3x3 has stride 1, and the projection shortcut uses stride 2. TorchVision's later
+  ResNet-v1.5 variant moves the stride to the 3x3; do not use that variant for the paper-faithful
+  artifact.
 
 D9. Architecture: VGG-thin. Stem 7x7/64 stride2 -> 3x3 maxpool stride2; four stages 64->128->256->512,
   halve map / double channels per transition (VGG rule); downsample via stride-2 conv inside stages;
@@ -105,13 +106,14 @@ D11. BN's DOUBLE ROLE (why it's load-bearing for the argument, not just the reci
   the deep plain net's failure can't be blamed on signal magnitude. This RULES OUT the easy
   explanation and leaves "optimization conditioning" as what remains.
 
-D12. The 1 + dF/dx gradient view — SELF-CORRECTED, kept as bonus not the explanation.
-  Tempting: y=F(x)+x => dy/dx = F'(x)+1; across L blocks the input->output Jacobian is a product of
-  (I+F'_l) which always carries an additive identity path surviving even when F'_l are tiny -> gradient
-  never decays to zero. GENUINE property. BUT must NOT become THE explanation: we already argued
-  (via D11) that vanishing gradients aren't the cause here. So the load-bearing claim stays
-  CONDITIONING; the clean gradient path is a welcome bonus. (Narrator states the tempting version,
-  then catches himself and demotes it.)
+D12. The identity-term gradient view — SELF-CORRECTED, kept as bonus not the explanation.
+  Tempting: for the pre-activation sum s=F(x)+x, the exact Jacobian is ds/dx=J_F(x)+I; across L such
+  sums the product of (I+J_F,l) terms has an additive identity term in its expansion. Exact v1 blocks
+  also have the post-add ReLU, whose diagonal activity mask left-multiplies the block Jacobian. GENUINE
+  local path when active, BUT must NOT become THE explanation: we already argued (via D11) that
+  vanishing gradients aren't the cause here. So the load-bearing claim stays CONDITIONING; the clean
+  gradient path is a welcome bonus. (Narrator states the tempting version, then catches himself and
+  demotes it.)
 
 ================================================================================
 B. LOAD-BEARING ANCESTORS (verified vs src/residual_v1_arxiv_release.tex)

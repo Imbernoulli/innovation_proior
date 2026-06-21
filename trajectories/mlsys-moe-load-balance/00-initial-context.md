@@ -1,74 +1,32 @@
 ## Research question
 
-A Mixture-of-Experts model is served under **expert parallelism**: every routed expert is a
-separate feed-forward network whose weights live on one GPU, and a token's top-K routing sends its
-hidden state to the GPUs holding its chosen experts via an all-to-all *dispatch* before the expert
-FFNs and an all-to-all *combine* after. Because the combine cannot start until *every* GPU has
-finished its experts' work, the per-layer latency is set by the **most-loaded** GPU, not the average.
-Live traffic is heavily skewed — a few experts soak up most of the tokens — and the hot set drifts as
-the input distribution changes, so a static one-expert-per-GPU layout wastes most of the cluster.
+A Mixture-of-Experts model is served under **expert parallelism**: every routed expert is a separate feed-forward network whose weights live on one GPU, and a token's top-K routing sends its hidden state to the GPUs holding its chosen experts via an all-to-all *dispatch* before the expert FFNs and an all-to-all *combine* after. Because the combine cannot start until *every* GPU has finished its experts' work, the per-layer latency is set by the **most-loaded** GPU, not the average. Live traffic is heavily skewed — a few experts soak up most tokens — and the hot set drifts as the input distribution changes, so a static one-expert-per-GPU layout wastes most of the cluster.
 
-The single thing being designed is the **expert placement algorithm**: given an online estimate of
-per-expert token load and the cluster shape, decide how many physical replicas each logical expert
-gets and which GPU each replica lands on, so that (1) the max GPU load is small, (2) the max *node*
-load is small, and (3) each expert's replicas stay concentrated on as few nodes as possible — because
-GPUs are grouped into nodes with fast intra-node NVLink and slow, scarce inter-node InfiniBand, and a
-placement that scatters an expert across nodes detonates exactly the inter-node all-to-all the
-node-limited routing was built to bound. The plan re-runs online as loads change, so it must also be
-**cheap**. Everything else about the serving stack is fixed.
+The single thing being designed is the **expert placement algorithm**: given an online estimate of per-expert token load and the cluster shape, decide how many physical replicas each logical expert gets and which GPU each replica lands on, so that (1) the max GPU load is small, (2) the max *node* load is small, and (3) each expert's replicas stay concentrated on as few nodes as possible. GPUs are grouped into nodes with fast intra-node NVLink and slow, scarce inter-node InfiniBand, and a placement that scatters an expert across nodes explodes exactly the inter-node all-to-all the node-limited routing exists to bound. The plan re-runs online as loads change, so it must also be **cheap**. Everything else about the serving stack is fixed.
 
-## Prior art before the first rung
+## Prior art / Background / Baselines
 
-The first rung is the established three-stage hierarchical placement. The lineage it reacts to:
+- **GShard / Switch capacity + auxiliary loss.** Core idea: cap each expert's tokens per batch and drop the overflow, while a differentiable load-balance auxiliary loss pushes the router toward uniform usage. Gap: both levers act at *training* time on the *router*; dropping tokens is unacceptable for inference, and neither decides where physical expert weights live at serving time.
 
-- **GShard / Switch capacity + auxiliary loss (Lepikhin et al. 2020; Fedus et al. 2021).** Cap each
-  expert's tokens per batch and drop the overflow; add a differentiable load-balance auxiliary loss
-  pushing the router toward uniform usage. *Gap:* both levers act at *training* time on the *router*;
-  dropping tokens is unacceptable for inference, and neither decides where physical expert weights
-  live at serving time nor handles a single expert too hot to fit on one GPU.
-- **Device-/node-limited routing (DeepSeek-V2, DeepSeek-AI 2024).** Cap the number of devices/nodes a
-  token's experts may span, establishing the **group** structure the placement must respect. *Gap:* a
-  routing constraint, not a placement — it bounds per-token communication footprint but never says
-  which GPU holds which expert; it *assumes* a co-located layout something else must produce.
-- **Greedy makespan scheduling — LPT / list scheduling (Graham 1966, 1969).** Assign weighted items
-  to identical machines to minimize the max load: list scheduling is within `2 − 1/m` of optimal,
-  largest-first (LPT) within `4/3 − 1/(3m)`. *Gap:* it balances a *fixed* set of indivisible items, so
-  a single item above the per-unit fair share floors the peak no matter how the rest are arranged; and
-  plain LPT does not enforce the equal item count per machine the hardware here requires.
+- **Device-/node-limited routing (DeepSeek-V2).** Core idea: cap the number of devices/nodes a token's experts may span, establishing the **group** structure the placement must respect. Gap: this is a routing constraint, not a placement — it bounds per-token communication footprint but never says which GPU holds which expert, so it still assumes a co-located layout produced by something else.
 
-## The fixed substrate
+- **Greedy makespan scheduling — LPT / list scheduling.** Core idea: assign weighted items to identical machines to minimize the max load by repeatedly placing the largest remaining item on the least-loaded machine. Gap: it balances a *fixed* set of indivisible items, so a single item above the per-machine fair share floors the peak no matter how the rest are arranged, and plain LPT does not enforce the equal item count per machine the hardware here requires.
 
-The placement plugs into an MoE serving stack that already exists: a router producing per-token top-K
-affinities, an all-to-all dispatch/combine around the expert FFNs, and an online-statistics layer that
-accumulates a per-expert token-load estimate `weight` of shape `[L, E]` (layers × logical experts).
-The cluster shape is given as `num_replicas` (total physical slots, a multiple of `num_gpus`),
-`num_groups` (routing groups, dividing `E`), `num_nodes`, and `num_gpus` (a multiple of `num_nodes`).
-The substrate is plain tensor primitives (`torch`, `numpy`): summing / sorting / gathering / scattering
-weights into integer index maps. The evaluation harness, the workload generator, and the placement
-validator are frozen.
+## Fixed substrate / Code framework
 
-## The editable interface
+The placement plugs into an existing MoE serving stack: a router producing per-token top-K affinities, an all-to-all dispatch/combine around the expert FFNs, and an online-statistics layer that accumulates a per-expert token-load estimate `weight` of shape `[L, E]` (layers × logical experts). The cluster shape is given as `num_replicas` (total physical slots, a multiple of `num_gpus`), `num_groups` (routing groups, dividing `E`), `num_nodes`, and `num_gpus` (a multiple of `num_nodes`). The substrate is plain tensor primitives (`torch`, `numpy`): summing, sorting, gathering, and scattering weights into integer index maps. The evaluation harness, workload generator, and placement validator are frozen.
 
-Exactly one region of `custom_eplb.py` is editable (lines 62–209): three functions the serving runtime
-calls. The contract is fixed; every rung on the ladder is a different fill of it.
+## Editable interface
 
-- `balanced_packing(weight, num_packs)` — partition each row's `n` weighted items into `num_packs`
-  packs of **exactly** `n // num_packs` items each, balancing per-pack sums; return `(pack_index,
-  rank_in_pack)`.
-- `replicate_experts(weight, num_phy)` — grow `num_log` logical experts to `num_phy` physical slots;
-  return `(phy2log, rank, logcnt)`.
-- `rebalance_experts(weight, num_replicas, num_groups, num_nodes, num_gpus)` — the entry point; return
-  `phy2log [L, num_replicas]` (logical expert per physical slot), `log2phy [L, E, max_rep]` (physical
-  slots per logical expert, `-1` padded), `logcnt [L, E]` (replica count per expert).
+Exactly one region of `custom_eplb.py` is editable: three functions the serving runtime calls. The contract is fixed; a candidate method is just a different fill of this region.
 
-Every valid plan must satisfy: `E % num_groups == 0`, `num_groups % num_nodes == 0`, `num_gpus %
-num_nodes == 0`, `num_replicas % num_gpus == 0`; each GPU hosts exactly `num_replicas // num_gpus`
-physical experts; every logical expert keeps ≥ 1 replica; `logcnt.sum(-1) == num_replicas` per layer.
+- `balanced_packing(weight, num_packs)` — partition each row's `n` weighted items into `num_packs` packs of **exactly** `n // num_packs` items each, balancing per-pack sums; return `(pack_index, rank_in_pack)`.
+- `replicate_experts(weight, num_phy)` — grow `num_log` logical experts to `num_phy` physical slots; return `(phy2log, rank, logcnt)`.
+- `rebalance_experts(weight, num_replicas, num_groups, num_nodes, num_gpus)` — the entry point; return `phy2log [L, num_replicas]` (logical expert per physical slot), `log2phy [L, E, max_rep]` (physical slots per logical expert, `-1` padded), `logcnt [L, E]` (replica count per expert).
 
-The starting point is the scaffold default: the **hierarchical greedy bin-packing** — Stage 1 packs
-groups onto nodes, Stage 2 replicates hot experts within each node, Stage 3 packs replicas onto GPUs
-within each node — with `balanced_packing` written as the textbook sequential greedy (sort descending,
-drop each item on the least-loaded non-full pack). Each later rung replaces exactly these definitions.
+Every valid plan must satisfy: `E % num_groups == 0`, `num_groups % num_nodes == 0`, `num_gpus % num_nodes == 0`, `num_replicas % num_gpus == 0`; each GPU hosts exactly `num_replicas // num_gpus` physical experts; every logical expert keeps ≥ 1 replica; `logcnt.sum(-1) == num_replicas` per layer.
+
+The starting point is the scaffold default: **hierarchical greedy bin-packing** — Stage 1 packs groups onto nodes, Stage 2 replicates hot experts within each node, Stage 3 packs replicas onto GPUs within each node — with `balanced_packing` written as the textbook sequential greedy (sort descending, drop each item on the least-loaded non-full pack). A candidate replacement changes only these definitions.
 
 ```python
 # EDITABLE region of custom_eplb.py (lines 62-209) — default fill: hierarchical greedy bin-packing
@@ -175,8 +133,7 @@ def rebalance_experts(
 
 ## Evaluation settings
 
-Four MoE deployments derived from real architectures plus one stress configuration, each specified by
-the number of logical experts `E`, groups `G`, nodes `N`, GPUs `D`, and physical-slot budget `R`:
+Four MoE deployments derived from real architectures plus one stress configuration, each specified by the number of logical experts `E`, groups `G`, nodes `N`, GPUs `D`, and physical-slot budget `R`:
 
 | Config | E | G | N | D | R | zipf · skew |
 |---|---|---|---|---|---|---|
@@ -185,16 +142,6 @@ the number of logical experts `E`, groups `G`, nodes `N`, GPUs `D`, and physical
 | `deepseek-v2`  | 160 | 8  | 4  | 32  | 192 | 0.6 · 0.75 |
 | `stress-skew`  | 256 | 32 | 16 | 128 | 384 | 1.0 · 0.95 |
 
-`stress-skew` is a synthetic stress test: the 16-node hierarchy is the largest in the suite, the
-replication budget is tighter (1.5× rather than 2×), `groups_per_node = 2` makes Stage 1 group-to-node
-packing non-trivial, and the workload follows a long-tail Zipf distribution. Per-expert load is
-synthesized from a skewed Zipf traffic model mixed with a uniform base; seed 42.
+`stress-skew` is a synthetic stress test: the 16-node hierarchy is the largest in the suite, the replication budget is tighter (1.5× rather than 2×), `groups_per_node = 2` makes Stage 1 group-to-node packing non-trivial, and the workload follows a long-tail Zipf distribution. Per-expert load is synthesized from a skewed Zipf traffic model mixed with a uniform base; seed 42.
 
-Four metrics per config: **balance** = `mean_gpu_load / max_gpu_load` (higher better, capped at 1.0);
-**balance_node** = the same ratio at node granularity; **locality** = traffic-weighted node locality of
-replicas (`1 / nodes_per_expert` averaged over experts weighted by traffic — replicas all on one node
-score 1.0, uniformly scattered score `1/N`); **runtime_ms** = median wall time over 20 timed iterations
-(lower better). The per-config score weights the four equally; the task score is the geometric mean
-across the four configs. All three balance/locality terms are required: a flat scheme that scatters
-replicas to maximize per-GPU balance loses locality; a method that co-locates without addressing skew
-loses balance.
+Four metrics per config: **balance** = `mean_gpu_load / max_gpu_load` (higher better, capped at 1.0); **balance_node** = the same ratio at node granularity; **locality** = traffic-weighted node locality of replicas (`1 / nodes_per_expert` averaged over experts weighted by traffic — replicas all on one node score 1.0, uniformly scattered score `1/N`); **runtime_ms** = median wall time over 20 timed iterations (lower better). The per-config score weights the four equally; the task score is the geometric mean across the four configs. All three balance/locality terms are required: a flat scheme that scatters replicas to maximize per-GPU balance loses locality; a method that co-locates without addressing skew loses balance.

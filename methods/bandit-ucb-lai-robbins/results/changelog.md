@@ -1,0 +1,47 @@
+# Bandit UCB Lai-Robbins Review Changelog
+
+- `methods/bandit-ucb-lai-robbins/results/context.md:1` Verified scaffold purity: exactly five `##` sections, no target-name leak (`Lai-Robbins`, `UCB1`, `KL-UCB`), and no answer-bearing selection rule in the pre-method setup.
+- `methods/bandit-ucb-lai-robbins/results/answer.md:3` Added an explicit source-status section preserving the strict blocker: the original 1985 Lai-Robbins full-text primary is still not locally retrieved.
+- `methods/bandit-ucb-lai-robbins/results/answer.md:9` Corrected the lower-bound domain to an unstructured class `E = M_1 x ... x M_K`, so `d_inf` is not stated without its arm model class.
+- `methods/bandit-ucb-lai-robbins/results/answer.md:12` Replaced the loose `d_inf(P_i, mu*)` form with `d_inf(P_i, mu*, M_i)`.
+- `methods/bandit-ucb-lai-robbins/results/answer.md:16` Qualified the parametric KL expression by requiring a regular one-parameter family and a unique optimal parameter.
+- `methods/bandit-ucb-lai-robbins/results/answer.md:25` Generalized the Gaussian constant to known variance `sigma^2`, giving pull-count constant `2 sigma^2 / Delta_i^2`.
+- `methods/bandit-ucb-lai-robbins/results/answer.md:29` Clarified provenance: the finite-time rule is Auer-Cesa-Bianchi-Fischer UCB1, not the cyclic Lai-Robbins 1985 rule.
+- `methods/bandit-ucb-lai-robbins/results/answer.md:38` Rechecked the UCB1 pull-count constant `8 log n / Delta_i^2 + 1 + pi^2/3`.
+- `methods/bandit-ucb-lai-robbins/results/answer.md:43` Labeled the `f(t)=1+t log^2(t)` selector as a later 1-subgaussian anytime UCB refinement.
+- `methods/bandit-ucb-lai-robbins/results/answer.md:51` Added the KL-UCB caveat for Bernoulli/exponential-family information-optimal constants.
+- `methods/bandit-ucb-lai-robbins/results/answer.md:58` Renamed the code artifact functions to `select_ucb1` and `select_asymptotic_ucb` and documented the 1-based round convention.
+- `methods/bandit-ucb-lai-robbins/results/reasoning.md:39` Made the neighboring-alternative limit stay inside the arm's allowed model class.
+- `methods/bandit-ucb-lai-robbins/results/reasoning.md:42` Corrected the lower-bound denominator to `d_inf(P_i, mu*, M_i)`.
+- `methods/bandit-ucb-lai-robbins/results/reasoning.md:51` Rechecked the Gaussian KL constant for known variance and the unit-variance specialization.
+- `methods/bandit-ucb-lai-robbins/results/reasoning.md:88` Separated later UCB1 from the original 1985 Lai-Robbins allocation rule while keeping the in-frame derivation.
+- `methods/bandit-ucb-lai-robbins/results/reasoning.md:97` Restated the asymptotic Gaussian/subgaussian regret as `sum 2 log n / Delta_i`, matching `limsup R_n/log n <= sum 2/Delta_i`.
+- `methods/bandit-ucb-lai-robbins/code/ucb1_reference.py:1` Added module provenance: UCB1 follows Auer-Cesa-Bianchi-Fischer (2002) and is not the cyclic Lai-Robbins rule.
+- `methods/bandit-ucb-lai-robbins/code/ucb1_reference.py:25` Kept the UCB1 selector faithful to the paper pseudocode: unplayed-arm initialization, then `mean + sqrt(2 log t / pulls)`.
+- `methods/bandit-ucb-lai-robbins/code/ucb1_reference.py:39` Labeled the `f(t)=1+t log^2(t)` selector as a later asymptotic UCB.
+- `methods/bandit-ucb-lai-robbins/refs/final_artifact/lower_bound_and_ucb_artifact.md:3` Recorded that UCB1 is a canonical finite-time paper-pseudocode artifact from Auer-Cesa-Bianchi-Fischer, not the 1985 Lai-Robbins rule.
+- `methods/bandit-ucb-lai-robbins/refs/final_artifact/lower_bound_and_ucb_artifact.md:16` Corrected the lower-bound statement to include `E = M_1 x ... x M_K`.
+- `methods/bandit-ucb-lai-robbins/refs/final_artifact/lower_bound_and_ucb_artifact.md:41` Corrected the Gaussian KL denominator to `Delta_i^2 / (2 sigma^2)`.
+- `methods/bandit-ucb-lai-robbins/refs/final_artifact/lower_bound_and_ucb_artifact.md:70` Marked the asymptotically sharp confidence rule as later than the target primary.
+- `methods/bandit-ucb-lai-robbins/notes/source_matrix.md:3` Updated strict status with the 2026-06-18 renewed primary search and kept the method blocked.
+- `methods/bandit-ucb-lai-robbins/notes/source_matrix.md:15` Added a code evidence row and documented that no separate executable canonical release was found for the 1985 Lai-Robbins rule.
+- `methods/bandit-ucb-lai-robbins/notes/source_matrix.md:23` Recorded the 2026-06-18 failed primary retrieval search across exact-title, DOI, and PII metadata pages.
+- `methods/bandit-ucb-lai-robbins/notes/source_matrix.md:31` Added source agreement for the Lattimore-Szepesvari `f(t)=1+t log^2(t)` UCB and `dinf(P, mu*, M)` lower-bound form.
+- `methods/bandit-ucb-lai-robbins/refs/primary/lai-robbins-1985-retrieval-log.md:18` Added the 2026-06-18 primary-retrieval attempts and SciSpace/curl result.
+- `methods/bandit-ucb-lai-robbins/notes/discovery_synthesis.md:5` Updated the blocker narrative to reflect the renewed search.
+- `methods/bandit-ucb-lai-robbins/notes/discovery_synthesis.md:25` Corrected the distinctive lower-bound move to carry `M_i`.
+- `methods/bandit-ucb-lai-robbins/notes/discovery_synthesis.md:29` Rechecked Bernoulli and Gaussian constants, including general known variance.
+- `methods/bandit-ucb-lai-robbins/notes/discovery_synthesis.md:41` Corrected UCB1 provenance.
+- `methods/bandit-ucb-lai-robbins/notes/discovery_synthesis.md:51` Separated Gaussian/subgaussian asymptotic UCB from KL-shaped Bernoulli/exponential-family refinements.
+- `methods/bandit-ucb-lai-robbins/notes/synthesis.md:4` Reclassified Auer-Cesa-Bianchi-Fischer as the finite-time final artifact rather than the lower-bound primary.
+- `methods/bandit-ucb-lai-robbins/notes/synthesis.md:18` Replaced the imprecise `D(P_i || P*)` lower-bound denominator with `d_inf(P_i, mu*, M_i)`.
+- `methods/bandit-ucb-lai-robbins/notes/synthesis.md:42` Fixed the regret-sum condition to `Delta_i > 0`.
+- `methods/bandit-ucb-lai-robbins/notes/synthesis.md:49` Fixed the asymptotic UCB direction to `limsup R_n/log n <= ...`.
+- `methods/bandit-ucb-lai-robbins/notes/grounding_gaps.md:12` Updated aggregator/metadata-mirror retrieval failures after the renewed search.
+- `methods/bandit-ucb-lai-robbins/notes/grounding_gaps.md:29` Clarified that Auer UCB1 is a final-artifact paper, not the original 1985 Lai-Robbins rule.
+- `methods/bandit-ucb-lai-robbins/results/.codex_review.json:2` Preserved `codex_reviewed:false` for the independent gate because no independent review was run.
+- `methods/bandit-ucb-lai-robbins/results/.codex_review.json:4` Updated the independent-review reason, including the subagent constraint and primary-source blocker.
+- `methods/bandit-ucb-lai-robbins/results/.codex_review.json:7` Recorded this direct Codex review scope.
+- `methods/bandit-ucb-lai-robbins/notes/strict_check_output.txt:1` Added the strict-check record.
+- `methods/bandit-ucb-lai-robbins/notes/strict_check_output.txt:7` Recorded that `check_strict_method.py` is absent from the workspace.
+- `methods/bandit-ucb-lai-robbins/notes/strict_check_output.txt:10` Recorded replacement checks: Python compile, JSON validation, scaffold/leak checks, and selector smoke test.

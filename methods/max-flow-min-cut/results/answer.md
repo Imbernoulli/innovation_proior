@@ -1,99 +1,60 @@
 # The Max-Flow Min-Cut Theorem
 
-## Problem
+## Statement
 
-In a directed graph `G = (V, E)` with a source `s`, a sink `t`, and a nonnegative capacity
-`c(u→v)` on each arc, a *flow* is a function `f : E → ℝ₊` that is bounded by capacity
-(`f(e) ≤ c(e)`) and conserved at every vertex except `s` and `t` (inflow = outflow). Its
-*value* `|f|` is the net flow out of `s`. An `(s,t)`-*cut* `(S, T)` is a partition of `V` with
-`s ∈ S`, `t ∈ T`; its *capacity* `‖S,T‖ = Σ_{u∈S, v∈T} c(u→v)` counts only the arcs crossing
-forward. We want the maximum flow value and the minimum cut capacity, with a certificate that
-each is optimal.
+In a directed network `G=(V,E)` with source `s`, sink `t`, and nonnegative capacities `c(e)`, the maximum value of a feasible `s-t` flow equals the minimum capacity of an `s-t` cut:
 
-## Key idea
-
-Maximum flow and minimum cut are dual, and one constructive procedure solves both: augment the
-flow along source-to-sink paths in the *residual graph* (which contains, for each arc, a
-forward "push more" edge and a reverse "cancel existing flow" edge) until no such path remains.
-At that moment the set of vertices still reachable from `s` in the residual graph defines a cut
-every one of whose forward arcs is saturated and whose backward arcs carry no flow — so its
-capacity equals the flow value, certifying both optima simultaneously.
-
-## The theorem
-
-**Max-Flow Min-Cut Theorem.**
-In every flow network, the maximum value of an `(s,t)`-flow equals the minimum capacity of an
-`(s,t)`-cut:
+```text
+max_f |f| = min_{S: s in S, t not in S} sum_{u in S, v not in S} c(u,v).
 ```
-max_{f}  |f|   =   min_{(S,T)}  ‖S,T‖.
+
+If all capacities are integers, there is an integer-valued maximum flow.
+
+## Certificate Lemma
+
+For any feasible flow `f` and cut `(S,T)`,
+
+```text
+|f| = sum_{S->T} f - sum_{T->S} f
+     <= sum_{S->T} f
+     <= sum_{S->T} c
+     = cap(S,T).
 ```
-If all capacities are integers, there is an integer-valued maximum flow (Integrality Theorem).
 
-## Proof
+Equality holds exactly when every arc from `S` to `T` is saturated and every arc from `T` to `S` carries zero flow. Thus one matching flow/cut pair certifies both optima.
 
-**Weak duality (flow across a cut).** For any flow `f` and any cut `(S,T)`,
+## Residual Augmentation
+
+For a current flow `f`, define residual capacity
+
+```text
+c_f(u,v) = c(u,v) - f(u,v) + f(v,u),
 ```
-|f| = ∂f(s) = Σ_{v∈S} ∂f(v)                         (∂f(v)=0 for interior v, by conservation)
-    = Σ_{u∈S, v∈T} f(u→v) − Σ_{u∈T, v∈S} f(u→v)     (internal S–S arcs cancel)
-    ≤ Σ_{u∈S, v∈T} f(u→v)                           (drop the backward term, which is ≥ 0)
-    ≤ Σ_{u∈S, v∈T} c(u→v) = ‖S,T‖.                  (f ≤ c on forward arcs)
+
+where missing arcs have capacity and flow zero. The first term is unused forward capacity; the second is flow on the reverse arc that can be canceled.
+
+If the residual graph has an `s-t` path `P`, push
+
+```text
+F = min_{(u,v) in P} c_f(u,v)
 ```
-Hence `max |f| ≤ min ‖S,T‖`. Equality holds **iff** every `S→T` arc is *saturated*
-(`f = c`, second inequality tight) and every `T→S` arc is *avoided* (`f = 0`, first
-inequality tight).
 
-**Residual graph.** Given a feasible flow `f`, define the residual capacity
-```
-c_f(u→v) = (c(u→v) − f(u→v))  +  f(v→u),
-```
-the forward slack on arc `u→v` plus the cancellable flow on the reverse arc `v→u`. The
-residual graph `G_f` is the set of pairs with `c_f > 0`. If both real arcs exist, an
-augmentation step from `u` to `v` can cancel flow on `v→u` and then push any remaining
-amount on `u→v`; the two effects add because both increase the net flow from `u` to `v`.
+along it. Each residual step cancels reverse flow first and then adds any remaining amount forward. This keeps all arc flows in `[0,c]`, preserves conservation at internal vertices, and increases the flow value by `F`.
 
-**Augmenting-path theorem.** Exactly one of two cases holds.
+If no residual `s-t` path exists, let `S` be the vertices reachable from `s` in the residual graph. Then `t` is outside `S`. No residual edge leaves `S`, so every original arc from `S` to `T` is saturated and every original arc from `T` to `S` carries zero flow. By the certificate lemma, `|f|=cap(S,T)`, so `f` is maximum and `(S,T)` is minimum.
 
-- *There is an `s→t` path `P` in `G_f`.* Let `F = min_{e∈P} c_f(e) > 0`. For each residual
-  step `u→v`, cancel `min(F, f(v→u))` units on the reverse real arc, then push the remaining
-  amount on the forward real arc `u→v`. The definition of `F` keeps every changed arc in
-  `[0, c]`; each interior path vertex receives `F` units of net change and sends `F` units on;
-  and the first step raises source net outflow by `F`. Thus `|f'| = |f| + F`, so `f` is
-  **not** maximum.
-- *There is no `s→t` path in `G_f`.* Let `S = {v : v reachable from s in G_f}` and `T = V∖S`;
-  then `s∈S`, `t∈T`. For `u∈S, v∈T`: no residual edge leaves `S`, so any real arc `u→v` has
-  `c(u→v) − f(u→v) = 0` (**saturated**) and any real arc `v→u` has `f(v→u) = 0` (**avoided**,
-  else its reverse residual edge would reach `v`). By the equality condition,
-  `|f| = ‖S,T‖`, so `f` is a maximum flow and `(S,T)` a minimum cut.
-
-The feasible-flow polytope is nonempty and compact, so a maximum flow exists; for that flow
-the first case is impossible, hence the second case supplies an equal cut. Therefore
-`max |f| = min ‖S,T‖`. ∎
-
-**Integrality / termination.** With integer capacities, `f = 0` and every `c_f` start
-integral and stay integral, so each augmentation has `F ≥ 1` and raises `|f|` by ≥ 1; the
-value is bounded by `‖{s}, V∖{s}‖`, so the process halts, with an integral optimum. (Rational
-capacities scale to this case; with irrational capacities and bad path choices the process can
-fail to terminate.)
-
-## Algorithm and the Edmonds–Karp bound
-
-Ford–Fulkerson: from the zero flow, repeatedly find an augmenting path in `G_f` and augment,
-until none exists; then read off the cut `S`. With *arbitrary* augmenting paths the number of
-augmentations can be `Θ(|f*|)` (exponential in the input size). **Edmonds–Karp:** always
-choose a *shortest* (fewest-arc) augmenting path, found by breadth-first search. Then the BFS
-distance `δ(s, v)` is monotone non-decreasing across augmentations: any newly created residual
-edge is the reverse of an edge on the previous shortest path, and using it in a shorter new path
-would force the endpoint distance to have increased by two, a contradiction. Once an edge is a
-bottleneck, it must be recreated by a later reverse use before it can be a bottleneck again, so
-one endpoint's BFS distance rises by at least two between such events. Each edge is therefore a
-bottleneck `O(V)` times, giving `O(VE)` augmentations at `O(E)` each, hence **`O(VE²)`** total —
-independent of the capacity values.
+## Algorithm
 
 ```python
 from collections import deque
 
-def max_flow(cap, s, t):
-    """cap[u][v] = capacity of arc u->v. Returns (value, flow, min_cut_S)."""
+
+def max_flow_min_cut(cap, s, t):
+    """Return (value, flow, S), where S is the source side of a minimum cut.
+
+    cap[u][v] is the capacity of arc u->v. Missing arcs have capacity 0.
+    Uses shortest residual augmenting paths, i.e. Edmonds-Karp.
+    """
     if s == t:
         raise ValueError("source and sink must be distinct")
 
@@ -109,75 +70,63 @@ def max_flow(cap, s, t):
             if c_uv < 0:
                 raise ValueError("capacities must be nonnegative")
             neighbors[u].add(v)
-            neighbors[v].add(u)          # the opposite direction may cancel flow
+            neighbors[v].add(u)
 
     flow = {u: {v: 0 for v in capacity[u]} for u in vertices}
 
-    def available_room(u, v):
-        # residual capacity: unused u->v capacity plus cancellable v->u flow
+    def residual(u, v):
         return capacity[u].get(v, 0) - flow[u].get(v, 0) + flow[v].get(u, 0)
 
-    def find_source_sink_route():
-        # Edmonds-Karp: BFS gives a shortest augmenting path in the residual graph.
+    def bfs():
         parent = {s: None}
         q = deque([s])
         while q:
             u = q.popleft()
             for v in neighbors[u]:
-                if v not in parent and available_room(u, v) > 0:
+                if v not in parent and residual(u, v) > 0:
                     parent[v] = u
                     if v == t:
                         return parent
                     q.append(v)
         return None
 
-    def push(parent):
-        # Bottleneck residual capacity along the path.
-        F, v = float("inf"), t
-        while parent[v] is not None:
-            u = parent[v]
-            F = min(F, available_room(u, v))
-            v = u
-
-        # Implement each residual step by canceling reverse flow first,
-        # then pushing any remaining amount on the forward arc.
+    def augment(parent):
+        amount = float("inf")
         v = t
         while parent[v] is not None:
             u = parent[v]
-            cancel = min(F, flow[v].get(u, 0))
+            amount = min(amount, residual(u, v))
+            v = u
+
+        v = t
+        while parent[v] is not None:
+            u = parent[v]
+            cancel = min(amount, flow[v].get(u, 0))
             if cancel:
                 flow[v][u] -= cancel
-            forward = F - cancel
+            forward = amount - cancel
             if forward:
                 flow[u][v] += forward
             v = u
-        return F
-
-    def certifying_cut():
-        # Vertices still reachable from s in the residual graph form the cut.
-        S, q = {s}, deque([s])
-        while q:
-            u = q.popleft()
-            for v in neighbors[u]:
-                if v not in S and available_room(u, v) > 0:
-                    S.add(v)
-                    q.append(v)
-        return S
+        return amount
 
     value = 0
     while True:
-        parent = find_source_sink_route()
+        parent = bfs()
         if parent is None:
             break
-        value += push(parent)
+        value += augment(parent)
 
-    return value, {u: dict(flow[u]) for u in vertices if flow[u]}, certifying_cut()
+    S = {s}
+    q = deque([s])
+    while q:
+        u = q.popleft()
+        for v in neighbors[u]:
+            if v not in S and residual(u, v) > 0:
+                S.add(v)
+                q.append(v)
+
+    return value, {u: dict(flow[u]) for u in vertices if flow[u]}, S
 ```
 
-## Why it works, in one line
-
-The value of any flow is its net crossing of any cut, hence at most the cut's forward
-capacity; a residual graph whose reverse edges undo committed flow lets augmenting paths reach
-the optimum; and when no augmenting path remains, the source-reachable set is a cut that is
-forced saturated-forward and idle-backward, so flow value = cut capacity — proving max-flow =
-min-cut and certifying both at once.
+With integer capacities, each augmentation raises the value by at least `1`, so the basic method terminates and returns an integral optimum. With breadth-first shortest augmenting paths, residual distances never decrease and each edge can be a bottleneck only `O(V)` times; hence there are `O(VE)` augmentations and total running time `O(VE^2)`.

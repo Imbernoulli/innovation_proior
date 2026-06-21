@@ -1,4 +1,4 @@
-# Context: AHC039 "Purse Seine Fishing" — grid-cell greedy region growing
+# Context: AHC039 "Purse Seine Fishing" — designing a rectilinear net
 
 ## Research question
 
@@ -7,29 +7,32 @@ AtCoder AHC039: place one axis-aligned **rectilinear simple polygon** (the net) 
 `b` = sardine caught (fish inside or on the boundary count). Constraints: vertex count
 `4 ≤ m ≤ 1000`; axis-parallel edges; simple polygon; perimeter `≤ 4 × 10^5`. There are
 `N = 5000` mackerel and `N = 5000` sardine, drawn from overlapping clustered shoals, so the species
-interleave and the right net is an irregular rectilinear region — not a box.
+interleave across the plane.
 
-## Why grid cells
+The problem allows up to a thousand vertices and any rectilinear shape; the question is how to
+design and search over such a net so it captures as much of the mackerel-minus-sardine surplus as
+the layout permits.
 
-A single rectangle (the natural baseline) is convex and cannot bend its boundary around interior
-sardine. The problem allows up to a thousand vertices, so we want a net whose boundary follows the
-*shape* of where the mackerel are. The most direct way to get an arbitrary rectilinear region is to
-build it from grid cells: bucket the sea into a `G × G` grid, give each cell weight
-`(#mackerel − #sardine)`, and let the net be a connected, hole-free subset of cells. The outer
-boundary of such a subset is automatically a simple rectilinear polygon, and `a − b` is the sum of
-the chosen cells' weights — turning "design a rectilinear net" into "select a good connected cell
-region."
+## Baseline
 
-## The greedy and its hazards
+A single axis-aligned **rectangle** is the natural starting point: a four-vertex net chosen by a 2D
+prefix-sum sweep over the species counts. Bucket the sea into a grid, give each cell weight
+`(#mackerel − #sardine)`, build the prefix sums of those weights, and over all axis-aligned cell
+rectangles whose perimeter is `≤ 4 × 10^5` pick the one of maximum summed weight. The rectangle uses
+four of the thousand available vertices and its boundary is a box.
 
-Grow from the densest cell, at each step adding the highest-weight admissible frontier cell. Two
-invariants must hold under each add: the running boundary-edge count must keep the traced perimeter
-`≤ 4 × 10^5`, and the region must stay hole-free (checked by flood-filling the outside from the grid
-border). A purely-positive greedy freezes early on the sardine collar around a good region, so we
-allow bridging through negative cells while tracking and restoring the best total weight seen.
-Because one resolution is never right for every layout, we sweep a few `G` values and keep the best;
-and we include the best prefix-sum rectangle as a candidate so the method never scores below the
-rectangle baseline.
+## A grid representation of arbitrary rectilinear nets
+
+A direct way to express an arbitrary rectilinear region is to build it from grid cells: bucket the
+sea into a `G × G` grid, weight each cell `(#mackerel − #sardine)`, and let the net be a connected,
+hole-free subset of cells. The outer boundary of such a subset is a simple rectilinear polygon (the
+unit edges where an inside cell meets an outside cell or the grid border), and `a − b` is the sum of
+the chosen cells' weights. This recasts "design a rectilinear net" as "select a connected,
+hole-free cell region," a combinatorial selection problem. Validity of a candidate region is two
+local-to-global conditions: the traced boundary's perimeter must stay `≤ 4 × 10^5` (adding a cell
+changes the boundary-edge count by a known local amount — it removes shared edges with inside
+neighbors and adds its exposed edges), and the region must stay hole-free (no empty pocket enclosed,
+testable by flood-filling the outside from the grid border).
 
 ## Evaluation
 
@@ -38,10 +41,3 @@ point-in-rectilinear-polygon evaluator with full validity checks; boundary ⇒ i
 instances (seeds 1–5), 5000 mackerel + 5000 sardine each; reported metric is the raw mean objective
 `a − b + 1`. AtCoder performance frontier (relative scale, not the raw objective): ALE-Agent `2880`
 (5th) → ShinkaEvolve `3140` (2nd).
-
-## Limitation this method exposes
-
-The greedy is a single forward pass with no reversibility: it cannot remove a cell it later regrets,
-it spends its perimeter budget on whatever ragged boundary it stumbles into, and it is at the mercy
-of a static grid resolution. Those three failures are all failures of irreversibility — the opening
-for replacing greedy growth with reversible local *search* (simulated annealing).

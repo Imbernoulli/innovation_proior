@@ -133,38 +133,4 @@ conservation laws are already known and against which any general theorem must b
 - **Worked single-integral examples** with f = ½u′² and its boundary-modified partners, used to exhibit
   first integrals, non-linear dependencies among them, and the freedom of adding a divergence to f.
 
-## Code framework
 
-A variational identity has no numerical algorithm to implement. The natural computational object is a
-small symbolic check: given a Lagrangian and a one-parameter transformation, form a candidate current and
-verify its divergence vanishes on solutions. The scaffold for such a check leaves the current-building
-slot empty.
-
-```python
-import sympy as sp
-
-# Primitives that already exist: symbolic variables, fields, derivatives.
-x = sp.symbols('x')                      # independent variable (1-D for illustration)
-u = sp.Function('u')(x)                  # dependent variable u(x)
-up = u.diff(x)                           # u'(x)
-
-def lagrangian(u, up, x):
-    # A concrete variational integrand f(x, u, u'); supplied per example.
-    raise NotImplementedError
-
-def euler_lagrange_expression(f, u, up, x):
-    # ψ = ∂f/∂u − d/dx(∂f/∂u'): the left-hand side of the EL equation. Standard.
-    return sp.diff(f, u) - sp.diff(sp.diff(f, up), x)
-
-def infinitesimal_transformation():
-    # Returns (Δx, Δu): the lowest-order generator of the continuous symmetry. Supplied per example.
-    raise NotImplementedError
-
-def candidate_current(f, u, up, x):
-    # TODO: build the current to be checked.
-    pass
-
-def check_conservation(f, u, up, x):
-    # TODO: verify the current is conserved on solutions of the EL equation.
-    pass
-```

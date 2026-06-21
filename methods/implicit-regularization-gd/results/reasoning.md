@@ -1,113 +1,150 @@
-Let me start from the thing that keeps nagging me. We train these big classifiers with no weight penalty at all, push the training loss to essentially zero, keep going long past the point where every training point is classified correctly, and the test error keeps getting better. By any honest accounting of capacity that shouldn't happen — when the model has more parameters than examples, the set of weight vectors achieving zero training error is a whole continuum, and most of them are garbage on held-out data. Zhang, Bengio, Hardt, Recht, Vinyals showed the same network that generalizes on real labels will happily memorize random labels to zero error; Neyshabur and Srebro keep pointing out that among the many zero-error minima, the ones gradient descent actually lands on are special. So the objective is not what's selecting the solution. The *optimizer* is. There's a bias hiding in gradient descent itself, and that bias — not any regularizer I wrote down — is what's generalizing.
+I start with the obstruction, because it tells me what kind of answer is even possible. In least squares I can talk about a finite interpolating solution, and gradient descent has a clean row-space story that ends at the minimum Euclidean norm interpolant. Here that story breaks immediately. On separable classification data, logistic loss and exponential loss do not have a finite minimizer. If a vector separates the data, scaling it up keeps decreasing the loss. So I cannot ask which finite minimizer gradient descent selects. The norm is going to infinity.
 
-I want to pin that bias down exactly, not gesture at it. And I want to do it for the loss people actually use in classification, the logistic loss and its multiclass cousin the softmax cross-entropy, not for some toy I can solve.
+What remains is direction. The prediction only depends on the sign of `w^T x`, so if anything converges it has to be `w(t)/||w(t)||`. I need to understand a trajectory that runs away to infinity and still settles in direction.
 
-Now, for the squared loss this story already has a clean ending. Underdetermined least squares, gradient descent from the origin: the gradient always lies in the span of the data, so $\mathbf{w}(t)-\mathbf{w}(0)$ never leaves that span, and the unique interpolating solution inside the row space is the minimum-Euclidean-norm one. So "the bias of gradient descent" there *is* "minimum norm." Nice and finite. Let me just try to copy that over to the logistic loss and see what happens.
+First I check that the trajectory really has to run away. Let the labels be absorbed into the examples, so separability gives me some `w_*` with `w_*^T x_n > 0` for all `n`. For any finite `w`,
 
-And immediately I hit a wall. The logistic loss on separable data has no finite minimizer. Think about it: $\ell(u)=\log(1+e^{-u})$ is strictly decreasing and only reaches zero as $u\to+\infty$. If the data is separable, I can keep increasing every margin $\mathbf{w}^\top\mathbf{x}_n$ — relabel so $y_n=1$ throughout, so separable means some $\mathbf{w}_*$ has $\mathbf{w}_*^\top\mathbf{x}_n>0$ for all $n$ — and the loss keeps dropping but never bottoms out. To actually send the loss to zero I have to send $\lVert\mathbf{w}\rVert\to\infty$. So "minimum norm" is meaningless: the norm is *unbounded*. There is no finite point to converge to.
-
-Let me make sure that's really what gradient descent does and I'm not imagining it. Suppose there were a finite critical point, $\nabla\mathcal{L}(\mathbf{w})=\mathbf{0}$. The gradient of $\mathcal{L}(\mathbf{w})=\sum_n\ell(\mathbf{w}^\top\mathbf{x}_n)$ is $\sum_n\ell'(\mathbf{w}^\top\mathbf{x}_n)\mathbf{x}_n$. Dot it with the separator $\mathbf{w}_*$: $\mathbf{w}_*^\top\nabla\mathcal{L}=\sum_n\ell'(\mathbf{w}^\top\mathbf{x}_n)\,(\mathbf{w}_*^\top\mathbf{x}_n)$. Every $\ell'<0$ and every $\mathbf{w}_*^\top\mathbf{x}_n>0$, so this is a sum of strictly negative terms — it can't be zero for any finite $\mathbf{w}$. No finite critical point exists. But gradient descent on a $\beta$-smooth loss with a small enough step does drive $\nabla\mathcal{L}\to\mathbf{0}$ (the standard telescoping argument: $\mathcal{L}(\mathbf{w}(t+1))\le\mathcal{L}(\mathbf{w}(t))-\eta(1-\tfrac{\beta\eta}{2})\lVert\nabla\mathcal{L}(\mathbf{w}(t))\rVert^2$, sum it, get $\sum_t\lVert\nabla\mathcal{L}\rVert^2<\infty$, so the gradient norm vanishes). The only way for the gradient to vanish without a finite critical point is for $\lVert\mathbf{w}(t)\rVert\to\infty$ with every $\mathbf{w}(t)^\top\mathbf{x}_n\to\infty$ — because only then does each $\ell'(\mathbf{w}^\top\mathbf{x}_n)\to0$. So: the loss goes to zero, the norm blows up, every margin diverges. Good — that's confirmed, and it tells me the finite-minimizer picture is simply the wrong frame.
-
-So forget the norm. For *prediction* I only care about the sign of $\mathbf{w}^\top\mathbf{x}$, which means I only care about the *direction* $\mathbf{w}(t)/\lVert\mathbf{w}(t)\rVert$. The right question isn't "what finite point," it's: does this direction converge, and to what? That's the whole reframing. Everything now hangs on the asymptotics of a unit vector while the thing itself runs off to infinity.
-
-Let me get intuition by taking the cleanest possible case: pure exponential loss $\ell(u)=e^{-u}$, and continuous-time gradient flow $\dot{\mathbf{w}}=-\nabla\mathcal{L}$. The negative gradient is
-$$-\nabla\mathcal{L}(\mathbf{w})=\sum_{n}e^{-\mathbf{w}^\top\mathbf{x}_n}\,\mathbf{x}_n.$$
-Now I know all the margins $\mathbf{w}^\top\mathbf{x}_n$ are blowing up. Suppose the direction settles to some limit $\mathbf{w}_\infty$, so I can write $\mathbf{w}(t)=g(t)\mathbf{w}_\infty+\boldsymbol{\rho}(t)$ with $g(t)\to\infty$ and $\boldsymbol{\rho}$ subdominant. Then
-$$-\nabla\mathcal{L}=\sum_n e^{-g(t)\,\mathbf{w}_\infty^\top\mathbf{x}_n}\,e^{-\boldsymbol{\rho}(t)^\top\mathbf{x}_n}\,\mathbf{x}_n.$$
-Stare at the exponents $-g(t)\,\mathbf{w}_\infty^\top\mathbf{x}_n$. As $g\to\infty$ they all march off to $-\infty$, but *not at the same speed*: the point with the **smallest** value of $\mathbf{w}_\infty^\top\mathbf{x}_n$ has the least-negative exponent and so decays slowest; every other term is exponentially smaller. The gradient is, asymptotically, a non-negative combination of *only* the points with the minimal margin. Those are exactly the closest points to the separating plane — the support vectors.
-
-That's the moment. The exponential tail acts like a soft-max-turned-hard selector: it throws away every point except the closest ones, and rebuilds the update direction purely out of them. So the limiting direction $\mathbf{w}_\infty$ is itself a non-negative combination of support vectors. Initial conditions are washed out because $\lVert\mathbf{w}(t)\rVert\to\infty$ drowns the finite $\mathbf{w}(0)$.
-
-Now let me push that into an actual characterization instead of a feeling. Scale $\mathbf{w}_\infty$ so the minimal margin is $1$: define $\hat{\mathbf{w}}=\mathbf{w}_\infty/\min_n\mathbf{w}_\infty^\top\mathbf{x}_n$. Then $\hat{\mathbf{w}}$ is still a non-negative combination of support vectors, $\hat{\mathbf{w}}=\sum_n\alpha_n\mathbf{x}_n$ with $\alpha_n\ge0$, and for every $n$ I have one of two situations: either $n$ is a support vector, on the margin, with $\hat{\mathbf{w}}^\top\mathbf{x}_n=1$ and possibly $\alpha_n>0$; or $n$ is interior, $\hat{\mathbf{w}}^\top\mathbf{x}_n>1$, and it contributed nothing, $\alpha_n=0$. Written out:
-$$\hat{\mathbf{w}}=\sum_n\alpha_n\mathbf{x}_n,\qquad \big(\alpha_n\ge0\ \text{and}\ \hat{\mathbf{w}}^\top\mathbf{x}_n=1\big)\ \text{OR}\ \big(\alpha_n=0\ \text{and}\ \hat{\mathbf{w}}^\top\mathbf{x}_n>1\big).$$
-I've seen these exact conditions before. These are the KKT conditions of
-$$\hat{\mathbf{w}}=\arg\min_{\mathbf{w}}\lVert\mathbf{w}\rVert^2\ \ \text{s.t.}\ \ \forall n:\ \mathbf{w}^\top\mathbf{x}_n\ge1.$$
-That's the hard-margin SVM — the $L_2$ maximum-margin separator. So the direction gradient descent runs off in is the maximum-margin direction, with no margin term and no norm penalty anywhere in the objective. The optimizer is doing $L_2$-margin maximization on its own.
-
-I shouldn't be *too* surprised — there's a known cousin of this. Rosset, Zhu and Hastie (2004) looked at the *explicit* regularization path $\mathbf{w}_\lambda=\arg\min\sum_n\ell(\mathbf{w}^\top\mathbf{x}_n)+\lambda\lVert\mathbf{w}\rVert_p^p$ and proved that as $\lambda\to0$, $\mathbf{w}_\lambda/\lVert\mathbf{w}_\lambda\rVert_p$ tends to the maximum-$L_p$-margin separator. Their engine was exactly the exponential-tail observation: if one unit-norm direction has strictly larger minimal margin than another, then once you scale both up enough, the larger-margin one has strictly smaller loss, because the loss is dominated by its worst point and $e^{-d\,m_1}\ll e^{-d\,m_2}$ when $m_1>m_2$. Same selection-by-closest-point mechanism. But Rosset's is about a *path of penalized optima*, sending an explicit $\lambda$ to zero — and at any finite $\lambda$ the penalized minimizer is *not* max-margin. I'm not adding any penalty; I want the bias that's *implied by the algorithm*. And Telgarsky (2013) showed coordinate descent on the exponential loss — which is what AdaBoost is — drifts to the maximum-$L_1$-margin solution. But coordinate descent lives in $L_1$ geometry; it picks one feature at a time. Plain gradient descent moves in the $L_2$ geometry, isotropically, so I should expect — and I'm now getting — the $L_2$ max margin, a different answer for a different algorithm. (And Gunasekar et al. found gradient descent on a matrix factorization seems to seek minimum nuclear norm, but only as a conjecture and only with infinitesimal initialization and step size — the bias there was fragile, init- and rate-dependent. I'd love an answer that *doesn't* depend on where I start.)
-
-OK, so I have a guess for the limit. Guessing isn't proving. I still owe four things: that the direction has a limit at all; that $\mathbf{w}_\infty^\top\mathbf{x}_n>0$ everywhere (so it really separates); what the growth rate $g(t)$ is; and a bound on the residual $\boldsymbol{\rho}(t)$ that includes the fact that real logistic loss is only *approximately* exponential and that I'm taking discrete steps, not flowing.
-
-The growth rate first, because it controls everything else. Try the ansatz $\mathbf{w}(t)=\hat{\mathbf{w}}\,g(t)+\boldsymbol{\rho}(t)$ and ask what $g$ must be for self-consistency. On a support vector, $\hat{\mathbf{w}}^\top\mathbf{x}_n=1$, so $e^{-\mathbf{w}(t)^\top\mathbf{x}_n}\approx e^{-g(t)}$. The negative gradient on the support vectors is then of order $e^{-g(t)}$. But in gradient flow, $\dot{\mathbf{w}}=-\nabla\mathcal{L}$, and the left side's leading piece is $\hat{\mathbf{w}}\,\dot g(t)$. So I need the gradient magnitude $e^{-g(t)}$ to match $\dot g(t)$:
-$$\dot g \sim e^{-g}\ \Rightarrow\ \frac{d}{dt}e^{g}\sim 1\ \Rightarrow\ e^{g}\sim t\ \Rightarrow\ g(t)\sim\log t.$$
-There it is. The weight grows *logarithmically*, $\mathbf{w}(t)\sim\hat{\mathbf{w}}\log t$, not like $t$ or $\sqrt t$ — because the gradient that drives it is itself shrinking exponentially in $g$, and the only growth law that's a fixed point of "the gradient feeds back into the position" is $\log t$. Let me sanity-check on the most trivial dataset: one point $\mathbf{x}=(1,0)$, exp loss, continuous time. Then $\dot w_1=e^{-w_1}$, $\dot w_2=0$, which integrates exactly to $w_1(t)=\log(t+e^{w_1(0)})$, $w_2(t)=w_2(0)$. Logarithmic growth in the one informative coordinate, with the initial condition surviving only as a bounded additive constant inside the log. Beautiful — that's the whole structure in miniature, and it confirms the residual stays *bounded* (here, literally constant).
-
-Now I have a concrete target: prove $\mathbf{w}(t)=\hat{\mathbf{w}}\log t+\boldsymbol{\rho}(t)$ with $\boldsymbol{\rho}(t)$ bounded. The clean way is to define the residual relative to the predicted leading behavior and show *it* can't grow. Let me also peel off a constant offset, because the support-vector gradient won't reconstruct $\hat{\mathbf{w}}$ exactly unless I tune the constant term. Set
-$$\mathbf{r}(t)=\mathbf{w}(t)-\hat{\mathbf{w}}\log t-\tilde{\mathbf{w}},$$
-where $\tilde{\mathbf{w}}$ is a constant vector I'll choose. What should it be? On the support vectors, the leading gradient is $\sum_{n\in\mathcal{S}}e^{-\mathbf{w}(t)^\top\mathbf{x}_n}\mathbf{x}_n\approx\frac{1}{t}\sum_{n\in\mathcal{S}}e^{-\tilde{\mathbf{w}}^\top\mathbf{x}_n}\mathbf{x}_n$ (pulling out $e^{-\log t}=1/t$). I *want* this to equal $\hat{\mathbf{w}}/t$, because the leading time-derivative of $\hat{\mathbf{w}}\log t$ is $\hat{\mathbf{w}}/t$, and if the gradient's dominant $1/t$ term cancels that, the residual stops getting pushed around. So I'll demand
-$$\eta\,e^{-\tilde{\mathbf{w}}^\top\mathbf{x}_n}=\alpha_n\quad\forall n\in\mathcal{S},$$
-because then $\eta\sum_{n\in\mathcal{S}}e^{-\tilde{\mathbf{w}}^\top\mathbf{x}_n}\mathbf{x}_n=\sum_{n\in\mathcal{S}}\alpha_n\mathbf{x}_n=\hat{\mathbf{w}}$, exactly the KKT reconstruction. So $\tilde{\mathbf{w}}$ is the precise second-order offset that makes the support-vector gradient reproduce the max-margin vector. (For this to be a well-defined finite $\tilde{\mathbf{w}}$ I need every $\alpha_n>0$ on the support set; I'll come back to whether that holds.)
-
-Let me run the continuous-time exp-loss case all the way through first, because it's self-contained and shows the skeleton. I track $\tfrac12\frac{d}{dt}\lVert\mathbf{r}\rVert^2=\dot{\mathbf{r}}^\top\mathbf{r}$. Now $\dot{\mathbf{r}}=\dot{\mathbf{w}}-\frac{1}{t}\hat{\mathbf{w}}=-\nabla\mathcal{L}-\frac{1}{t}\hat{\mathbf{w}}$, so
-$$\tfrac12\frac{d}{dt}\lVert\mathbf{r}\rVert^2=\sum_n e^{-\mathbf{w}^\top\mathbf{x}_n}\,\mathbf{x}_n^\top\mathbf{r}-\frac{1}{t}\hat{\mathbf{w}}^\top\mathbf{r}.$$
-Split the sum into support ($\mathcal{S}$) and non-support. On the support vectors, substitute $\mathbf{w}^\top\mathbf{x}_n=\log t+\tilde{\mathbf{w}}^\top\mathbf{x}_n+\mathbf{r}^\top\mathbf{x}_n$ (using $\hat{\mathbf{w}}^\top\mathbf{x}_n=1$), so $e^{-\mathbf{w}^\top\mathbf{x}_n}=\frac1t e^{-\tilde{\mathbf{w}}^\top\mathbf{x}_n}e^{-\mathbf{r}^\top\mathbf{x}_n}$. The support part plus the $-\frac1t\hat{\mathbf{w}}^\top\mathbf{r}$ term, using $\hat{\mathbf{w}}=\sum_{n\in\mathcal{S}}e^{-\tilde{\mathbf{w}}^\top\mathbf{x}_n}\mathbf{x}_n$ (taking $\eta=1$ here for the continuous case), becomes
-$$\frac1t\sum_{n\in\mathcal{S}}e^{-\tilde{\mathbf{w}}^\top\mathbf{x}_n}\Big(e^{-\mathbf{r}^\top\mathbf{x}_n}-1\Big)(\mathbf{x}_n^\top\mathbf{r}).$$
-And here's the gift: for any real $z$, $z(e^{-z}-1)\le0$ — when $z>0$, $e^{-z}-1<0$; when $z<0$, $e^{-z}-1>0$; either way the product is $\le0$. With $z=\mathbf{x}_n^\top\mathbf{r}$, every support term is $\le0$. So the support vectors, together with the cancellation I engineered via $\tilde{\mathbf{w}}$, can only *shrink* $\lVert\mathbf{r}\rVert^2$. The non-support part: $\theta:=\min_{n\notin\mathcal{S}}\hat{\mathbf{w}}^\top\mathbf{x}_n>1$ strictly (interior points have margin above $1$), so each non-support term carries $e^{-\log t\cdot\hat{\mathbf{w}}^\top\mathbf{x}_n}=t^{-\hat{\mathbf{w}}^\top\mathbf{x}_n}\le t^{-\theta}$, and using $xe^{-x}\le1$ the whole non-support contribution is bounded by $\frac{1}{t^\theta}\sum_{n\notin\mathcal{S}}e^{-\tilde{\mathbf{w}}^\top\mathbf{x}_n}$. Putting it together,
-$$\tfrac12\frac{d}{dt}\lVert\mathbf{r}\rVert^2\le \frac{C}{t^\theta},\qquad\theta>1,$$
-and $\int^\infty t^{-\theta}\,dt<\infty$. So $\lVert\mathbf{r}(t)\rVert^2$ is bounded for all time, which means $\boldsymbol{\rho}(t)=\mathbf{r}(t)+\tilde{\mathbf{w}}$ is bounded, which means $\mathbf{w}(t)=\hat{\mathbf{w}}\log t+O(1)$. The exponent $\theta>1$ on the non-support points — i.e. the *strict* margin gap between the closest and the next-closest points — is exactly what makes that integral converge. Done, for the clean case.
-
-Two things made that work and I want to name them, because they're the crux. The support-vector term was forced non-positive by the elementary inequality $z(e^{-z}-1)\le0$ *after* I chose $\tilde{\mathbf{w}}$ to cancel the leading $\hat{\mathbf{w}}/t$. The non-support term decayed faster than $1/t$ because their margins strictly exceed $1$. So the dangerous $1/t$ piece is annihilated by construction, and everything left is summable. The residual literally cannot run away.
-
-Now the real case: a fixed step size $\eta$ (discrete steps, not a flow) and the logistic loss, which is only *approximately* exponential. I have to redo this with finite differences and with the tail being two-sided rather than exact. The tail structure I'll lean on: $-\ell'(u)$ has a *tight exponential tail*, meaning there are constants $\mu_+,\mu_->0$ with $-\ell'(u)\le(1+e^{-\mu_+u})e^{-u}$ above and $-\ell'(u)\ge(1-e^{-\mu_-u})e^{-u}$ below, for large $u$ (I've absorbed the leading constants by rescaling $\mathbf{x}_n$ and $\eta$, so the tail is $e^{-u}$). Logistic and exp both satisfy this — for logistic, $-\ell'(u)=1/(1+e^u)=e^{-u}/(1+e^{-u})$, which is sandwiched this way. These $\mu_\pm$ measure how fast the loss's derivative relaxes to the pure exponential; they'll show up as the rates at which the correction terms die.
-
-Discrete version of $\lVert\mathbf{r}\rVert^2$: I expand
-$$\lVert\mathbf{r}(t+1)\rVert^2=\lVert\mathbf{r}(t+1)-\mathbf{r}(t)\rVert^2+2\big(\mathbf{r}(t+1)-\mathbf{r}(t)\big)^\top\mathbf{r}(t)+\lVert\mathbf{r}(t)\rVert^2,$$
-and I need both new terms summable. The first term, the squared step: $\mathbf{r}(t+1)-\mathbf{r}(t)=-\eta\nabla\mathcal{L}(\mathbf{w}(t))-\hat{\mathbf{w}}[\log(t+1)-\log t]$. Squaring,
-$$\lVert\mathbf{r}(t+1)-\mathbf{r}(t)\rVert^2=\eta^2\lVert\nabla\mathcal{L}\rVert^2+\lVert\hat{\mathbf{w}}\rVert^2\log^2(1+t^{-1})+2\eta\,\hat{\mathbf{w}}^\top\nabla\mathcal{L}\,\log(1+t^{-1}).$$
-The cross term is $\le0$: $\hat{\mathbf{w}}^\top\nabla\mathcal{L}=\sum_n\ell'(\mathbf{w}^\top\mathbf{x}_n)\,\hat{\mathbf{w}}^\top\mathbf{x}_n\le0$ because $\hat{\mathbf{w}}^\top\mathbf{x}_n\ge1>0$ and $\ell'\le0$. And $\log(1+t^{-1})\le t^{-1}$ gives $\log^2(1+t^{-1})\le t^{-2}$. So
-$$\lVert\mathbf{r}(t+1)-\mathbf{r}(t)\rVert^2\le\eta^2\lVert\nabla\mathcal{L}(\mathbf{w}(t))\rVert^2+\lVert\hat{\mathbf{w}}\rVert^2 t^{-2}.$$
-Both are summable: the $t^{-2}$ obviously, and $\sum_t\lVert\nabla\mathcal{L}\rVert^2<\infty$ is exactly the descent lemma I used at the start (Ganti 2015's argument — sum the per-step decrease of a $\beta$-smooth loss, here $\beta=\beta_\ell\sigma_{\max}^2(\mathbf{X})$, valid for $\eta<2/(\beta_\ell\sigma_{\max}^2)$). So $\sum_t\lVert\mathbf{r}(t+1)-\mathbf{r}(t)\rVert^2=C_0<\infty$. That's the first term handled. It also tells me consecutive norms barely move: $\big|\,\lVert\mathbf{r}(t+1)\rVert-\lVert\mathbf{r}(t)\rVert\,\big|\to0$.
-
-The dangerous term is the cross term $\big(\mathbf{r}(t+1)-\mathbf{r}(t)\big)^\top\mathbf{r}(t)$ — this is the discrete analog of $\dot{\mathbf{r}}^\top\mathbf{r}$ and it's where all the work is. Expand it the same way:
-$$\big(\mathbf{r}(t+1)-\mathbf{r}(t)\big)^\top\mathbf{r}=-\eta\sum_n\ell'(\mathbf{w}^\top\mathbf{x}_n)\,\mathbf{x}_n^\top\mathbf{r}-\hat{\mathbf{w}}^\top\mathbf{r}\,\log(1+t^{-1}).$$
-Group it into three pieces, mirroring the flow proof: a $\hat{\mathbf{w}}^\top\mathbf{r}$ piece coming from the mismatch between $\log(1+t^{-1})$ and its leading $t^{-1}$; the non-support sum; and the support sum (where I again use $\eta e^{-\tilde{\mathbf{w}}^\top\mathbf{x}_n}=\alpha_n$, hence $\hat{\mathbf{w}}=\eta\sum_{\mathcal{S}}e^{-\tilde{\mathbf{w}}^\top\mathbf{x}_n}\mathbf{x}_n$, to turn the $-\hat{\mathbf{w}}^\top\mathbf{r}\,t^{-1}$ into a per-support-vector correction). Let me bound each.
-
-The $\hat{\mathbf{w}}^\top\mathbf{r}$ piece: $\hat{\mathbf{w}}^\top\mathbf{r}\,[t^{-1}-\log(1+t^{-1})]$, and $t^{-1}-\log(1+t^{-1})\le t^{-2}$. I just need $\hat{\mathbf{w}}^\top\mathbf{r}$ not to blow up faster than $t$. It doesn't: $\hat{\mathbf{w}}^\top\mathbf{r}=\hat{\mathbf{w}}^\top(\mathbf{w}(0)-\eta\sum_{u<t}\nabla\mathcal{L}(\mathbf{w}(u))-\hat{\mathbf{w}}\log t-\tilde{\mathbf{w}})$. The $\log t$ part is $O(\log t)$, and the gradient sum is controlled by splitting at $\sqrt t$: the early gradients are $O(1)$ each but there are only $\sqrt t$ of them, and the late gradients are $o(1)$ each (since $\nabla\mathcal{L}\to0$) times at most $t$ of them, giving $\sqrt t\cdot O(1)+t\cdot o(1)=o(t)$. So $\hat{\mathbf{w}}^\top\mathbf{r}=o(t)$, and this piece is $o(t)\cdot t^{-2}=o(t^{-1})$ — and in fact, projecting onto the support-vector span (since $\bar{\mathbf{P}}_1\hat{\mathbf{w}}=0$, as $\hat{\mathbf{w}}$ is a combination of support vectors), it's $O(t^{-2})$ whenever the in-span part of $\mathbf{r}$ is bounded.
-
-The non-support sum: using the tail bound $-\ell'(u)\le2e^{-u}$ for large $u$, each non-support term carries $e^{-\mathbf{w}^\top\mathbf{x}_n}=t^{-\hat{\mathbf{w}}^\top\mathbf{x}_n}e^{-\tilde{\mathbf{w}}^\top\mathbf{x}_n}e^{-\mathbf{r}^\top\mathbf{x}_n}$, and with $xe^{-x}\le1$ the whole thing is bounded by $\eta N e^{-\min_n\tilde{\mathbf{w}}^\top\mathbf{x}_n}\,t^{-\theta}$ with $\theta>1$. Summable. Same mechanism as before: interior points decay strictly faster than $1/t$.
-
-The support sum is the subtle one, because logistic isn't exactly exponential and I'm in discrete time, so the clean $z(e^{-z}-1)\le0$ doesn't apply verbatim — there's a tail correction of size $e^{-\mu_\pm u}$ riding on top. I have to case-split on the sign and size of $\mathbf{x}_n^\top\mathbf{r}(t)$. When $\mathbf{x}_n^\top\mathbf{r}\ge0$: the leading behavior is the same favorable $\frac1t e^{-\tilde{\mathbf{w}}^\top\mathbf{x}_n}(e^{-\mathbf{x}_n^\top\mathbf{r}}-1)\mathbf{x}_n^\top\mathbf{r}\le0$, plus a correction proportional to the tail factor $t^{-\mu_+}$. If $|\mathbf{x}_n^\top\mathbf{r}|$ is tiny — at most $C_0 t^{-0.5\mu_+}$ — the correction is bounded by $t^{-1-1.5\mu_+}$ (the $t^{-1}$ from the support-vector prefactor times $t^{-0.5\mu_+}$ from the small displacement times $t^{-\mu_+}$ from the tail), summable since $1+1.5\mu_+>1$. If $|\mathbf{x}_n^\top\mathbf{r}|$ is moderate — larger than $C_0 t^{-0.5\mu_+}$ — then the favorable $(e^{-\mathbf{x}_n^\top\mathbf{r}}-1)$ term dominates the $t^{-\mu_+}$ tail correction (because $t^{-0.5\mu_+}$ decays *slower* than $t^{-\mu_+}$, so eventually the genuine displacement beats the tail), and the term is $\le0$. If $|\mathbf{x}_n^\top\mathbf{r}|\ge\epsilon_2$ is genuinely order-one, the term is strictly negative of order $-t^{-1}$. The case $\mathbf{x}_n^\top\mathbf{r}<0$ is symmetric, using the lower tail bound with $\mu_-$ instead, again giving either $t^{-1-0.5\mu_-}$ (summable) or a strictly negative $-t^{-1}$.
-
-Collecting all cases: there's a threshold behavior. If $\lVert\mathbf{P}_1\mathbf{r}(t)\rVert$ (the residual's component in the support-vector span) is below $\epsilon_1$, every dangerous term is either non-positive or bounded by a summable $t^{-1-c}$ tail, and overall $\big(\mathbf{r}(t+1)-\mathbf{r}(t)\big)^\top\mathbf{r}(t)\le C_1 t^{-\min(\theta,\,1+1.5\mu_+,\,1+0.5\mu_-)}$ — and every exponent in that min exceeds $1$, so this is summable. Therefore $\lVert\mathbf{r}(t)\rVert^2\le\lVert\mathbf{r}(t_1)\rVert^2+C_0+2\sum_u C_1 u^{-(\,>1)}$ stays bounded. The residual is bounded in the non-degenerate case where the finite offset exists; $\mathbf{w}(t)=\hat{\mathbf{w}}\log t+\tilde{\mathbf{w}}+O(1)$; and so $\mathbf{w}(t)/\lVert\mathbf{w}(t)\rVert\to\hat{\mathbf{w}}/\lVert\hat{\mathbf{w}}\rVert$ for the realistic loss and discrete steps.
-
-And the *other* branch of that case-split is actually a bonus. When $\lVert\mathbf{P}_1\mathbf{r}(t)\rVert\ge\epsilon_1$, the support-vector terms aren't merely non-positive — they sum to a strictly negative $-C_2 t^{-1}$. Geometrically: if some $\lVert\mathbf{P}_1\mathbf{r}\rVert\ge\epsilon_1$ then $\max_{n\in\mathcal{S}}|\mathbf{x}_n^\top\mathbf{r}|\ge\epsilon_2$ for $\epsilon_2=\sqrt{\sigma_{\min}^2(\mathbf{X}_\mathcal{S})\epsilon_1^2/|\mathcal{S}|}$ (since the support vectors span $\mathbf{P}_1$'s range with smallest singular value $\sigma_{\min}(\mathbf{X}_\mathcal{S})$), so at least one term is the strictly-negative kind. So $\big(\mathbf{r}(t+1)-\mathbf{r}(t)\big)^\top\mathbf{r}(t)\le -C_2 t^{-1}<0$ whenever $\mathbf{r}$ has a non-trivial in-span component. Now if the support vectors actually span the full data ($\mathrm{rank}(\mathbf{X}_\mathcal{S})=\mathrm{rank}(\mathbf{X})$), the gradient — which lives in $\mathrm{span}(\mathbf{X})$ — lies entirely in $\mathrm{span}(\mathbf{X}_\mathcal{S})$, so the off-span component $\bar{\mathbf{P}}_1\mathbf{r}$ is *never updated* (and I can absorb it into $\tilde{\mathbf{w}}$ without disturbing the support-vector conditions). Then $\mathbf{r}=\mathbf{P}_1\mathbf{r}$, and I can drive it to zero by contradiction: if $\lVert\mathbf{r}\rVert\ge\epsilon_1$ persisted, summing $-C_2/u$ would send $\lVert\mathbf{r}\rVert^2\to-\infty$, impossible. So $\lVert\mathbf{r}\rVert$ must repeatedly dip below $\epsilon_1$, and once below, the bounded-step property and the summable-tail bound keep it within $\epsilon_1+\epsilon_0+\epsilon_2$ of zero — for every $\epsilon$, hence $\lVert\mathbf{r}(t)\rVert\to0$. In that spanning case $\boldsymbol{\rho}(t)\to\tilde{\mathbf{w}}$ exactly: the iterate converges to $\hat{\mathbf{w}}\log t+\tilde{\mathbf{w}}$, with the offset $\tilde{\mathbf{w}}$ pinned down by $\eta e^{-\tilde{\mathbf{w}}^\top\mathbf{x}_n}=\alpha_n$ together with the frozen off-span part fixed by $\mathbf{w}(0)$.
-
-I owe one more check: is $\tilde{\mathbf{w}}$ even well-defined? It requires $\alpha_n>0$ for every support vector — if some support vector had $\alpha_n=0$, then $\eta e^{-\tilde{\mathbf{w}}^\top\mathbf{x}_n}=0$ forces $\tilde{\mathbf{w}}^\top\mathbf{x}_n\to\infty$, no finite offset. When does that happen? The KKT dual is $\mathbf{1}=\mathbf{X}_\mathcal{S}^\top\hat{\mathbf{w}}=\mathbf{X}_\mathcal{S}^\top\mathbf{X}_\mathcal{S}\,\boldsymbol{\alpha}_\mathcal{S}$. For a generic dataset no more than $d$ points lie on a common hyperplane, so $|\mathcal{S}|\le d$ and $\mathbf{X}_\mathcal{S}^\top\mathbf{X}_\mathcal{S}$ is invertible, giving the unique $\boldsymbol{\alpha}_\mathcal{S}=(\mathbf{X}_\mathcal{S}^\top\mathbf{X}_\mathcal{S})^{-1}\mathbf{1}$. Each $\alpha_n$ is then a *rational function* of the entries of $\mathbf{X}_\mathcal{S}$; it vanishes only on the zero set of a polynomial, which has measure zero (and that polynomial isn't identically zero — at $\mathbf{X}_\mathcal{S}^\top=[\mathbf{I},\mathbf{0}]$ all $\alpha_n=1$). So for *almost every* dataset all $\alpha_n>0$, $\tilde{\mathbf{w}}$ exists, and the residual is bounded — the headline result. The degenerate case (a support vector with $\alpha_n=0$) is measure zero; handling it means recursively projecting the zero-coefficient support vectors and adding smaller terms $\hat{\mathbf{w}}_m\log^{\circ m}t$ for $m\ge2$, while the remaining residual is bounded. Relative to the leading $\hat{\mathbf{w}}\log t$ term this is only $O(\log\log t)$, so the direction still converges; the general rate is $O(\log\log t/\log t)$, and the generic rate is $O(1/\log t)$.
-
-Now the rate, which is the practically important part. In the generic case I have $\mathbf{w}(t)=\hat{\mathbf{w}}\log t+\boldsymbol{\rho}(t)$ with $\boldsymbol{\rho}$ bounded. Normalize:
-$$\frac{\mathbf{w}(t)}{\lVert\mathbf{w}(t)\rVert}=\frac{\hat{\mathbf{w}}+\boldsymbol{\rho}(t)/\log t}{\lVert\hat{\mathbf{w}}\rVert\sqrt{1+2\boldsymbol{\rho}^\top\hat{\mathbf{w}}/(\lVert\hat{\mathbf{w}}\rVert^2\log t)+\lVert\boldsymbol{\rho}\rVert^2/(\lVert\hat{\mathbf{w}}\rVert^2\log^2 t)}}.$$
-Expand $1/\sqrt{1+x}=1-\tfrac12 x+\tfrac38 x^2+\dots$ with $x=O(1/\log t)$, multiply out, and the $O(1/\log t)$ terms collect into
-$$\frac{\mathbf{w}(t)}{\lVert\mathbf{w}(t)\rVert}=\frac{\hat{\mathbf{w}}}{\lVert\hat{\mathbf{w}}\rVert}+\Big(\mathbf{I}-\frac{\hat{\mathbf{w}}\hat{\mathbf{w}}^\top}{\lVert\hat{\mathbf{w}}\rVert^2}\Big)\frac{\boldsymbol{\rho}(t)}{\lVert\hat{\mathbf{w}}\rVert}\frac{1}{\log t}+O\!\Big(\frac{1}{\log^2 t}\Big).$$
-The projection $\mathbf{I}-\hat{\mathbf{w}}\hat{\mathbf{w}}^\top/\lVert\hat{\mathbf{w}}\rVert^2$ kills the part of $\boldsymbol{\rho}$ along $\hat{\mathbf{w}}$ — only the perpendicular component of the bounded residual survives, divided by $\log t$. So
-$$\Big\lVert\frac{\mathbf{w}(t)}{\lVert\mathbf{w}(t)\rVert}-\frac{\hat{\mathbf{w}}}{\lVert\hat{\mathbf{w}}\rVert}\Big\rVert=O\!\Big(\frac{1}{\log t}\Big).$$
-The angle (one minus the cosine) is the square of that, $O(1/\log^2 t)$ in the generic case. The margin gap closes as $1/\lVert\hat{\mathbf{w}}\rVert-\min_n\mathbf{x}_n^\top\mathbf{w}(t)/\lVert\mathbf{w}(t)\rVert=O(1/\log t)$ even in the degenerate case, because the extra iterated-log corrections are orthogonal to the support-vector component that determines the minimum. Meanwhile the loss itself: $\mathcal{L}(\mathbf{w}(t))=\sum_n e^{-\mathbf{w}^\top\mathbf{x}_n}(1+\dots)=\frac1t\sum_{n\in\mathcal{S}}e^{-\boldsymbol{\rho}^\top\mathbf{x}_n}+O(t^{-\min(\theta,1+\mu_+)})=O(1/t)$.
-
-Hold those two side by side. The loss decays like $1/t$. In the generic case the direction converges like $1/\log t$. That's an *exponential* gap. To get the normalized predictor within $\epsilon$ of max-margin I need $\log t\sim1/\epsilon$, i.e. $t\sim e^{1/\epsilon}$, by which point the loss is $\sim e^{-1/\epsilon}$ — astronomically small. So the margin keeps meaningfully improving long, long after the training loss looks like it's flatlined at zero. *That's* why it pays to keep optimizing past zero training error: the loss has stopped being informative, but the direction — the thing that actually generalizes — is still crawling toward the max-margin solution at its glacial $1/\log t$ pace.
-
-There's a sharp practical corollary hiding in here, and it cuts against intuition. Take a validation point $\mathbf{x}_k$ that the max-margin solution gets wrong, $\hat{\mathbf{w}}^\top\mathbf{x}_k<0$ — there will generically be some, since $\hat{\mathbf{w}}$ has zero *training* error but not zero population error. Its logistic loss is $\log(1+e^{-\mathbf{w}(t)^\top\mathbf{x}_k})\ge-\mathbf{w}(t)^\top\mathbf{x}_k=-\log t\,\hat{\mathbf{w}}^\top\mathbf{x}_k-\boldsymbol{\rho}^\top\mathbf{x}_k$, and since $\hat{\mathbf{w}}^\top\mathbf{x}_k<0$ this *grows* like $+\log t$. So the validation **loss** increases without bound, $\Omega(\log t)$, even as the validation **error** can be falling (the margin is improving, more points get classified correctly or more confidently). The loss on the still-misclassified points blows up because $\lVert\mathbf{w}\rVert\to\infty$ amplifies their negative margins, and that increase outweighs the gains. The lesson is concrete: don't early-stop on a rising validation loss or a flat training loss — those are artifacts of the diverging norm, not of overfitting. Watch the validation 0–1 error instead.
-
-Let me make sure this is really a property of *gradient* descent and the *exponential* tail, not something generic. The exponential tail did two indispensable jobs: it concentrated the gradient onto the smallest-margin points (giving the SVM support structure), and it set the self-consistent growth law to $\log t$. A heavier, say polynomial, tail wouldn't concentrate — many points would keep contributing — so there'd be no reason to land on the max-margin direction. And the *gradient* part matters: gradient descent moves isotropically in the $L_2$ metric, which is why the $L_2$ norm is what gets minimized in direction. Swap the algorithm and the implied geometry changes — coordinate descent (AdaBoost) selects one coordinate at a time and lands on the *$L_1$* max margin (Telgarsky 2013); an adaptive method like Adam rescales each coordinate by its own running gradient statistics, distorting the metric, and need not reach the $L_2$ max margin at all. Momentum and stochasticity, on the other hand, leave the underlying metric in place, so the same bias should survive under the corresponding convergence conditions. The bias is a joint property of the loss tail and the optimizer's geometry.
-
-Does it reach beyond linear predictors? Two honest footholds. Multiclass: with a softmax output and cross-entropy loss and one weight vector $\mathbf{w}_k$ per class, the same machinery gives $\mathbf{w}_k(t)=\hat{\mathbf{w}}_k\log t+\boldsymbol{\rho}_k$, where the $\hat{\mathbf{w}}_k$ solve the multiclass SVM $\min\sum_k\lVert\mathbf{w}_k\rVert^2$ s.t. $\mathbf{w}_{y_n}^\top\mathbf{x}_n\ge\mathbf{w}_k^\top\mathbf{x}_n+1$ — provided the analog of the $\tilde{\mathbf{w}}$-defining equations, $\eta e^{-\mathbf{x}_n^\top(\tilde{\mathbf{w}}_{y_n}-\tilde{\mathbf{w}}_k)}=\alpha_{n,k}$, has a solution (which I can't yet establish generically the way I did for binary, so I'll flag it as an assumption). Deep nets: if I optimize a *single* weight layer and, after some $t_0$, the ReLU activation pattern stops switching, then the network output for each input is *linear* in that layer's weights, $u_n=\tilde{\mathbf{x}}_{l,n}^\top\mathbf{w}_l$, with the upstream/downstream factors fixed. The loss is then exactly my linear problem on the effective features $\{\tilde{\mathbf{x}}_{l,n},y_n\}$, which must be separable since the loss reaches zero — so the theorem applies verbatim, and that layer's direction converges to the max-$L_2$-margin separator in effective-feature space. It's non-convex (except for the last layer) yet the conclusion holds, because the separability and exponential-tail mechanics don't care about convexity. Those are footholds, not the general theory, but they tell me the same margin-maximizing pressure is what's quietly happening when we train a real network on cross-entropy with no regularizer.
-
-Let me close the causal chain in one breath. The losses we use to classify have no finite minimizer on separable data, so the weight norm diverges and only the direction is meaningful — that forces the question onto $\mathbf{w}(t)/\lVert\mathbf{w}(t)\rVert$. The exponential tail of the loss makes the gradient, asymptotically, a non-negative combination of just the smallest-margin points; scaling that to unit minimal margin yields exactly the KKT conditions of the hard-margin SVM, so the limiting direction *is* the $L_2$ max-margin solution, independent of initialization and step size within the descent range. Demanding the gradient's leading term cancel the growth of the leading direction pins the growth at $\hat{\mathbf{w}}\log t$ and, generically, a fixed offset $\tilde{\mathbf{w}}$; the residual bound (built from $z(e^{-z}-1)\le0$ on the support vectors plus the strictly-super-$1/t$ decay $t^{-\theta}$ on the interior points) shows the leftover stays bounded in that case. In degenerate cases the recursive iterated-log terms account for the extra drift. Either way the direction converges; generically it moves at the painfully slow rate $O(1/\log t)$ while the loss races down at $O(1/t)$. The optimizer regularizes by itself; the regularizer is the algorithm.
-
-So the final form I land on is:
-
-**Theorem (implicit bias of gradient descent).** Let the data be linearly separable, let $\ell$ be a $\beta$-smooth, monotone strictly-decreasing loss whose negative derivative has a tight exponential tail (logistic, exp, probit), and run gradient descent $\mathbf{w}(t+1)=\mathbf{w}(t)-\eta\nabla\sum_n\ell(\mathbf{w}^\top\mathbf{x}_n)$ with $\eta<2\beta^{-1}\sigma_{\max}^{-2}(\mathbf{X})$ from any $\mathbf{w}(0)$. Then
-$$\mathbf{w}(t)=\hat{\mathbf{w}}\log t+\boldsymbol{\rho}(t),\qquad \hat{\mathbf{w}}=\arg\min_{\mathbf{w}}\lVert\mathbf{w}\rVert^2\ \text{s.t.}\ \forall n:\ \mathbf{w}^\top\mathbf{x}_n\ge1,$$
-with $\boldsymbol{\rho}(t)$ bounded for almost every dataset and at most $O(\log\log t)$ in degenerate cases. Hence $\mathbf{w}(t)/\lVert\mathbf{w}(t)\rVert\to\hat{\mathbf{w}}/\lVert\hat{\mathbf{w}}\rVert$, with $\lVert\mathbf{w}(t)/\lVert\mathbf{w}(t)\rVert-\hat{\mathbf{w}}/\lVert\hat{\mathbf{w}}\rVert\rVert=O(1/\log t)$ generically and $O(\log\log t/\log t)$ for all datasets, margin gap $O(1/\log t)$, while $\mathcal{L}(\mathbf{w}(t))=O(1/t)$ and the validation loss can grow as $\Omega(\log t)$.
-
-A two-line numerical illustration on the one-point dataset, where the asymptotics are exact:
-
-```python
-import numpy as np
-# x = (1,0); exponential-loss gradient flow integrates exactly to w1(t) = log(t + e^{w1(0)})
-w0 = np.array([0.3, 0.7])                    # arbitrary start
-t  = np.logspace(0, 8, 9)
-w1 = np.log(t + np.exp(w0[0]))               # informative coord grows like log t
-w2 = np.full_like(t, w0[1])                  # uninformative coord frozen
-direction = np.stack([w1, w2]) / np.linalg.norm(np.stack([w1, w2]), axis=0)
-# max-margin direction is (1,0); direction[:, -1] -> [~1, ~0], approached as 1/log t
-print(np.round(direction[:, ::4], 4))        # columns at t = 1, 1e4, 1e8
+```text
+w_*^T grad L(w) = sum_n ell'(w^T x_n) w_*^T x_n.
 ```
+
+Every term is negative because `ell' < 0` and `w_*^T x_n > 0`. Therefore no finite critical point exists. But the smooth-descent inequality for a small enough fixed step size gives `sum_t ||grad L(w(t))||^2 < infinity`, hence `grad L(w(t)) -> 0`. With no finite critical point, the only way this can happen is that the margins go to infinity and the loss goes to zero at infinity. So the direction question is not cosmetic; it is the only possible question.
+
+Now I look at the gradient in the simplest case, the exponential loss. It is
+
+```text
+-grad L(w) = sum_n exp(-w^T x_n) x_n.
+```
+
+Suppose the direction is beginning to look like some vector `w_infty`, and write `w = g(t) w_infty + rho(t)` with `g(t)` large. Then each example is weighted by
+
+```text
+exp(-g(t) w_infty^T x_n) exp(-rho(t)^T x_n).
+```
+
+The smallest value of `w_infty^T x_n` gives the least negative exponent. As `g(t)` grows, every point with larger margin is exponentially suppressed relative to these smallest-margin points. The gradient stops seeing the whole dataset equally. It concentrates on the points closest to the separating hyperplane.
+
+That concentration is the missing mechanism. If the late gradient is made from the smallest-margin points, then the limiting direction itself must be a nonnegative combination of those points, because the finite initialization is negligible compared with the diverging norm. I rescale the candidate limit so its smallest margin is one and call it `what`. Then I get
+
+```text
+what = sum_n alpha_n x_n,
+```
+
+with `alpha_n >= 0` only on points satisfying `what^T x_n = 1`, and `alpha_n = 0` on points satisfying `what^T x_n > 1`. These are not just suggestive conditions. They are the KKT conditions for
+
+```text
+min_w ||w||^2
+subject to w^T x_n >= 1 for all n.
+```
+
+So the asymptotic gradient points me at the hard-margin `L_2` SVM direction. The loss tail selects the support vectors; the Euclidean update geometry of full gradient descent selects the `L_2` max-margin separator.
+
+This is already more specific than saying optimization affects generalization. The older regularization-path result says that explicit `L_p` penalties, sent to zero, approach `L_p` max-margin directions. Boosting results say coordinate descent has `L_1` margin behavior. Those are important clues, but they are not this trajectory. I am not adding a vanishing penalty, and I am not taking coordinate steps. I am asking what unregularized full-gradient descent does while its norm diverges.
+
+I still have to make the argument self-consistent. If the leading direction is `what`, how fast does its coefficient grow? On a support vector, `what^T x_n = 1`. If `w(t) = what g(t) + rho(t)`, then the support-vector gradient is on the order of `exp(-g(t))`. In continuous time the leading motion is `what g'(t)`. Matching the two asks for
+
+```text
+g'(t) ~= exp(-g(t)).
+```
+
+This integrates to `g(t) ~= log t`. That is why the leading term is not linear in `t` or a power of `t`; the gradient shrinks exponentially in the margin, and the fixed point of that feedback is logarithmic growth.
+
+Now I need a residual proof. I define
+
+```text
+r(t) = w(t) - what log t - wtilde.
+```
+
+The offset `wtilde` is not decoration. It is chosen so that the leading support-vector gradient exactly reconstructs the SVM vector:
+
+```text
+eta exp(-x_n^T wtilde) = alpha_n,  n in S.
+```
+
+Then
+
+```text
+eta sum_{n in S} exp(-x_n^T wtilde) x_n = what.
+```
+
+This means the `what/t` term coming from the derivative of `what log t` cancels the `1/t` support-vector part of the gradient.
+
+In continuous time with exact exponential loss, the residual calculation is almost bare. The derivative of `||r||^2/2` splits into support-vector terms and non-support-vector terms. The support-vector contribution becomes
+
+```text
+(1/t) sum_{n in S} exp(-x_n^T wtilde)
+       (exp(-x_n^T r) - 1)(x_n^T r).
+```
+
+For every real `z`, `z(exp(-z)-1) <= 0`. So the support vectors do not push the residual outward; after the cancellation, they damp it. The non-support vectors have `what^T x_n > 1`. If
+
+```text
+theta = min_{n not in S} what^T x_n,
+```
+
+then `theta > 1`, and their terms are bounded by a multiple of `t^{-theta}`. That is summable. A nonpositive support part plus a summable interior-point part means `||r(t)||` stays bounded.
+
+The discrete logistic proof has to pay for the facts that `log(t+1)-log t` is only approximately `1/t` and that the logistic derivative is only asymptotically exponential. But the shape is the same. The squared residual step expands as
+
+```text
+||r(t+1)||^2
+= ||r(t+1)-r(t)||^2
+  + 2(r(t+1)-r(t))^T r(t)
+  + ||r(t)||^2.
+```
+
+The first new term is summable because the smooth-descent lemma gives `sum_t ||grad L(w(t))||^2 < infinity` and because `log^2(1+1/t)` is bounded by `t^{-2}`. The second term is the real work. I use the tight exponential-tail bounds on `-ell'(u)` and split support-vector cases by the sign and size of `x_n^T r(t)`. The leading exponential part again gives the favorable `z(exp(-z)-1)` sign. The tail errors are smaller powers such as `t^{-1-1.5 mu_+}` and `t^{-1-0.5 mu_-}`, while non-support points still give `t^{-theta}`. The combined bound is
+
+```text
+(r(t+1)-r(t))^T r(t)
+<= C t^{-min(theta, 1+1.5 mu_+, 1+0.5 mu_-)}.
+```
+
+All exponents are larger than one, so the accumulated error is finite and the residual is bounded.
+
+There is also a sharper fact hiding inside the same proof. If the support-vector component of the residual is not small, at least one support vector has `|x_n^T r(t)|` bounded away from zero. Then the support-vector term is not merely nonpositive; it is at most `-C/t`. If the support vectors span the data, the off-span residual is frozen by the dynamics and can be absorbed into `wtilde`. The recurring `-C/t` drift then forces the residual to converge to zero; otherwise summing `-C/t` would eventually make `||r||^2` negative, impossible.
+
+I have to account for degeneracy. The clean offset equation needs positive dual coefficients on the support vectors. Generically this is true. For a fixed support set, the KKT equations give
+
+```text
+alpha_S = (X_S^T X_S)^{-1} 1.
+```
+
+Each coefficient is a rational function of the data. A coefficient vanishes only on a polynomial zero set, except in the impossible case where that polynomial is identically zero. So zero support-vector coefficients occur only on measure-zero datasets.
+
+When such a zero coefficient does occur, the finite offset cannot absorb everything. The proof then recurses: take the zero-coefficient support vectors, project away the span already explained by positive-coefficient support vectors, and solve another max-margin problem in the remaining subspace. This adds smaller iterated-log terms:
+
+```text
+w(t) = sum_{m=1}^M what_m log^{circ m}(t) + rho(t).
+```
+
+The first term is still `what_1 log t`, where `what_1` is the original hard-margin direction, so the normalized direction still converges to the SVM direction. The price is a possible `log log t` factor in the direction rate.
+
+Now the rates fall out of normalization. In the generic case,
+
+```text
+w(t) = what log t + rho(t)
+```
+
+with bounded `rho(t)`. Dividing by the norm and expanding `1/sqrt(1+x)` gives
+
+```text
+w(t)/||w(t)||
+= what/||what||
+  + (I - what what^T / ||what||^2) rho(t) / (||what|| log t)
+  + O(1/log^2 t).
+```
+
+Only the residual component perpendicular to `what` matters to first order. Therefore the direction converges as `O(1/log t)` for almost every dataset and as `O(log log t / log t)` in the degenerate all-dataset statement. The margin gap is `O(1/log t)`. The loss, however, is dominated by support vectors:
+
+```text
+L(w(t)) = (1/t) sum_{n in S} exp(-rho(t)^T x_n) + smaller terms,
+```
+
+so it is `O(1/t)`.
+
+This separation of rates explains why the theorem matters. The loss can look essentially finished while the classifier direction is still moving slowly toward the large-margin separator. To get an `epsilon` direction error, I need roughly `log t` on the order of `1/epsilon`, so the loss has already become exponentially small in `1/epsilon`. Continuing optimization past zero training error is not just polishing a numerical objective; it keeps changing the normalized predictor.
+
+It also explains the validation-loss paradox. If the limiting training separator misclassifies a validation point, then the norm growth makes that point's logistic loss grow like `log t`, even while margins and classification error can improve. So validation loss can rise for a reason that is not ordinary overfitting. The correct observable for this asymptotic story is classification error or margin behavior, not loss alone.
+
+The final result I arrive at is this: for separable homogeneous linear classification with a smooth monotone loss whose negative derivative has a tight exponential tail, fixed-step gradient descent with a small enough step size satisfies `w(t) = what log t + rho(t)`, where `what` is the hard-margin `L_2` SVM solution; the residual is bounded generically and grows at most like `log log t` in degenerate cases; therefore the normalized iterate converges to the `L_2` max-margin direction. The reason is the exponential tail's support-vector concentration plus the `log t` cancellation that keeps the residual bounded. The insight is not merely that optimization matters; it is that the asymptotic gradient has an invariant support-vector geometry that exposes the optimizer's hidden regularizer.

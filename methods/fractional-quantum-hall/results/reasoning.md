@@ -1,0 +1,37 @@
+I start from the part that refuses to fit into the independent-electron picture. In a large magnetic field the kinetic energy is already quantized into Landau levels, and inside one Landau level there is a huge degeneracy. For the integer Hall effect that is not fatal. If I fill an entire Landau level, Pauli exclusion leaves no low-energy one-electron rearrangement, and flux insertion pumps whole electrons across the sample. Disorder can localize the extra tail states and broaden the plateau. That story is beautiful, but it has a hard edge: the pumped charge is the electron charge, so the Hall conductance comes out in integer multiples of `e^2/h`.
+
+At `nu = 1/3` that edge cuts the wrong way. The lowest Landau level is only one third filled. There is no next Landau level gap being crossed by the last electron. The ordinary band-filling logic says I have a partially filled, massively degenerate level, which should be compressible. But the experiment is telling me that the system forms a plateau and loses longitudinal dissipation. So the gap cannot be a kinetic-energy gap. It has to be a many-body gap produced after I project into the lowest Landau level. The state is not independent electrons filling a fraction of a band. The state itself has to be a correlated fluid.
+
+What does the lowest Landau level let me write? In symmetric-gauge coordinates `z_j = x_j + i y_j`, the kinetic-energy constraint says the wavefunction is an analytic polynomial times a Gaussian,
+
+`Psi(z_1,...,z_N) = P(z_1,...,z_N) exp[-sum_j |z_j|^2/(4 ell^2)]`.
+
+All the interesting physics is now in `P`, because the kinetic energy is already quenched. Since the particles are electrons, `P` has to be antisymmetric. The filled lowest Landau level uses the Vandermonde factor `prod_{i<j}(z_i-z_j)`. That already creates one zero whenever two electrons meet, exactly the Pauli zero. At `nu = 1`, the number of flux quanta is about the largest power of any coordinate, so one zero per pair gives the right density.
+
+But at `nu = 1/3`, there are three flux quanta per electron. The wavefunction has room for more angular momentum, and the Coulomb problem is asking for more separation. If I multiply each pair factor by itself three times, then every pair coincidence becomes a third-order zero:
+
+`prod_{i<j}(z_i-z_j)^3`.
+
+That still stays antisymmetric because `3` is odd. More importantly, the wavefunction now suppresses close approaches much more strongly than Pauli exclusion alone. This is not pairing electrons into molecules or Cooper-like pairs. It is changing the collective relative motion of the whole electron fluid so that each electron carries a correlation hole around it.
+
+The filling comes out of the same counting. In `prod_{i<j}(z_i-z_j)^m`, the largest power of a coordinate is `m(N-1)`, so the droplet occupies about `N_phi = m(N-1)` flux quanta. In the thermodynamic limit, `nu = N/N_phi -> 1/m`. For electrons I need odd `m`, and the first nontrivial case is `m = 3`. The candidate state is therefore
+
+`Psi_m(z_1,...,z_N) = prod_{i<j}(z_i-z_j)^m exp[-sum_j |z_j|^2/(4 ell^2)]`,
+
+with odd `m`. It is a lowest-Landau-level state, it is antisymmetric, it puts zeros where Coulomb repulsion hurts most, and its polynomial degree fixes the fractional filling.
+
+Now I have to check that this is a fluid and not a hidden crystal. The probability density is `|Psi_m|^2`. If I rewrite it as a Boltzmann weight, it becomes the partition weight of a classical two-dimensional plasma: the logarithms from `|z_i-z_j|^{2m}` are repulsions among fictitious plasma particles, and the Gaussian is a neutralizing background. A stable one-component plasma screens. Screening means the interior density is uniform rather than crystalline for small odd `m`, and neutrality fixes that density to one electron per `m` flux quanta. So the same pairwise zeros that keep electrons apart do not freeze them into fixed positions. They produce a uniform correlated liquid.
+
+The next danger is compressibility. A partially filled independent-electron level is soft because I can rearrange electrons without paying kinetic energy. Here a density change is not a local one-particle rearrangement. To change density I have to change the number of correlation holes or flux quanta assigned to the fluid. The plasma analogy says the droplet screens and resists long-wavelength charge imbalance; the projected density mode has suppressed weight at small wavevector. That is the physical content of incompressibility: the fluid has a preferred density fixed by `m`, and moving away from it creates charged defects rather than a smooth low-energy compression.
+
+Flux insertion makes the fractional charge unavoidable. Thread one flux quantum through a point in the fluid. Far from the point, increasing the flux adiabatically translates lowest-Landau-level orbitals inward, just as in the integer argument. But now the ground-state density is one electron per `m` flux quanta. Pulling one orbital's worth of flux through a large loop pulls only charge `e/m` through that loop. When the Hamiltonian returns to itself after one flux quantum, what remains is a localized excitation with charge `e/m`. In the wavefunction language the quasihole at position `eta` is obtained by inserting one extra zero against every electron,
+
+`Psi_h(eta; z_1,...,z_N) = prod_j (z_j - eta) Psi_m(z_1,...,z_N)`.
+
+The added zero pushes electron density away from `eta`. In the plasma picture it is a unit test charge in the fictitious plasma, screened by a missing electronic charge of magnitude `e/m`. For `m=3`, the defect carries charge `e/3`.
+
+The quasielectron is less tidy because it has to remove flux while staying in the lowest Landau level, but the mechanism is the same: the elementary charged defects are not electrons. They are disturbances of the correlated fluid. This is the decisive distinction. An electron is still the microscopic particle, but the low-energy charged object of the incompressible fluid has fractional charge because the fluid density is tied to flux in units of `1/m`.
+
+Statistics should also be different in two dimensions. If one quasihole moves around another, the wavefunction accumulates a Berry phase. Part of it is the ordinary Aharonov-Bohm phase from moving charge `e/m` through magnetic flux; the extra part comes from the missing charge bound to the other quasihole. A full loop is two exchanges, and for the `nu=1/m` fluid the exchange phase is `theta = pi/m`. So the quasiparticles are not bosons or fermions in the usual three-dimensional sense. They are anyons of the two-dimensional correlated fluid.
+
+The final object is therefore not a filled band and not a real-space bound state of a few electrons. It is an incompressible many-electron quantum liquid selected inside the degenerate lowest Landau level by Coulomb repulsion. Its algebraic signature is the order-`m` zero when two electrons coincide. Those zeros keep particles apart, the polynomial degree fixes filling `1/m`, the plasma analogy gives a uniform screened liquid with a preferred density, and flux insertion turns that preferred density into fractional quasiparticle charge. For the observed `1/3` state, the concrete artifact is `Psi_3 = prod_{i<j}(z_i-z_j)^3 exp[-sum_j |z_j|^2/(4 ell^2)]`, plus its quasihole `prod_j(z_j-eta)Psi_3`; the mechanism is a correlated incompressible quantum fluid whose elementary excitations carry `e/3` charge and exchange phase `pi/3`.

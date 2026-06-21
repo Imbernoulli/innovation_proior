@@ -39,12 +39,12 @@ For D_K=3 and N large (N≥64), this ≈ 1/9, i.e. **8–9× less computation**.
 - **Why width multiplier α (thin) instead of fewer layers (shallow)?** Empirically narrowing beats shortening at equal compute (~3% better). α∈(0,1], typical 1, 0.75, 0.5, 0.25. M→αM, N→αN. Depthwise-sep cost becomes D_K²·αM·D_F² + αM·αN·D_F² → the pointwise term scales ~α², so cost & params drop ~α². Train from scratch, not prune.
 - **Why resolution multiplier ρ?** Spatial cost scales with D_F². Set ρ implicitly via input resolution 224/192/160/128. Cost scales ρ². Combined: D_K²·αM·(ρD_F)² + αM·αN·(ρD_F)². ρ touches compute only, not params.
 - **Why little/no weight decay on depthwise filters?** They have very few parameters (D_K²·M, vs pointwise M·N), so they barely contribute capacity and regularizing them just hurts. Small models overfit less → less augmentation, no label smoothing, no auxiliary heads (vs Inception V3 training).
-- **Why BN+ReLU on both depthwise and pointwise?** Standard 2016 practice (BN, Ioffe & Szegedy 2015) for trainability; depthwise alone is linear-ish per channel, the nonlinearity + normalization between the two sublayers helps.
+- **Why BN+activation on both depthwise and pointwise?** Standard 2016 practice (BN, Ioffe & Szegedy 2015) for trainability; the paper describes BN+ReLU, while the canonical TF-Slim arg scope uses `tf.nn.relu6`.
 - **Example layer (Table 3)** internal layer D_K=3, M=N=512, D_F=14: full conv 462M mult-adds / 2.36M params → depthwise-sep 52.3M / 0.27M → α=0.75: 29.6M/0.15M → ρ=0.714 (i.e. 14→10): 15.1M/0.15M (ρ touches compute, not params).
 
 ## Canonical implementation
-- TF-Slim `mobilenet_v1.py`: depthwise = `slim.separable_conv2d(net, None, [3,3], depth_multiplier=1, stride=s)` (filters=None → depthwise only), pointwise = `slim.conv2d(net, depth, [1,1], stride=1)`; both with BN+ReLU via arg_scope. Width multiplier = `depth_multiplier` applied as `depth = max(int(d*mult), min_depth=8)`. CONV_DEFS list mirrors Table 1.
-- PyTorch (kuangliu style): depthwise = `nn.Conv2d(in,in,3,stride,1,groups=in,bias=False)`; pointwise = `nn.Conv2d(in,out,1,1,0,bias=False)`; each + BN + ReLU. `groups=in_channels` is exactly per-channel depthwise.
+- TF-Slim `mobilenet_v1.py`: depthwise = `slim.separable_conv2d(net, None, [3,3], depth_multiplier=1, stride=s)` (`num_outputs=None` → depthwise only), pointwise = `slim.conv2d(net, depth, [1,1], stride=1)`; both use BN+ReLU6 via arg_scope. Width multiplier = code parameter `depth_multiplier`, applied as `depth = max(int(d*mult), min_depth=8)`. CONV_DEFS mirrors Table 1 except it resolves the final 1024 depthwise stride as 1, consistent with the retained 7×7 map.
+- PyTorch faithful transcription: depthwise = `nn.Conv2d(in,in,3,stride,1,groups=in,bias=False)`; pointwise = `nn.Conv2d(in,out,1,1,0,bias=False)`; each + BN + ReLU6. `groups=in_channels` is exactly per-channel depthwise.
 
 ## Ancestors (load-bearing)
 - **Sifre 2014 (rigid-motion scattering, PhD thesis)** — origin of depthwise separable convolution.

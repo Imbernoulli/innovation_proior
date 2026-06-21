@@ -99,41 +99,4 @@ For a lower bound it is enough to prove that the 4-colour CNF is UNSAT. To certi
 5-chromaticity of a finite graph, the verification also includes a concrete 5-colouring
 witness.
 
-## Code framework
 
-This is a mathematical discovery: the landing artifact is an explicit finite unit-distance
-graph together with a proof that it admits no proper 4-colouring. There is no algorithm to
-tune to convergence and no benchmark to beat. What exists before the method is instead a set
-of fixed primitives — the standing apparatus that any candidate construction will be built
-out of and checked against — and a set of empty slots that the discovery itself must fill.
-Naming no conclusion, the pre-method scaffold is the following.
-
-The fixed primitives, taken as given. First, **exact-distance arithmetic.** The vertices of
-every gadget under consideration have coordinates lying in a real algebraic field obtained by
-adjoining a few square roots to the rationals — Q(√3) suffices for the rhombus, and Q(√3,√11)
-for the rotated Moser spindle, with larger square-root extensions available for more elaborate
-seeds. Because elements of such a field carry an exact representation and a decidable equality,
-the predicate "these two points are at distance exactly 1" is settled by exact arithmetic on
-squared distances, never by floating point: unit-distance is a *decidable* relation, and the
-edge set of any drawn configuration is therefore well defined and trustworthy. Second, a
-**proper-k-colouring decision check.** Given a finite graph and a value of k, there is a fixed
-way to decide whether a proper k-colouring exists — backtracking search with forcing, or the
-standard one-hot CNF encoding handed to a SAT solver — together with the convention that an
-UNSAT verdict at k = 4 is exactly a proof of non-4-colourability, and that a SAT solver can
-emit an independently checkable DRAT certificate so the verdict rests on no single program.
-Third, **rigid unit-distance gadget primitives.** The unit equilateral triangle, the unit
-rhombus (whose two acute vertices a 3-colouring forces to share a colour at distance √3), and
-the Moser spindle (χ = 4, not 3-colourable) are available as exactly realised, reusable
-building blocks, each with its known colouring behaviour, to be placed, rotated by exact
-angles, and glued.
-
-The empty slots, which the discovery must fill. **Which gadget assembly forces 5 colours:** a
-configuration must be found whose colouring constraints, propagated through copies of these
-rigid pieces, leave no consistent assignment of 4 colours — that is, the local √3-pair and
-unit-edge constraints supplied by the primitives must be combined into a global obstruction
-that the spindle alone does not produce. **How to shrink to a finite certifiable graph:** any
-first assembly is likely to be large, so a further slot is the reduction of the candidate to a
-finite graph small enough that the 4-colour decision check returns UNSAT within reach of an
-independent certificate, while its unit distances remain exactly realisable. Filling these
-slots — and only then exhibiting the explicit graph — is the discovery; the primitives above
-are what it starts from.

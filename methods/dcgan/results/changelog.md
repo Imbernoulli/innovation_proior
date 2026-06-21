@@ -1,0 +1,28 @@
+# Changelog - dcgan
+
+- `results/context.md:3` rebuilt the context as exactly five `##` sections and kept it pre-method: no target method name, no target result numbers, no final architecture constants.
+- `results/context.md:45` replaced the leaking scaffold with a pure adversarial-loop skeleton that leaves architecture, normalization, initialization, optimizer, and latent prior as open slots.
+- `results/reasoning.md:3` corrected the GAN objective signs: `D` minimizes BCE equivalent to maximizing the original value, while `G` uses the non-saturating `-log D(G(z))` update.
+- `results/reasoning.md:11` tightened the BatchNorm case split: use it in both networks, but not on the generator output or discriminator input.
+- `results/reasoning.md:17` separated training constants from architecture: weight std `0.02`, BatchNorm scale near `1`, shift `0`, and minibatch size as a training choice.
+- `results/reasoning.md:19` fixed the latent-prior inconsistency by deriving the invariant as a simple 100-dimensional independent prior rather than silently mixing uniform prose with normal-code sampling.
+- `results/reasoning.md:21` added exact transposed-convolution output-size arithmetic for `1 -> 4 -> 8 -> 16 -> 32 -> 64`.
+- `results/reasoning.md:23` added exact discriminator convolution output-size arithmetic for `64 -> 32 -> 16 -> 8 -> 4 -> 1`.
+- `results/answer.md:7` restated the final DCGAN objective and non-saturating training update with correct signs.
+- `results/answer.md:16` rebuilt the final architecture rules: strided/transposed convolutions, no fully connected hidden layers, BatchNorm exceptions, ReLU/Tanh/LeakyReLU, scaling, and initialization.
+- `results/answer.md:21` recorded the primary/public-code constant split: original reported batch size `128` and uniform latent; public Torch/PyTorch code defaults to batch size `64` and normal latent, with a Torch uniform option.
+- `results/answer.md:27` replaced the earlier sketch with a PyTorch core matching the public DCGAN example's layer order, kernel/stride/padding cases, `bias=False`, `BCELoss`, and Adam settings.
+- `results/answer.md:90` added an explicit `sample_z(..., prior="normal"|"uniform")` switch so the code can follow public-code defaults or the originally described uniform latent.
+- `results/answer.md:104` made the training step device/dtype safe and faithful to the public PyTorch loop: detach fake images for the discriminator update, then train the generator with fake images labelled real.
+- `results/answer.md:129` added independent shape checks for every generator and discriminator spatial transition.
+- `notes/source_matrix.md:5` added the required primary source evidence bundle, including arXiv PDF/text, e-print tarball, and local LaTeX source.
+- `notes/source_matrix.md:6` through `notes/source_matrix.md:11` added load-bearing ancestors for GAN, all-convolutional nets, BatchNorm, LAPGAN, global average pooling, and Adam.
+- `notes/source_matrix.md:12` added the PyTorch DCGAN tutorial as an annotated explainer.
+- `notes/source_matrix.md:13` added the co-author `soumith/dcgan.torch` README/code as self-account-adjacent evidence plus a documented search log.
+- `notes/source_matrix.md:14` through `notes/source_matrix.md:15` added code evidence from the original Torch repository and public PyTorch example.
+- `notes/discovery_synthesis.md:49` documented the code-faithfulness comparison, including the Torch/PyTorch latent-noise default mismatch.
+- `notes/discovery_synthesis.md:70` documented math and case checks for signs, convolution sizes, BatchNorm boundary cases, and `bias=False`.
+- `notes/discovery_synthesis.md:100` documented the posterior-leak and voice repair pass.
+- `refs/self_accounts/search_log.md:5` documented the author self-account search and the absence of a stronger discovery memoir.
+- `results/.codex_review.json:7` recorded the completed Codex review checks.
+- `results/.codex_review.json:15` recorded that `scripts/check_strict_method.py` could not be run because the script is absent in this checkout.

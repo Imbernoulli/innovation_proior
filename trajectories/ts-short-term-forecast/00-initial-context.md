@@ -4,35 +4,32 @@ Univariate short-term forecasting on the M4 competition. The data is 100,000 sho
 split across seasonal regimes that behave very differently — Monthly (horizon 18, strong 12-month
 seasonality), Quarterly (horizon 8, mild 4-quarter seasonality), Yearly (horizon 6, essentially no
 seasonality, mostly trend). One forecasting component must deliver low SMAPE across all three under a
-*single fixed* training and evaluation protocol. The thing being designed is the `Model` class in
+*single fixed* training and evaluation protocol. The design target is the `Model` class in
 `models/Custom.py`: a map from a length-`seq_len` look-back of one channel to a length-`pred_len`
 forecast of that channel. Everything around it — the data loader, the optimizer, the SMAPE training
 loss, the M4 evaluator — is frozen.
 
-## Prior art before the first rung (forecasting-architecture lineage)
+## Prior art / Background / Baselines
 
-The first rung reacts to the family of high-capacity sequence models that dominated forecasting just
-before it, so those are the baselines that precede the ladder.
+The relevant baselines are the high-capacity sequence models that currently dominate forecasting
+benchmarks.
 
 - **Iterated RNN/seq2seq forecasters (e.g. DeepAR, Salinas et al. 2017).** Predict one step, feed it
   back, repeat to the horizon. Natural for sequences but they *compound* error over a long horizon —
   each fed-back prediction is itself noisy — and they are slow to train. Gap: error accumulation and
-  no direct view of the whole horizon.
+  slow training.
 - **Transformer forecasters (Informer, Zhou et al. 2021; Autoformer, Wu et al. 2021; FEDformer, Zhou
-  et al. 2022).** Replace recurrence with attention and predict the whole horizon at once
-  (direct-multi-step). Autoformer adds an Auto-Correlation block and a moving-average **series
-  decomposition** that splits a window into trend and seasonal parts; FEDformer moves the mixing into
-  the frequency domain. These set the accuracy bar on long-horizon benchmarks, but they are heavy,
-  and — the observation the first rung is built on — self-attention is permutation-invariant, so it
-  represents temporal order only through positional encodings, which is working against the grain of a
-  numeric series whose entire signal is in its order. Gap: large, and possibly not even using order
-  the way the benchmark rewards.
+  et al. 2022).** Replace recurrence with attention and predict the whole horizon at once. Autoformer
+  adds an Auto-Correlation block and a moving-average **series decomposition** that splits a window
+  into trend and seasonal parts; FEDformer moves the mixing into the frequency domain. These set the
+  accuracy bar on long-horizon benchmarks, but they are heavy, and self-attention is
+  permutation-invariant, so temporal order is represented only through positional encodings. Gap:
+  large memory/compute cost and reliance on positional encodings to encode temporal order.
 - **The decomposition primitive (from Autoformer's `series_decomp`).** A length-preserving moving
-  average gives the trend; the residual is the seasonal part. This is the one piece of machinery the
-  whole ladder reuses: every rung below either decomposes explicitly or discovers periodicity, because
-  on M4 the regimes differ precisely in their trend/seasonal balance.
+  average gives the trend; the residual is the seasonal part. It is a reusable operation when a
+  window's trend and seasonal balance matters.
 
-## The fixed substrate
+## Fixed substrate / Code framework
 
 The Time-Series-Library short-term-forecast harness is frozen and must not be touched. For M4 it sets
 `seq_len = 2·pred_len` and `label_len = pred_len`, so the look-back is short: Monthly
@@ -43,26 +40,25 @@ passed** (`x_mark_enc` and `x_mark_dec` are `None`) — takes the last `pred_len
 and optimizes the **SMAPE loss** the harness supplies. Adam is the optimizer; the M4 evaluator scores
 SMAPE (primary) and MAPE on the official test horizon, lower is better.
 
-One detail is load-bearing for every rung: the harness invokes the same `models/Custom.py` for all
-three regimes with **one fixed set of training hyperparameters** — `d_model=512`, `d_ff=512`,
-`e_layers=2`, `learning_rate=1e-3`, `batch_size=16`, `train_epochs=10`, `patience=3`. It does *not*
-pass the per-method tuned flags the reference models' own scripts use (TimeMixer's `down_sampling_*`,
-its long `train_epochs=50`/`lr=1e-2`, PatchTST's `e_layers=3`, etc.). So whatever a rung borrows from
-a reference architecture, it must run correctly and well under *these* fixed settings and a 36-step
-(or shorter) window — any hyperparameter a method needs has to be set inside `Custom.py`, read from
-`configs` with a safe default.
+The harness invokes the same `models/Custom.py` for all three regimes with **one fixed set of
+training hyperparameters** — `d_model=512`, `d_ff=512`, `e_layers=2`, `learning_rate=1e-3`,
+`batch_size=16`, `train_epochs=10`, `patience=3`. It does *not* pass the per-method tuned flags the
+reference models' own scripts use (TimeMixer's `down_sampling_*`, its long
+`train_epochs=50`/`lr=1e-2`, PatchTST's `e_layers=3`, etc.). So whatever is borrowed from a reference
+architecture must run correctly and well under *these* fixed settings and a 36-step (or shorter)
+window — any hyperparameter a method needs has to be set inside `Custom.py`, read from `configs`
+with a safe default.
 
-## The editable interface
+## Editable interface
 
 Exactly one file is editable — `models/Custom.py` — and exactly one contract: a `Model(nn.Module)`
 with `__init__(self, configs)` reading `configs.task_name`, `configs.seq_len`, `configs.pred_len`,
 `configs.enc_in (=1)`, `configs.c_out (=1)`; a `forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)`
 taking `x_enc : [batch, seq_len, 1]` and returning `[batch, pred_len, 1]`; and a `forward` that
-dispatches the forecast task and returns the last `pred_len` steps. Every rung on the ladder is a fill
-of this same contract.
+dispatches the forecast task and returns the last `pred_len` steps.
 
-The starting point is the scaffold default: a forecaster that returns zeros. Each rung replaces the
-body of `__init__`/`forecast` and nothing else about the contract.
+The starting point is the scaffold default: a forecaster that returns zeros. Replace the body of
+`__init__`/`forecast` and nothing else about the contract.
 
 ```python
 import torch

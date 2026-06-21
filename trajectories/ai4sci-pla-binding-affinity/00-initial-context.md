@@ -1,55 +1,22 @@
 ## Research question
 
-Predict the binding affinity (`-logKd/Ki`, higher means tighter binding) of a protein-ligand complex
-from its 3D structure. The complex is handed to me as a *heterogeneous graph*: a ligand graph, a
-pocket graph, and two sets of inter-molecular edges across the interface (ligand→pocket and
-pocket→ligand). Atom nodes carry chemical one-hots; intra-molecular edges carry bond chemistry plus
-geometric statistics; inter-molecular edges carry geometry only, built between ligand-pocket atom
-pairs within 5 Å. The single thing being designed is the **`AffinityModel` architecture** — how those
-two molecules and their interface are encoded into one scalar. Everything else (graph construction,
-featurization, splits, optimizer, loss harness, evaluation) is fixed.
+Predict the binding affinity (`-logKd/Ki`, higher means tighter binding) of a protein-ligand complex from its 3D structure. The input is a heterogeneous graph: a ligand graph, a pocket graph, and bidirectional inter-molecular edges within 5 Å. Atom nodes carry 35-dim chemical one-hots; intra-molecular edges carry bond chemistry plus 11 geometric statistics; inter-molecular edges carry only the 11 geometric statistics. The design target is the `AffinityModel` architecture — how the two molecules and their interface are encoded into one scalar. Everything else (graph construction, featurization, splits, optimizer, loss, evaluation) is fixed.
 
-## Prior art before the first rung
+## Prior art / Background / Baselines
 
-The first rung the ladder reacts to is the geometric-GNN line for molecular property prediction — the
-methods that taught the field how to consume 3D structure while respecting that a binding affinity is
-a property of the *arrangement*, not the coordinate frame. Each is an ancestor with a gap this task's
-heterogeneous interface exposes.
+- **Message passing networks (Gilmer et al. 2017).** Core idea: propagate edge-conditioned messages between atom nodes and sum-aggregate them to update node states. Gap: geometry never enters the messages, and a single homogeneous message function treats every edge identically, so covalent bonds and ligand-pocket contacts are not distinguished.
 
-- **Message passing on molecular graphs (Gilmer et al. 2017).** The substrate everything here is a
-  fill of: node embeddings `h_i`, edge attributes `a_ij`, message `m_ij = φ_e(h_i,h_j,a_ij)`, sum
-  aggregate, update `h_i' = φ_h(h_i, m_i)`, pooled readout. Permutation-equivariant by the symmetric
-  sum. Gap: blind to where the atoms are — geometry never enters — and homogeneous, one message
-  function for every edge, with no notion that this object is two molecules joined by an interface.
-- **SchNet (Schütt et al. 2017; arXiv:1706.08566).** Makes the message depend only on the invariant
-  distance through a continuous filter: expand `d_ij` in a Gaussian RBF bank, turn it into a per-edge
-  filter, gate the neighbour's features elementwise, sum. Invariant by construction, learned, smooth.
-  Gap: the only geometry it sees is the *scalar distance*; the angle and triangle-area statistics the
-  data precomputes are thrown away — and it is one homogeneous filter for every edge, so covalent
-  bonds and non-covalent contacts get identical treatment.
-- **EGNN (Satorras, Hoogeboom, Welling 2021; arXiv:2102.09844).** E(n)-equivariant message passing:
-  feed the message the squared relative distance (invariant), and update coordinates by a scalar-weighted
-  sum of relative-difference vectors (equivariant). Gap here is twofold — the affinity target is an
-  invariant *scalar*, so the equivariant coordinate channel buys nothing on this task; and like SchNet
-  it is homogeneous, one convolution for all edges, with no interface decomposition.
-- **The interaction-graph line (IGN → GIGN → EHIGN, Yang/Zhong et al. 2023–2024).** The lineage that
-  takes the covalent/non-covalent split seriously: a heterogeneous graph with separate intra- and
-  inter-molecular relations, processed by distinct convolutions, with the affinity read out from the
-  interface. The strongest rungs of *this* ladder are fills of that idea; the gap each rung leaves is
-  what the next one reacts to.
+- **SchNet (Schütt et al. 2017).** Core idea: build continuous filters from Gaussian-expanded interatomic distances and apply them as elementwise gates in message passing. Gap: only the scalar distance is used; angle and triangle-area statistics are discarded, and the same filter is applied to covalent and non-covalent edges alike.
 
-## The fixed substrate
+- **EGNN (Satorras et al. 2021).** Core idea: E(n)-equivariant message passing that updates node coordinates alongside features. Gap: binding affinity is an invariant scalar, so equivariant coordinate updates do not directly target the task; it also uses a single convolution for all edges and provides no interface decomposition.
 
-A single regression harness is frozen and must not be touched. It loads pre-converted `.pt` graph
-tensors into a `PLABatch` (below), trains with Adam (`lr=1e-4`, `weight_decay=1e-6`), batch size 128,
-up to 800 epochs with early stopping (patience 50) on a validation RMSE, clips grad-norm to 1.0, and
-selects the best-validation checkpoint for test. The loss is plain `F.mse_loss(pred, labels)` on the
-model's `forward` output — *unless* the model exposes a `compute_loss(batch, labels)` method, in which
-case the harness calls that instead (the hook a multi-head model uses for its own objective). The
-harness hands the editable region one helper, `scatter_mean(src, index, dim_size)` (average `src`
-rows by `index`), and exposes the standard `torch`, `torch.nn as nn`, `torch.nn.functional as F`.
+- **Interaction-graph networks (IGN, GIGN, EHIGN).** Core idea: model the complex as a heterogeneous graph with separate intra- and inter-molecular convolutions and read affinity from the interface. Gap: existing variants still leave residual prediction error on the core benchmarks, especially for complexes with subtle interface geometry or similar binding modes.
 
-The batch the model consumes:
+## Fixed substrate / Code framework
+
+A single regression harness is frozen. It loads pre-converted `.pt` tensors into a `PLABatch`, trains with Adam (`lr=1e-4`, `weight_decay=1e-6`), batch size 128, up to 800 epochs with early stopping (patience 50) on validation RMSE, clips grad-norm to 1.0, and selects the best-validation checkpoint for test. The loss is `F.mse_loss(pred, labels)` unless the model exposes `compute_loss(batch, labels)`. The harness exposes `torch`, `torch.nn as nn`, `torch.nn.functional as F`, and one helper, `scatter_mean(src, index, dim_size)`.
+
+The batch:
 
 ```python
 @dataclass
@@ -75,24 +42,13 @@ class PLABatch:
     labels: Tensor             # [B] target -logKd/Ki
 ```
 
-The feature contract is fixed: atom features are 35-dim one-hots (element/degree/valence/hybridization/
-aromatic/H-count). Intra-molecular edges are 17-dim — bond type (4) + conjugated (1) + in-ring (1) +
-11 geometric numbers (angle max/sum/mean, triangle-area max/sum/mean, neighbour-distance max/sum/mean,
-pairwise L1, L2). Inter-molecular edges are the same 11 geometric numbers. **The geometry is already
-baked into `edge_attr`; raw 3D coordinates are not handed to the model.** Any model that wants a
-distance reads it off the last geometric channel (`edge_attr[:, -1:]`, the L2 distance, scaled by 0.1).
+Atom features are 35-dim one-hots (element/degree/valence/hybridization/aromatic/H-count). Intra-molecular edges are 17-dim: bond type (4) + conjugated (1) + in-ring (1) + 11 geometric statistics. Inter-molecular edges are the same 11 geometric statistics. Raw 3D coordinates are not passed; the L2 distance is the last geometric channel (`edge_attr[:, -1:]`, scaled by 0.1).
 
-## The editable interface
+## Editable interface
 
-Exactly one region is editable: the `AffinityModel` class (and any helper layers/modules) between the
-`EDITABLE SECTION START`/`END` markers in `EHIGN_PLA/custom_pla.py`. The contract is
-`__init__(self, lig_dim, poc_dim, intra_edge_dim, inter_edge_dim)` and
-`forward(self, batch: PLABatch) -> Tensor` returning shape `[B]`. Every method on the ladder is a fill
-of this same slot.
+Only the `AffinityModel` class (and helper layers) between `EDITABLE SECTION START`/`END` markers in `EHIGN_PLA/custom_pla.py` may be changed. Contract: `__init__(self, lig_dim, poc_dim, intra_edge_dim, inter_edge_dim)` and `forward(self, batch: PLABatch) -> Tensor` returning `[B]`.
 
-The starting point is the scaffold default: two **independent** GNN encoders (ligand and pocket),
-each a stack of simple edge-conditioned message-passing layers with residuals, mean-pooled per graph
-and concatenated into a regression head — and it **ignores the inter-molecular edges entirely**.
+The default fill is two independent GNN encoders (ligand and pocket) with edge-conditioned message-passing layers, mean-pooled and concatenated into a regression head. It ignores inter-molecular edges.
 
 ```python
 # EDITABLE region of EHIGN_PLA/custom_pla.py — default fill (separate encoders, no interface)
@@ -156,13 +112,8 @@ class AffinityModel(nn.Module):
         return pred
 ```
 
-Each method on the ladder replaces exactly this class (and its helper layers) and nothing else.
+Each method fills exactly this slot.
 
 ## Evaluation settings
 
-Train on PDBbind v2020 (general + refined). Test on three benchmarks: **PDBbind 2013 core set** (107
-complexes, CASF-2013), **PDBbind 2016 core set** (285 complexes, CASF-2016), and a **PDBbind 2019
-holdout** (4366 complexes, temporal split). Two metrics per benchmark: **RMSE** (lower is better) and
-**Rp** = Pearson correlation between predictions and labels (higher is better). One seed (42). The
-overall task score normalizes each metric against the leaderboard's worst/best baseline and combines
-the three benchmarks; lower RMSE and higher Rp both help.
+Train on PDBbind v2020 (general + refined). Test on PDBbind 2013 core set (107 complexes, CASF-2013), PDBbind 2016 core set (285 complexes, CASF-2016), and a PDBbind 2019 holdout (4366 complexes, temporal split). Metrics per benchmark: RMSE (lower better) and Rp = Pearson correlation (higher better). Seed 42. The overall score normalizes each metric against the leaderboard worst/best and combines the three benchmarks.

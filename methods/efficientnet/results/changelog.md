@@ -1,0 +1,34 @@
+# EfficientNet File:Line Changelog
+
+- `methods/efficientnet/results/context.md:152` removed the target-specific final regularization leak that said dropout is increased for larger models; the context now stays pre-method while preserving the available training ingredients.
+- `methods/efficientnet/results/reasoning.md:1` rewrote the reasoning as a continuous first-person derivation with no markdown headers or embedded code block.
+- `methods/efficientnet/results/reasoning.md:17` rechecked the FLOP derivation as `d * w^2 * r^2`, with depth linear and width/resolution quadratic.
+- `methods/efficientnet/results/reasoning.md:23` corrected the constants and arithmetic to `alpha=1.2`, `beta=1.1`, `gamma=1.15`, product `1.9203`.
+- `methods/efficientnet/results/reasoning.md:25` added the explicit scale-invariance assumption behind reusing the small-model grid search at larger scales.
+- `methods/efficientnet/results/reasoning.md:35` made SE reduction depend on block input filters, matching the official implementation.
+- `methods/efficientnet/results/reasoning.md:39` clarified that B0-B7 are practical rounded coefficients, not exact raw powers.
+- `methods/efficientnet/results/reasoning.md:41` corrected stochastic depth/drop-connect semantics: `survival_prob=0.8`, per-block linear schedule, divide by keep probability during training.
+- `methods/efficientnet/results/answer.md:18` replaced the method math with a compact, source-faithful FLOP law and approximate compute-doubling interpretation.
+- `methods/efficientnet/results/answer.md:20` verified the grid-search constants and product `1.9203 ~= 2`.
+- `methods/efficientnet/results/answer.md:31` preserved the official `(width, depth, resolution, dropout)` B0-B7 table.
+- `methods/efficientnet/results/answer.md:44` tied the baseline to the MnasNet search space and FLOPs-aware objective with `w = -0.07`.
+- `methods/efficientnet/results/answer.md:48` aligned the B0 stage table with the paper and official block strings.
+- `methods/efficientnet/results/answer.md:58` made the SE ratio/reduction statement explicit.
+- `methods/efficientnet/results/answer.md:73` added TensorFlow-style SAME padding for stride-2 and odd-size cases.
+- `methods/efficientnet/results/answer.md:108` kept official width rounding: divisor 8 and the 90% no-over-round-down guard.
+- `methods/efficientnet/results/answer.md:119` kept official depth rounding by ceiling.
+- `methods/efficientnet/results/answer.md:125` added drop-connect with training-time division by keep probability.
+- `methods/efficientnet/results/answer.md:136` rewrote MBConv as expand, depthwise, SE, linear project, residual skip only when legal.
+- `methods/efficientnet/results/answer.md:151` corrected SE reduction to use `int(in_ch * se_ratio)`.
+- `methods/efficientnet/results/answer.md:170` documented the official block-string correspondence including `se0.25`.
+- `methods/efficientnet/results/answer.md:183` changed the model body to a `ModuleList` so per-block drop-connect can be scheduled.
+- `methods/efficientnet/results/answer.md:215` added the official linear per-block drop-connect schedule.
+- `methods/efficientnet/results/answer.md:224` preserved the official B0-B7 config tuples and dropout rates.
+- `methods/efficientnet/results/answer.md:236` made `build()` return the model and resolution while passing `drop_connect_rate=0.2`.
+- `methods/efficientnet/notes/source_matrix.md:3` added the strict evidence matrix covering primary, canonical code, ancestors, explainer, and self-account sources.
+- `methods/efficientnet/notes/source_matrix.md:17` documented the author self-account search result.
+- `methods/efficientnet/notes/discovery_synthesis.md:5` added grounded reconstruction notes before the result rewrites.
+- `methods/efficientnet/notes/discovery_synthesis.md:13` recorded the applied corrections and review markers.
+- `methods/efficientnet/notes/discovery_synthesis.md:23` recorded the math/code/leakage review conclusions.
+- `methods/efficientnet/results/.codex_review.json:3` changed the stale uncertain review marker to explicit `not_run`.
+- `methods/efficientnet/notes/strict_check_output.txt:1` recorded that the strict checker script is unavailable and listed the direct checks run.

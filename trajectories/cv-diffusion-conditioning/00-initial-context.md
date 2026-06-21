@@ -4,41 +4,34 @@ Class-conditional image generation with a diffusion denoiser: a UNet learns to p
 $\epsilon_\theta(x_t, t, c)$ added to a CIFAR-10 image at noise level $t$, conditioned on the class
 label $c$. The backbone, the noise schedule, the optimizer, the EMA, and the 50-step DDIM sampler are
 all fixed. The **only** thing being designed is **how the class label is injected into the denoiser** —
-the conditioning operator. Everything that turns "draw an image" into "draw an image *of this class*"
-lives in one editable region, and the metric is FID against the CIFAR-10 train set (lower is better).
+the conditioning operator. The metric is FID against the CIFAR-10 train set (lower is better).
 
-## Prior art before the first rung (conditioning-injection lineage)
+## Prior art / Background / Baselines
 
-The conditioning operators on this ladder are the resolution of a line of "how does side information
-reach a convolutional feature stream" mechanisms. These precede the ladder; the fixed substrate below is
-what they converged to.
+These are the conditioning mechanisms currently available for feeding side information into a
+convolutional feature stream. Each has a known core idea and a concrete limitation:
 
-- **Additive / concatenated conditioning (Conditional DCGAN; Conditional PixelCNN, van den Oord et al.
-  2016; WaveNet).** Broadcast the conditioning vector into constant feature maps and concatenate before a
-  conv, or add a conditioning-dependent bias. After the next linear map, `W[F; z] = W_F F + W_z z`, so the
-  `z` term is a conditioning-dependent *additive bias* on the output. Gap: it can shift features but cannot
-  rescale, amplify, gate, or negate them — only half the affine.
-- **Feature-wise gates (LSTM gates; Squeeze-and-Excitation, Hu et al. 2018).** Multiply features by a
-  bounded factor `sigmoid(g) ∈ (0,1)`. Gap: scale-only, bounded — attenuates or passes a channel but
-  cannot amplify, shift a threshold, or negate; the additive half is missing.
-- **Conditional / adaptive normalization (Conditional BatchNorm, de Vries et al. 2017; Conditional
-  Instance Norm, Dumoulin et al. 2017; AdaIN, Huang & Belongie 2017).** A normalization layer ends in a
-  per-channel affine `gamma · x_hat + beta`; make `(gamma, beta)` a function of the conditioning rather
-  than learned constants. Gap as written: tied to a particular normalization (BN/IN) or to a discrete
-  style table, and demonstrated on convolutional recognition / style transfer rather than on a denoiser
-  with a timestep signal already occupying the affine.
-- **FiLM (Perez et al., AAAI 2018).** The general statement: a conditioning input regresses a per-channel
-  affine `gamma(z) · F + beta(z)`, with `gamma = 1 + Δγ` for identity init, applied anywhere, independent
-  of resolution. It contains additive bias (`gamma = 1`) and gating (`beta = 0`, bounded `gamma`) as
-  corners. Gap for this task: the affine is *spatially uniform and content-blind* — the same scale/shift
-  at every position, drawn from the label alone.
-- **Adaptive Group Norm (ADM, Dhariwal & Nichol 2021).** FiLM ported into a diffusion residual block: the
-  combined timestep-and-class embedding linearly produces the GroupNorm scale/shift. This is the
-  established socket by which a diffusion UNet already ingests the timestep. Gap: it took an *auxiliary
-  classifier at sampling time* (classifier guidance) to get strong class adherence — the in-network affine
-  alone was low-bandwidth for "which class."
+- **Additive / concatenated conditioning** (Conditional DCGAN, Conditional PixelCNN, WaveNet).
+  Broadcast the conditioning vector into constant feature maps and concatenate before a conv, or add
+  a conditioning-dependent bias. Limitation: it can shift features but cannot rescale, amplify, gate,
+  or negate them.
+- **Feature-wise gates** (LSTM gates, Squeeze-and-Excitation). Multiply features by a bounded factor
+  $\sigma(g) \in (0,1)$. Limitation: scale-only and bounded; it cannot amplify, shift a threshold, or
+  negate features.
+- **Conditional / adaptive normalization** (Conditional BatchNorm, Conditional Instance Norm, AdaIN).
+  Make the per-channel $\gamma$ and $\beta$ of a normalization layer depend on the conditioning instead
+  of being learned constants. Limitation: tied to a specific normalization layer and demonstrated on
+  recognition or style-transfer backbones, not on a diffusion denoiser that also carries a timestep
+  signal.
+- **FiLM**. A conditioning input regresses a per-channel affine $\gamma(z)\cdot F + \beta(z)$. It
+  contains additive-bias and gating as special cases. Limitation: the affine is spatially uniform and
+  content-blind — the same scale and shift at every position, derived from the label alone.
+- **Adaptive Group Norm (ADM)**. FiLM inserted into a diffusion residual block: the combined
+  timestep-and-class embedding linearly produces the GroupNorm scale and shift. Limitation: the
+  original system needed an auxiliary classifier at sampling time to obtain strong class adherence;
+  the in-network affine has limited bandwidth for enforcing the class.
 
-## The fixed substrate
+## Fixed substrate / Code framework
 
 A self-contained class-conditional DDPM training script (`custom_train.py`) is frozen and must not be
 touched. The denoiser is `ConditionalUNet`, which wraps a diffusers `UNet2DModel` (the
@@ -68,7 +61,7 @@ unet.time_embedding`) and the class (`class_embed`), calls `prepare_conditioning
 form the embedding `emb` fed to **every** residual block, then runs the UNet and after **each** down/mid/up
 block applies the corresponding `ClassConditioner(h, class_emb)`.
 
-## The editable interface
+## Editable interface
 
 Exactly one region is editable — `prepare_conditioning(time_emb, class_emb)` and the `ClassConditioner`
 class in `custom_train.py` (lines 195–227). Every method on the ladder is a fill of this same contract:

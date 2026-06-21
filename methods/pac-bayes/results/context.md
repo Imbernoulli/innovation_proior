@@ -1,165 +1,31 @@
-## Research question
+## Research Question
 
-I have a space of hypotheses (concepts, classifiers, predictors) and a bounded loss `ℓ(h, z) ∈ [0,1]`. Data
-`z` arrives i.i.d. from an unknown distribution `D`. For any hypothesis `h` I can measure its **empirical
-risk** `ℓ̂(h, S) = (1/m) Σ_{z∈S} ℓ(h, z)` on a sample `S` of size `m`, and I care about its **true risk**
-`ℓ(h) = E_{z∼D} ℓ(h, z)`, which I cannot see. The generalization question is: how far can `ℓ(h)` be above
-`ℓ̂(h, S)`, and what controls that gap?
+I want a distribution-free generalization certificate for a learner that uses a prior source of bias without assuming that the prior describes nature. The sample is IID, the loss is bounded, and the learned rule may be chosen after seeing the data. The certificate must be computable from the training sample, a confidence parameter, and a measure of how much the learner departs from its pre-sample bias.
 
-Two mature but separate theories answer versions of this, and each pays a price the other doesn't.
+The tension is that the statistical guarantee should be valid for every data distribution, while the learning algorithm should still be allowed to encode domain knowledge. A purely Bayesian analysis handles prior knowledge naturally, but its usual interpretation depends on a correctly specified stochastic model. A purely PAC analysis gives distribution-free validity, but the basic finite-class form certifies one selected rule at a time.
 
-- The **PAC / uniform-convergence** answer is distribution-free: it holds for *every* data distribution `D`,
-  with no assumption. Its price is that the complexity of the hypothesis class enters pessimistically — a VC
-  dimension, a covering number, or a union bound over the class — and for rich or continuous classes the
-  resulting bound is *vacuous* (infinite, or larger than 1).
-- The **Bayesian** answer lets me pour in domain knowledge through an informative prior, and is optimal *when
-  the prior is correct*. Its price is that it offers **no guarantee at all** once the prior is wrong, which in
-  practice it always partly is.
-
-The goal that would resolve this: a generalization bound that (a) accepts an informative, data-independent
-prior the way Bayes does, so I can encode which hypotheses I expect to be good; yet (b) holds
-**distribution-free**, like PAC, assuming nothing about whether the prior matches reality; and (c) does not
-become vacuous merely because the hypothesis class is continuous. No existing bound meets all three at once.
+The target question is therefore: how can a theorem keep the PAC guarantee, keep the prior as algorithmic bias, and still certify the kind of randomized or averaged predictors that arise from Bayesian-flavored learning?
 
 ## Background
 
-The field state rests on a small number of load-bearing facts and one observed failure mode.
+The available building blocks are standard. For a fixed classifier `h`, Hoeffding-style concentration controls the gap between empirical loss `hat L(h,S)` and true loss `L(h)`. For a finite or countable class, a prior mass `P(h)` can allocate failure probability across hypotheses, giving a simultaneous statement for all `h` with a complexity term like `ln(1/P(h))`.
 
-**Concentration of a single empirical mean.** For one fixed hypothesis `h`, `ℓ̂(h, S)` is an average of `m`
-i.i.d. `[0,1]` variables with mean `ℓ(h)`. Hoeffding's inequality (1963) and the Chernoff method (1952) give
-`Pr_S( ℓ(h) − ℓ̂(h, S) ≥ x ) ≤ e^{−2 m x²}`, and more generally control exponential moments of the deviation,
-`E_S exp(λ·deviation)`. When `ℓ` is the 0–1 loss, `m·ℓ̂` is `Binomial(m, ℓ(h))` and one can do better than
-Hoeffding using the binomial structure directly, in terms of the **Bernoulli relative entropy**
-`kl(q, p) = q ln(q/p) + (1−q) ln((1−q)/(1−p))`. This is the raw material: deviations of a *single* hypothesis
-are exponentially unlikely.
+This prior-weighted Occam argument already permits data-dependent selection. The learner can inspect the sample, choose any `h`, and still inherit the certificate because the high-probability event covers all hypotheses at once. The price is that the certificate names a single selected classifier.
 
-**From one hypothesis to a countable class: the Occam / union bound.** Fix a probability distribution `P`
-over a countable hypothesis class — a weighting summing to 1, which Linial–Mansour–Rivest (1991) used and
-Shawe-Taylor–Williamson (1997) reinterpreted as "a kind of Bayesian prior." Apply the single-hypothesis tail
-bound to each `h_i` with failure budget `P(h_i)·δ`, and union-bound: the total failure probability is
-`Σ_i P(h_i)·δ = δ`. The result is that, with probability at least `1 − δ`, simultaneously for all `i`,
-
-```
-ℓ(h_i) ≤ ℓ̂(h_i, S) + sqrt( ( ln(1/P(h_i)) + ln(1/δ) ) / (2m) ).
-```
-
-The complexity of a hypothesis is `−ln P(h_i)` — a "description length." A hypothesis the prior deems likely
-(large `P`) pays little; an a-priori unlikely one pays a lot. This is structural risk minimization with the
-prior playing the role of the bias, and it justifies selecting the single hypothesis that minimizes the
-right-hand side — a maximum-a-posteriori (MAP) rule.
-
-**The diagnostic failure of MAP / selection.** Two known facts about this selection picture set up the
-problem. First, from a Bayesian standpoint the MAP hypothesis is *not* the optimal predictor: when the prior
-is correct, the optimal rule is the **posterior-weighted vote** over all hypotheses consistent with the data,
-`P(label | S) = Σ_{h consistent} P(h)·[h says label] / Σ P(h)` — averaging beats selecting. Second,
-Kearns–Mansour–Ng–Ron (1995) gave experimental and theoretical evidence that Bayesian and MDL (MAP-style)
-algorithms **overfit** in settings where the Bayesian modeling assumptions fail, precisely because they trust
-the prior. So the selection bound above is tied to an algorithm (MAP) that is both Bayes-suboptimal and
-fragile, and the `−ln P(h)` complexity is `+∞` for continuous classes where every singleton has prior mass
-zero — the bound there is vacuous.
-
-**The change-of-measure identity.** A piece of machinery from large-deviations theory and statistical physics:
-for any reference measure `P`, any measurable `h`, the Donsker–Varadhan / Gibbs variational formula states
-
-```
-log E_{c∼P} e^{h(c)} = sup_Q { E_{c∼Q} h(c) − KL(Q‖P) },
-```
-
-with the supremum attained at the Gibbs distribution `dQ ∝ e^{h} dP`. Equivalently, for *any* `Q` absolutely
-continuous w.r.t. `P`, `E_{c∼Q} h(c) ≤ KL(Q‖P) + log E_{c∼P} e^{h(c)}`. Here `KL(Q‖P) = E_{c∼Q} ln(dQ/dP)` is
-the Kullback–Leibler divergence (relative entropy). It is a standard piece of large-deviations machinery.
-
-**Bayesian model averaging / Gibbs predictors.** Averaging predictions under a posterior, and the special case
-of an exponentially-weighted ("Gibbs") posterior `dQ_β ∝ e^{−β ℓ̂} dP`, were established devices — weighted
-majority and exponentially-weighted aggregation in online learning, mixtures of subtrees / suffix-tree models
-in language modeling, where a single huge posterior implicitly weights exponentially many submodels and
-smoothing is naturally a *mixture* (a model average), not a *selection*.
+The Bayesian side supplies a different object: a learned distribution over hypotheses. This object is natural for model averaging, smoothing, and stochastic prediction. But if I use ordinary Bayesian semantics, the guarantee is only as trustworthy as the assumed generative story. The desired theorem must use the same kind of bias object while retaining PAC validity under arbitrary IID data.
 
 ## Baselines
 
-**Single-hypothesis Occam bound (Blumer et al.; Shawe-Taylor–Williamson 1997; Shawe-Taylor–Bartlett–
-Williamson–Anthony 1996).** Core idea and math as above: per-hypothesis Chernoff + prior-weighted union
-bound, complexity `−ln P(h)`. It is empirical (computable from data), tunable through `P`, and distribution-
-free. Gap it leaves: the complexity is a *single* hypothesis's prior mass; the union bound is loose; it
-applies only to countable classes (vacuous for continuous ones); and it scores a deterministic *selected*
-hypothesis, inheriting MAP's Bayes-suboptimality.
+The first baseline is deterministic model selection with a prior code length. It is simple and robust, but it treats a precise classifier as the output. In a continuous parameter space, exact parameter values usually have zero prior mass, so the singleton code-length view becomes poorly matched to the learning problem.
 
-**VC / uniform-convergence bounds (Vapnik–Chervonenkis; Valiant 1984).** Distribution-free bounds whose
-complexity is the VC dimension of the whole class. Gap: they make no use of an informative prior — the bound
-is the same whether or not I have good prior knowledge of which hypotheses are likely to work — and the VC
-term can be enormous or infinite for expressive classes.
+The second baseline is holdout validation. It avoids reliance on the training objective, but it spends labeled data and gives a certificate for the final trained artifact only through an external test sample. The goal here is an empirical training-sample certificate, not a separate validation protocol.
 
-**Index-based SRM (Linial–Mansour–Rivest 1991; Lugosi–Zeger 1996).** Guarantees in terms of a concept's index
-in a fixed sequence of concepts, or the index of a class in a sequence of classes of increasing VC dimension.
-They give SRM-style guarantees with *some* prior structure but cannot accommodate an arbitrary prior measure
-over concepts.
+The third baseline is ordinary Bayesian model averaging. It gives a principled recipe for combining models, but the usual justification is model-dependent. The desired result should allow a prior to shape the learner while refusing to assume that the world was sampled from that prior.
 
-**Bayesian model averaging for prediction / density estimation (Barron 1991; Barron–Cover 1991; Catoni;
-Yang 2000).** Bound a distance (KL divergence, squared loss) between the posterior-averaged predictor and the
-truth, distribution-free, with the guarantee better when a simple model fits well. Gap: the clean countable-
-mixture versions are typically expectation bounds (not high-probability / large-deviation), are stated in terms
-of *unknown* quantities so a learning algorithm cannot output its own certificate, and still charge singleton
-or index complexity in a way that goes vacuous for continuous model classes; continuous versions exist but do
-not give the same simple empirical certificate.
+## Evaluation Settings
 
-**Online weighted mixtures (Littlestone–Warmuth weighted majority; Cesa-Bianchi et al.; Freund–Schapire).**
-Compete with the best expert on an arbitrary sequence, using a Gibbs-style weighting `Q_β`. Gap: the
-inverse-temperature `β` must be fixed *before* seeing data, so the algorithm is not guaranteed against the
-optimal accuracy-vs-complexity tradeoff, and the guarantee needs the algorithm to find *all* well-performing
-hypotheses, not a single simple one.
+The theorem should apply to bounded losses, including zero-one classification loss as the clearest case. It should be meaningful for finite, countable, and continuous hypothesis classes. The sample size and confidence parameter should enter explicitly, and the guarantee should be simultaneous over data-dependent choices made after the sample is observed.
 
-## Evaluation settings
+The certificate should degrade gracefully. If the learner selects an isolated low-prior rule, it should recover the old complexity cost for naming that rule. If the learner finds a broad high-prior region of similarly good rules, the certificate should be able to reward the fact that the choice is not a brittle exact point.
 
-The yardstick is a distribution-free generalization guarantee that stays non-vacuous where the baselines fail.
-The relevant regimes to check a candidate bound against: a finite class of
-`M` hypotheses; a countable class with a prior `P`; and — the decisive case — a **continuous** class
-(parameters in `R^n` with a prior density), where singleton-mass baselines go vacuous. The settings of interest
-include realizable concept learning (0–1 loss with a target in the class), the agnostic / unrealizable case
-(arbitrary bounded loss), and bounded log loss for density models. Sample sizes range from moderate (where
-one would like the bound to be numerically tight, not merely asymptotic) upward. The quality criteria are:
-does the bound remain valid even when the learner chooses what to certify after seeing the data; is it computable
-from the sample so it can be reported as a certificate alongside the predictor; and is it tight enough in the
-small-empirical-loss regime to be non-vacuous.
-
-## Code framework
-
-The starting point is a generic risk-estimation harness over a hypothesis space with a prior. What is missing is
-a data-dependent generalization certificate that stays finite where the Occam baseline goes vacuous.
-
-```python
-import numpy as np
-
-# --- pre-existing primitives ---------------------------------------------
-
-def empirical_risk(h, S, loss):
-    # mean bounded loss of hypothesis h on sample S; loss(h, z) in [0,1]
-    return np.mean([loss(h, z) for z in S])
-
-def kl_divergence(Q, P):
-    # KL(Q || P) between two distributions over the (here finite) hypothesis space
-    Q = np.asarray(Q, float); P = np.asarray(P, float)
-    if np.any((Q > 0) & (P == 0)):
-        return float("inf")
-    mask = Q > 0
-    return float(np.sum(Q[mask] * np.log(Q[mask] / P[mask])))
-
-def posterior_risk(Q, risks):
-    # E_{h~Q} of a per-hypothesis risk vector (empirical or true)
-    return float(np.dot(Q, risks))
-
-# --- pre-existing baseline: single-hypothesis Occam / union bound --------
-
-def occam_bound(emp_risk_h, prior_mass_h, m, delta):
-    # complexity = -ln P(h); vacuous when prior_mass_h -> 0 (continuous classes)
-    return emp_risk_h + np.sqrt((np.log(1.0 / prior_mass_h) + np.log(1.0 / delta)) / (2 * m))
-
-# --- open certificate interface -----------------------------------------
-
-def generalization_certificate(P, emp_risks, m, delta):
-    """Upper bound, holding with prob >= 1 - delta over the sample,
-    on the true risk, computable from the sample and remaining finite
-    where the Occam baseline above goes vacuous.
-    """
-    # TODO
-    pass
-```
+The result should also expose an optimization target. A bound that merely evaluates a finished predictor is useful, but the stronger artifact is a training criterion that trades empirical fit against complexity in a way that produces the object being certified.

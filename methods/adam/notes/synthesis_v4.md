@@ -105,17 +105,18 @@ ancestor citations (AdaGrad/RMSProp/AdaDelta/Nesterov/Zinkevich/Amari) stay.
 | 11 | beta_1 = 0.9 (window ~1/(1-beta)=~10) | Short, responsive window: kills minibatch noise yet stays responsive as the landscape drifts; same regime as well-tuned momentum | beta_1 too high: direction lags the moving landscape |
 | 12 | beta_2 = 0.999 (window ~1000), i.e. beta_2 >> beta_1 | A variance estimate is intrinsically noisier (squaring amplifies spread) and it's the DENOMINATOR (jittery denom jitters every step) -> estimate it more carefully | beta_2 = beta_1: denominator too jittery; beta_2 lower fails sparse coords (too few samples of a rare gradient) |
 | 13 | alpha = 0.001 default | Trust-region cap: |Delta_t| <~ alpha, so alpha caps per-step parameter movement; conservative, SNR-annealing handles the fine end | alpha as a raw gradient-scaled rate: coupled to arbitrary loss magnitude, hard to set |
-| 14 | Fold both corrections into one scalar step_size = alpha*sqrt(1-beta2^t)/(1-beta1^t) | Avoids materializing m_hat,v_hat each step; one scalar, two in-place EMA updates, one fused divide-add — exactly what a real library ships | Materialize m_hat,v_hat: extra tensors/ops, same math |
+| 14 | Fold both corrections into one scalar step_size = alpha*sqrt(1-beta2^t)/(1-beta1^t) | Avoids materializing m_hat,v_hat each step; one scalar, two in-place EMA updates, one fused divide-add. With nonzero eps this is the reference fixed-floor convention, not exactly Algorithm 1's time-scaled eps floor | Materialize m_hat,v_hat: extra tensors/ops; exact Algorithm 1 eps placement but less like shipped code |
 | 15 | Decaying beta_{1,t} = beta_1*lambda^{t-1} (lambda just below 1) in the regret proof | The momentum-penalty regret term sums beta_{1,t}/(1-beta_{1,t})*sqrt(t); lambda<1 collapses sum_t t*lambda^t to a constant 1/(1-lambda)^2 | Constant beta_1: that term is sum_t sqrt(t) = Theta(T^3/2) -> bound breaks. (Matches the "reduce momentum near the end" folklore as a hard requirement.) |
 | 16 | gamma = beta_1^2/sqrt(beta_2) < 1 condition | "Momentum doesn't outrun the denominator's forgetting": makes old effective steps decay geometrically -> the m_hat^2/sqrt(v_hat) sum stays O(sqrt(T)) | gamma >= 1: effective steps pile up, lemma fails |
 | 17 | L-infinity sibling: u_t = max(beta_2*u_{t-1}, |g_t|) (AdaMax) | Limit p->inf of an Lp power-EMA: prefactor (1-beta2^p)^1/p ->1, Lp norm of a finite seq -> max; collapses to one max, nothing to overflow | Generic finite-p Lp: |g|^p overflows / underflows numerically |
 | 18 | AdaMax needs NO bias correction on u | A max doesn't average in the zero init — once any |g|>0 arrives the u_0=0 loses every comparison; no shrink-toward-zero artifact | Apply (1-beta2^t) to u: unnecessary, and there's no zero-bias to undo |
-| 19 | AdaMax default alpha = 0.002 (a touch larger) | u_t is a max (upper envelope), tends larger than an RMS, so the safe step is a touch bigger; also |Delta_t|<=alpha flat (no two-case split since u_t>=|g_t|) | alpha=0.001: needlessly conservative given the larger denominator |
+| 19 | AdaMax default alpha = 0.002 (a touch larger) | u_t is a max (upper envelope), tends larger than an RMS, so the safe step is a touch bigger; the envelope is alpha-scale and avoids Adam's sparse-case two-way bound | alpha=0.001: needlessly conservative given the larger denominator |
 | 20 | (Forward-looking) Polyak-Ruppert iterate averaging via theta_bar EMA, de-biased | Last iterate of a stochastic method rattles at the noise floor; averaging improves stochastic-approximation convergence; EMA weights recent iterates more | Uniform Polyak average: weights stale early iterates equally |
 
-No holes: every constant (alpha, beta1, beta2, eps, alpha_adamax=0.002, lambda), every
-structural choice (EMA-not-sum, both moments, debias both, eps placement, scalar folding,
-gamma<1, L-inf limit) has a why + a rejected alternative above.
+Every method constant (alpha, beta1, beta2, eps, alpha_adamax=0.002, lambda) and structural
+choice (EMA-not-sum, both moments, debias both, eps placement, scalar folding, gamma<1,
+L-inf limit) has a why + a rejected alternative above; proof caveats are handled separately in
+`notes/source_matrix.md`.
 
 ---
 
@@ -154,7 +155,8 @@ Optimizer base with per-parameter state, in-place tensor ops, autograd .backward
 minibatch loop, a model + loss.
 
 ## Final code is faithful to (grounded)
-code/adam_pytorch_v0.4.py (PyTorch torch/optim/adam.py): exp_avg.mul_(beta1).add_(1-beta1,grad);
+code/pytorch_v0.3.1_adam.py (PyTorch torch/optim/adam.py): exp_avg.mul_(beta1).add_(1-beta1,grad);
 exp_avg_sq.mul_(beta2).addcmul_(1-beta2,grad,grad); bc1=1-beta1**t; bc2=1-beta2**t;
 step_size=lr*sqrt(bc2)/bc1; p.addcdiv_(-step_size, exp_avg, exp_avg_sq.sqrt().add_(eps)).
-EXCLUDE the amsgrad branch (posterior, Reddi et al. 2018). AdaMax faithful to torch Adamax.
+This v0.3.1 reference is pre-AMSGrad. Exclude AMSGrad, AdamW, Reddi/Yogi, and other later
+posterior fixes from context/reasoning. AdaMax faithful to code/pytorch_v0.3.1_adamax.py.

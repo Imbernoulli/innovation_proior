@@ -4,7 +4,7 @@ The obvious move is to finetune the model on my five photos. I can already feel 
 
 If the weights are frozen, then whatever I learn has to live in the *input*. Where does the prompt enter? Let me trace the pipeline backwards from the image. The denoiser is conditioned on $c_\theta(y)$, the output of the text encoder on prompt $y$. The text encoder is a transformer, frozen. Before the transformer, there's a tokenizer that turns the string into integer indices, and then — this is the part I keep coming back to — each index is used to look up a vector in an embedding table. The discrete word "cat" becomes a continuous vector $v_{\text{cat}}$, and *that* vector is what flows into the network. The string is discrete and unoptimizable, but the embedding vector is continuous. It's the first place in the whole stack where the input becomes a thing I can take gradients with respect to.
 
-So here's the reframing. A "word", as far as the frozen model is concerned, *is* a vector in this embedding table. The vocabulary the model can talk about is exactly the set of vectors that table holds. To teach the model a new concept, I don't need a new sentence and I don't need new weights — I need a new *vector*. I'll designate a placeholder string, call it $S_*$, reserve a slot for it in the table, and put a learnable vector $v_*$ there. Then any prompt containing $S_*$ — "a photo of $S_*$", "an oil painting of $S_*$" — gets tokenized, $S_*$ maps to $v_*$, and the rest of the frozen pipeline treats it as an ordinary word. I'm injecting a pseudo-word into the model's vocabulary. Composition comes for free, because $v_*$ sits in the same space as every real word and the frozen transformer already knows how to combine words.
+So here's the reframing. A "word", as far as the frozen model is concerned, *is* a vector at this lookup boundary. The vocabulary the model can talk about is exactly the set of vectors that enter the transformer. To teach the model a new concept, I don't need a new sentence and I don't need new weights — I need a new *vector*. I'll designate a placeholder string, call it $S_*$, make sure it tokenizes to one token, and intercept that token's embedding lookup with a learnable vector $v_*$. Then any prompt containing $S_*$ — "a photo of $S_*$", "an oil painting of $S_*$" — gets tokenized, the placeholder position receives $v_*$, and the rest of the frozen pipeline treats it as an ordinary word. I'm injecting a pseudo-word into the model's vocabulary without changing the tokenizer or the old embedding table. Composition comes for free, because $v_*$ sits in the same space as every real word and the frozen transformer already knows how to combine words.
 
 Now, what objective do I optimize $v_*$ with? This is where I have to be careful, and where I think prior attempts went wrong. There's earlier work that put representations in this same embedding space using contrastive or language-completion losses. But think about what those losses *require*. A contrastive loss asks: is this embedding close to the image in some joint space? A completion loss asks: does this embedding predict plausible surrounding text? Neither one ever forces the embedding to encode enough to *redraw* the object pixel by pixel. They capture that it's "a sculpture-ish thing", coarse semantics, but not the specific geometry and surface. And generation is a *visual* task — I'm going to ask the model to synthesize the appearance. So I should optimize the embedding with the exact objective the model uses for synthesis: the denoising reconstruction loss. If the embedding is good, then conditioning on it should let the frozen denoiser reconstruct my images from noise. That's a reconstruction objective, and reconstruction is precisely what forces fine visual detail into the vector. The objective should match the downstream use.
 
@@ -16,7 +16,7 @@ The prompts $y$: I don't want to overfit to one phrasing, and I don't have a cap
 
 Initialization. Starting $v_*$ from random noise seems wasteful — I actually know a coarse category for the concept ("sculpture", "cat"). The embedding of that single coarse word already sits in a sensible region of the space and already pulls the right kind of prior. So initialize $v_*$ with the embedding of a one-word descriptor. It gives the optimization a running start in the right neighborhood instead of wandering in from nowhere.
 
-Let me sanity-check the optimization itself. I have one vector, a few hundred dimensions, and a handful of images. The loss is the standard diffusion loss, so I keep the original hyperparameters; the only knob with real leverage is the learning rate. A few thousand steps should be plenty for one vector. Fine.
+Let me sanity-check the optimization itself. I have one embedding vector — 1280 dimensions in this LDM text encoder — and a handful of images. The loss is the standard diffusion loss, so I keep the original hyperparameters; the only knob with real leverage is the learning rate. A few thousand steps should be plenty for one vector. Fine.
 
 Now — is one vector enough? My instinct says I'm leaving capacity on the table. A single embedding has to encode an entire object's appearance, and intuitively that's a tight bottleneck. This is exactly where the GAN-inversion playbook is screaming at me, because GAN inversion is the established craft of "find a latent that reproduces this image," and it learned hard lessons I should not have to relearn. Let me bring its moves over and actually try them, because the embedding space here is uncharted and I have no idea which of its intuitions transfer.
 
@@ -42,54 +42,58 @@ One caveat I want to keep honest about: my reconstruction scores match real imag
 
 Let me also pin down the pieces I deliberately left out. Pivotal tuning, if applied naïvely — invert a pseudo-word, then finetune the generator to reconstruct better — does improve shape preservation, but it collapses editability at the high guidance scales this model uses. And the bipartite DDIM-inversion route (find the initial noise that maps to my image, then change the text while freezing that noise) drifts in structure at this model's typical guidance scales (5–10): at those scales the denoiser won't hold the object's structure across prompt changes, and only at much lower guidance (~2, the regime more powerful models use) does structure survive — but then prompt-matching is poor. Both break the frozen-weights rule or fight the guidance regime, so neither belongs in the core method. The lightweight single-vector inversion stands on its own.
 
-Now the code. The skeleton is just the model's own training step with two surgical changes: add a slot to the embedding table for $S_*$, and make sure the gradient updates *only* that slot.
+Now the code. The skeleton is just the model's own training step with two surgical changes: intercept the embedding lookup for the placeholder token, and make sure the optimizer sees *only* the replacement vector.
 
 ```python
-import torch, torch.nn.functional as F
+import random
+import torch, torch.nn as nn, torch.nn.functional as F
 
-vae, unet, text_encoder, tokenizer, scheduler = load_pretrained_ldm()
-vae.requires_grad_(False)
-unet.requires_grad_(False)
-# freeze the text transformer; only the embedding table will have one live row
-text_encoder.text_model.encoder.requires_grad_(False)
-text_encoder.text_model.final_layer_norm.requires_grad_(False)
-text_encoder.text_model.embeddings.position_embedding.requires_grad_(False)
+ldm = load_pretrained_ldm()
+ldm.first_stage_model.requires_grad_(False)  # autoencoder
+ldm.model.requires_grad_(False)              # denoiser
+ldm.cond_stage_model.requires_grad_(False)   # text encoder
 
-# --- inject the pseudo-word S_* and seed it from a coarse descriptor ---
-placeholder = "<my-sculpture>"
-tokenizer.add_tokens([placeholder])
-text_encoder.resize_token_embeddings(len(tokenizer))
-ph_id   = tokenizer.convert_tokens_to_ids(placeholder)
-init_id = tokenizer.encode("sculpture", add_special_tokens=False)[0]  # coarse word
-embeds  = text_encoder.get_input_embeddings().weight.data
-embeds[ph_id] = embeds[init_id].clone()           # initialize v_* from "sculpture"
+def one_bert_token(tokenizer, text):
+    ids = tokenizer(text)
+    assert torch.count_nonzero(ids) == 3      # [CLS], token, [SEP]
+    return ids[0, 1]
 
-orig_embeds = embeds.clone()                       # to restore every other row
-# the ONLY trainable parameter is the embedding table; we zero out all but one row
-optimizer = torch.optim.AdamW(text_encoder.get_input_embeddings().parameters(), lr=5e-3)
+class EmbeddingManager(nn.Module):
+    def __init__(self, text_encoder, placeholder="*", initializer="sculpture"):
+        super().__init__()
+        self.ph_id = one_bert_token(text_encoder.tknz_fn, placeholder)
+        init_id = one_bert_token(text_encoder.tknz_fn, initializer)
+        with torch.no_grad():
+            init = text_encoder.transformer.token_emb(init_id.cpu())
+        self.v_star = nn.Parameter(init.unsqueeze(0))
 
-templates = ["a photo of a {}", "a rendition of a {}", "a close-up photo of the {}", ...]
+    def forward(self, tokenized_text, embedded_text):
+        loc = torch.where(tokenized_text == self.ph_id.to(tokenized_text.device))
+        embedded_text[loc] = self.v_star.to(embedded_text.device)
+        return embedded_text
+
+emb = EmbeddingManager(ldm.cond_stage_model, "*", "sculpture")
+optimizer = torch.optim.AdamW([emb.v_star], lr=0.04)  # 0.005 base, scaled by 2 GPUs x batch 4
+
+templates = ["a photo of a {}", "a rendering of a {}", "a close-up photo of the {}", ...]
 
 for step in range(5000):
-    img = sample_concept_image()                   # one of the 3-5 photos
-    z   = vae.encode(img).latent_dist.sample() * vae.config.scaling_factor
-    eps = torch.randn_like(z)
-    t   = torch.randint(0, scheduler.config.num_train_timesteps, (z.shape[0],))
-    z_t = scheduler.add_noise(z, eps, t)
-
-    prompt = random.choice(templates).format(placeholder)   # S_* in neutral context
-    ids    = tokenizer(prompt, return_tensors="pt").input_ids
-    c      = text_encoder(ids)[0]                   # frozen transformer turns v_* into conditioning
-
-    eps_pred = unet(z_t, t, c).sample
-    loss = F.mse_loss(eps_pred.float(), eps.float())   # the unchanged LDM objective
-    loss.backward()
-    optimizer.step(); optimizer.zero_grad()
-
-    # keep every embedding fixed except the one we are learning -> no forgetting
+    img = sample_concept_batch()                   # the 3-5 photos, repeatedly sampled
     with torch.no_grad():
-        keep = torch.ones(len(tokenizer), dtype=torch.bool); keep[ph_id] = False
-        text_encoder.get_input_embeddings().weight[keep] = orig_embeds[keep]
+        posterior = ldm.encode_first_stage(img)
+        z = ldm.get_first_stage_encoding(posterior)
+    eps = torch.randn_like(z)
+    t   = torch.randint(0, ldm.num_timesteps, (z.shape[0],), device=z.device)
+    z_t = ldm.q_sample(x_start=z, t=t, noise=eps)
+
+    prompts = [random.choice(templates).format("*") for _ in range(z.shape[0])]
+    c = ldm.cond_stage_model.encode(prompts, embedding_manager=emb)
+
+    eps_pred = ldm.apply_model(z_t, t, c)
+    loss = F.mse_loss(eps_pred.float(), eps.float())   # the unchanged epsilon objective
+    loss.backward()
+    optimizer.step()
+    optimizer.zero_grad()
 ```
 
-The causal chain, start to end: I can't describe my concept in words, and finetuning would forget the prior, so I freeze the model and look for the most directly optimizable place the input enters — the per-token embedding table. A "word" to this model is just a vector there, so a new concept is a new vector $v_*$. Because generation is visual, I optimize that vector with the model's own denoising-reconstruction loss over a few images in neutral templates, seeding it from a coarse-word embedding and updating only that one row so nothing else moves. Reaching for GAN-inversion tricks — more vectors, progressive growth, regularization, per-image tokens — buys nothing or hurts, because the real structure is a distortion–editability tradeoff, and a single vector already sits at a good point on it whose location I tune with the learning rate alone; verbose human captions are worse still, since selective attention lets a long description crowd out the requested edit. One learnable vector, frozen everything else: a new word in the model's vocabulary.
+The causal chain, start to end: I can't describe my concept in words, and finetuning would forget the prior, so I freeze the model and look for the most directly optimizable place the input enters — the per-token embedding boundary. A "word" to this model is just a vector there, so a new concept is a new vector $v_*$. Because generation is visual, I optimize that vector with the model's own denoising-reconstruction loss over a few images in neutral templates, seeding it from a coarse-word embedding and optimizing only that standalone replacement parameter so nothing else moves. Reaching for GAN-inversion tricks — more vectors, progressive growth, regularization, per-image tokens — buys nothing or hurts, because the real structure is a distortion–editability tradeoff, and a single vector already sits at a good point on it whose location I tune with the learning rate; verbose human captions are worse still, since selective attention lets a long description crowd out the requested edit. One learnable vector, frozen everything else: a new word in the model's vocabulary.

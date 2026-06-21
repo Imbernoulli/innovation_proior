@@ -66,3 +66,22 @@ below GPR-GNN, the honest interpretation is that the conditioning benefit does n
 restricted harness without per-channel filters, tuned `a,b`, or PCD. But as a final edit surface, the
 right move is still clear: keep the unconstrained shared coefficients and replace monomial powers with
 the canonical Jacobi three-term recurrence.
+
+## Minimal reference: Jacobi recurrence
+
+```python
+import torch
+
+def jacobi_polynomials(x, K, a=1.0, b=1.0):
+    """Evaluate the first K+1 Jacobi polynomials P_k^{(a,b)}(x)."""
+    P = [torch.ones_like(x)]
+    if K >= 1:
+        P.append((a - b) / 2.0 + (a + b + 2.0) / 2.0 * x)
+    for k in range(2, K + 1):
+        denom = 2.0 * k * (k + a + b) * (2.0 * k + a + b - 2.0)
+        A = (2.0 * k + a + b - 1.0) * (a * a - b * b) / denom
+        B = (2.0 * k + a + b - 1.0) * (2.0 * k + a + b - 2.0) * (2.0 * k + a + b) / denom
+        C = 2.0 * (k - 1.0 + a) * (k - 1.0 + b) * (2.0 * k + a + b) / denom
+        P.append((A + B * x) * P[-1] - C * P[-2])
+    return torch.stack(P, dim=0)
+```

@@ -1,0 +1,69 @@
+We want to train a stochastic neural-network policy $\pi_\theta(a\mid s)$ — a diagonal Gaussian whose mean comes out of an MLP, with a learned log-standard-deviation — for continuous control, maximizing the discounted return $\eta(\theta) = \mathbb{E}[\sum_t \gamma^t r_t]$ by climbing a Monte-Carlo estimate of its gradient. The estimator we trust is the score-function form $\nabla_\theta \eta = \mathbb{E}[\sum_t \Psi_t \nabla_\theta \log \pi_\theta(a_t\mid s_t)]$, and among the choices for $\Psi_t$ the advantage $A_\pi(s,a) = Q_\pi(s,a) - V_\pi(s)$ has nearly the lowest variance, because it asks exactly the right question — was this action better or worse than what the policy does on average in this state — so a gradient step raises the log-probability of better-than-average actions and lowers it for worse-than-average ones. The advantage is unknown and must be estimated from a learned value function; call the estimate $\hat A_t$. The painful constraint is data efficiency: that gradient is unbiased only for data sampled from the very policy being differentiated, so the honest recipe is to roll out $\pi_\theta$, form one gradient, take one step, throw the batch away, and roll out again. Each batch of expensive environment interaction buys exactly one gradient step. The moment we try to be greedier — collect one batch and do several epochs of minibatch SGD on it — the policy moves off $\theta_{\text{old}}$, the estimate goes stale, and in practice the updates do not degrade gracefully but go destructively large: a single batch can shove the policy off a cliff it never recovers from.
+
+The failure has a precise mechanism that any fix must attack. The return of a candidate policy $\tilde\pi$ relative to the current $\pi$ decomposes exactly as $\eta(\tilde\pi) = \eta(\pi) + \sum_s \rho_{\tilde\pi}(s)\sum_a \tilde\pi(a\mid s) A_\pi(s,a)$, where $\rho_{\tilde\pi}$ is the discounted state-visitation measure under $\tilde\pi$ — but $\rho_{\tilde\pi}$ depends on $\tilde\pi$ in a way we cannot sample, since we would have to run $\tilde\pi$ to know where it goes. So one freezes the visitation at the old policy's, $L_\pi(\tilde\pi) = \eta(\pi) + \sum_s \rho_\pi(s)\sum_a \tilde\pi(a\mid s) A_\pi(s,a)$, and turns the inner sum into an importance-sampled expectation over the data, giving the surrogate we can actually optimize on a batch, $L^{\text{CPI}}(\theta) = \hat{\mathbb{E}}_t[ r_t(\theta)\,\hat A_t ]$ with the probability ratio $r_t(\theta) = \pi_\theta(a_t\mid s_t)/\pi_{\text{old}}(a_t\mid s_t)$. At $\theta = \theta_{\text{old}}$ every $r_t = 1$ and there $L$ matches $\eta$ to first order — that is the whole license to optimize it — but the license is purely local, because the substitution of $\rho_\pi$ for $\rho_{\tilde\pi}$ is exact only at $\tilde\pi = \pi$ and its error grows as the policy pulls away. $L^{\text{CPI}}$ is a tangent that is faithful in a neighborhood and lies outside it; maximizing it with no leash walks straight out of the neighborhood and reports an enormous improvement that is not real. The existing options each fall short against this. Vanilla policy gradient takes one step per batch and has nothing in its objective that notices the policy has drifted, so several steps on one batch blow up. TRPO makes the leash explicit and exact, deriving the minorization bound $\eta(\tilde\pi) \ge L_\pi(\tilde\pi) - C\cdot\max_s \mathrm{KL}[\pi(\cdot\mid s),\tilde\pi(\cdot\mid s)]$ with $C = 4\varepsilon\gamma/(1-\gamma)^2$, then taking usefully large steps by replacing the penalty with a hard average-KL constraint $\hat{\mathbb{E}}_t[\mathrm{KL}] \le \delta$ solved via a linear-quadratic approximation — a natural-gradient direction from conjugate gradient on Fisher-vector products plus a backtracking line search. That is stable and data-efficient but second order and relatively complicated, it is a constrained solve per batch rather than cheap repeated minibatch SGD, and the Fisher/line-search machinery does not mix cleanly with architectures that share parameters between the policy and value networks or that inject noise. And the fixed-penalty form that TRPO's own theory points at — simply subtract $C\cdot\mathrm{KL}$ and run SGD — fails on the coefficient: with the theoretical $C = 4\varepsilon\gamma/(1-\gamma)^2$, at $\gamma = 0.99$ we have $(1-\gamma)^2 = 10^{-4}$ so $C \sim 4\times10^4\,\varepsilon$, which pins the policy to $\pi_{\text{old}}$ and lets it barely move; and any single hand-chosen $\beta$ that works does not transfer, because the equilibrium KL it produces depends on the (standardized but still varying) advantage scale and on the policy's curvature, which drift over training and differ across environments. A $\beta$ that is right early is wrong late.
+
+I propose PPO-Penalty: proximal policy optimization with an adaptive KL penalty. The structural choice is to keep the cheap, first-order penalty form — just SGD on a single differentiable scalar, trivially compatible with shared networks and several epochs per batch — and to borrow from TRPO only the one idea that made its constraint usable, which is *targeting the KL* rather than guessing a coefficient. The per-minibatch objective is the importance-sampled surrogate minus a KL penalty,
+$$L^{\text{KLPEN}}(\theta) = \hat{\mathbb{E}}_t\big[\, r_t(\theta)\,\hat A_t - \beta\cdot \mathrm{KL}[\pi_{\text{old}}(\cdot\mid s_t),\pi_\theta(\cdot\mid s_t)] \,\big],$$
+where the penalty structure is not a hack but the policy-improvement lower bound itself: with $\varepsilon = \max_{s,a}|A_\pi|$, the bound $\eta(\tilde\pi) \ge L_\pi(\tilde\pi) - C\cdot\max_s \mathrm{KL}$ is tight at $\tilde\pi = \pi$ (where $L = \eta$ and $\mathrm{KL} = 0$) and matches $\eta$ to first order there, so maximizing $M(\tilde\pi) = L_\pi(\tilde\pi) - C\cdot\mathrm{KL}$ gives monotonic improvement — a minorize-maximize step, equivalently a proximal / KL-mirror-descent update over policies. The single change that turns the impractical bound into a working algorithm is to make $\beta$ adaptive instead of fixed at the conservative worst-case $C$. After each update we measure the realized KL $d = \hat{\mathbb{E}}_t[\mathrm{KL}[\pi_{\text{old}},\pi_\theta]]$ — the actual step the policy took in distribution space — and nudge $\beta$ toward a target $d_{\text{targ}}$ (the analogue of TRPO's $\delta$): if $d > 1.5\,d_{\text{targ}}$ the step was too big and we tighten the leash with $\beta \leftarrow 2\beta$; if $d < d_{\text{targ}}/1.5$ the step was too small and we loosen with $\beta \leftarrow \beta/2$; otherwise we leave $\beta$ alone. This makes the *controlled* quantity the policy-space step size $d_{\text{targ}}$, decoupled from the advantage scale and the changing curvature — exactly what no single fixed $\beta$ can achieve. The adjustment is multiplicative rather than additive because the achieved KL is a decreasing, roughly convex function of $\beta$ that *scales* with it (doubling $\beta$ scales the step down, it does not subtract a fixed amount), so $\beta$ and KL live on multiplicative scales spanning orders of magnitude. A factor of two is aggressive enough to catch a drifting equilibrium within a few updates yet not so violent that it oscillates; the $1.5$ deadband stops $\beta$ thrashing on tiny misses; and $\beta$ is clamped to a sane range so a runaway target cannot drive it to $0$ or $\infty$. Because the controller self-corrects, the algorithm is insensitive to these constants and to the initial $\beta$ — start it modest, like $0.5$, and a couple of doublings or halvings carry it to the right neighborhood within the first few updates.
+
+The KL penalty has to be computed on a minibatch, and the obvious estimator is the wrong one. We have samples $a_t \sim \pi_{\text{old}}$ and can evaluate both log-probs, so the log-ratio $\texttt{logratio} = \log\pi_\theta(a_t) - \log\pi_{\text{old}}(a_t)$ and the ratio $r_t = \exp(\texttt{logratio})$ are in hand. Since $\mathrm{KL}[\pi_{\text{old}},\pi_\theta] = \mathbb{E}_{a\sim\pi_{\text{old}}}[-\texttt{logratio}]$, the naive per-sample estimate is $-\texttt{logratio}$: unbiased, but it is negative for any sample where the new policy assigns higher probability than the old — roughly half the samples near $\theta_{\text{old}}$ — so it swings sign, has high variance, and can come out negative on a finite batch, which is nonsense for a quantity I am scaling by $\beta$ and feeding to the optimizer. The fix is a zero-mean control variate. Under $a \sim \pi_{\text{old}}$, $\mathbb{E}[r] = \sum \pi_{\text{old}}\cdot(\pi_\theta/\pi_{\text{old}}) = \sum \pi_\theta = 1$, so $r - 1$ has mean exactly zero, for free, and $-\texttt{logratio} + c(r-1)$ stays unbiased for any $c$. Choosing $c = 1$ and using the concavity inequality $\log x \le x - 1$ gives the per-sample estimate
+$$\widehat{\mathrm{KL}} = (r - 1) - \log r \;\ge\; 0,$$
+the vertical gap between the tangent line $x - 1$ and the curve $\log x$: unbiased, nonnegative on every single sample, and — because it is the gap to the tangent — small and smoothly varying near $r = 1$ rather than swinging in sign, hence far lower variance than $-\texttt{logratio}$. This expression is kept differentiable: it *is* the $\beta\cdot\mathrm{KL}$ term whose gradient pulls $\pi_\theta$ back toward $\pi_{\text{old}}$, and the very same value, detached, is the clean nonnegative number read off to drive the $\beta$ controller. The advantages come from GAE, the exponentially-weighted blend of $k$-step TD estimators. Writing the residual $\delta_t = r_t^{\text{rew}} + \gamma V(s_{t+1}) - V(s_t)$ and summing $k$ of them gives $\hat A_t^{(k)} = \sum_{l=0}^{k-1}\gamma^l\delta_{t+l}$, which trusts real rewards more (less value-function bias, more variance) as $k$ grows; taking the $(1-\lambda)$-normalized exponential average over $k$ and collecting the coefficient of each $\delta_{t+l}$ — which appears in every $\hat A_t^{(k)}$ with $k>l$, total weight $(1-\lambda)\gamma^l\lambda^l/(1-\lambda) = (\gamma\lambda)^l$ — collapses everything to
+$$\hat A_t = \sum_{l=0}^{\infty}(\gamma\lambda)^l\,\delta_{t+l},$$
+computed cheaply backward as $\hat A_t = \delta_t + \gamma\lambda\,\hat A_{t+1}$ with $(1-\texttt{done})$ masking at episode boundaries, with $\lambda$ the bias-variance dial ($\lambda=0$ is the low-variance biased $\delta_t$, $\lambda=1$ the unbiased high-variance Monte-Carlo return) and defaults $\gamma = 0.99$, $\lambda = 0.95$. The value target is the GAE return $R_t = \hat A_t + V(s_t)$, fit by plain squared error $\tfrac12(V_\theta(s_t) - R_t)^2$ with no clipping, and an entropy bonus is added to keep exploration from collapsing prematurely, combining into the single loss $\texttt{loss} = \texttt{pg\_loss} - c_{\text{ent}}\,H + c_{\text{vf}}\,v_{\text{loss}}$ where $\texttt{pg\_loss} = -\hat{\mathbb{E}}[r_t\hat A_t] + \beta\cdot\mathrm{KL}$. The outer machinery is the actor-critic loop already in place: $N$ parallel actors each collect $T$ steps, GAE produces advantages and returns on the segment, $\pi_{\text{old}}$ is snapshotted, and $K$ epochs of Adam minibatch SGD run on the freshly collected batch while the detached KL readings adapt $\beta$ for subsequent calls. The only reason it is safe to do $K$ epochs on one batch — the thing vanilla policy gradient could not do — is that the self-tuned $\beta\cdot\mathrm{KL}$ penalty keeps every pass proximal, near $d_{\text{targ}}$ in policy space.
+
+```python
+import torch
+from torch.distributions import Normal
+
+
+def get_action_and_value(self, obs, action=None):
+    action_mean = self.actor_mean(obs)
+    action_logstd = self.actor_logstd.expand_as(action_mean)
+    action_std = torch.exp(action_logstd)
+    probs = Normal(action_mean, action_std)
+    if action is None:
+        action = probs.sample()
+    return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(obs)
+
+
+def compute_losses(agent, mb_obs, mb_actions, mb_logprobs, mb_advantages,
+                   mb_returns, mb_values, args):
+    """PPO-Penalty: adaptive KL penalty instead of a clipped surrogate."""
+    # adaptive penalty state, created once and carried across updates
+    if not hasattr(agent, "_kl_beta"):
+        agent._kl_beta = 0.5        # initial β (controller quickly finds the right level)
+        agent._target_kl = 0.01     # d_targ: targeted per-update policy-space step
+
+    _, newlogprob, entropy, newvalue = agent.get_action_and_value(mb_obs, mb_actions)
+    logratio = newlogprob - mb_logprobs         # log r_t
+    ratio = logratio.exp()                       # r_t = π_θ(a)/π_old(a)
+
+    # KL[π_old, π_θ] via the (r−1)−log r estimator: unbiased, ≥0 pointwise, low variance.
+    # WITH gradient — this is the penalty term itself.
+    kl = ((ratio - 1) - logratio).mean()
+
+    with torch.no_grad():
+        approx_kl = kl.detach()                  # realized KL, read off to adapt β
+        clipfrac = ((ratio - 1.0).abs() > args.clip_coef).float().mean().item()  # diagnostic
+
+    # penalized surrogate (no clipping)
+    beta = agent._kl_beta
+    pg_loss = -(mb_advantages * ratio).mean() + beta * kl
+
+    # adapt β toward d_targ (multiplicative, ×1.5 deadband, clamped);
+    # this mutation affects subsequent minibatch calls, not the scalar pg_loss above.
+    with torch.no_grad():
+        if approx_kl > 1.5 * agent._target_kl:
+            agent._kl_beta = min(agent._kl_beta * 2.0, 100.0)
+        elif approx_kl < agent._target_kl / 1.5:
+            agent._kl_beta = max(agent._kl_beta / 2.0, 1e-4)
+
+    # squared-error critic fit to GAE returns (no value clipping)
+    newvalue = newvalue.view(-1)
+    v_loss = 0.5 * ((newvalue - mb_returns) ** 2).mean()
+
+    entropy_loss = entropy.mean()
+    loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef
+    return loss, pg_loss, v_loss, entropy_loss, approx_kl, clipfrac
+```

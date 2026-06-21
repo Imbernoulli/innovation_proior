@@ -57,9 +57,10 @@ independent given x ("unstructured" loss) -> no penalty on joint/structural corr
    (Unconditional variant for ablation: L_GAN uses D(y), D(G(x,z)) — no x.)
 3. Pure GAN sharp but has artifacts / doesn't nail location. Add a reconstruction term so
    output stays near ground truth. Use L1 not L2: L_L1(G)=E_{x,y,z}[||y - G(x,z)||_1].
-   WHY L1: L2 optimum = conditional mean (blur); L1 optimum = conditional MEDIAN, which is
-   one plausible value not an average -> sharper, and L1 is robust. (Colorfulness: L1
-   picks median color -> grayish/desaturated; cGAN restores color distribution.)
+   WHY L1: L2 optimum = conditional mean (blur); separable L1 is minimized by a
+   conditional MEDIAN, which is less pulled by outlying alternatives but can still
+   choose a central value. Paper claim: L1 encourages less blurring. (Colorfulness:
+   L1 picks median color -> grayish/desaturated; cGAN restores color distribution.)
    Final: G* = argmin_G max_D L_cGAN(G,D) + lambda * L_L1(G), lambda=100.
 4. Low/high frequency SPLIT (the key insight). L1 (and L2) already capture LOW frequencies
    well even though they blur HIGH frequencies. So we don't need the GAN to police the
@@ -98,11 +99,19 @@ Ck = Conv-BatchNorm-ReLU k filters. CDk = + Dropout 0.5. Convs 4x4 stride2.
 - D input channels = input_nc + output_nc (sees concat[x,y]).
 
 ## Code grounding
-junyanz/pytorch-CycleGAN-and-pix2pix: pix2pix_model.py (loss assembly, cat[A,B] for D,
-loss_D*0.5, GAN + lambda_L1*L1), networks.py (UnetSkipConnectionBlock recursive U-Net,
-NLayerDiscriminator PatchGAN, PixelDiscriminator 1x1, GANLoss BCEWithLogits/vanilla).
-GANLoss uses BCEWithLogitsLoss (vanilla) — equivalent to the non-saturating real/fake
-target labels. lambda_L1 default 100.
+Canonical `phillipi/pix2pix` Torch code: `train.lua` defaults to `which_model_netG='unet'`,
+`which_model_netD='basic'`, `condition_GAN=1`, `use_GAN=1`, `use_L1=1`, `lambda=100`,
+`loadSize=286`, `fineSize=256`, Adam `lr=0.0002`, `beta1=0.5`; `models.lua` implements
+U-Net skips, 70x70 PatchGAN (`n_layers=3`), PixelGAN (`n_layers=0`), sigmoid+BCE, dropout
+0.5 on the first three decoder blocks, and exact conditional concatenation `[A,B]`.
+The D fake update must detach `fake_B` before concatenation/forward; detaching
+`D(fake_AB)` would remove the fake-pair gradient for D.
+
+junyanz/pytorch-CycleGAN-and-pix2pix is the maintained PyTorch port: `pix2pix_model.py`
+uses `fake_AB = cat(real_A, fake_B).detach()` for D, recomputes `D(cat(real_A, fake_B))`
+for G, applies `loss_D*0.5`, and uses GAN + `lambda_L1 * L1`. `networks.py` omits the
+final sigmoid and uses `BCEWithLogitsLoss` for `gan_mode='vanilla'`, which is equivalent
+to sigmoid+BCE with better numerics. `lambda_L1` defaults to 100.
 
 ## Scaffold (pre-method, generic conditional image generation)
 Bare paired-image harness: data loader yielding (input_image, target_image); a generic

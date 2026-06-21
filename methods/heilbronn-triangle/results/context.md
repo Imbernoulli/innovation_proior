@@ -69,27 +69,4 @@ where M_P(w×w) is the maximum number of points in a w-square, and M_L(w×1) is 
 
 Bounds are stated asymptotically in n, on [0,1]² (equivalently any fixed convex body, since affine maps change areas by a constant factor, so constants are dropped and only the exponent and log power are tracked). A lower-bound construction is judged by the largest provable min-area it guarantees; an upper-bound proof by the smallest exponent/log-power of the universal area it forces. For the constructive version, the yardstick is whether the configuration achieving a given guarantee can be produced by a certified selection rule, not merely shown to exist.
 
-## Code framework
 
-    Goal: pin the asymptotics of Δ(n) = sup_P min_{p,q,r} area(p,q,r) for n points P ⊂ [0,1]²
-          — a lower-bound construction and a universal upper-bound proof, matching exponents.
-
-    Fixed primitives:
-        the configuration is n points in the unit square [0,1]²; the objective is the area of
-        the smallest triangle they span, area(p,q,r) = ½|(q−p)×(r−p)| via the tri_area helper.
-        The small-triangle ⟺ thin-strip dictionary is fixed: area(x,y,z) < ε iff z lies in the
-        strip T_xy(4ε/d) of width 4ε/d about the base line ℓ_xy.
-
-    Lower bound (the probabilistic deletion method):
-        the engine is fixed — oversample uniformly in the square, then remove points that sit in
-        small (forbidden) triangles, so that the survivors span no triangle below the threshold ε.
-        Empty slot: how much to oversample (the slack N relative to n, and the threshold ε the
-        expected count of forbidden triples can support), and how the removal step is carried out.
-
-    Upper bound (incidence geometry):
-        the tools are fixed — translate the endpoint-only scarcity of the forbidden strips into
-        an incidence count between the points and the lines supporting short pairs.
-        Empty slot: how that scarcity is converted into a quantitative bound on Δ.
-
-    Output: the largest provable min-area for the construction (ideally via a certified selection
-            rule, not a mere existence proof) and the smallest universal exponent/log-power forced.

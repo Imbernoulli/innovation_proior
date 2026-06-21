@@ -1,0 +1,75 @@
+# ULMFiT Strict Review Changelog
+
+- `results/context.md:5` Reframed the research question as a pre-method transfer-learning problem without naming the target method.
+- `results/context.md:7` Added the explicit overfitting/forgetting constraints while keeping the solution slots open.
+- `results/context.md:11` Grounded the layer-general-to-specific premise in pre-existing vision transfer rather than the final method.
+- `results/context.md:13` Replaced the prior hypercolumn/ELMo-style hindsight framing with CoVe-style fixed contextual features.
+- `results/context.md:15` Neutralized the "language modeling as the ideal source task" answer leak by presenting LM pretraining as a candidate source and Dai-Le as prior evidence.
+- `results/context.md:17` Added the direct-fine-tuning fragility constraints without leaking discriminative rates, STLR, pooling, or unfreezing.
+- `results/context.md:19` Added pre-method baselines and their gaps.
+- `results/context.md:29` Kept evaluation settings but made them task-setting context rather than result hindsight.
+- `results/context.md:35` Replaced the scaffold with open TODO slots for adaptation, long-document summarization, and classifier fine-tuning.
+- `results/reasoning.md:15` Verified the discriminative fine-tuning sign: minimization uses a negative-gradient update per layer.
+- `results/reasoning.md:21` Verified the `eta^{l-1} = eta^l / 2.6` direction so lower layers move less, not more.
+- `results/reasoning.md:29` Re-derived the two STLR cases and preserved the paper constants `cut_frac=0.1`, `ratio=32`, `eta_max=0.01`.
+- `results/reasoning.md:41` Added the `cut=0` edge-case guard required for an all-cases implementation.
+- `results/reasoning.md:45` Verified concat-pooling order as `[h_T, maxpool(H), meanpool(H)]`.
+- `results/reasoning.md:53` Clarified BPT3C as state-carrying chunked document classification, not independent chunk classification.
+- `results/reasoning.md:55` Reframed gradual unfreezing as cumulative top-down thawing and distinguished it from chain-thaw.
+- `results/reasoning.md:57` Clarified classifier layer-group rate ordering while keeping the reasoning in-frame instead of audit-style.
+- `results/reasoning.md:59` Fixed the classifier dimension bug: tied AWD-LSTM classifier input is `3 * emb_size`, not `3 * 1150`, and the hidden/output classifier drops differ.
+- `results/reasoning.md:61` Reframed bidirectionality as an optional independent ensemble without posterior performance claims.
+- `results/answer.md:19` Restated discriminative fine-tuning with the correct negative-gradient sign and lower-layer `2.6` division.
+- `results/answer.md:24` Restated STLR with both cases and the paper constants.
+- `results/answer.md:31` Separated reported paper hyperparameters from implementation-specific behavior.
+- `results/answer.md:33` Recorded the Adam beta and layer-rate discrepancies between paper prose and old fastai scripts.
+- `results/answer.md:47` Added a guarded STLR implementation that handles invalid/degenerate schedule cases.
+- `results/answer.md:67` Replaced the old unmasked pooling sketch with fastai-style masked final/max/average concat pooling.
+- `results/answer.md:79` Replaced the old BPT3C sketch with a state-carrying multi-batch encoder that pools the suffix fitting `max_len`.
+- `results/answer.md:112` Replaced the classifier head with the paper-era `[3 * emb_size, 50, n_classes]` shape and dropout `0.4`/`0.1`.
+- `results/answer.md:135` Added top-down `freeze_to`/`unfreeze` training semantics from the fastai reference path.
+- `notes/source_matrix.md:5` Added primary arXiv PDF/text/e-print/source evidence and the formulas/constants it grounds.
+- `notes/source_matrix.md:6` Added AWD-LSTM ancestor evidence for the base model and regularizers.
+- `notes/source_matrix.md:7` Added Dai-Le ancestor evidence for earlier LM/sequence pretraining and small-data limits.
+- `notes/source_matrix.md:8` Added Yosinski ancestor evidence for layer transfer and general-to-specific layers.
+- `notes/source_matrix.md:9` Added Smith ancestor evidence for triangular LR schedules.
+- `notes/source_matrix.md:10` Added Felbo chain-thaw evidence for the unfreezing contrast.
+- `notes/source_matrix.md:11` Added CoVe evidence for fixed contextual-feature transfer baselines.
+- `notes/source_matrix.md:12` Added Jay Alammar's third-party explainer.
+- `notes/source_matrix.md:13` Added the fast.ai author-side ULMFiT release post.
+- `notes/source_matrix.md:14` Added the fast.ai classification page pointing to `fastai.text`, `fastai.lm_rnn`, and `imdb_scripts`.
+- `notes/source_matrix.md:15` Added Ruder's author-side retrospective.
+- `notes/source_matrix.md:16` Added fastai1 code evidence with commit id.
+- `notes/source_matrix.md:17` Added Salesforce AWD-LSTM code evidence with commit id.
+- `notes/source_matrix.md:19` Recorded that mandatory source classes are present and summarized the code-audit discrepancies.
+- `notes/discovery_synthesis.md:7` Recorded the three-stage method fact from the primary source.
+- `notes/discovery_synthesis.md:8` Recorded the corrected discriminative fine-tuning update and `2.6` direction.
+- `notes/discovery_synthesis.md:9` Recorded the STLR cases and constants.
+- `notes/discovery_synthesis.md:10` Recorded the STLR degenerate-cut implementation issue.
+- `notes/discovery_synthesis.md:11` Recorded the concat-pooling order.
+- `notes/discovery_synthesis.md:12` Recorded cumulative gradual unfreezing versus chain-thaw.
+- `notes/discovery_synthesis.md:13` Recorded BPT3C state carry/pooling/gradient semantics.
+- `notes/discovery_synthesis.md:27` Recorded the `CircularLR` and paper-script schedule mapping.
+- `notes/discovery_synthesis.md:28` Recorded LM and classifier layer-group LR differences.
+- `notes/discovery_synthesis.md:29` Recorded the paper/code Adam beta discrepancy.
+- `notes/discovery_synthesis.md:30` Recorded the `3 * emb_size` classifier dimension correction.
+- `notes/discovery_synthesis.md:31` Recorded the fastai classifier block order and default classifier dropouts.
+- `notes/discovery_synthesis.md:32` Recorded masked concat-pooling code faithfulness.
+- `notes/discovery_synthesis.md:33` Recorded BPT3C suffix-pooling code faithfulness.
+- `refs/self_accounts/search_log.md:7` Documented the saved fast.ai author release post.
+- `refs/self_accounts/search_log.md:8` Documented the saved fast.ai classification/code pointer page.
+- `refs/self_accounts/search_log.md:9` Documented the saved Ruder retrospective.
+- `refs/self_accounts/search_log.md:13` Documented the author-account web searches.
+- `refs/self_accounts/search_log.md:14` Documented the fast.ai forum route to the old implementation.
+- `notes/synthesis.md:5` Replaced the old synthesis with a pointer to the strict source matrix.
+- `notes/synthesis.md:6` Pointed readers to the repaired derivation/code/leak synthesis.
+- `results/.codex_review.json:3` Replaced the stale placeholder with an explicit `codex_reviewed:false` independent-review status.
+- `results/.codex_review.json:9` Recorded why no independent review agent was run and what main-agent review work was completed.
+- `results/.codex_review.json:11` Recorded the manual audit scope.
+- `notes/strict_check_output.txt:5` Recorded the exact strict-checker command used.
+- `notes/strict_check_output.txt:9` Recorded `STRICT CHECK PASSED`.
+- `notes/strict_check_output.txt:13` Recorded the local five-section context check.
+- `notes/strict_check_output.txt:14` Recorded the no-headers reasoning check.
+- `notes/strict_check_output.txt:15` Recorded the context leakage scan.
+- `notes/strict_check_output.txt:16` Recorded JSON validation.
+- `notes/strict_check_output.txt:17` Recorded embedded-Python parse checks.

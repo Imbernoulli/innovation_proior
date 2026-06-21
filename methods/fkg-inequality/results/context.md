@@ -113,44 +113,4 @@ them. The relevant "metric" is qualitative: whether the covariance of two increa
 predicted sign. The yardstick prior results are Griffiths' second inequality and Harris's lemma — any
 general statement must reproduce both.
 
-## Code framework
 
-The result is a theorem; the only computational artifact is an optional brute-force *check* on a small
-lattice, which we scaffold here with the model-specific condition left as the slot to fill. The
-primitives that already exist: enumerate a finite poset, define a positive measure and two monotone
-functions on it, compute a normalized average and a covariance.
-
-```python
-from itertools import combinations
-
-GROUND = ("a", "b", "c")
-LATTICE = [frozenset(s) for k in range(len(GROUND) + 1)
-           for s in combinations(GROUND, k)]      # P(X) under inclusion
-
-def meet(x, y): return x & y                       # greatest lower bound
-def join(x, y): return x | y                       # least upper bound
-
-def increasing(values):                            # monotone non-decreasing under <=
-    for x in LATTICE:
-        for y in LATTICE:
-            if x <= y and values[x] > values[y] + 1e-12:
-                return False
-    return True
-
-def average(mu, h):
-    Z = sum(mu[x] for x in LATTICE)
-    return sum(mu[x] * h[x] for x in LATTICE) / Z
-
-def covariance(mu, f, g):                          # <fg> - <f><g>
-    fg = {x: f[x] * g[x] for x in LATTICE}
-    return average(mu, fg) - average(mu, f) * average(mu, g)
-
-def measure_condition_holds(mu):
-    # TODO: the condition on the measure that guarantees increasing f, g
-    #       are positively correlated.
-    pass
-
-# Desired property:
-#   measure_condition_holds(mu) and increasing(f) and increasing(g)
-#       => covariance(mu, f, g) >= 0
-```

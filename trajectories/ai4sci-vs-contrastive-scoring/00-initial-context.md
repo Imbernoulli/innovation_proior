@@ -1,82 +1,29 @@
 ## Research question
 
-Structure-based virtual screening ranks a compound library against one protein target so the few
-true binders sit at the very top, where a handful are pulled for wet-lab validation. Libraries are
-$10^8$–$10^9$ molecules and the hit rate is brutally low — far below 0.1% of compounds truly bind a
-given pocket — so the whole game is *throughput at the top of the ranking*. The single thing being
-designed is the **scoring objective**: given fixed pretrained backbone encoders (Uni-Mol for the
-molecule and the pocket, ESM-2 for the protein sequence) that are fine-tuned jointly with the scoring
-module, how should their features be projected into a shared space, what training loss should align
-binders with their target, and how should a final per-molecule score be read off at evaluation.
-Everything else — the encoders, the data loaders, the training loop, the evaluation scripts — is
-fixed.
+Structure-based virtual screening ranks a compound library against one protein target so the few true binders sit at the very top. Libraries are $10^8$–$10^9$ molecules and the hit rate is far below 0.1%, so the whole game is *throughput at the top of the ranking*. The single thing being designed is the **scoring objective**: given fixed pretrained backbone encoders (Uni-Mol for the molecule and the pocket, ESM-2 for the protein sequence) that are fine-tuned jointly with the scoring module, how should their features be projected into a shared space, what training loss should align binders with their target, and how should a final per-molecule score be read off at evaluation. Everything else — the encoders, the data loaders, the training loop, the evaluation scripts — is fixed.
 
-## Prior art before the first rung (the screening lineage)
+## Prior art / Background / Baselines
 
-The first rung — a CLIP-style contrastive scorer — is itself the resolution of a line of screening
-methods. These are the families it reacts to; each gets some of what screening needs and breaks on
-the rest.
+- **Molecular docking (Glide, AutoDock Vina, Gold).** Samples candidate ligand poses in the pocket and scores each pose with an empirical force field correlated with binding free energy. Gap: per-compound pose sampling takes roughly 10 s on a CPU core, so a $10^{10}$-compound library is thousands of years of compute — cost grows with the library, the wrong scaling for the "bigger is better" regime.
+- **Supervised affinity regression (DeepDTA, GraphDTA, OnionNet).** Maps a protein-molecule representation to a numeric affinity and ranks by that value. Gap: depends on scarce affinity labels (~$10^4$ labeled complexes), sees almost no true negatives, and at inference screens $(\#\text{targets}) \times (\#\text{library})$ full network evaluations, so it does not amortize.
+- **Supervised decoy classifiers (DrugVQA, AttentionSiteDTI).** Trains a binary classifier on actives versus rule-constructed decoys. Gap: the model latches onto the decoy-construction rule and fails to transfer to benchmarks built with different rules.
+- **Single-tower 3D scorers.** Feeds the joint protein-ligand complex, including cross-distances, into one network. Gap: the score depends on protein-ligand cross-distances, which are only known once the ligand is posed in the pocket, so a docking step is required and docking's cost is inherited.
+- **Dense retrieval and contrastive pretraining (DPR, InfoNCE, CLIP).** Embeds queries and documents independently and retrieves by dot-product similarity, training with a symmetric in-batch contrastive softmax. Gap: the softmax is dominated by easy negatives in large batches, and its global density-ratio optimum does not place the strongest binders at the very top of realistic, top-heavy benchmarks.
 
-- **Molecular docking (Glide, AutoDock Vina, Gold).** Sample candidate ligand poses in the pocket
-  (genetic algorithms, Monte Carlo over the conformational space) and score each with an empirical
-  force-field correlated with binding free energy. The dominant family and the only one that reliably
-  beats chance on hard benchmarks. Gap: the per-compound pose sampling is ~10 s on a CPU core, so a
-  $10^{10}$-compound library is thousands of years of compute — cost grows *with the library*, exactly
-  the wrong scaling for the "bigger is better" regime.
-- **Supervised affinity regression (DeepDTA, GraphDTA, OnionNet).** Map a protein-molecule
-  representation to a numeric affinity and rank by it. Gap: depends on scarce affinity labels
-  (~$10^4$ labeled complexes), sees almost no true negatives (so false positives explode), and at
-  inference each pocket-molecule pair needs a full forward pass — screening many targets scales as
-  (#targets)×(#library) network evaluations, which does not amortize.
-- **Supervised decoy classifiers (DrugVQA, AttentionSiteDTI).** Train a binary classifier on actives
-  versus rule-constructed decoys. Gap: the model latches onto the *decoy-construction rule* and fails
-  to transfer to benchmarks built with different rules — the negatives you train on shape what the
-  model learns, and artificial decoys teach an artificial boundary.
-- **Single-tower 3D scorers.** Feed the joint protein-ligand complex, including the cross-distances,
-  into one network. Captures interaction geometry directly. Gap: the score depends on the
-  protein-ligand cross-distances, which are only known once the ligand is *posed* in the pocket — so a
-  docking step is required, inheriting docking's cost.
-- **Dense retrieval (DPR, Karpukhin et al. 2020) and contrastive pretraining (InfoNCE, Oord et al.
-  2018; CLIP, Radford et al. 2021).** The templates the first rung borrows: a *factorized* score
-  $s(q,p)=E_Q(q)^\top E_P(p)$ that lets every document be embedded once and searched with
-  billion-scale nearest-neighbor indices, and a symmetric in-batch softmax whose optimum is a density
-  ratio $p(x\mid c)/p(x)$ and whose mutual-information bound tightens as the batch grows. These are
-  the ingredients the ladder is built from, not screening methods themselves.
+## Fixed substrate / Code framework
 
-## The fixed substrate
+The backbone encoders and harness are frozen and must not be touched. Uni-Mol is an SE(3)-invariant 3D Transformer that returns a 512-d [CLS] vector for a molecule or pocket; ESM-2 returns a 480-d [CLS] vector for the protein sequence. These three encoders are loaded from pretrained weights and fine-tuned jointly with the scoring module. The fixed model wrapper extracts the three [CLS] features per assay, calls the module's three `project_*` methods, and hands `(prot_emb, poc_emb, mol_emb)` to the fixed loss wrapper, which calls `compute_loss`. Training data is organized **by assay**: one target paired with a contiguous block of tested ligands, with block spans, per-ligand pIC50 activities, and metadata for false-negative masking provided per batch. Evaluation calls `score` over a target's library and reports ranking metrics.
 
-The backbone encoders and the harness are frozen and must not be touched. Uni-Mol is an
-SE(3)-invariant 3D Transformer that, given atom types and coordinates, returns a 512-d [CLS] vector
-for a whole molecule or pocket; ESM-2 returns a 480-d [CLS] vector for the protein sequence. These
-three encoders are loaded from pretrained weights and **fine-tuned jointly** with the scoring module
-(freezing them collapses the absolute metrics and breaks the relative ordering of the geometries — the
-projection heads alone cannot adapt the features to the chosen embedding space). The fixed model
-wrapper extracts the three [CLS] features per assay, calls the module's three `project_*` methods, and
-hands `(prot_emb, poc_emb, mol_emb)` to the fixed loss wrapper, which calls `compute_loss`. Training
-data is organized **by assay**: one target paired with a contiguous block of tested ligands, with the
-block spans, the per-ligand pIC50 activities, and metadata for false-negative masking all provided per
-batch. Evaluation calls `score` over a target's library and reports the ranking metrics.
+## Editable interface
 
-## The editable interface
+Exactly one file is editable — `custom_scoring.py`, the `CustomScoring` module. Every method fills the same contract:
 
-Exactly one file is editable — `custom_scoring.py`, the `CustomScoring` module. Every method on the
-ladder is a fill of the same contract:
+- `__init__(mol_dim=512, pocket_dim=512, protein_dim=480, embed_dim=128)` — projection heads and any objective parameters.
+- `project_mol(mol_feat)` / `project_pocket(poc_feat)` / `project_protein(prot_feat)` — map a `[B, dim]` feature into the `[B, embed_dim]` comparison space.
+- `compute_loss(mol_emb, poc_emb, prot_emb, batch_list, act_list, uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles)` — the training loss. `batch_list[i] = (start, end)` gives the contiguous column span of pocket `i`'s ligands in `mol_emb`; `act_list[i]` their pIC50 activities; the four metadata fields drive false-negative / duplicate masking. Returns `(loss, log_dict)`, and `log_dict["sim_masked"]` is read by the validation loop.
+- `score(mol_reps, pocket_reps, prot_reps=None)` — numpy scoring for one target's library; returns one score per molecule.
 
-- `__init__(mol_dim=512, pocket_dim=512, protein_dim=480, embed_dim=128)` — projection heads and any
-  objective parameters.
-- `project_mol(mol_feat)` / `project_pocket(poc_feat)` / `project_protein(prot_feat)` — map a
-  `[B, dim]` feature into the `[B, embed_dim]` comparison space.
-- `compute_loss(mol_emb, poc_emb, prot_emb, batch_list, act_list, uniprot_poc, uniprot_mol,
-  pocket_lig_smiles, lig_smiles)` — the training loss. `batch_list[i] = (start, end)` gives the
-  contiguous column span of pocket `i`'s ligands in `mol_emb`; `act_list[i]` their pIC50 activities;
-  the four metadata fields drive false-negative / duplicate masking. Returns `(loss, log_dict)`, and
-  `log_dict["sim_masked"]` is read by the validation loop.
-- `score(mol_reps, pocket_reps, prot_reps=None)` — numpy scoring for one target's library; returns
-  one score per molecule.
-
-The starting point is the scaffold default — a CLIP-style contrastive scorer over L2-normalized
-Euclidean embeddings, scored pocket↔molecule only, with the protein tower defined but unused in the
-loss. Each later rung edits exactly this file.
+The starting point is the scaffold default — a CLIP-style contrastive scorer over L2-normalized Euclidean embeddings, scored pocket↔molecule only, with the protein tower defined but unused in the loss.
 
 ```python
 """Custom scoring module for contrastive virtual screening — default fill (vanilla CLIP)."""
@@ -196,15 +143,10 @@ class CustomScoring(nn.Module):
 
 ## Evaluation settings
 
-Zero-shot: no target-specific training. Three structure-based screening benchmarks, with metrics
-averaged across each benchmark's targets:
+Zero-shot: no target-specific training. Three structure-based screening benchmarks, with metrics averaged across each benchmark's targets:
 
-- **DUD-E** — 102 targets, actives versus property-matched ZINC decoys (the standard benchmark).
-- **LIT-PCBA** — 15 targets, confirmed actives versus confirmed inactives from dose-response
-  bioassays; built to remove DUD-E's artificial-decoy bias, so realistic and much harder.
+- **DUD-E** — 102 targets, actives versus property-matched ZINC decoys.
+- **LIT-PCBA** — 15 targets, confirmed actives versus confirmed inactives from dose-response bioassays; built to remove DUD-E's artificial-decoy bias, so realistic and much harder.
 - **DEKOIS 2.0** — 81 targets, a challenging decoy benchmark.
 
-Metrics, all higher-is-better and all *early-recognition* (what matters is binders concentrated at the
-top of the ranking, not average behavior): **AUROC**, **BEDROC** ($\alpha=80.5$), and **enrichment
-factor EF** at the top 0.5%, 1%, and 5% (also EF at 0.05%, 0.1%, 0.2%). The task score is the
-geometric mean across the three benchmarks of each benchmark's metric average. One seed (42).
+Metrics, all higher-is-better and all *early-recognition*: **AUROC**, **BEDROC** ($\alpha=80.5$), and **enrichment factor EF** at the top 0.5%, 1%, and 5% (also EF at 0.05%, 0.1%, 0.2%). The task score is the geometric mean across the three benchmarks of each benchmark's metric average. One seed (42).

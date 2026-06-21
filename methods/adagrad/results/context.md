@@ -15,26 +15,15 @@ R(T) = sum_{t=1}^{T} f_t(x_t) - inf_{x in X} sum_{t=1}^{T} f_t(x),
 
 and the goal is for this to be **sublinear**, `R(T) = o(T)`, so average regret vanishes.
 
-The pain point that makes this more than a solved problem: the existing subgradient
-methods all advance the predictor with a step size — or, more generally, a proximal
-penalty — that is **fixed in advance and identical across coordinates**. In the
-high-dimensional problems that motivate this work (text classification, bag-of-words
-ranking), the input vectors are extremely sparse: within any one example only a few of
-the `d` features are non-zero, so most coordinates of `g_t` are zero on most rounds. Yet
-the features that fire rarely are often the most informative and discriminative — this is
-the long-standing folklore behind inverse-document-frequency feature weightings such as
-TF-IDF (Salton & Buckley 1988), where rare terms are deliberately up-weighted. A learner
-that uses the same step for a feature seen thousands of times and one seen once or twice
-is structurally mismatched to such data: each time a rare feature finally appears, the
-learner should "take notice," but a global rate does not let it.
-
-The precise goal, then, is a subgradient method that (1) gives each coordinate its own
-effective step size, large for rarely seen coordinates and small for frequently seen
-ones; (2) chooses those rates in a **principled** way driven by the observed gradient
-geometry rather than by hand-tuning; (3) comes with a regret guarantee that is provably
-competitive — not merely with one fixed step size, but with the best preconditioner that
-could have been chosen with full hindsight; and (4) costs little more than vanilla
-subgradient descent in time and memory, so it remains usable when `d` is in the millions.
+Many of the high-dimensional problems that motivate this work — text classification,
+bag-of-words ranking — have extremely sparse input vectors: within any one example only a
+few of the `d` features are non-zero, so most coordinates of `g_t` are zero on most
+rounds. Rare features are often informative and discriminative, the folklore behind
+inverse-document-frequency feature weightings such as TF-IDF (Salton & Buckley 1988),
+where rare terms are deliberately up-weighted. The question is how to set the proximal
+geometry — the step size, or more generally the preconditioner — of a subgradient method
+for a stream of such gradients, with a regret guarantee, at a cost close to that of
+vanilla subgradient descent so it remains usable when `d` is in the millions.
 
 ## Background
 
@@ -79,34 +68,26 @@ gives `R_φ(T) = O(√T)`. The dual-averaging / follow-the-regularized-leader fa
 Nesterov's primal-dual subgradient method (2009) and Xiao's regularized dual averaging
 (RDA, 2010) — instead predict from the *running average* gradient
 `ḡ_t = (1/t) Σ_{τ≤t} g_τ`,
-`x_{t+1} = argmin_x { η⟨ḡ_t, x⟩ + η φ(x) + (1/t) ψ_t(x) }`, and crucially keep `φ` intact
+`x_{t+1} = argmin_x { η⟨ḡ_t, x⟩ + η φ(x) + (1/t) ψ_t(x) }`, and keep `φ` intact
 (rather than linearizing it), which yields genuinely sparse iterates under an `ℓ1`
 penalty; its bound has the same shape,
 `R_φ(T) ≤ √T ψ(x*) + (1/(2√T)) Σ_t ||g_t||²_*` (Xiao 2010, Theorem 3).
 
-**The diagnostic observation that sets up the problem.** Read off the structure of every
-one of these bounds: the data-dependent part is a sum of **dual norms of the gradients**,
-`Σ_t ||g_t||²_{ψ*}`, and that dual norm is fixed entirely by the single, a-priori choice
-of `ψ`. Zinkevich's algorithm takes `ψ(x) = ½||x||²_2`; RDA takes `ψ_t = √t ψ` for a fixed
-`ψ`; in each case the *shape* of the metric is decided before any data is seen and is the
-same for every coordinate. On sparse, heavy-tailed feature distributions this is exactly
-where the bound is loose: with the isotropic Euclidean metric the gradient-norm sum is as
-large as the dense worst case (`Σ_t ||g_t||²_2` on the order of `d` per active example),
-even though the gradient *mass* is concentrated on a handful of coordinates and the bulk
-of the dimensions contribute almost nothing. Abernethy et al. (2008) further showed
-Zinkevich's `O(√T)` bound is minimax-tight, so any improvement must come from extra
-structure in the input — the sparsity — rather than from a sharper analysis of the same
-isotropic algorithm.
+In every one of these bounds the data-dependent part is a sum of **dual norms of the
+gradients**, `Σ_t ||g_t||²_{ψ*}`, and that dual norm is fixed by the a-priori choice of
+`ψ`. Zinkevich's algorithm takes `ψ(x) = ½||x||²_2`; RDA takes `ψ_t = √t ψ` for a fixed
+`ψ`; the shape of the metric is decided before any data is seen and is the same for every
+coordinate. Abernethy et al. (2008) showed Zinkevich's `O(√T)` bound is minimax-tight, so
+any improvement must come from extra structure in the input — the sparsity — rather than
+from a sharper analysis of the same isotropic algorithm.
 
-A long line of older work hints that adapting the metric to the data is fruitful but does
-not deliver an online/stochastic regret guarantee: space-dilation methods (Shor 1972),
-variable-metric / quasi-Newton schemes such as BFGS (Fletcher 1970), and Nedić's
-variable-metric subgradient thesis (2002) all assume a differentiable, deterministic,
-unconstrained objective. The confidence-weighted / second-order-Perceptron / AROW line
-(Cesa-Bianchi et al. 2005; Crammer et al. 2008, 2009) maintains a per-coordinate
-confidence (a covariance) and updates it multiplicatively, but its guarantees are
-mistake bounds tied to a specific loss, not regret bounds comparable across the methods
-above, and AROW uses the inverse covariance rather than its root.
+A line of older work adapts the metric to the data in other settings: space-dilation
+methods (Shor 1972), variable-metric / quasi-Newton schemes such as BFGS (Fletcher 1970),
+and Nedić's variable-metric subgradient thesis (2002) all assume a differentiable,
+deterministic, unconstrained objective. The confidence-weighted / second-order-Perceptron
+/ AROW line (Cesa-Bianchi et al. 2005; Crammer et al. 2008, 2009) maintains a
+per-coordinate confidence (a covariance) and updates it multiplicatively, with mistake
+bounds tied to a specific loss, using the inverse covariance.
 
 ## Baselines
 
@@ -117,19 +98,13 @@ project back into the feasible set,
 `x_{t+1} = Π_X(x_t - η g_t)`, with the decreasing schedule `η_t = η/√t`. With diameter
 `sup_{x,y} ||x - y||_2 ≤ D_2` and the optimal hindsight `η`, the regret is
 `Σ_t f_t(x_t) - inf_x Σ_t f_t(x) ≤ √2 D_2 (Σ_t ||g_t||²_2)^{1/2}`, i.e. `O(√(d T))` in the
-dense worst case. **Limitation:** a single isotropic step size — the same `η_t` scales
-every coordinate. On sparse data the `Σ_t ||g_t||²_2` term carries the full ambient
-dimension `d` even though most coordinates are inactive, and the method cannot give a
-rarely seen coordinate a larger move than a constantly seen one.
+dense worst case. A single isotropic step size `η_t` scales every coordinate.
 
 **Mirror descent with a fixed proximal function (Nemirovski & Yudin 1983; Beck & Teboulle
 2003).** The update `x_{t+1} = argmin_x { η⟨g_t, x⟩ + η φ(x) + B_ψ(x, x_t) }` with regret
-`(1/η) B_ψ(x*, x_1) + (η/2) Σ_t ||g_t||²_{ψ*}`. Choosing `ψ` to match the geometry of `X`
-(Euclidean for a box, entropy for the simplex) is the only adaptivity available.
-**Limitation:** `ψ` is chosen once, before any gradient is seen, and is identical for
-every coordinate; the bound's `Σ_t ||g_t||²_{ψ*}` term is then whatever that blind choice
-makes it, with no mechanism to tighten it as the gradients reveal which coordinates
-actually matter.
+`(1/η) B_ψ(x*, x_1) + (η/2) Σ_t ||g_t||²_{ψ*}`. The proximal `ψ` is chosen to match the
+geometry of `X` (Euclidean for a box, entropy for the simplex), once, before any gradient
+is seen, and identically for every coordinate.
 
 **Regularized dual averaging / primal-dual subgradient (Nesterov 2009; Xiao 2010).**
 Predict from the average gradient,
@@ -137,19 +112,16 @@ Predict from the average gradient,
 strongly convex `ψ`; keeping `φ` un-linearized produces sparse iterates under an `ℓ1`
 penalty, with regret `√T ψ(x*) + (1/(2√T)) Σ_t ||g_t||²_*`. For the `ℓ1` case it gives
 the coordinate-wise soft-threshold
-`x_{t+1,i} = sign(-ḡ_{t,i}) · η√t · [|ḡ_{t,i}| - λ]_+`. **Limitation:** the proximal term
-`ψ_t = √t ψ` is still a single fixed `ψ` scaled by one global, time-dependent scalar `√t`;
-every coordinate is annealed at the same `√t` rate regardless of how much gradient mass it
-has accumulated.
+`x_{t+1,i} = sign(-ḡ_{t,i}) · η√t · [|ḡ_{t,i}| - λ]_+`. The proximal term `ψ_t = √t ψ` is
+a single fixed `ψ` scaled by the global, time-dependent scalar `√t`; every coordinate is
+annealed at the same `√t` rate.
 
 **Confidence-weighted / AROW (Cesa-Bianchi et al. 2005; Crammer et al. 2008, 2009).**
 Maintains a mean predictor `μ_t` and a covariance `Σ_t`, updating both on each margin
 violation: `μ_{t+1} = μ_t + α_t Σ_t y_t z_t`, `Σ_{t+1} = Σ_t - β_t Σ_t z_t z_t^T Σ_t`,
-with `β_t = 1/(⟨z_t, Σ_t z_t⟩ + λ)`. This is genuinely per-coordinate second-order
-information and works well on sparse text. **Limitation:** the guarantees are mistake
-bounds for a particular (hinge-type) loss, not regret bounds, so they are hard to compare
-against the methods above or to extend to arbitrary composite `φ` and domain constraints;
-and it preconditions by the inverse covariance rather than its root.
+with `β_t = 1/(⟨z_t, Σ_t z_t⟩ + λ)`. This is per-coordinate second-order information and
+works well on sparse text. The guarantees are mistake bounds for a particular (hinge-type)
+loss, and it preconditions by the inverse covariance.
 
 ## Evaluation settings
 
@@ -226,6 +198,8 @@ def run_online(model, loss_fn, data_stream, learner):
         loss = loss_fn(outputs, targets)       # existing (possibly noisy) loss f_t
         loss.backward()                        # fills p.grad = g_t for every block
         learner.step()                         # apply the update rule
+
+
 ```
 
 The outer loop supplies one subgradient per parameter block per round; `step()` is where

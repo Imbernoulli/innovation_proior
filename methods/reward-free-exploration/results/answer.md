@@ -1,150 +1,72 @@
 # Reward-Free Exploration
 
-## The problem
+## Method
 
-In a tabular episodic MDP (`S` states, `A` actions, horizon `H`, rewards in
-`[0,1]`), explore **once with no reward**, collecting a dataset `D`, so that
-afterward, for **any** reward function `r` revealed later — and for arbitrarily
-many, even adversarially/adaptively chosen — planning on `D` alone (no further
-interaction) returns an `ε`-optimal policy. This decouples *where to go* from
-*what to optimize*, which matters when rewards are engineered by trial and error.
+Input: an unknown episodic tabular MDP with `S` states, `A` actions, horizon `H`, accuracy `epsilon`, failure probability `p`.
 
-## Key idea
+Exploration phase, with no downstream reward:
 
-1. **Coverage is the target, dictated by an adversary.** By the simulation
-   (value-difference) lemma, the evaluation error of any policy under any reward
-   is `E_π Σ_h (P̂_h − P_h)V̂^π_{h+1}`. To bound this for every reward and policy
-   at once, the data distribution `μ` must satisfy, for every reachable `(s,a)`,
-   `P^π_h(s,a)/μ_h(s,a) ≤ poly` — every significantly-reachable state-action is
-   visited proportional to its maximum reaching probability.
-2. **Significant vs insignificant states.** A state is `δ`-significant if
-   `max_π P^π_h(s) ≥ δ`. Insignificant states contribute at most `HSδ` per step,
-   hence `H²Sδ` over the simulation-lemma sum. Set `δ = ε/(2SH²)`.
-3. **Reward-as-bonus.** To learn to reach `(s,h)`, feed the explorer the
-   indicator reward `r'_{h'}(s',a') = 1[s'=s, h'=h]`. Then `V*_1 = max_π P^π_h(s)`
-   and the optimal policy maximizes reaching probability. Use a value-dependent
-   explorer (EULER) whose cost scales with `V*_1` — so faint targets are cheap.
-4. **Mixture = coverage.** Mix the per-target policy sets (uniform action at the
-   target cell) into `Ψ`; `μ` = run a uniform draw from `Ψ`.
+1. Set `delta = epsilon/(2 S H^2)`.
+2. For every target state-time pair `(s,h)`, create the synthetic reachability reward
+   `r_{h'}(s',a') = 1[s'=s and h'=h]`.
+3. Run EULER for `N_0` episodes on this synthetic reward, obtaining a policy multiset `Phi^(s,h)`.
+4. For every `pi in Phi^(s,h)`, replace `pi_h(.|s)` by `Uniform(A)`.
+5. Let `Psi` be the union of all target policy multisets.
+6. Collect `N` trajectories by sampling `pi ~ Uniform(Psi)` and rolling out `pi`; call the resulting dataset `D`.
 
-## The protocol
+Planning phase, for any revealed reward `r`:
 
-**Exploration phase (no reward).** For each `(s,h)`: run EULER on the indicator
-reward for `N_0` episodes to get a policy set `Φ^{(s,h)}` whose average reaching
-probability is `≥ ½ max_π P^π_h(s)`; set the action at `(s,h)` to `Uniform(A)`.
-Let `Ψ = ⋃_{(s,h)} Φ^{(s,h)}`. Sample `N` trajectories, each under a uniformly
-drawn `π ∈ Ψ`, to form `D`.
+1. Form the empirical transition model `Phat_h(s'|s,a)` from `D`.
+2. Run any planner that returns an `epsilon`-suboptimal policy for the known MDP `(Phat,r)`, such as exact value iteration or the finite-horizon NPG update
+   `pi_{h}^{t+1}(a|s) proportional to pi_h^t(a|s) exp(eta Q_h^{pi^t}(s,a))`.
+3. Return the planner's policy.
 
-**Planning phase (reward `r` given).** Count to form the empirical transition
-`P̂_h(s'|s,a) = N_h(s,a,s')/N_h(s,a)`; call any approximate MDP solver on
-`(P̂, r)` — value iteration (exact) or NPG.
+## Coverage Invariant
 
-## Guarantees
+For every `delta`-significant state-time pair,
 
-**Coverage (exploration).** With `N_0 = O(S²AH⁴ι₀³/δ)`, w.p. `1−p`, `D` is i.i.d.
-from a `μ` with, for every `δ`-significant `(s,h)`,
-`max_{π,a} P^π_h(s,a)/μ_h(s,a) ≤ 2SAH`.
+`max_pi P_h^pi(s) >= delta`,
 
-**Uniform evaluation (planning).** With `δ = ε/(2SH²)` and `N ≥ c H⁵S²Aι/ε²`,
-w.p. `1−p`, for **every** reward `r` and policy `π` simultaneously,
-`|E_{s_1}[V̂^π_1(s_1;r) − V^π_1(s_1;r)]| ≤ ε`.
-Proof: split the simulation-lemma error into insignificant states (`≤ H²Sδ ≤ ε/2`)
-and significant states; Cauchy–Schwarz, reduce to a deterministic action map `ν`,
-import coverage `P^π_h(s) ≤ 2SAH·μ_h(s,a)`, then a self-bounded Bernstein bound
-`E_{μ_h}|(P̂−P)G|²1[a=ν(s)] ≤ O(H²S/N·log(AHN/p))` (ERM `ΣY_i≤0`,
-`Var(Y)≤4H²E[Y]`, covering `A^S·(H/ε)^{2S}` values — the `A`-improved net),
-summed over `h` to `O(√(H⁵S²A/N·log))`.
+the exploration distribution `mu` induced by sampling uniformly from `Psi` satisfies
 
-**Planning suboptimality.** Via the decomposition
-`V^{π*}_1 − V^{π̂}_1 ≤ EvalErr1 + (≤0) + OptErr + EvalErr2 ≤ ε + 0 + ε + ε = 3ε`,
-holding for all rewards simultaneously.
+`max_{pi,a} P_h^pi(s,a) / mu_h(s,a) <= 2 S A H`.
 
-**Main theorem.** There is a reward-free exploration algorithm that, w.p. `1−p`,
-outputs `ε`-optimal policies for arbitrarily many adaptively chosen rewards, using
+This invariant is the core object. It says the data distribution visits every meaningfully reachable state-action pair in proportion to the best possible reaching probability, while ignoring only states whose maximum total value contribution is below the chosen error budget.
 
-  `K ≤ c·[ H⁵S²Aι/ε² + S⁴AH⁷ι³/ε ]`,  `ι = log(SAH/(pε))`,
+## Sample Complexity
 
-i.e. `Õ(H⁵S²A/ε²)` episodes.
+Choose
 
-**Lower bound.** Any algorithm with this guarantee needs `Ω(S²AH²/ε²)` episodes
-(for `A≥2`, `S ≥ C log₂ A`, `H ≥ C log₂ S`, `ε ≤ min{1/4, H/48}`), even with
-randomized/non-Markov policies. Construction: a single state transitioning to
-`2n` near-uniform terminals forces TV-learning of `q(·,a)` for every action
-(`Ω(nA/ε²)` via an uncorrelated `±1` packing + Fano + Wald); embed `n = Ω(S)`
-copies in a binary tree so the learner is forced to learn `n` of them
-and the persistent terminal rewards reduce embedded `ε`-optimality to single-copy
-accuracy `4ε/H`, giving `Ω(n²AH²/ε²) = Ω(S²AH²/ε²)`. The extra factor `S` over
-single-reward RL's `Θ̃(SAH²/ε²)` is the price of good coverage.
+`N_0 = O(S^2 A H^4 iota_0^3 / delta)`,
 
-## NPG as the approximate solver
+where `iota_0 = log(S A H/(p delta))`, and
 
-`π^{(t+1)}_h(a|s) ∝ π^{(t)}_h(a|s)·exp(η(Q^{(t)}_h(s,a) − V^{(t)}_h(s)))`,
-uniform init. Via the performance-difference lemma and `exp(x) ≤ 1+x+x²`
-(`η ≤ 1/H`):
-`E[V*_1 − V^{(T)}_1] ≤ (H log A)/(ηT) + ηH²`. With `η = √(log A/(HT))`,
-`T = 4H³ log A/ε²`, this is `≤ ε`.
+`N = O(H^5 S^2 A iota / epsilon^2)`,
 
-## Implementation
+where `iota = log(S A H/(p epsilon))`.
 
-```python
-import numpy as np
+Then the total number of exploration episodes is
 
-class EpisodicMDP:
-    def __init__(self, P, H, p1):
-        self.P, self.H, self.p1 = P, H, p1
-        self.S, self.A = P[0].shape[0], P[0].shape[1]
-    def rollout(self, policy, rng):
-        s = rng.choice(self.S, p=self.p1); traj = []
-        for h in range(self.H):
-            a = rng.choice(self.A, p=policy[h][s])
-            s_next = rng.choice(self.S, p=self.P[h][s, a])
-            traj.append((h, s, a, s_next)); s = s_next
-        return traj
+`K <= c [ H^5 S^2 A iota / epsilon^2 + S^4 A H^7 iota^3 / epsilon ]`,
 
-def value_iteration(P, r, H):                    # exact planner: opt-error 0
-    S, A = P[0].shape[0], P[0].shape[1]
-    V_next = np.zeros(S); pi = [np.zeros((S, A)) for _ in range(H)]
-    for h in reversed(range(H)):
-        Q = r[h] + P[h] @ V_next; g = np.argmax(Q, axis=1)
-        pi[h][np.arange(S), g] = 1.0; V_next = Q.max(axis=1)
-    return pi, V_next
+which is `Otilde(H^5 S^2 A / epsilon^2)` in the leading term.
 
-def natural_policy_gradient(P, r, H, eta, T):
-    S, A = P[0].shape[0], P[0].shape[1]
-    pi = [np.full((S, A), 1.0 / A) for _ in range(H)]
-    for _ in range(T):
-        V_next = np.zeros(S); Q = [None] * H
-        for h in reversed(range(H)):
-            Q[h] = r[h] + P[h] @ V_next; V_next = (pi[h] * Q[h]).sum(axis=1)
-        for h in range(H):
-            A_h = Q[h] - (pi[h] * Q[h]).sum(axis=1, keepdims=True)
-            lo = np.log(pi[h] + 1e-300) + eta * A_h
-            lo -= lo.max(axis=1, keepdims=True); w = np.exp(lo)
-            pi[h] = w / w.sum(axis=1, keepdims=True)
-    return pi
+## Guarantee
 
-def reward_free_explore(env, regret_minimizing_explorer, N0, N, rng):
-    S, A, H = env.S, env.A, env.H; Psi = []
-    for h in range(H):
-        for s in range(S):
-            r_ind = [np.zeros((S, A)) for _ in range(H)]; r_ind[h][s, :] = 1.0
-            Phi = regret_minimizing_explorer(env, r_ind, N0, rng)
-            for pi in Phi:
-                pi[h][s, :] = 1.0 / A            # Uniform(A) at target cell
-            Psi.extend(Phi)
-    return [env.rollout(Psi[rng.integers(len(Psi))], rng) for _ in range(N)]
+With probability at least `1-p`, the same dataset `D` supports arbitrarily many adaptively chosen downstream reward functions. For every such reward, if the empirical planner has optimization error at most `epsilon`, the returned policy is `3 epsilon`-suboptimal in the true MDP:
 
-def reward_free_plan(D, S, A, H, reward, solver="VI", eta=None, T=None):
-    Nsas = [np.zeros((S, A, S)) for _ in range(H)]
-    Nsa  = [np.zeros((S, A))     for _ in range(H)]
-    for traj in D:
-        for h, s, a, s_next in traj:
-            Nsas[h][s, a, s_next] += 1; Nsa[h][s, a] += 1
-    Phat = []
-    for h in range(H):
-        cnt = Nsa[h][:, :, None]
-        Phat.append(np.where(cnt > 0, Nsas[h] / np.maximum(cnt, 1), 1.0 / S))
-    if solver == "VI":
-        return value_iteration(Phat, reward, H)[0]
-    return natural_policy_gradient(Phat, reward, H, eta, T)
-```
+`E_{s_1}[V_1^*(s_1;r) - V_1^{pihat}(s_1;r)] <= 3 epsilon`.
+
+The proof uses the value-difference lemma, splits insignificant states from covered states, and bounds the covered part by a self-bounded Bernstein inequality:
+
+`E_mu |(Phat_h - P_h)G(s,a)|^2 1[a=nu(s)] <= O(H^2 S log(A H N / p)/N)`.
+
+This uniform evaluation event holds over all policies and rewards, which is why one exploration phase can support many later reward functions.
+
+## Lower Bound
+
+Any algorithm with this reward-agnostic first phase needs
+
+`Omega(S^2 A H^2 / epsilon^2)`
+
+episodes in expectation when `A >= 2`, `S >= C log_2 A`, `H >= C log_2 S`, `epsilon <= min{1/4, H/48}`, and the success probability is fixed at `1/2`. The lower bound first forces transition-distribution identification at a single state using packed near-uniform leaf distributions and reward vectors as separating hyperplanes, then embeds `Omega(S)` such copies in a binary tree. The extra factor of `S` over fixed-reward tabular RL is therefore the price of coverage for all possible downstream rewards, not an artifact of the upper-bound analysis.

@@ -62,3 +62,32 @@ ruinously slow because it recomputes overlapping subgraph structure per edge. Th
 answers is whether the structural information a subgraph GNN extracts — the (d_u, d_v) distance-label
 counts that subsume the overlap heuristics — can be computed *at the node level*, once, and combined
 with node features, *without ever constructing a per-edge subgraph*.
+
+## Code framework
+
+```python
+class BuddyAllocator:
+    """Buddy-system memory allocator scaffold."""
+
+    def __init__(self, total_size: int, min_block: int = 1):
+        self.total_size = total_size
+        self.min_block = min_block
+        self.free = {total_size: [0]}
+        self.allocated = {}
+
+    def allocate(self, size: int) -> int:
+        """Return start address of an allocated block, or raise."""
+        raise NotImplementedError
+
+    def free(self, addr: int) -> None:
+        """Free the block starting at addr and merge buddies."""
+        raise NotImplementedError
+
+    def split(self, size: int, addr: int) -> None:
+        """Split a free block into two buddy halves."""
+        raise NotImplementedError
+
+    def merge(self, addr: int, size: int) -> None:
+        """Merge addr with its buddy if both are free."""
+        raise NotImplementedError
+```

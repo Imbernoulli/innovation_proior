@@ -1,0 +1,81 @@
+Progress in deep learning is paced by the availability of efficient GPU compute kernels, and the trouble starts the moment a model steps off the fixed catalogue of primitives that the vendor libraries cover. As long as an operation is one of the things cuBLAS or cuDNN already ships — a dense GEMM, a standard convolution — it runs near the hardware's peak. But a fused activation, a block-sparse weight matrix, a shifted convolution, a custom attention pattern has no library entry, and it then runs at a small fraction of peak unless an expert hand-writes a CUDA or PTX kernel for it. That hand-written route is brutal: it eats months, it demands intimate knowledge of one specific GPU's memory hierarchy and warp scheduling, and the result does not survive the next architecture or the arrival of new arithmetic units like tensor cores. So a novel idea is either slow because device utilization is poor, or expensive because a specialist has to write and re-write low-level code. What we want is a programming abstraction, plus a compiler behind it, that lets someone who is not a GPU-microarchitecture specialist write a custom kernel at a high level and have it compiled into code competitive with the hand-tuned libraries — portably, so the same source survives across architectures, expressive enough to capture the non-affine indexing of structured-sparse computations, and fusion-friendly, because for the bandwidth-bound operations that dominate the omitted catalogue the only way to go faster is to move fewer bytes through DRAM.
+
+The existing routes each fail this in a specific way, and the failures share a root. Hand-written CUDA programs in the standard per-thread SPMD model: the programmer writes the body of a single scalar thread, identifies its position with $\texttt{blockIdx}$/$\texttt{threadIdx}$, and is then personally responsible for shredding a data tile across the threads of a block, staging operands into shared memory, inserting $\texttt{\_\_syncthreads()}$ barriers, and laying out global accesses so consecutive threads hit consecutive addresses and coalesce. This is the vendor libraries — it reaches peak — but the effort is enormous and architecture-specific, and the catalogue stays fixed. Polyhedral compilers lift a loop nest into geometry: the iteration domain becomes an integer polyhedron $P = \{x : Ax + b \ge 0\}$ and a schedule is an affine map $\Theta_S(x) = T_S\,[x;\,g;\,1]$, so loop transformations become linear algebra on $T_S$ and the compiler verifies each preserves semantics. This is automatic and library-class on dense matmul, but the legal-schedule space explodes with the number of statements, checking legality means solving integer linear programs, and — fatally — the whole framework only applies to Static Control Parts, where loop bounds and subscripts are affine functions of the indices. The non-affine indexing of structured sparsity, where the next nonzero block is read from a lookup table rather than computed as $a\,i + b$, has nothing for the geometry to grab onto. Scheduling languages like Halide and TVM separate the algorithm from the schedule at the grammar level and let an auto-tuner search schedules, but writing a good schedule is still expert work — the months move from the kernel body to the schedule — the schedules are not performance-portable and lag every new tensor intrinsic, the iteration spaces stay rectangular and affine, and even fully auto-tuned the code sits measurably below peak, worst on the small matrices batched inference is full of. The common root, the thing I want to attack, is that in all three the atom of parallelism is the scalar thread (or, equivalently, a per-iteration point in an affine space): coalescing, barriers, shared-memory layout, and the affine restriction all exist only because a multi-dimensional tile of data has no first-class standing — it appears only implicitly, as the set of scalar elements some set of threads will touch.
+
+What I propose is Triton, a language and compiler in which the tile — a statically-shaped multi-dimensional sub-array — is a first-class value. The single move is to lift the atom of parallelism from the scalar thread to the tile. If a value is a whole tile such as $\texttt{float A[16,16]}$, treated as one object rather than 256 scalars spread over 256 threads, then the program text says $\texttt{C += dot(A, trans(B))}$ and means it literally: a block-level operation on block-level values. The kernel becomes single-threaded from my point of view — there is no $\texttt{threadIdx}$, no decomposition of a tile across 32 lanes that I have to author by hand. Each program instance owns one tile of the iteration space and identifies itself not by a thread id but by a program-id primitive, $\texttt{tl.program\_id(axis)}$, that says which tile this instance is responsible for. The grid of instances is still SPMD, still the same program replicated across the device, but the unit being replicated is a program over tiles rather than a thread over scalars. The honest question is who then does the parallelism, since a $16\times16$ tile still has to be spread over SIMD lanes, loads still have to coalesce, shared memory still has to be allocated and synchronized. The bet is that block-level operations carry enough static structure for a compiler to recover all of that automatically — so the burden does not vanish, it transfers from the programmer to the compiler, and the design must give the compiler the handles it needs.
+
+The handle is an LLVM-based intermediate representation in which tiles are first-class. I take ordinary LLVM-IR — control flow as basic blocks and branches, SSA so every value is assigned once and the use-def chains are explicit — and extend its type system with tile types, writing $\texttt{i32<8,8>}$ for an $8\times8$ tile by analogy with vector types. An $\texttt{add}$ on two $\texttt{f32<8,8>}$ operands is elementwise over the whole tile, and I add the primitives the abstraction needs: $\texttt{reshape}$ and $\texttt{broadcast}$ for numpy-style shape rules (left-pad the shorter shape with ones, then replicate along size-one dimensions until the shapes match), and $\texttt{trans}$ and $\texttt{dot}$ for the linear-algebra core. One snag forces a design choice. Tile operations are atomic — a whole-tile $\texttt{add}$ happens for the entire tile or not at all — so I cannot branch on individual elements, yet I constantly need to: when a tile of pointers runs off the end of a matrix I must guard the load so out-of-bounds lanes do not fault, which is per-element control flow. Plain branching cannot express it because a tile element is not individually addressable. The fix is Predicated SSA at tile granularity: a comparison produces the true and false predicate streams for the whole tile, predicated statements attach work to a stream, and a $\texttt{psi}$ merge rejoins the values element by element. At the Python surface this same need appears in the compact form I actually write — a $\texttt{mask=}$ argument on $\texttt{tl.load}$ and $\texttt{tl.store}$, or $\texttt{where}$-style selection — and the IR gets the per-element predicate stream it requires.
+
+On that IR the four burdens that made CUDA expensive all fall out of standard data-flow analysis, which is the whole confirmation that the relabeling was real. Parallelism is recovered by hierarchical sub-blocking: recursively split the tile into micro-tiles and nano-tiles to fit the core, with the legal nestings enumerable because the shapes are static, and choose the fragment shape per operation — vectorize an elementwise op into thin $1\times4$ fragments, but tensorize an FP16 matmul into $2\times2\times2$ fragments that land on tensor cores, so tensor-core use becomes block-aware instruction selection done for free. Coalescing is recovered by contiguity analysis: because the program operates on whole tiles of pointers built from program ids and ranges, the compiler can statically find the axis along which the addresses are contiguous and order the SIMD lanes along it, reading the rule off the index expressions rather than having me write it. Shared-memory placement has a crisp criterion — stage a tile to fast L1 exactly when it feeds an arithmetically-intense op, approximated by $\alpha(v) = \texttt{comp}(v) / \sum_{p \in \texttt{pred}(v)} \texttt{mem}(p)$, high for $\texttt{dot}$ — and the "where" is liveness analysis (a tile is live from its definition to its last use, computed by the standard iterative GEN/KILL fixpoint) feeding a linear-time static storage allocator that packs the intervals into the shared-memory budget. Barriers are recovered by forward data-flow over the pending read-after-write and write-after-read buffers: at each statement $s$, $\mathrm{IN_{RAW}}(s) = \bigcup_{p \in \texttt{pred}(s)} \mathrm{OUT_{RAW}}(p)$, and if $\mathrm{IN_{RAW}}(s) \cap \texttt{read}(s) \ne \varnothing$ a write has not been fenced yet so we emit a barrier and clear the set, otherwise we propagate $\mathrm{IN_{RAW}}(s) \cup \texttt{write}(s)$; the symmetric rule with $\texttt{read}$ and $\texttt{write}$ swapped handles write-after-read. The compiler inserts exactly the barriers the hazards require, no more. The one knob the analyses cannot infer is the tile sizes $T_M, T_N, T_K$ — too large and parallelism dies and registers spill, too small and L1 reuse collapses, and the sweet spot depends on SM count, cache sizes, register pressure and the runtime tensor shapes with no closed form — so I make them tunable and isolate them into an auto-tuner whose search space the IR's own passes expose.
+
+The payoff for the bandwidth-bound operations the vendor libraries omit is fusion, and that is where the concrete example lives. The Roofline model says a low-arithmetic-intensity op is bandwidth-bound, its time essentially $\texttt{bytes\_moved}/\texttt{bandwidth}$, so the only lever is moving fewer bytes. In an MLP block $h = x\,W_{fc}^\top,\ a = \mathrm{act}(h),\ \mathrm{out} = a\,W_{proj}^\top$ the two matmuls stay ordinary dense matmuls and the slot I replace is the pointwise activation on the wide hidden $h$: rather than decompose it into a string of pointwise launches and temporary tensors that each round-trip $h$ through DRAM, a program instance loads a contiguous chunk of $h$ once, forms everything in registers, and stores the result once. The activation is GELU, the smooth gate $\mathrm{GELU}(x) = x\,\Phi(x) = x\cdot 0.5\,(1 + \mathrm{erf}(x/\sqrt{2}))$, which weights $x$ by the probability a standard Gaussian falls below it. In the kernel I use the tanh approximation
+$$\mathrm{GELU}(x) \approx 0.5\,x\,\big(1 + \tanh[\,c\,(x + 0.044715\,x^3)\,]\big),\qquad c = \sqrt{2/\pi} = 0.7978845608028654,$$
+for two kernel-level reasons: it is easy to implement with device $\tanh$, and its derivative is closed-form in $\tanh$ since $\tfrac{d}{dx}\tanh(u) = 1 - \tanh^2(u) = \mathrm{sech}^2(u)$, so the hand-written backward never needs $\mathrm{erf}$'s derivative either. One numerical trap forces a choice: the cubic and tanh must not be evaluated in the input's low-precision dtype, because fp16 can overflow in the cubic and bf16/fp16 is too coarse for the polynomial, so I upcast $x$ to float32, compute, and cast the result back. Because GELU is a pure elementwise op I flatten the tensor and give each instance one contiguous $\texttt{BLOCK}$-sized chunk: it asks $\texttt{program\_id(0)}$ which chunk it owns, builds the offset tile $\texttt{pid}\cdot\texttt{BLOCK} + \texttt{arange}(0,\texttt{BLOCK})$, masks the tail against $\texttt{n\_elements}$ so the last partial block does not fault, does a masked $\texttt{tl.load}$, computes the tanh-GELU in fp32, and does a masked $\texttt{tl.store}$ — no $\texttt{threadIdx}$, no shared memory, no hand-written barriers, the compiler's coalescing and vectorization passes doing the rest. I launch one instance per chunk on the grid $\texttt{(n\_elements + BLOCK - 1)} / \texttt{BLOCK}$ with $\texttt{BLOCK} = 1024$, a power of two large enough to amortize launch overhead and saturate the bus, small enough to keep many instances resident for occupancy.
+
+The backward I write analytically rather than tracing autograd through the elementwise op, since I just wrote the activation explicitly and its gradient is just as local. The two linears are matmuls, so their gradients are matmuls: with $\mathrm{out} = a\,W_{proj}^\top$ we get $d_a = g\,W_{proj}$ and $\nabla W_{proj} = g^\top a$, and after the activation gradient gives $d_h$ we get $\nabla x = d_h\,W_{fc}$ and $\nabla W_{fc} = d_h^\top x$, where $g = \partial L/\partial\,\mathrm{out}$. The one careful piece is the activation derivative. Differentiating $\mathrm{gelu}(x) = 0.5\,x\,(1 + \tanh(\mathrm{inner}))$ with $\mathrm{inner} = c\,(x + a\,x^3)$, $a = 0.044715$, by the product rule,
+$$\frac{d}{dx}\mathrm{gelu} = 0.5\,(1 + \tanh(\mathrm{inner})) + 0.5\,x\,\mathrm{sech}^2(\mathrm{inner})\,\frac{d\,\mathrm{inner}}{dx},\qquad \frac{d\,\mathrm{inner}}{dx} = c\,(1 + 3a\,x^2),\quad \mathrm{sech}^2 = 1 - \tanh^2.$$
+The limits confirm the signs and constants: as $x \to +\infty$, $\tanh \to 1$ so the first term $\to 1$ while $\mathrm{sech}^2 \to 0$ kills the second, giving slope $1$ — GELU is the identity for large positive $x$; as $x \to -\infty$ both terms $\to 0$ — it saturates to zero on the left; at $x = 0$, $\tanh 0 = 0$ so the first term is $0.5$ and the second vanishes, giving the expected slope $0.5$ at the origin. The backward is evaluated in fp32 on the saved pre-activation $h$ (saved rather than recomputed) and combined with the two matmul gradients as below.
+
+```python
+import torch
+
+import triton
+import triton.language as tl
+from triton.language.extra.cuda import libdevice
+
+
+@triton.jit
+def _fused_gelu_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+    pid = tl.program_id(0)                               # which program instance / tile chunk
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements                          # guard the tail
+    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
+    # compute the polynomial and tanh in fp32, then cast back
+    xf = x.to(tl.float32)
+    c = 0.7978845608028654                               # sqrt(2/pi)
+    inner = c * (xf + 0.044715 * xf * xf * xf)
+    tanh_val = libdevice.tanh(inner)
+    out = xf * 0.5 * (1.0 + tanh_val)                    # 0.5 x (1 + tanh(inner))
+    tl.store(out_ptr + offsets, out.to(x.dtype), mask=mask)
+
+
+class _TritonGELUMLP(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, w_fc, w_proj):
+        h = x @ w_fc.t()                                 # first linear
+        act = torch.empty_like(h)
+        n = h.numel()
+        BLOCK = 1024
+        grid = ((n + BLOCK - 1) // BLOCK,)                 # one instance per chunk
+        _fused_gelu_kernel[grid](h, act, n, BLOCK_SIZE=BLOCK)
+        out = act @ w_proj.t()                           # second linear
+        ctx.save_for_backward(x, w_fc, w_proj, h, act)
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, w_fc, w_proj, h, act = ctx.saved_tensors
+        dtype = grad_output.dtype
+        g = grad_output.reshape(-1, grad_output.shape[-1])
+        x_flat = x.reshape(-1, x.shape[-1])
+        act_flat = act.reshape(-1, act.shape[-1])
+        d_act = grad_output @ w_proj.to(dtype)             # g @ W_proj
+        grad_w_proj = g.t() @ act_flat.to(dtype)
+        # analytic tanh-GELU derivative (matches the forward), in fp32
+        h_f = h.float()
+        c = 0.7978845608028654
+        inner = c * (h_f + 0.044715 * h_f * h_f * h_f)
+        tanh_inner = torch.tanh(inner)
+        sech2 = 1.0 - tanh_inner * tanh_inner
+        d_inner = c * (1.0 + 3.0 * 0.044715 * h_f * h_f)
+        gelu_grad = 0.5 * (1.0 + tanh_inner) + 0.5 * h_f * sech2 * d_inner
+        d_h = (d_act.float() * gelu_grad).to(dtype)
+        grad_x = d_h @ w_fc.to(dtype)
+        grad_w_fc = d_h.reshape(-1, d_h.shape[-1]).t() @ x_flat.to(dtype)
+        return grad_x, grad_w_fc, grad_w_proj
+
+
+def fused_mlp_forward(x, w_fc, w_proj):
+    """MLP forward with a Triton tanh-GELU elementwise kernel between the two linears."""
+    return _TritonGELUMLP.apply(x, w_fc, w_proj)
+```

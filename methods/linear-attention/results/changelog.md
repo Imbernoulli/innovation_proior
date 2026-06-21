@@ -1,0 +1,38 @@
+# Changelog
+
+- `results/reasoning.md:1` rewrote the reasoning deliverable as a continuous first-person derivation with no markdown headers and no code block.
+- `results/reasoning.md:9` re-grounded the kernel-smoother reframing and softmax special case.
+- `results/reasoning.md:19` fixed the factorization/associativity derivation, including the transposed value outer product and `O(NCM)` cost.
+- `results/reasoning.md:49` clarified that exact softmax would require an infinite-dimensional feature map and that `elu(x)+1` is a finite positive feature map with live negative-side gradients.
+- `results/reasoning.md:59` rewrote causal masking as prefix states rather than an additive triangular score mask.
+- `results/reasoning.md:89` restored the recurrent layer equations with the two fixed states `(s,z)`.
+- `results/reasoning.md:106` replaced the old embedded implementation section with the cumulative-sum gradient derivation.
+- `results/reasoning.md:120` checked the query-gradient case: each query affects only its own output.
+- `results/reasoning.md:138` checked the key-gradient case: each key affects all later outputs.
+- `results/reasoning.md:159` checked the value-gradient case and shared reverse cumulative matrix.
+- `results/answer.md:3` rewrote the final method statement around factored non-negative kernel attention.
+- `results/answer.md:21` added the causal prefix-state formula and constant-memory decoding recurrence.
+- `results/answer.md:51` added the final cumulative-sum gradient artifact with correct summation directions.
+- `results/answer.md:79` replaced the previous homemade code with a canonical-implementation section grounded in `idiap/fast-transformers`.
+- `results/answer.md:91` included the faithful unmasked `LinearAttention` forward path: key-length masking, `KV`, normalizer `Z`, and final einsum.
+- `results/answer.md:117` included the faithful causal path: head permutation, `causal_dot_product`, lower-triangular mask check, `K.cumsum(1)` normalizer, and output scaling.
+- `results/answer.md:160` included the faithful recurrent inference path carrying `(S,Z)` and using the same in-place/no-grad branch as the canonical implementation.
+- `results/answer.md:203` documented that the real constant-memory causal numerator is the shipped CPU/CUDA-backed `causal_dot_product`, not a Python loop.
+- `notes/source_matrix.md:7` added the primary-source evidence entries.
+- `notes/source_matrix.md:14` added load-bearing ancestor sources.
+- `notes/source_matrix.md:25` added third-party explainer sources.
+- `notes/source_matrix.md:32` documented author self-account search status and the limits of the author slides/project page.
+- `notes/source_matrix.md:41` recorded the canonical code source and exact modules cross-checked.
+- `notes/source_matrix.md:47` recorded review/check limitations.
+- `notes/discovery_synthesis.md:3` added the source-grounded problem-pressure reconstruction.
+- `notes/discovery_synthesis.md:19` added the source-grounded kernel factorization derivation.
+- `notes/discovery_synthesis.md:41` added the causal prefix-state reconstruction.
+- `notes/discovery_synthesis.md:67` added the gradient case split with sign/constant audit notes.
+- `notes/discovery_synthesis.md:87` added the canonical-code faithfulness notes.
+- `refs/self_accounts/search_log.md:5` documented the self-account search and negative result.
+- `results/.codex_review.json:1` refreshed review metadata to `not_run` with the current tool-policy reason.
+- `notes/strict_check_output.txt:4` recorded that no repo strict checker exists in this checkout.
+- `notes/strict_check_output.txt:8` recorded structural checks for section count, headers, and code fences.
+- `notes/strict_check_output.txt:14` recorded posterior/hindsight leak checks.
+- `notes/strict_check_output.txt:18` recorded the randomized PyTorch gradient check with zero max error for `Q`, `K`, and `V`.
+- `notes/strict_check_output.txt:26` recorded code-faithfulness checks against the canonical implementation.

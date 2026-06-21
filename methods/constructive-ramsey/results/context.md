@@ -38,28 +38,4 @@ Both versions bound the size of a family whose pairwise intersections are confin
 
 The object is a graph G on N vertices. The metrics are ω(G) and α(G) (equivalently the largest monochromatic clique over the 2-coloring G/Ḡ), reported as functions of N, and the explicitness of the adjacency rule (computable in polylog(N), in poly(N), or only by search). The natural comparison points are the trivial blow-up family, the Paley-graph candidate, and the probabilistic existence bound 2·log₂ N + O(1). Correctness for a given construction is checkable on small instances by enumerating all subsets that could form a clique or independent set and confirming none exceeds the claimed bound; the asymptotic claim is then a theorem about the family. There is no training/test split — the deliverable is a graph and a proof.
 
-## Code framework
 
-The construction is fixed in its scaffolding and open at the place where the design choice lives. The pieces that are pinned down in advance:
-
-    Vertices:
-        a combinatorial family on some ground set, parameterized so that the
-        family size N (the vertex count) and the available algebraic
-        invariants of a pair of vertices are both under the designer's
-        control. The target is a homogeneous-set bound that is polylog(N).
-
-    Adjacency rule and resulting bounds (open slot):
-        a symmetric edge predicate on pairs of distinct vertices, together
-        with the proof of ω(G) and α(G) it admits. The empty slot is the
-        predicate itself and the two homogeneous-set bounds that follow from
-        it; the construction stands or falls on whether a single rule makes
-        both ω and α small at once.
-
-    Verification (small instances):
-        enumerate the family for small parameters, build the adjacency table
-        from the chosen predicate, exhaustively search for the largest clique
-        and largest independent set, and confirm neither exceeds the bound
-        predicted by the analysis — a sanity check on the algebra, not the
-        asymptotic proof.
-
-The linear-algebra (polynomial dimension) method and the restricted-intersection theorems above are the fixed tools; the freedom is the edge predicate and the matching pair of homogeneous-set bounds, left open here.
