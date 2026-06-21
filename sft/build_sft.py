@@ -1,38 +1,36 @@
 #!/usr/bin/env python3
-"""Build the LLaMA-Factory ShareGPT SFT data as NATURAL multi-turn conversations.
+"""Build ONE LLaMA-Factory ShareGPT SFT file with reasoning folding baked into the data.
 
-No invented structure: every assistant turn stays an assistant turn carrying its real
-`<think>`; tool results stay `observation`; the test feedback stays a real turn. The two
-input distributions the model must learn (history-with-reasoning vs history-stripped) are
-produced by LlamaFactory's built-in `mask_history` flag + the official chat template, NOT
-by reshaping the data:
+ONE file, ONE training config. Real multi-turn roles throughout. The two input distributions
+the model must learn are produced by emitting each ladder/trace under two framings, using the
+per-turn `loss` flag (the LlamaFactory `feat/per-turn-loss-mask` fork -- see sft/README.md):
 
-  * The Qwen3/Qwen3.5 template renders a STRIPPED history turn as the bare assistant answer
-    with the `<think>...</think>` removed (no block at all). LlamaFactory's `mask_history=True`
-    reproduces exactly this (remove_thought on history) AND computes loss only on the last turn.
-  * `mask_history=False` keeps every turn's `<think>` and trains every turn (the tool-loop /
-    observation distribution, where reasoning is retained).
+  Mode 1  "full"   : the whole conversation, every turn keeps its real <think> and is trained
+                     (no loss flags).  => history WITH reasoning.
+  Mode 2  "folded" : for each round taken as the CURRENT round, the prior rounds keep their
+                     answers / actions / results but their <think> content is EMPTIED to
+                     `<think>\\n\\n</think>` AND marked `loss=False` (kept as context, NOT
+                     trained); the current round keeps ALL its reasoning (no intra-round folding
+                     -- the long first-turn reasoning stays) and is marked `loss=True` (every one
+                     of its actions is trained).  => current round derived against a
+                     reasoning-stripped history.
 
-`mask_history` is a global training flag, so the two distributions are two files:
+A "round" = one rung (trajectory) or one run_experiment-delimited block (agentic). The same
+folding logic applies to both. The per-turn `loss` flag is what guarantees "all of the current
+round's actions train, the folded history does not" -- mask_history can't express that (it is
+all-turns or last-turn-only). Train with mask_history=False (default); the loss flags do the work.
 
-  KEPT  (sft/innovation_sft_kept.jsonl)      -> train with mask_history=False
-        (a) methods            single-turn Q&A
-        (b) trajectories        full multi-turn; feedback = observation
-        (c) agentic             full tool loop; ALL results (incl. run_experiment) = observation;
-                                assistant steps = structured function_call (qwen3 JSON / qwen3_5 XML)
-      => every reasoning / answer / tool-call trained, history reasoning retained.
+  (a) methods   : single-turn Q&A (full reasoning).
+  (b) trajectory: Mode 1 (feedback = observation) + Mode 2 (prior rungs folded, feedback = user
+                  boundary, current rung full).
+  (c) agentic   : Mode 1 (all results = observation; structured function_call -> qwen3 JSON /
+                  qwen3_5 XML) + Mode 2 (prior rounds folded with run_experiment result = user
+                  boundary and str_replace result = observation; current round full, its closing
+                  run_experiment result dropped as the next boundary).
 
-  STRIPPED (sft/innovation_sft_stripped.jsonl) -> train with mask_history=True
-        Same conversations, but emitted as one PREFIX per target assistant turn (truncated
-        there), with real roles and real <think> left in place -- LF strips the history think
-        and trains only that last (target) turn. Trajectory feedback and agentic run_experiment
-        results become `user` turns (the new-query boundary); str_replace results stay observation.
-      => every target turn trained once in a history-reasoning-stripped context.
-
-System prompt carries the discovery YEAR (method year for (a); trajectory first-method year
-for (b)/(c)) as meta-conditioning.
+System prompt carries the discovery YEAR (method year; trajectory first-method year).
 """
-import json, os, glob
+import json, os, glob, re
 
 REPO = '/srv/home/bohanlyu/innovation_proior'
 os.chdir(REPO)
@@ -61,42 +59,35 @@ def read(p):
 def think(reasoning, answer):
     return f"<think>\n{reasoning.strip()}\n</think>\n\n{answer.strip()}"
 
-kept = []        # mask_history=False
-stripped = []    # mask_history=True (one prefix per target turn)
-stats = {'method':0,'traj_kept':0,'traj_stripped':0,'agentic_kept':0,'agentic_stripped':0}
+_THINK_RE = re.compile(r'<think>.*?</think>', re.DOTALL)
+def fold_think(value):
+    """Empty the <think> content (keep the tags + everything after) -- the non-thinking form."""
+    return _THINK_RE.sub('<think>\n\n</think>', value, count=1)
+def fold_turn(turn):
+    t = dict(turn)
+    if t['from'] in ('gpt', 'function_call'):
+        t['value'] = fold_think(t['value'])
+        t['loss'] = False          # folded history: kept as context, NOT trained
+    return t
+
+examples = []
+stats = {'method':0,'traj_full':0,'traj_folded':0,'agentic_full':0,'agentic_folded':0}
 
 def end_on_assistant(convs):
     while convs and convs[-1]['from'] in ('human', 'observation'):
         convs.pop()
     return convs
 
-def emit_prefixes(convs, sys, dst, kind, base_id, tools=None):
-    """One STRIPPED sample per assistant-side target turn: the conversation truncated there,
-    real roles + real <think> preserved (LF's mask_history=True strips history think and trains
-    only this last turn). `user`/`observation` history turns just ride along as context."""
-    n = 0
-    for t in range(len(convs)):
-        if convs[t]['from'] not in ('gpt', 'function_call'):
-            continue
-        pref = [dict(c) for c in convs[:t + 1]]
-        if len(pref) < 2:
-            continue
-        ex = {'conversations': pref, 'system': sys, '_kind': kind, '_id': f'{base_id}#t{t}'}
-        if tools is not None:
-            ex['tools'] = tools
-        dst.append(ex); n += 1
-    return n
-
-# ---------- (a) methods : single-turn (KEPT only) ----------
+# ---------- (a) methods : single-turn ----------
 methods = json.load(open('methods.json'))
 for m in methods:
     slug, yr = m['slug'], m.get('year')
     d = f'methods/{slug}/results'
     if not all(os.path.isfile(f'{d}/{f}.md') for f in ('context', 'reasoning', 'train_answer')):
         continue
-    kept.append({'conversations': [{'from':'human','value':read(f'{d}/context.md')},
-                                    {'from':'gpt','value':think(read(f'{d}/reasoning.md'), read(f'{d}/train_answer.md'))}],
-                 'system': METHOD_SYS.format(year=yr), '_kind':'method', '_id':slug})
+    examples.append({'conversations': [{'from':'human','value':read(f'{d}/context.md')},
+                                        {'from':'gpt','value':think(read(f'{d}/reasoning.md'), read(f'{d}/train_answer.md'))}],
+                     'system': METHOD_SYS.format(year=yr), '_kind':'method', '_id':slug})
     stats['method'] += 1
 
 # ---------- (b) trajectories ----------
@@ -119,27 +110,35 @@ for meta_p in sorted(glob.glob('trajectories/*/meta.json')):
         continue
     init = read(f"{d}/{meta.get('initial_context_file','00-initial-context.md')}")
     sysp = TRAJ_SYS.format(year=yr)
-
-    # KEPT: feedback as observation
-    convs = [{'from':'human','value':init}]
+    rungs = []  # (gpt_turn, feedback_text|None)
     for st in steps:
-        convs.append({'from':'gpt','value':think(read(f"{d}/{st['reasoning']}"), step_answer(d, st))})
+        gpt = {'from':'gpt','value':think(read(f"{d}/{st['reasoning']}"), step_answer(d, st))}
         fb = st.get('feedback')
-        if fb and os.path.isfile(f"{d}/{fb}"):
-            convs.append({'from':'observation','value':read(f"{d}/{fb}")})
+        fbtext = read(f"{d}/{fb}") if (fb and os.path.isfile(f"{d}/{fb}")) else None
+        rungs.append((gpt, fbtext))
+
+    # Mode 1 (full): feedback = observation
+    convs = [{'from':'human','value':init}]
+    for gpt, fbtext in rungs:
+        convs.append(dict(gpt))
+        if fbtext is not None:
+            convs.append({'from':'observation','value':fbtext})
     convs = end_on_assistant(convs)
     if len(convs) >= 2:
-        kept.append({'conversations':convs, 'system':sysp, '_kind':'traj_kept','_id':task})
-        stats['traj_kept'] += 1
+        examples.append({'conversations':convs, 'system':sysp, '_kind':'traj_full','_id':task})
+        stats['traj_full'] += 1
 
-    # STRIPPED: feedback as a `user` boundary; one prefix per rung (LF strips history think)
-    sconvs = [{'from':'human','value':init}]
-    for si, st in enumerate(steps):
-        sconvs.append({'from':'gpt','value':think(read(f"{d}/{st['reasoning']}"), step_answer(d, st))})
-        fb = st.get('feedback')
-        if fb and os.path.isfile(f"{d}/{fb}") and si < len(steps) - 1:
-            sconvs.append({'from':'human','value':read(f"{d}/{fb}")})
-    stats['traj_stripped'] += emit_prefixes(sconvs, sysp, stripped, 'traj_stripped', task)
+    # Mode 2 (folded): prior rungs folded (empty think) with feedback = user boundary; current rung full
+    for c in range(1, len(rungs)):
+        convs = [{'from':'human','value':init}]
+        for j in range(c):                                  # prior rungs -> folded, feedback = user
+            convs.append(fold_turn(rungs[j][0]))
+            if rungs[j][1] is not None:
+                convs.append({'from':'human','value':rungs[j][1]})
+        cur = dict(rungs[c][0]); cur['loss'] = True         # current rung -> full reasoning, trained
+        convs.append(cur)
+        examples.append({'conversations':convs, 'system':sysp, '_kind':'traj_folded','_id':f'{task}#r{c+1}'})
+        stats['traj_folded'] += 1
 
 # ---------- (c) agentic ----------
 def fc_value(msg):
@@ -155,55 +154,89 @@ def fc_value(msg):
     parts.append(f"<tool_call>\n{call}\n</tool_call>")
     return "\n\n".join(parts)
 
+def parse_rounds(msgs):
+    init = None; rounds = []; cur = []
+    for m in msgs:
+        r = m['role']
+        if r == 'system':
+            continue
+        if r == 'user':
+            init = m['content']
+        elif r == 'assistant':
+            calls = m.get('tool_calls', [])
+            fn = calls[0]['function'] if calls else None
+            cur.append({'msg': m, 'call': fn['name'] if fn else None})
+        elif r == 'tool':
+            if cur:
+                cur[-1]['result'] = m['content']
+                if cur[-1]['call'] == 'run_experiment':
+                    rounds.append(cur); cur = []
+    if cur:
+        rounds.append(cur)
+    return init, rounds
+
+def agentic_round(actions, fold, is_current):
+    """fold=True -> empty think (history round). is_current -> drop the closing run_experiment
+    result (it is the boundary to the next round). History run_experiment result = `user`
+    boundary; str_replace result = observation."""
+    out = []
+    for a in actions:
+        turn = {'from':'function_call','value':fc_value(a['msg'])}
+        if fold:
+            turn = fold_turn(turn)                 # folded history -> loss=False
+        elif is_current:
+            turn['loss'] = True                    # current round -> all actions trained
+        out.append(turn)
+        if 'result' in a:
+            if a['call'] == 'run_experiment':
+                if not is_current:
+                    out.append({'from':'human','value':neutralize(a['result'])})   # boundary
+            else:
+                out.append({'from':'observation','value':neutralize(a['result'])})
+    return out
+
 for ap in sorted(glob.glob('trajectories/*/agentic_messages.json')):
     task = os.path.basename(os.path.dirname(ap))
     yr = trajs[task]['year'] if task in trajs else None
     data = json.load(open(ap))
     tools_str = json.dumps(data.get('tools', []), ensure_ascii=False)
     sysp = AGENT_SYS.format(year=yr)
-
-    # walk once; build KEPT (all results=observation) and STRIPPED (run_experiment result=user)
-    kept_c = []; strip_c = []; last_call = None
-    have_user = False
-    for msg in data['messages']:
-        r = msg['role']
-        if r == 'system':
-            continue
-        if r == 'user':
-            v = neutralize(msg['content']); kept_c.append({'from':'human','value':v}); strip_c.append({'from':'human','value':v}); have_user = True
-        elif r == 'assistant':
-            v = {'from':'function_call','value':fc_value(msg)} if msg.get('tool_calls') else None
-            if v is None:
-                txt = ((f"<think>\n{neutralize(msg['reasoning_content'].strip())}\n</think>\n\n" if (msg.get('reasoning_content') or '').strip() else '')
-                       + neutralize((msg.get('content') or '').strip()))
-                if not txt.strip():
-                    continue
-                v = {'from':'gpt','value':txt}
-            kept_c.append(dict(v)); strip_c.append(dict(v))
-            last_call = (msg['tool_calls'][0]['function']['name'] if msg.get('tool_calls') else None)
-        elif r == 'tool':
-            v = neutralize(msg['content'])
-            kept_c.append({'from':'observation','value':v})                      # KEPT: always observation
-            strip_c.append({'from':('human' if last_call == 'run_experiment' else 'observation'), 'value':v})  # STRIPPED: test=user
-    if not have_user:
+    init, rounds = parse_rounds(data['messages'])
+    if init is None or not rounds:
         continue
 
-    kc = end_on_assistant([dict(c) for c in kept_c])
-    if len(kc) >= 2:
-        kept.append({'conversations':kc, 'system':sysp, 'tools':tools_str, '_kind':'agentic_kept','_id':task})
-        stats['agentic_kept'] += 1
-    stats['agentic_stripped'] += emit_prefixes(strip_c, sysp, stripped, 'agentic_stripped', task, tools=tools_str)
+    # Mode 1 (full): all results = observation, full reasoning
+    convs = [{'from':'human','value':neutralize(init)}]
+    for actions in rounds:
+        for a in actions:
+            convs.append({'from':'function_call','value':fc_value(a['msg'])})
+            if 'result' in a:
+                convs.append({'from':'observation','value':neutralize(a['result'])})
+    convs = end_on_assistant(convs)
+    if len(convs) >= 2:
+        examples.append({'conversations':convs, 'system':sysp, 'tools':tools_str,
+                         '_kind':'agentic_full','_id':task})
+        stats['agentic_full'] += 1
+
+    # Mode 2 (folded): prior rounds folded (boundary = user); current round full, closing result dropped
+    for c in range(1, len(rounds)):
+        convs = [{'from':'human','value':neutralize(init)}]
+        for j in range(c):
+            convs += agentic_round(rounds[j], fold=True, is_current=False)
+        convs += agentic_round(rounds[c], fold=False, is_current=True)
+        convs = end_on_assistant(convs)
+        if len(convs) >= 2:
+            examples.append({'conversations':convs, 'system':sysp, 'tools':tools_str,
+                             '_kind':'agentic_folded','_id':f'{task}#r{c+1}'})
+            stats['agentic_folded'] += 1
 
 # ---------- write ----------
 os.makedirs('sft', exist_ok=True)
-def dump(rows, path):
-    with open(path, 'w', encoding='utf-8') as f:
-        for ex in rows:
-            f.write(json.dumps({k:v for k,v in ex.items() if not k.startswith('_')}, ensure_ascii=False) + "\n")
-dump(kept, 'sft/innovation_sft_kept.jsonl')
-dump(stripped, 'sft/innovation_sft_stripped.jsonl')
-print(f"kept     (mask_history=False): {len(kept)} examples -> sft/innovation_sft_kept.jsonl")
-print(f"stripped (mask_history=True) : {len(stripped)} examples -> sft/innovation_sft_stripped.jsonl")
+out = 'sft/innovation_sft.jsonl'
+with open(out, 'w', encoding='utf-8') as f:
+    for ex in examples:
+        f.write(json.dumps({k:v for k,v in ex.items() if not k.startswith('_')}, ensure_ascii=False) + "\n")
+print(f"wrote {out}: {len(examples)} examples (train with mask_history=False)")
 for k, v in stats.items():
     print(f"  {k}: {v}")
-json.dump({'kept':kept,'stripped':stripped}, open('/tmp/sr_build/_sft_examples.json','w'), ensure_ascii=False)
+json.dump(examples, open('/tmp/sr_build/_sft_examples.json', 'w'), ensure_ascii=False)
