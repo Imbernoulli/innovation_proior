@@ -1,40 +1,49 @@
 #!/usr/bin/env python3
 """Build the unified LLaMA-Factory ShareGPT SFT JSONL (multi-framing).
 
-Why multi-framing (design note): in a single causal forward pass a `<think>`
-block is either physically present in the sequence or not -- if present, every
-later token attends to it. But the Qwen rolling-think rule wants the SAME think
-visible when generating turns inside its own episode and invisible once a new
-real user query opens a later episode. One sequence cannot satisfy both. So
-instead of forcing one canonical representation we emit each trajectory under
-SEVERAL self-consistent framings; the union trains thinking, the post-think
-answer, and tool-use, and teaches the model to generalize across serving modes.
+Grounded in the Qwen3 / Qwen3.5 chat templates + model cards:
+  * One hybrid model. Thinking is toggled per-request by `enable_thinking`
+    (closed empty <think></think> = off; open <think> = on). Qwen3.5 dropped the
+    /think /no_think soft tokens; the history-stripping behaviour is identical to Qwen3.
+  * History stripping is ALWAYS on and independent of the toggle: the template removes
+    <think> from assistant turns at/before the most recent REAL user query
+    (a `<tool_response>` / observation does NOT count as a user query, so reasoning is
+    RETAINED inside a tool loop and only wiped when a new user message arrives).
+  * Official guidance: history "should only include the final output part and does not
+    need to include the thinking content" -- but frameworks that don't run the Jinja must
+    enforce this themselves.
+
+So the model must learn BOTH input distributions, and we emit each source under the
+framing whose train-render == its inference-render:
 
   (a) methods            -> single-turn Q&A (context -> <think>reasoning</think>train_answer).
 
-  (b) trajectories
-       view 1  "continuum"  -> full multi-turn; measured feedback is an
-                               `observation` (a <tool_response>, which does NOT
-                               reset the rolling checkpoint), so ALL rungs keep
-                               their <think> in context and every rung is trained.
-       view 2  "per-rung"   -> each rung k>=2 as a SINGLE-target sample: the prior
-                               rungs (answers only, think stripped) are folded into
-                               the human prompt, gpt = this rung's <think>+answer.
-                               One gpt turn => correct even under mask_history=False,
-                               and it trains the rung in a history-think-stripped
-                               (test=user) context.
+  (b) trajectories  (uniform feedback; never mixes user+observation)
+       continuum  -> full multi-turn; feedback = `observation` (keeps every rung's
+                     <think>; matches a tool-loop serving where results come back as
+                     observations).  [WITH history reasoning]
+       per-rung   -> each rung k>=2 as a single-target sample; prior rungs (answers,
+                     think stripped) folded into the human prompt; gpt = this rung's
+                     <think>+answer.  [WITHOUT history reasoning -- the post-user-query
+                     default]
 
-  (c) agentic            -> full multi-turn tool loop. Assistant tool steps are
-                            emitted as structured `function_call` so LF renders the
-                            per-model wrapper (qwen3 JSON / qwen3_5 XML) from one
-                            dataset; think + say + tool-call all preserved. Tool
-                            results are `observation`.
+  (c) agentic  (the genuinely MIXED case: str_replace results are observations,
+                run_experiment results are the test feedback / round boundaries)
+       continuum  -> full tool loop; ALL results (incl. run_experiment) = `observation`,
+                     structured `function_call` steps (LF renders qwen3 JSON / qwen3_5 XML
+                     from one file). Reasoning retained throughout = a real never-reset
+                     agent. [WITH history reasoning]
+       per-round  -> run_experiment result treated as a USER boundary; str_replace results
+                     stay `observation`. Prior rounds fold into the human prompt (stripped);
+                     the current round's edit-loop + test call are real turns, all trained.
+                     [WITHOUT history reasoning across test boundaries]
 
-System prompt carries the discovery YEAR (method year for (a); the trajectory's
-first-method year for (b)/(c)) as meta-conditioning.
+Folding each sample's pre-boundary history into the human opening makes EVERY sample a
+single rolling-checkpoint episode (no internal user turn), so `mask_history=False`
+(loss on every gpt/function_call turn) is correct and uniform for all kinds.
 
-Train with mask_history=False (loss on every gpt/function_call turn). Single-target
-samples in view 2 stay correct because they contain exactly one gpt turn.
+System prompt carries the discovery YEAR (method year for (a); trajectory first-method
+year for (b)/(c)) as meta-conditioning.
 """
 import json, os, glob
 
@@ -68,8 +77,8 @@ def think(reasoning, answer):
     return f"<think>\n{reasoning.strip()}\n</think>\n\n{answer.strip()}"
 
 examples = []
-stats = {'method':0,'traj_continuum':0,'traj_perrung':0,'agentic':0,
-         'method_turns':0,'traj_turns':0,'perrung_turns':0,'agent_turns':0,'agent_calls':0}
+stats = {'method':0,'traj_continuum':0,'traj_perrung':0,'agentic_continuum':0,'agentic_perround':0,
+         'method_turns':0,'traj_turns':0,'perrung_turns':0,'agent_turns':0,'agent_calls':0,'perround_turns':0}
 
 # ---------- (a) methods : single-turn ----------
 methods = json.load(open('methods.json'))
@@ -105,7 +114,7 @@ for meta_p in sorted(glob.glob('trajectories/*/meta.json')):
         continue
     init = read(f"{d}/{meta.get('initial_context_file','00-initial-context.md')}")
 
-    # view 1 -- continuum: feedback as observation (keeps every rung's think)
+    # continuum: feedback as observation (keeps every rung's think)
     convs = [{'from':'human','value':init}]
     for st in steps:
         convs.append({'from':'gpt','value':think(read(f"{d}/{st['reasoning']}"), step_answer(d, st))})
@@ -119,7 +128,7 @@ for meta_p in sorted(glob.glob('trajectories/*/meta.json')):
                          '_kind':'traj_continuum','_id':task})
         stats['traj_continuum'] += 1; stats['traj_turns'] += len(convs)
 
-    # view 2 -- per-rung: each rung k>=2 in a fresh, history-think-stripped context
+    # per-rung: each rung k>=2 in a fresh, history-think-stripped context
     for k in range(1, len(steps)):           # k indexes the TARGET rung (0-based); start at rung 2
         recap = [init]
         for j in range(k):
@@ -138,8 +147,9 @@ for meta_p in sorted(glob.glob('trajectories/*/meta.json')):
                          'system':TRAJ_SYS.format(year=yr), '_kind':'traj_perrung','_id':f'{task}#r{k+1}'})
         stats['traj_perrung'] += 1; stats['perrung_turns'] += 2
 
-# ---------- (c) agentic : structured function_call ----------
+# ---------- (c) agentic : structured function_call, two framings ----------
 def fc_value(msg):
+    """assistant tool step -> <think>..</think>{say}<tool_call>{json}</tool_call> (one call/turn)."""
     parts = []
     rc = (msg.get('reasoning_content') or '').strip()
     if rc:
@@ -152,39 +162,94 @@ def fc_value(msg):
     parts.append(f"<tool_call>\n{call}\n</tool_call>")
     return "\n\n".join(parts)
 
-def gpt_value(msg):
-    rc = (msg.get('reasoning_content') or '').strip()
-    ct = (msg.get('content') or '').strip()
-    return f"<think>\n{neutralize(rc)}\n</think>\n\n{neutralize(ct)}" if rc else neutralize(ct)
+def parse_rounds(msgs):
+    """Linearise into rounds. A round = the actions up to and INCLUDING a run_experiment
+    call; the run_experiment result (metrics) closes it and opens the next round."""
+    init = None; rounds = []; cur = []
+    for m in msgs:
+        r = m['role']
+        if r == 'system':
+            continue
+        if r == 'user':
+            init = m['content']
+        elif r == 'assistant':
+            calls = m.get('tool_calls', [])
+            fn = calls[0]['function'] if calls else None
+            args = fn['arguments'] if fn else {}
+            cur.append({'msg': m,
+                        'call': fn['name'] if fn else None,
+                        'path': args.get('path') if isinstance(args, dict) else None})
+        elif r == 'tool':
+            if cur:
+                cur[-1]['result'] = m['content']
+                if cur[-1]['call'] == 'run_experiment':
+                    rounds.append({'actions': cur, 'metrics': m['content']}); cur = []
+    if cur:
+        rounds.append({'actions': cur, 'metrics': None})
+    return init, rounds
+
+def round_turns(rd, drop_final_run_result):
+    """Render a round's actions as conv turns. str_replace results -> observation;
+    a closing run_experiment result is dropped when it is the boundary to the next round."""
+    out = []
+    for a in rd['actions']:
+        out.append({'from': 'function_call', 'value': fc_value(a['msg'])})
+        if 'result' in a and not (drop_final_run_result and a['call'] == 'run_experiment'):
+            out.append({'from': 'observation', 'value': neutralize(a['result'])})
+    return out
+
+def summarize_round(rd, idx):
+    """Compact, think-stripped recap of a prior round for folding into a human prompt."""
+    lines = [f"## Round {idx}"]
+    for a in rd['actions']:
+        say = (a['msg'].get('content') or '').strip()
+        if say:
+            lines.append(neutralize(say))
+        if a['call'] == 'str_replace':
+            lines.append(f"→ edited `{a.get('path') or '?'}`")
+        elif a['call'] == 'run_experiment':
+            lines.append("→ ran experiment")
+        else:
+            lines.append(f"→ {a['call']}")
+    if rd.get('metrics'):
+        lines.append("### Measured result\n\n" + neutralize(rd['metrics']))
+    return "\n\n".join(lines)
 
 for ap in sorted(glob.glob('trajectories/*/agentic_messages.json')):
     task = os.path.basename(os.path.dirname(ap))
     yr = trajs[task]['year'] if task in trajs else None
     data = json.load(open(ap))
     tools_str = json.dumps(data.get('tools', []), ensure_ascii=False)   # full {type,function} objs
-    convs = []
-    for msg in data['messages']:
-        role = msg['role']
-        if role == 'system':
-            continue
-        if role == 'user':
-            convs.append({'from':'human','value':neutralize(msg['content'])})
-        elif role == 'tool':
-            convs.append({'from':'observation','value':neutralize(msg['content'])})
-        elif role == 'assistant':
-            if msg.get('tool_calls'):
-                convs.append({'from':'function_call','value':fc_value(msg)}); stats['agent_calls'] += 1
-            else:
-                v = gpt_value(msg)
-                if v.strip():
-                    convs.append({'from':'gpt','value':v})
-    while convs and convs[-1]['from'] in ('human','observation'):   # end on assistant-side
-        convs.pop()
-    if len(convs) < 2:
+    init, rounds = parse_rounds(data['messages'])
+    if init is None or not rounds:
         continue
-    examples.append({'conversations':convs, 'system':AGENT_SYS.format(year=yr),
-                     'tools':tools_str, '_kind':'agentic','_id':task})
-    stats['agentic'] += 1; stats['agent_turns'] += len(convs)
+
+    # continuum: ALL results (incl. run_experiment) = observation; reasoning retained throughout
+    convs = [{'from': 'human', 'value': neutralize(init)}]
+    for rd in rounds:
+        convs += round_turns(rd, drop_final_run_result=False)
+    while convs and convs[-1]['from'] in ('human', 'observation'):
+        convs.pop()
+    if len(convs) >= 2:
+        examples.append({'conversations': convs, 'system': AGENT_SYS.format(year=yr),
+                         'tools': tools_str, '_kind': 'agentic_continuum', '_id': task})
+        stats['agentic_continuum'] += 1; stats['agent_turns'] += len(convs)
+        stats['agent_calls'] += sum(1 for c in convs if c['from'] == 'function_call')
+
+    # per-round (test=user): each round i>=2 with prior rounds folded into the human prompt
+    for i in range(1, len(rounds)):
+        recap = [neutralize(init)] + [summarize_round(rounds[j], j + 1) for j in range(i)]
+        human = ("\n\n---\n\n".join(recap)
+                 + "\n\n---\n\nGiven the edits so far and the measured results, reason about what to "
+                   "change next, make the edits, then run the experiment.")
+        convs = [{'from': 'human', 'value': human}]
+        convs += round_turns(rounds[i], drop_final_run_result=True)
+        while convs and convs[-1]['from'] in ('human', 'observation'):
+            convs.pop()
+        if len(convs) >= 2:
+            examples.append({'conversations': convs, 'system': AGENT_SYS.format(year=yr),
+                             'tools': tools_str, '_kind': 'agentic_perround', '_id': f'{task}#r{i+1}'})
+            stats['agentic_perround'] += 1; stats['perround_turns'] += len(convs)
 
 # ---------- write ----------
 os.makedirs('sft', exist_ok=True)

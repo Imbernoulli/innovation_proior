@@ -23,18 +23,30 @@ trajectory's first-method year — from `trajectories.json` — for trajectories
      stripped) are folded into the `human` prompt; `gpt` = this rung's
      `<think>{reasoning}</think>{train_answer}`. Trains each rung in a fresh,
      history-think-stripped context (the `test=user` serving form).
-3. **Agentic** (tool-using, MLS-derived): full `edit→test` loop. Assistant tool steps use
-   the structured **`function_call`** role (value = `<think>…</think>{say}<tool_call>{json}</tool_call>`)
-   so LlamaFactory renders the per-model wrapper — **qwen3 JSON** or **qwen3_5 XML** — from
-   the *same* file; tool results come back as `observation`; tools are declared per-example.
+3. **Agentic** (tool-using, MLS-derived) — the genuinely *mixed* case: `str_replace` results
+   are `observation`s, `run_experiment` results are the test feedback. Two framings:
+   - *continuum*: full `edit→test` loop, **all** results (incl. `run_experiment`) = `observation`,
+     reasoning retained throughout (a real never-reset agent). [WITH history reasoning]
+   - *per-round*: `run_experiment` result = a **`user` boundary**; `str_replace` results stay
+     `observation`. Prior rounds fold into the `human` prompt (stripped); the current round's
+     edit-loop + test call are real turns, all trained. [WITHOUT history reasoning across tests]
 
-### Why two trajectory framings
+   Assistant tool steps use the structured **`function_call`** role
+   (value = `<think>…</think>{say}<tool_call>{json}</tool_call>`) so LlamaFactory renders the
+   per-model wrapper — **qwen3 JSON** or **qwen3_5 XML** — from the *same* file; tools declared per-example.
 
-In one causal forward pass a `<think>` block is either present or not for *all* later
-tokens; the rolling-think rule needs it present within its episode and absent after the
-next real user query — one sequence can't do both. So the same ladder is emitted under
-both self-consistent framings; their union trains thinking, the post-think answer, and
-tool-use, and generalizes across serving modes. See `build_sft.py` header for details.
+### Why multiple framings (Qwen3 / Qwen3.5 grounded)
+
+Per the Qwen model cards + chat templates: one hybrid model; thinking toggled per-request by
+`enable_thinking` (Qwen3.5 dropped the `/think` `/no_think` soft tokens). History reasoning is
+**always** stripped from assistant turns before the most recent *real user query* — but a
+`<tool_response>`/`observation` does **not** count, so reasoning is **retained inside a tool
+loop**. In one causal forward pass a `<think>` block is present-or-absent for *all* later tokens,
+so one sequence can't be both "history-with-reasoning" and "history-stripped". We therefore emit
+each source under the framing whose train-render == its inference-render — the union trains
+thinking, the post-think answer, and tool-use, and covers both input distributions. By folding
+each sample's pre-boundary history into the `human` opening, every sample is a single
+rolling-checkpoint episode, so `mask_history=False` is correct and uniform. See `build_sft.py` header.
 
 ## Training
 
@@ -48,4 +60,5 @@ tool-use, and generalizes across serving modes. See `build_sft.py` header for de
 Literal structural tokens inside content (e.g. a method that discusses `<think>`) are
 neutralized to `⟨think⟩`/`⟨tool_call⟩`/… so they can't collide with the real wrappers.
 
-Current build: **2006 examples** (1201 methods · 166 continuum · 512 per-rung · 127 agentic).
+Current build: **2352 examples** (1201 methods · 166 traj-continuum · 512 traj-per-rung ·
+127 agentic-continuum · 346 agentic-per-round).
