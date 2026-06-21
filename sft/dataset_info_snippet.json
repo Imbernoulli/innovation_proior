@@ -1,20 +1,23 @@
 {
-  "innovation_sft": {
-    "file_name": "innovation_sft.jsonl",
+  "_comment": "Two datasets, two global configs. Train innovation_sft_kept with mask_history=false (history reasoning retained); train innovation_sft_stripped with mask_history=true (LlamaFactory strips history <think> to the bare answer, like the Qwen template, and computes loss on the last turn only). Both are natural multi-turn ShareGPT with real roles. Use template qwen3 or qwen3_5.",
+  "innovation_sft_kept": {
+    "file_name": "innovation_sft_kept.jsonl",
     "formatting": "sharegpt",
-    "columns": {
-      "messages": "conversations",
-      "system": "system",
-      "tools": "tools"
-    },
+    "columns": {"messages": "conversations", "system": "system", "tools": "tools"},
     "tags": {
-      "role_tag": "from",
-      "content_tag": "value",
-      "user_tag": "human",
-      "assistant_tag": "gpt",
-      "observation_tag": "observation",
-      "function_tag": "function_call",
-      "system_tag": "system"
+      "role_tag": "from", "content_tag": "value",
+      "user_tag": "human", "assistant_tag": "gpt",
+      "observation_tag": "observation", "function_tag": "function_call", "system_tag": "system"
+    }
+  },
+  "innovation_sft_stripped": {
+    "file_name": "innovation_sft_stripped.jsonl",
+    "formatting": "sharegpt",
+    "columns": {"messages": "conversations", "system": "system", "tools": "tools"},
+    "tags": {
+      "role_tag": "from", "content_tag": "value",
+      "user_tag": "human", "assistant_tag": "gpt",
+      "observation_tag": "observation", "function_tag": "function_call", "system_tag": "system"
     }
   }
 }
